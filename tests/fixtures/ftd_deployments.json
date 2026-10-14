@@ -1,0 +1,378 @@
+{
+ "items": [
+  {
+   "name": "Deploy_Job_11",
+   "status": "SUCCEEDED",
+   "startTime": 1791996365,
+   "endTime": 1791996395,
+   "policyList": [
+    {
+     "type": "PG.FIREWALL.PrefilterPolicy"
+    },
+    {
+     "type": "PG.FIREWALL.NGFWAccessControlPolicy"
+    },
+    {
+     "type": "PG.PLATFORM.ManualNat64Rule"
+    },
+    {
+     "type": "PG.PLATFORM.PixInterface"
+    },
+    {
+     "type": "PG.PLATFORM.AutomaticApplicationBypassPage"
+    },
+    {
+     "type": "PG.TEMPLATE.TemplatePolicy"
+    },
+    {
+     "type": "PG.PLATFORM.NgfwInlineSetPage"
+    },
+    {
+     "type": "PG.PLATFORM.AsaBGPPage"
+    },
+    {
+     "type": "PG.PLATFORM.PixDDnsPage"
+    },
+    {
+     "type": "PG.PLATFORM.PixStaticRouteTablePage"
+    },
+    {
+     "type": "PG.PLATFORM.PixMBoundaryPage"
+    },
+    {
+     "type": "PG.PLATFORM.AsaOSPFv3Page"
+    },
+    {
+     "type": "PG.PLATFORM.PixIGMPPage"
+    },
+    {
+     "type": "PG.PLATFORM.PixOSPFPage"
+    },
+    {
+     "type": "PG.PLATFORM.NgfwVirtualRouterPage"
+    },
+    {
+     "type": "PG.PLATFORM.NgfwECMPZonePage"
+    },
+    {
+     "type": "PG.PLATFORM.PixDhcpdPage"
+    },
+    {
+     "type": "PG.PLATFORM.PixPIMPage"
+    },
+    {
+     "type": "PG.PLATFORM.F1IPv6StaticRouteTablePage"
+    },
+    {
+     "type": "PG.PLATFORM.PixDhcpRelayPage"
+    },
+    {
+     "type": "PG.PLATFORM.PixAsaEigrpPage"
+    },
+    {
+     "type": "PG.PLATFORM.PixMroutePage"
+    },
+    {
+     "type": "PG.PLATFORM.PixRipPix72Page"
+    },
+    {
+     "type": "NetworkDiscovery"
+    },
+    {
+     "type": "Snort3IntrusionPolicy"
+    },
+    {
+     "type": "Snort3NetworkAnalysisPolicy"
+    },
+    {
+     "type": "DNSPolicy"
+    },
+    {
+     "type": "sruDeploy"
+    }
+   ],
+   "type": "Deployment",
+   "id": "00000000-0000-0ed3-0000-021474853941"
+  },
+  {
+   "name": "Rollback_Job_3",
+   "status": "SUCCEEDED",
+   "startTime": 1791996300,
+   "endTime": 1791996341,
+   "policyList": [
+    {
+     "type": "sruDeploy"
+    }
+   ],
+   "type": "Deployment",
+   "id": "00000000-0000-0ed3-0000-021474853828"
+  },
+  {
+   "name": "Deploy_Job_10",
+   "status": "SUCCEEDED",
+   "startTime": 1791996253,
+   "endTime": 1791996285,
+   "policyList": [
+    {
+     "type": "PG.PLATFORM.PixInterface"
+    }
+   ],
+   "type": "Deployment",
+   "id": "00000000-0000-0ed3-0000-021474853724"
+  },
+  {
+   "name": "Deploy_Job_9",
+   "status": "SUCCEEDED",
+   "startTime": 1791996201,
+   "endTime": 1791996211,
+   "policyList": [
+    {
+     "type": "PG.PLATFORM.PixStaticRouteTablePage"
+    },
+    {
+     "type": "sruDeploy"
+    }
+   ],
+   "type": "Deployment",
+   "id": "00000000-0000-0ed3-0000-021474853484"
+  },
+  {
+   "name": "Deploy_Job_8",
+   "status": "SUCCEEDED",
+   "startTime": 1791996103,
+   "endTime": 1791996113,
+   "policyList": [
+    {
+     "type": "PG.PLATFORM.PixStaticRouteTablePage"
+    },
+    {
+     "type": "sruDeploy"
+    }
+   ],
+   "type": "Deployment",
+   "id": "00000000-0000-0ed3-0000-021474853153"
+  },
+  {
+   "name": "Deploy_Job_7",
+   "status": "SUCCEEDED",
+   "startTime": 1791996007,
+   "endTime": 1791996036,
+   "policyList": [
+    {
+     "type": "PG.FIREWALL.PrefilterPolicy"
+    },
+    {
+     "type": "PG.FIREWALL.NGFWAccessControlPolicy"
+    },
+    {
+     "type": "PG.PLATFORM.ManualNat64Rule"
+    },
+    {
+     "type": "PG.PLATFORM.PixInterface"
+    },
+    {
+     "type": "PG.PLATFORM.AutomaticApplicationBypassPage"
+    },
+    {
+     "type": "PG.TEMPLATE.TemplatePolicy"
+    },
+    {
+     "type": "PG.PLATFORM.NgfwInlineSetPage"
+    },
+    {
+     "type": "PG.PLATFORM.AsaBGPPage"
+    },
+    {
+     "type": "PG.PLATFORM.PixDDnsPage"
+    },
+    {
+     "type": "PG.PLATFORM.PixStaticRouteTablePage"
+    },
+    {
+     "type": "PG.PLATFORM.PixMBoundaryPage"
+    },
+    {
+     "type": "PG.PLATFORM.AsaOSPFv3Page"
+    },
+    {
+     "type": "PG.PLATFORM.PixIGMPPage"
+    },
+    {
+     "type": "PG.PLATFORM.PixOSPFPage"
+    },
+    {
+     "type": "PG.PLATFORM.NgfwVirtualRouterPage"
+    },
+    {
+     "type": "PG.PLATFORM.NgfwECMPZonePage"
+    },
+    {
+     "type": "PG.PLATFORM.PixDhcpdPage"
+    },
+    {
+     "type": "PG.PLATFORM.PixPIMPage"
+    },
+    {
+     "type": "PG.PLATFORM.F1IPv6StaticRouteTablePage"
+    },
+    {
+     "type": "PG.PLATFORM.PixDhcpRelayPage"
+    },
+    {
+     "type": "PG.PLATFORM.PixAsaEigrpPage"
+    },
+    {
+     "type": "PG.PLATFORM.PixMroutePage"
+    },
+    {
+     "type": "PG.PLATFORM.PixRipPix72Page"
+    },
+    {
+     "type": "NetworkDiscovery"
+    },
+    {
+     "type": "Snort3IntrusionPolicy"
+    },
+    {
+     "type": "Snort3NetworkAnalysisPolicy"
+    },
+    {
+     "type": "DNSPolicy"
+    },
+    {
+     "type": "sruDeploy"
+    }
+   ],
+   "type": "Deployment",
+   "id": "00000000-0000-0ed3-0000-021474852844"
+  },
+  {
+   "name": "Rollback_Job_2",
+   "status": "SUCCEEDED",
+   "startTime": 1791995819,
+   "endTime": 1791995861,
+   "type": "Deployment",
+   "id": "00000000-0000-0ed3-0000-021474851247"
+  },
+  {
+   "name": "Deploy_Job_6",
+   "status": "SUCCEEDED",
+   "startTime": 1791995771,
+   "endTime": 1791995805,
+   "policyList": [
+    {
+     "type": "PG.PLATFORM.PixInterface"
+    }
+   ],
+   "type": "Deployment",
+   "id": "00000000-0000-0ed3-0000-021474851143"
+  },
+  {
+   "name": "Deploy_Job_5",
+   "status": "SUCCEEDED",
+   "startTime": 1791995690,
+   "endTime": 1791995724,
+   "policyList": [
+    {
+     "type": "PG.PLATFORM.ManualNat64Rule"
+    },
+    {
+     "type": "PG.PLATFORM.PixInterface"
+    },
+    {
+     "type": "PG.PLATFORM.PixStaticRouteTablePage"
+    }
+   ],
+   "type": "Deployment",
+   "id": "00000000-0000-0ed3-0000-021474850892"
+  },
+  {
+   "name": "Deploy_Job_4",
+   "status": "SUCCEEDED",
+   "startTime": 1791995559,
+   "endTime": 1791995606,
+   "policyList": [
+    {
+     "type": "PG.FIREWALL.PrefilterPolicy"
+    },
+    {
+     "type": "PG.FIREWALL.NGFWAccessControlPolicy"
+    },
+    {
+     "type": "PG.PLATFORM.PixInterface"
+    },
+    {
+     "type": "PG.PLATFORM.AutomaticApplicationBypassPage"
+    },
+    {
+     "type": "PG.TEMPLATE.TemplatePolicy"
+    },
+    {
+     "type": "PG.PLATFORM.NgfwInlineSetPage"
+    },
+    {
+     "type": "PG.PLATFORM.AsaBGPPage"
+    },
+    {
+     "type": "PG.PLATFORM.PixDDnsPage"
+    },
+    {
+     "type": "PG.PLATFORM.PixStaticRouteTablePage"
+    },
+    {
+     "type": "PG.PLATFORM.PixMBoundaryPage"
+    },
+    {
+     "type": "PG.PLATFORM.AsaOSPFv3Page"
+    },
+    {
+     "type": "PG.PLATFORM.PixIGMPPage"
+    },
+    {
+     "type": "PG.PLATFORM.PixOSPFPage"
+    },
+    {
+     "type": "PG.PLATFORM.NgfwVirtualRouterPage"
+    },
+    {
+     "type": "PG.PLATFORM.NgfwECMPZonePage"
+    },
+    {
+     "type": "PG.PLATFORM.PixDhcpdPage"
+    },
+    {
+     "type": "PG.PLATFORM.PixPIMPage"
+    },
+    {
+     "type": "PG.PLATFORM.F1IPv6StaticRouteTablePage"
+    },
+    {
+     "type": "PG.PLATFORM.PixDhcpRelayPage"
+    },
+    {
+     "type": "PG.PLATFORM.PixAsaEigrpPage"
+    },
+    {
+     "type": "PG.PLATFORM.PixMroutePage"
+    },
+    {
+     "type": "PG.PLATFORM.PixRipPix72Page"
+    },
+    {
+     "type": "vdbDeploy"
+    },
+    {
+     "type": "sruDeploy"
+    }
+   ],
+   "type": "Deployment",
+   "id": "00000000-0000-0ed3-0000-021474850509"
+  }
+ ],
+ "paging": {
+  "offset": 0,
+  "limit": 25,
+  "count": 10,
+  "pages": 1
+ }
+}

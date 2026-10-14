@@ -1,0 +1,214 @@
+{
+ "items": [
+  {
+   "deviceUUID": "2c11eaca-c7e3-11f1-a7ce-a8b537b1b4bb",
+   "moduleID": "FXOS_HEALTH",
+   "moduleUUID": "1032fda0-bcdc-4628-b78d-5f9212d1da57",
+   "timestamp": 1791996471,
+   "status": "GREEN",
+   "details": "FXOS health check passed without health file.",
+   "type": "Alert"
+  },
+  {
+   "deviceUUID": "2c11eaca-c7e3-11f1-a7ce-a8b537b1b4bb",
+   "moduleID": "CERTIFICATE_MONITORING",
+   "moduleUUID": "10508566-c10d-474a-97cb-77b379f402f4",
+   "timestamp": 1791996471,
+   "status": "GREEN",
+   "details": "There are no monitored certificates due to expire.",
+   "type": "Alert"
+  },
+  {
+   "deviceUUID": "2c11eaca-c7e3-11f1-a7ce-a8b537b1b4bb",
+   "moduleID": "SNORT_IDENTITY_MEMORY_USAGE",
+   "moduleUUID": "36ce7a0d-79ec-4dfe-bee5-b8d37661ca17",
+   "timestamp": 1791996471,
+   "params": "<params><totalloop><val>3.7%</val></totalloop><totalloop><val>740.7K / 20.0M</val></totalloop><memloop><val>531.6K</val></memloop><memloop><val>32B</val></memloop><memloop><val>139.3K</val></memloop><bindingloop><val>0 / 64000</val></bindingloop><bindingloop><val>0</val></bindingloop><bindingloop><val>0</val></bindingloop><ugloop><val>0</val></ugloop><ugloop><val>0 / 128</val></ugloop></params>",
+   "status": "GREEN",
+   "details": "3.7% of 20.0M used",
+   "type": "Alert"
+  },
+  {
+   "deviceUUID": "2c11eaca-c7e3-11f1-a7ce-a8b537b1b4bb",
+   "moduleID": "FTD_CONFIG_RESOURCE_UTILISATION",
+   "moduleUUID": "36ce7a0d-79ec-4dfe-bee5-b8d37661ca18",
+   "timestamp": 1791996471,
+   "status": "GREEN",
+   "details": "Deployed configurations are normal.",
+   "type": "Alert"
+  },
+  {
+   "deviceUUID": "2c11eaca-c7e3-11f1-a7ce-a8b537b1b4bb",
+   "moduleID": "INLINELINK_ALARM",
+   "moduleUUID": "5bbe3968-1334-4a0b-9e01-b9183353788g",
+   "timestamp": 1791996471,
+   "status": "GREEN",
+   "details": "Hardware is functioning normally",
+   "type": "Alert"
+  },
+  {
+   "deviceUUID": "2c11eaca-c7e3-11f1-a7ce-a8b537b1b4bb",
+   "moduleID": "LOCAL_MALWARE_ANALYSIS",
+   "moduleUUID": "5bbe3968-1334-4a0b-9e01-b91833537892",
+   "timestamp": 1791996471,
+   "status": "GREEN",
+   "details": "Process is running correctly",
+   "type": "Alert"
+  },
+  {
+   "deviceUUID": "2c11eaca-c7e3-11f1-a7ce-a8b537b1b4bb",
+   "moduleID": "CLUSTER",
+   "moduleUUID": "5bbe3968-1334-4a0b-9e01-b91833537894",
+   "timestamp": 1791996471,
+   "status": "GREEN",
+   "details": "Process is running correctly",
+   "type": "Alert"
+  },
+  {
+   "deviceUUID": "2c11eaca-c7e3-11f1-a7ce-a8b537b1b4bb",
+   "moduleID": "DATABASE",
+   "moduleUUID": "5bbe3968-1334-4a0b-9e01-b91833537895",
+   "timestamp": 1791996471,
+   "status": "GREEN",
+   "details": "Integrity checks are currently running or have passed without health files.",
+   "type": "Alert"
+  },
+  {
+   "deviceUUID": "2c11eaca-c7e3-11f1-a7ce-a8b537b1b4bb",
+   "moduleID": "DATABASE",
+   "moduleUUID": "5bbe3968-1334-4a0b-9e01-b91833537895",
+   "timestamp": 1791996471,
+   "status": "GREEN",
+   "details": "The size of the MariaDB undo files is within the threshold.",
+   "type": "Alert"
+  },
+  {
+   "deviceUUID": "2c11eaca-c7e3-11f1-a7ce-a8b537b1b4bb",
+   "moduleID": "OUT_OF_BAND_CHANGES",
+   "moduleUUID": "5bbe3968-1334-4a0b-9e01-b91833537896",
+   "timestamp": 1791996471,
+   "status": "GREEN",
+   "details": "No out-of-band configuration changes happened on the device",
+   "type": "Alert"
+  },
+  {
+   "deviceUUID": "2c11eaca-c7e3-11f1-a7ce-a8b537b1b4bb",
+   "moduleID": "RECONFIG_DETECTION",
+   "moduleUUID": "613dc7ce-e81b-11e3-ac4f-b20f1374fc54",
+   "timestamp": 1791996471,
+   "status": "GREEN",
+   "details": "Process is running correctly",
+   "type": "Alert"
+  },
+  {
+   "deviceUUID": "2c11eaca-c7e3-11f1-a7ce-a8b537b1b4bb",
+   "moduleID": "DISK_USAGE",
+   "moduleUUID": "62040536-9fb1-4749-a127-6b94eaa0c906",
+   "timestamp": 1791996471,
+   "params": "<params><dfloop><mount>/mnt/disk0</mount><size>12G</size><avail>12G</avail><used>4.2M</used><count>1</count><percent_part>1</percent_part><percent>1%</percent></dfloop><dfloop><mount>/ngfw</mount><size>61G</size><avail>55G</avail><used>2.1G</used><count>1</count><percent_part>4</percent_part><percent>4%</percent></dfloop><dfloop><mount>/ngfw/Volume</mount><size>61G</size><avail>55G</avail><used>2.1G</used><count>1</count><percent_part>4</percent_part><percent>4%</percent></dfloop></params>",
+   "status": "GREEN",
+   "details": "/ngfw using 4%: 2.1G (55G Avail) of 61G",
+   "type": "Alert"
+  },
+  {
+   "deviceUUID": "2c11eaca-c7e3-11f1-a7ce-a8b537b1b4bb",
+   "moduleID": "HM_TALOSAGENT",
+   "moduleUUID": "74c2eafa-9062-11ee-a96d-edbc3fb06c61",
+   "timestamp": 1791996471,
+   "status": "GREEN",
+   "details": "Talos Communication Daemon running correctly",
+   "type": "Alert"
+  },
+  {
+   "deviceUUID": "2c11eaca-c7e3-11f1-a7ce-a8b537b1b4bb",
+   "moduleID": "INTRUSION_FILE_STATS",
+   "moduleUUID": "98765432-edbc-1234-qss9-123456789cbd",
+   "timestamp": 1791996471,
+   "status": "GREEN",
+   "details": "Events per second is 0.<br>",
+   "type": "Alert"
+  },
+  {
+   "deviceUUID": "2c11eaca-c7e3-11f1-a7ce-a8b537b1b4bb",
+   "moduleID": "DISK_STATUS",
+   "moduleUUID": "9c72c6f7-51ba-4edb-82d4-23f8542b3639",
+   "timestamp": 1791996471,
+   "status": "GREEN",
+   "details": "Disk Status is healthy",
+   "type": "Alert"
+  },
+  {
+   "deviceUUID": "2c11eaca-c7e3-11f1-a7ce-a8b537b1b4bb",
+   "moduleID": "TIME_SYNC",
+   "moduleUUID": "9da5e98c-350c-11db-925e-00123f628zzz",
+   "timestamp": 1791996483,
+   "params": "<params><time><peer>mcp-ftd1</peer><offset>0</offset></time></params>",
+   "status": "GREEN",
+   "details": "Synchronized",
+   "type": "Alert"
+  },
+  {
+   "deviceUUID": "2c11eaca-c7e3-11f1-a7ce-a8b537b1b4bb",
+   "moduleID": "EVENTHANDLER_STATUS",
+   "moduleUUID": "e354b7c6-8ee0-479f-9445-fd1d7f8c1646",
+   "timestamp": 1791996471,
+   "params": "<params><dfloop><consumer>FMC - High Priority Channel</consumer><module></module><status>GREEN</status><details></details><ts>-</ts></dfloop><dfloop><consumer>FMC - Low Priority Channel</consumer><module></module><status>GREEN</status><details></details><ts>-</ts></dfloop><dfloop><consumer>SNMP</consumer><module></module><status>GREEN</status><details></details><ts>-</ts></dfloop></params>",
+   "status": "GREEN",
+   "details": "Healthy",
+   "type": "Alert"
+  },
+  {
+   "deviceUUID": "2c11eaca-c7e3-11f1-a7ce-a8b537b1b4bb",
+   "moduleID": "THREAT_DATA_UPDATES",
+   "moduleUUID": "ec501d95-72cf-4cb7-b104-5ec4a9102c51",
+   "timestamp": 1791996471,
+   "params": "<params><dfloop><data>SI URL Lists and Feeds</data><status>Success</status></dfloop><dfloop><data>AMP Dynamic Analysis</data><status>Success</status></dfloop><dfloop><data>SI DNS Lists and Feeds</data><status>Success</status></dfloop><dfloop><data>Local Malware Analysis Signatures</data><status>Success</status></dfloop><dfloop><data>Geolocation</data><status>Success</status></dfloop><dfloop><data>Cisco Support Diagnostics Configuration</data><status>Success</status></dfloop><dfloop><data>URL Category and Reputation Metadata</data><status>Success</status></dfloop><dfloop><data>SI Network Lists and Feeds</data><status>Success</status></dfloop><dfloop><data>SI SHA Lists (from TID)</data><status>Success</status></dfloop><dfloop><data>URL Category and Reputation</data><status>Success</status></dfloop><dfloop><data>Cisco Cloud Configuration</data><status>Success</status></dfloop><dfloop><data>URL Category and Reputation</data><status>Success</status></dfloop><dfloop><data>Threat Configuration</data><status>Success</status></dfloop></params>",
+   "status": "GREEN",
+   "details": "Process is running correctly",
+   "type": "Alert"
+  },
+  {
+   "deviceUUID": "2c11eaca-c7e3-11f1-a7ce-a8b537b1b4bb",
+   "moduleID": "IDENTITY_PROCESS_STATUS",
+   "moduleUUID": "f2e0ca94-7e93-413e-9a9e-ba397a29671e",
+   "timestamp": 1791996471,
+   "status": "GREEN",
+   "details": "Identity Process are disabled",
+   "type": "Alert"
+  },
+  {
+   "deviceUUID": "2c11eaca-c7e3-11f1-a7ce-a8b537b1b4bb",
+   "moduleID": "APPLICATION_BYPASS",
+   "moduleUUID": "fa0cf1c7-a607-4233-9c8f-3212816b7cf1",
+   "timestamp": 1791996471,
+   "status": "GREEN",
+   "details": "No applications were bypassed",
+   "type": "Alert"
+  },
+  {
+   "deviceUUID": "2c11eaca-c7e3-11f1-a7ce-a8b537b1b4bb",
+   "moduleID": "PROCESS",
+   "moduleUUID": "health29-efweh-2313-2789-fefwdwqsdfg",
+   "timestamp": 1791996471,
+   "status": "GREEN",
+   "details": "All processes are running correctly",
+   "type": "Alert"
+  },
+  {
+   "deviceUUID": "2c11eaca-c7e3-11f1-a7ce-a8b537b1b4bb",
+   "moduleID": "INTERFACE",
+   "moduleUUID": "qwerjyue-andv-7654-2345-g4678494gi94",
+   "timestamp": 1791996471,
+   "params": "<params><interface><name>Ethernet0/0</name><link>1</link><rx>4.8KB</rx><tx>2.3KB</tx><receiving>1</receiving></interface><interface><name>Ethernet0/1</name><link>1</link><rx>5.8KB</rx><tx>28.0B</tx><receiving>1</receiving></interface><interface><name>eth0</name><link>1</link><rx>239.3MB</rx><tx>6.8MB</tx><receiving>1</receiving></interface></params>",
+   "status": "GREEN",
+   "details": "All interfaces are working correctly",
+   "type": "Alert"
+  }
+ ],
+ "paging": {
+  "offset": 0,
+  "limit": 1000,
+  "count": 22,
+  "pages": 1
+ }
+}

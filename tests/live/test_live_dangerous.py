@@ -1,5 +1,6 @@
-"""Dangerous tools against the lab. The lab FMC manages no devices, so deploy can only be checked for
-its 'nothing to deploy' path; registration and HA are covered by unit tests with mocked FMC replies."""
+"""Dangerous tools against the lab that don't need a device: deploy's 'nothing to deploy' path and
+policy deletion. Registration, deploy and rollback against a real FTD are in test_live_ftd.py; HA
+needs two FTDs and is covered by unit tests with mocked FMC replies."""
 
 import json
 from typing import Any

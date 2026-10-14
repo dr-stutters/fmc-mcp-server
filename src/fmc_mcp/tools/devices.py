@@ -6,7 +6,14 @@ from typing import Annotated, Any, Literal
 from fastmcp import Context
 from fastmcp.tools import ToolResult
 from pydantic import Field
-from stutters_mcp_core import ResponseFormat, ToolRegistrar, get_client, list_result, object_result
+from stutters_mcp_core import (
+    ResponseFormat,
+    ToolRegistrar,
+    UpstreamError,
+    get_client,
+    list_result,
+    object_result,
+)
 from stutters_mcp_core.http import page_of
 
 from fmc_mcp.client import FmcApp
@@ -53,9 +60,12 @@ def interface_row(kind: str, i: dict[str, Any]) -> dict[str, Any]:
         addr = f"{static['address']}/{static.get('netmask', '')}"
     elif ipv4.get("dhcp"):
         addr = "dhcp"
+    name = i.get("name")
+    if kind == "subinterface" and i.get("subIntfId") is not None and "." not in str(name):
+        name = f"{name}.{i['subIntfId']}"  # FMC names a subinterface after its parent
     return {
         "kind": kind,
-        "name": i.get("name"),
+        "name": name,
         "logical_name": i.get("ifname"),
         "enabled": i.get("enabled"),
         "mode": i.get("mode"),
@@ -66,6 +76,25 @@ def interface_row(kind: str, i: dict[str, Any]) -> dict[str, Any]:
         "description": i.get("description"),
         "id": i.get("id"),
     }
+
+
+async def zone_names(app: FmcApp, domain: str | None) -> dict[str, str]:
+    """Security zone id -> name. Interfaces reference their zone by id only."""
+    key = f"zones:{domain or ''}"
+    cached = app.cache_get(key)
+    if cached is None:
+        page = await app.all(await app.config_path("object/securityzones", domain), expanded=False)
+        cached = {str(z.get("id")): str(z.get("name")) for z in page.items}
+        app.cache_put(key, cached)
+    names: dict[str, str] = cached
+    return names
+
+
+def name_zones(rows: list[dict[str, Any]], zones: dict[str, str]) -> list[dict[str, Any]]:
+    for r in rows:
+        if r.get("zone") in zones:
+            r["zone"] = zones[r["zone"]]
+    return rows
 
 
 def register(reg: ToolRegistrar) -> None:
@@ -128,10 +157,18 @@ def register(reg: ToolRegistrar) -> None:
         notes: list[str] = []
         for kind in kinds or ["physical", "subinterface", "etherchannel"]:
             path = await app.config_path(f"{DEVICES}/{d['id']}/{INTERFACE_KINDS[kind]}", domain)
-            page = await app.all(path, cap=2000)
+            try:
+                page = await app.all(path, cap=2000)
+            except UpstreamError as e:
+                if e.status_code not in (404, 405):
+                    raise
+                notes.append(f"{kind}: not supported on this model")
+                continue
             rows += [interface_row(kind, i) for i in page.items]
             if not page.complete:
                 notes.append(f"{kind}: only the first 2000 shown")
+        if any(r.get("zone") for r in rows):
+            rows = name_zones(rows, await zone_names(app, domain))
         extra = {"device": d.get("name"), **({"note": "; ".join(notes)} if notes else {})}
         return list_result(page_of(rows, limit=limit, offset=offset), fmt=response_format, extra=extra)
 

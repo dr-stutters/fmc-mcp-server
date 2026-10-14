@@ -1,6 +1,8 @@
 """Capture a few real FMC responses (after scripts/seed_lab.py) as redacted unit-test fixtures.
 
-    uv run python scripts/capture_fixtures.py
+    uv run python scripts/capture_fixtures.py          # policies and objects (seeded lab)
+    uv run python scripts/capture_fixtures.py --ftd    # device fixtures from the managed FTD mcp-ftd1
+                                                       # (after tests/live/test_live_ftd.py)
 
 Redaction: the FMC address/hostname and serial are replaced, `links` are dropped. Review the diff
 before committing.
@@ -11,6 +13,8 @@ from __future__ import annotations
 import asyncio
 import json
 import re
+import sys
+import time
 from pathlib import Path
 from typing import Any
 
@@ -22,7 +26,11 @@ OUT = Path(__file__).resolve().parent.parent / "tests" / "fixtures"
 
 def scrub(data: Any, host: str) -> Any:
     if isinstance(data, dict):
-        out = {k: scrub(v, host) for k, v in data.items() if k != "links"}
+        out = {
+            k: "REDACTED" if k in ("serialNumber", "deviceSerialNumber") else scrub(v, host)
+            for k, v in data.items()
+            if k != "links"
+        }
         if data.get("type") == "ServerVersion":
             out["uuid"] = "00000000-0000-0000-0000-000000000001"
             out["serialNumber"] = "REDACTED"
@@ -33,14 +41,88 @@ def scrub(data: Any, host: str) -> Any:
         data = data.replace(host, "fmc.test")
         data = re.sub(r"fmcv?\.[\w.-]*dcloud[\w.-]*", "fmc.example.com", data)
         data = re.sub(r"\b198\.18\.\d+\.\d+\b", "192.0.2.10", data)  # lab addresses (not 198.18.0.0/15)
+        data = re.sub(r"Serial Number: \S+", "Serial Number: REDACTED", data)
         return data
     return data
+
+
+async def capture_ftd(app: FmcApp, host: str) -> None:
+    """Device-side fixtures: interfaces, routes, show command, packet tracer, hit counts, health."""
+    devs = await app.all(await app.config_path("devices/devicerecords"))
+    dev = next(d for d in devs.items if d.get("name") == "mcp-ftd1")
+    acps = await app.all(await app.config_path("policy/accesspolicies"))
+    acp = next(p for p in acps.items if p.get("name") == "mcp-test-ftd-acp")
+    base = f"devices/devicerecords/{dev['id']}"
+    phys = await app.all(await app.config_path(f"{base}/physicalinterfaces"))
+    inside = next(i for i in phys.items if i.get("ifname") == "inside")
+    rules = await app.all(await app.config_path(f"policy/accesspolicies/{acp['id']}/accessrules"))
+    ids = ",".join(r["id"] for r in rules.items)
+    now = int(time.time())
+    hc = await app.config_path(f"policy/accesspolicies/{acp['id']}/operational/hitcounts")
+    gets: dict[str, tuple[str, dict[str, Any]]] = {
+        "ftd_device": (await app.config_path(base), {}),
+        "ftd_physicalinterfaces": (await app.config_path(f"{base}/physicalinterfaces"), {"expanded": "true"}),
+        "ftd_ipv4staticroutes": (
+            await app.config_path(f"{base}/routing/ipv4staticroutes"),
+            {"expanded": "true"},
+        ),
+        "ftd_show_route": (
+            await app.config_path(f"{base}/operational/commands"),
+            {"command": "show route"},
+        ),
+        "ftd_hitcounts": (
+            hc,
+            {"filter": f"deviceId:{dev['id']};fetchZeroHitCount:true;ids:{ids}", "expanded": "true"},
+        ),
+        "ftd_hitcounts_default": (
+            hc,
+            {"filter": f"deviceId:{dev['id']};fetchZeroHitCount:true", "expanded": "true"},
+        ),
+        "ftd_health_alerts": (
+            await app.config_path("health/alerts"),
+            {"filter": f"deviceUUIDs:{dev['id']}", "limit": 1000},
+        ),
+        "ftd_health_metrics_mem": (
+            await app.config_path("health/metrics"),
+            {"filter": f"deviceUUIDs:{dev['id']};metric:mem;startTime:{now - 600};endTime:{now};step:300"},
+        ),
+        "ftd_deployments": (
+            await app.config_path(f"deployment/deployabledevices/{dev['id']}/deployments"),
+            {"filter": f"startTime:{now - 86400};endTime:{now}", "expanded": "true"},
+        ),
+    }
+    for name, (path, params) in gets.items():
+        data = await app.api.get(path, params)
+        (OUT / f"{name}.json").write_text(json.dumps(scrub(data, host), indent=1) + "\n")
+        print("captured", name)
+    trace = {
+        "device": {"id": dev["id"], "type": "Device", "name": dev["name"]},
+        "interface": {"id": inside["id"], "type": "PhysicalInterface", "name": "inside"},
+        "protocol": "TCP",
+        "sourceIPType": "IPv4",
+        "sourceIPValue": "10.99.1.10",
+        "sourcePort": "40000",
+        "destinationIPType": "IPv4",
+        "destinationIPValue": "198.18.134.76",
+        "destinationPort": "23",
+    }
+    path = f"/api/fmc_troubleshoot/v1/domain/{await app.domain_uuid(None)}/packettracer/traces"
+    data = await app.api.post(path, trace, timeout=180)
+    (OUT / "ftd_packettracer_drop.json").write_text(json.dumps(scrub(data, host), indent=1) + "\n")
+    print("captured ftd_packettracer_drop")
 
 
 async def main() -> None:
     settings = Settings()  # type: ignore[call-arg]
     host = re.sub(r"^https?://", "", settings.url).split("/")[0]
     app = FmcApp(settings)
+    if "--ftd" in sys.argv:
+        try:
+            OUT.mkdir(parents=True, exist_ok=True)
+            await capture_ftd(app, host)
+        finally:
+            await app.aclose()
+        return
     try:
 
         async def by_name(path: str, name: str) -> dict[str, Any]:

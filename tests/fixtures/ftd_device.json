@@ -1,0 +1,63 @@
+{
+ "deploymentStatus": "DEPLOYED",
+ "id": "2c11eaca-c7e3-11f1-a7ce-a8b537b1b4bb",
+ "type": "Device",
+ "name": "mcp-ftd1",
+ "description": "NOT SUPPORTED",
+ "model": "Cisco Secure Firewall Threat Defense for KVM",
+ "modelId": "B",
+ "modelNumber": "75",
+ "modelType": "Sensor",
+ "healthStatus": "green",
+ "healthMessage": "FXOS health check passed without health file.",
+ "sw_version": "10.0.0",
+ "healthPolicy": {
+  "id": "1114175a-2eca-11f1-bc1d-b8e359adb5f3",
+  "name": "Initial_Health_Policy 2026-04-02 19:28:02",
+  "type": "HealthPolicy"
+ },
+ "accessPolicy": {
+  "name": "mcp-test-ftd-acp",
+  "id": "00000000-0000-0ed3-0000-021474847655",
+  "type": "AccessPolicy"
+ },
+ "advanced": {
+  "enableOGS": true
+ },
+ "hostName": "192.0.2.10",
+ "license_caps": [
+  "ESSENTIALS"
+ ],
+ "performanceTier": "FTDv5",
+ "keepLocalEvents": false,
+ "prohibitPacketTransfer": false,
+ "isConnected": true,
+ "ftdMode": "ROUTED",
+ "analyticsOnly": false,
+ "metadata": {
+  "readOnly": {
+   "state": false
+  },
+  "inventoryData": {
+   "cpuCores": "1 CPU (4 cores)",
+   "cpuType": "CPU Xeon 4100/6100/8100 series 2700 MHz",
+   "memoryInMB": "8192 MB RAM"
+  },
+  "deviceSerialNumber": "REDACTED",
+  "domain": {
+   "name": "Global",
+   "id": "e276abec-e0f2-11e3-8169-6d9ed49b625f",
+   "type": "Domain"
+  },
+  "isMultiInstance": false,
+  "snortVersion": "3.9.3.1-61",
+  "vdbVersion": "Build 426 - 2026-03-24 09:29:08.0",
+  "lspVersion": "lsp-rel-20260727-1856",
+  "clusterBootstrapSupported": true,
+  "universalZeroTrustSupported": false,
+  "coreProfile": "Default"
+ },
+ "snortEngine": "SNORT3",
+ "isMCDManaged": false,
+ "managementState": "MANAGED"
+}
