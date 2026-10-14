@@ -37,9 +37,9 @@ Changes made in FMC reach the firewalls only after a **deployment** (`fmc_deploy
 
 ## Tools
 
-There are 51 tools when every tier is enabled.
+There are 50 tools when every tier is enabled: 30 read (29 when the dangerous tier turns `fmc_api_call` into a raw call), 14 write and 6 dangerous plus `fmc_api_call`.
 
-**Read (31)**
+**Read (30)**
 
 | Area | Tools |
 |---|---|
