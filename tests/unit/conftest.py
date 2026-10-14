@@ -58,3 +58,43 @@ def fmc() -> Iterator[respx.MockRouter]:
         )
         mock.get(f"{CFG}/devices/devicerecords").mock(return_value=items([], 0))
         yield mock
+
+
+FIXTURES = __import__("pathlib").Path(__file__).resolve().parent.parent / "fixtures"
+ACP_ID = "00000000-0000-0ed3-0000-021474837418"
+NAT_ID = "00000000-0000-0ed3-0000-021474837632"
+
+
+def fixture(name: str) -> Any:
+    return json.loads((FIXTURES / f"{name}.json").read_text())
+
+
+def empty() -> httpx.Response:
+    return httpx.Response(
+        200, json={"links": {}, "paging": {"offset": 0, "limit": 0, "count": 0, "pages": 0}}
+    )
+
+
+@pytest.fixture
+def lab(fmc: respx.MockRouter) -> respx.MockRouter:
+    """The seeded lab (scripts/seed_lab.py) as recorded in tests/fixtures."""
+    fmc.get(f"{CFG}/policy/accesspolicies").mock(
+        return_value=httpx.Response(200, json=fixture("accesspolicies"))
+    )
+    acp = fixture("accesspolicies")["items"][0]
+    fmc.get(f"{CFG}/policy/accesspolicies/{ACP_ID}").mock(return_value=httpx.Response(200, json=acp))
+    fmc.get(f"{CFG}/policy/accesspolicies/{ACP_ID}/accessrules").mock(
+        return_value=httpx.Response(200, json=fixture("accessrules"))
+    )
+    fmc.get(f"{CFG}/policy/ftdnatpolicies").mock(
+        return_value=items([{"name": "mcp-test-nat", "id": NAT_ID, "type": "FTDNatPolicy"}])
+    )
+    fmc.get(f"{CFG}/policy/ftdnatpolicies/{NAT_ID}/natrules").mock(
+        return_value=httpx.Response(200, json=fixture("natrules"))
+    )
+    for name in ("networkaddresses", "networkgroups", "protocolportobjects", "portobjectgroups"):
+        fmc.get(f"{CFG}/object/{name}").mock(return_value=httpx.Response(200, json=fixture(name)))
+    for name in ("icmpv4objects", "icmpv6objects"):
+        fmc.get(f"{CFG}/object/{name}").mock(return_value=empty())
+    fmc.get(f"{CFG}/assignment/policyassignments").mock(return_value=empty())
+    return fmc

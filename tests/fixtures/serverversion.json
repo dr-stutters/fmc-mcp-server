@@ -1,0 +1,23 @@
+{
+ "items": [
+  {
+   "serverVersion": "10.0.1 (build 1)",
+   "vdbVersion": "build 426 ( 2026-03-24 09:29:08 )",
+   "sruVersion": "2026-07-27-001-vrt",
+   "lspVersion": "lsp-rel-20260727-1856",
+   "hostname": "fmc.example.com",
+   "model": "Cisco Secure Firewall Management Center for VMware",
+   "serialNumber": "None",
+   "uptime": "2 hours, 19 minutes",
+   "platform": "66",
+   "uuid": "79bc5d14-2ec8-11f1-b9c9-52b459adb5f3",
+   "type": "ServerVersion"
+  }
+ ],
+ "paging": {
+  "offset": 0,
+  "limit": 25,
+  "count": 1,
+  "pages": 1
+ }
+}

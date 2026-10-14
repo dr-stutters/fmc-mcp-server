@@ -1,0 +1,85 @@
+{
+ "items": [
+  {
+   "metadata": {
+    "section": "BEFORE_AUTO",
+    "index": 1,
+    "parentType": "FTDNatRule",
+    "timestamp": 1791980816053,
+    "domain": {
+     "name": "Global",
+     "id": "e276abec-e0f2-11e3-8169-6d9ed49b625f",
+     "type": "Domain"
+    }
+   },
+   "originalSource": {
+    "type": "Network",
+    "overridable": false,
+    "name": "mcp-test-dmz-net",
+    "id": "00000000-0000-0ed3-0000-021474837239"
+   },
+   "translatedSource": {
+    "type": "Network",
+    "overridable": false,
+    "name": "mcp-test-app-net",
+    "id": "00000000-0000-0ed3-0000-021474837257"
+   },
+   "interfaceInOriginalDestination": false,
+   "interfaceInTranslatedSource": false,
+   "unidirectional": false,
+   "enabled": true,
+   "type": "FTDManualNatRule",
+   "dns": false,
+   "interfaceIpv6": false,
+   "fallThrough": false,
+   "netToNet": false,
+   "routeLookup": false,
+   "noProxyArp": false,
+   "natType": "STATIC",
+   "description": "mcp live tests",
+   "id": "00000000-0000-0ed3-0000-021474837685"
+  },
+  {
+   "metadata": {
+    "section": "AUTO",
+    "parentType": "FTDNatRule",
+    "timestamp": 1791980816056,
+    "domain": {
+     "name": "Global",
+     "id": "e276abec-e0f2-11e3-8169-6d9ed49b625f",
+     "type": "Domain"
+    }
+   },
+   "originalNetwork": {
+    "type": "Host",
+    "overridable": false,
+    "name": "mcp-test-web",
+    "id": "00000000-0000-0ed3-0000-021474837185"
+   },
+   "originalPort": 0,
+   "translatedNetwork": {
+    "type": "Host",
+    "overridable": false,
+    "name": "mcp-test-db",
+    "id": "00000000-0000-0ed3-0000-021474837203"
+   },
+   "translatedPort": 0,
+   "interfaceInTranslatedNetwork": false,
+   "type": "FTDAutoNatRule",
+   "dns": false,
+   "interfaceIpv6": false,
+   "fallThrough": false,
+   "netToNet": false,
+   "routeLookup": false,
+   "noProxyArp": false,
+   "natType": "STATIC",
+   "id": "00000000-0000-0ed3-0000-021474837663"
+  }
+ ],
+ "paging": {
+  "offset": 0,
+  "limit": 1000,
+  "count": 2,
+  "pages": 1
+ }
+}

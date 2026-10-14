@@ -1,10 +1,298 @@
 """Helpers shared by the tool modules: parameter types, response shaping, name/id resolution."""
 
-from typing import Annotated
+import difflib
+from dataclasses import dataclass
+from typing import Annotated, Any, Literal
 
 from pydantic import Field
+from stutters_mcp_core import InvalidRequest, NotFound
+
+from fmc_mcp.client import FmcApp, is_uuid
 
 Domain = Annotated[
     str | None,
     Field(description="FMC domain name (e.g. 'Global') or UUID; default FMC_DOMAIN or the login's domain"),
 ]
+
+# --- object types -------------------------------------------------------------------------------
+
+
+@dataclass(frozen=True)
+class ObjType:
+    key: str  # our name, e.g. "host"
+    path: str  # collection path under the domain, e.g. "object/hosts"
+    fmc_type: str  # the "type" FMC uses in references, e.g. "Host"
+    family: str  # network | port | url | zone | vlan | other
+    writable: bool = True  # whether the write tools manage it
+
+
+OBJECT_TYPES: dict[str, ObjType] = {
+    t.key: t
+    for t in (
+        ObjType("host", "object/hosts", "Host", "network"),
+        ObjType("network", "object/networks", "Network", "network"),
+        ObjType("range", "object/ranges", "Range", "network"),
+        ObjType("fqdn", "object/fqdns", "FQDN", "network"),
+        ObjType("network_group", "object/networkgroups", "NetworkGroup", "network"),
+        ObjType("port", "object/protocolportobjects", "ProtocolPortObject", "port"),
+        ObjType("port_group", "object/portobjectgroups", "PortObjectGroup", "port"),
+        ObjType("icmpv4", "object/icmpv4objects", "ICMPV4Object", "port"),
+        ObjType("icmpv6", "object/icmpv6objects", "ICMPV6Object", "port"),
+        ObjType("url", "object/urls", "Url", "url"),
+        ObjType("url_group", "object/urlgroups", "UrlGroup", "url"),
+        ObjType("security_zone", "object/securityzones", "SecurityZone", "zone"),
+        ObjType("interface_group", "object/interfacegroups", "InterfaceGroup", "zone"),
+        ObjType("vlan_tag", "object/vlantags", "VlanTag", "vlan"),
+        ObjType("vlan_group", "object/vlangrouptags", "VlanGroupTag", "vlan"),
+        ObjType("dynamic_object", "object/dynamicobjects", "DynamicObject", "other", writable=False),
+        ObjType("time_range", "object/timeranges", "TimeRange", "other", writable=False),
+        ObjType("application", "object/applications", "Application", "other", writable=False),
+        ObjType("url_category", "object/urlcategories", "URLCategory", "other", writable=False),
+        ObjType("geolocation", "object/geolocations", "Geolocation", "other", writable=False),
+    )
+}
+
+ObjectTypeName = Literal[
+    "host",
+    "network",
+    "range",
+    "fqdn",
+    "network_group",
+    "port",
+    "port_group",
+    "icmpv4",
+    "icmpv6",
+    "url",
+    "url_group",
+    "security_zone",
+    "interface_group",
+    "vlan_tag",
+    "vlan_group",
+    "dynamic_object",
+    "time_range",
+    "application",
+    "url_category",
+    "geolocation",
+]
+# Types that support FMC's `nameOrValue` and `unusedOnly` filters.
+FILTERABLE = {
+    "host",
+    "network",
+    "range",
+    "fqdn",
+    "network_group",
+    "port",
+    "port_group",
+    "icmpv4",
+    "icmpv6",
+    "url",
+    "url_group",
+    "vlan_tag",
+    "vlan_group",
+}
+# Types tried, in order, when a tool gets an object name without a type.
+SEARCH_ORDER = [
+    "host",
+    "network",
+    "range",
+    "fqdn",
+    "network_group",
+    "port",
+    "port_group",
+    "url",
+    "url_group",
+    "security_zone",
+    "interface_group",
+    "icmpv4",
+    "vlan_tag",
+    "vlan_group",
+]
+
+_BY_FMC_TYPE = {t.fmc_type.lower(): t for t in OBJECT_TYPES.values()}
+
+
+def type_for(fmc_type: str | None) -> ObjType | None:
+    """Our ObjType for an FMC reference type ('Host', 'NetworkGroup', 'ProtocolPortObject', ...)."""
+    return _BY_FMC_TYPE.get(str(fmc_type or "").lower())
+
+
+def obj_type(key: str) -> ObjType:
+    try:
+        return OBJECT_TYPES[key]
+    except KeyError:
+        raise InvalidRequest(f"Unknown object type {key!r}; choose from {', '.join(OBJECT_TYPES)}") from None
+
+
+# --- shaping ----------------------------------------------------------------------------------
+
+PROTOCOLS = {"1": "ICMP", "6": "TCP", "17": "UDP", "58": "ICMPv6", "47": "GRE", "50": "ESP", "51": "AH"}
+PROTO_NUMBERS = {v.upper(): k for k, v in PROTOCOLS.items()}
+
+
+def proto_name(p: Any) -> str:
+    s = str(p or "").strip()
+    return PROTOCOLS.get(s, s.upper())
+
+
+def ref_label(ref: Any) -> str:
+    """One readable label for a reference or literal inside a rule or group."""
+    if not isinstance(ref, dict):
+        return str(ref)
+    if ref.get("name"):
+        return str(ref["name"])
+    if "value" in ref:
+        return str(ref["value"])
+    if "port" in ref or "protocol" in ref:
+        proto = proto_name(ref.get("protocol"))
+        if ref.get("icmpType") is not None:
+            return f"{proto} type {ref['icmpType']}" + (f" code {ref['code']}" if ref.get("code") else "")
+        port = ref.get("port")
+        return f"{proto}/{port}" if port else proto
+    if ref.get("url"):
+        return str(ref["url"])
+    return str(ref.get("id", "?"))
+
+
+def block_labels(block: Any) -> list[str]:
+    """Labels for a rule condition block {"objects": [...], "literals": [...]} (or a plain list)."""
+    if isinstance(block, list):
+        return [ref_label(r) for r in block]
+    if not isinstance(block, dict):
+        return []
+    out = [ref_label(r) for r in block.get("objects") or []]
+    out += [ref_label(r) for r in block.get("literals") or []]
+    return out
+
+
+_META_KEEP = ("ruleIndex", "index", "section", "category", "readOnly", "lastUser", "timestamp", "domain")
+
+
+def slim(obj: Any) -> Any:
+    """Trim FMC noise: `links` everywhere and most of `metadata`."""
+    if isinstance(obj, list):
+        return [slim(x) for x in obj]
+    if not isinstance(obj, dict):
+        return obj
+    out: dict[str, Any] = {}
+    for k, v in obj.items():
+        if k == "links":
+            continue
+        if k == "metadata" and isinstance(v, dict):
+            meta = {mk: v[mk] for mk in _META_KEEP if mk in v}
+            if isinstance(meta.get("lastUser"), dict):
+                meta["lastUser"] = meta["lastUser"].get("name")
+            if isinstance(meta.get("domain"), dict):
+                meta["domain"] = meta["domain"].get("name")
+            if isinstance(meta.get("readOnly"), dict):
+                meta["readOnly"] = meta["readOnly"].get("state")
+            out[k] = meta
+            continue
+        out[k] = slim(v)
+    return out
+
+
+def is_system(obj: dict[str, Any]) -> bool:
+    """True for FMC's built-in read-only objects (any, RFC1918 groups, well-known ports, ...)."""
+    ro = (obj.get("metadata") or {}).get("readOnly")
+    return bool(isinstance(ro, dict) and ro.get("state"))
+
+
+def ref_of(obj: dict[str, Any]) -> dict[str, Any]:
+    """The minimal {id, type, name} reference FMC accepts inside other objects."""
+    out = {"id": obj["id"], "type": obj.get("type")}
+    if obj.get("name"):
+        out["name"] = obj["name"]
+    return out
+
+
+def object_summary(obj: dict[str, Any]) -> dict[str, Any]:
+    """Flat row for list output: name, type, value (or members for groups), description, id."""
+    row: dict[str, Any] = {"name": obj.get("name"), "type": obj.get("type")}
+    if "value" in obj:
+        row["value"] = obj["value"]
+    elif "port" in obj or obj.get("type") == "ProtocolPortObject":
+        row["value"] = ref_label({"protocol": obj.get("protocol"), "port": obj.get("port")})
+    elif "icmpType" in obj:
+        row["value"] = ref_label({"protocol": "1", "icmpType": obj.get("icmpType"), "code": obj.get("code")})
+    elif "url" in obj:
+        row["value"] = obj["url"]
+    elif "objects" in obj or "literals" in obj:
+        row["members"] = block_labels(obj)
+    elif "data" in obj:
+        row["value"] = obj["data"]
+    if obj.get("interfaceMode"):
+        row["mode"] = obj["interfaceMode"]
+    if obj.get("description"):
+        row["description"] = obj["description"]
+    if is_system(obj):
+        row["system"] = True
+    row["id"] = obj.get("id")
+    return row
+
+
+# --- resolution -------------------------------------------------------------------------------
+
+
+def pick_by_name(items: list[dict[str, Any]], ref: str, what: str) -> dict[str, Any]:
+    exact = [i for i in items if i.get("name") == ref]
+    if not exact:
+        exact = [i for i in items if str(i.get("name", "")).lower() == ref.lower()]
+    if len(exact) == 1:
+        return exact[0]
+    if len(exact) > 1:
+        kinds = ", ".join(f"{i.get('name')} ({i.get('type')}, {i.get('id')})" for i in exact)
+        raise InvalidRequest(f"{what} {ref!r} is ambiguous: {kinds}. Pass the id instead.")
+    names = [str(i.get("name")) for i in items if i.get("name")]
+    close = difflib.get_close_matches(ref, names, n=5, cutoff=0.5)
+    hint = f" Did you mean: {', '.join(close)}?" if close else ""
+    raise NotFound(f"No {what} named {ref!r}.{hint}", 404)
+
+
+async def resolve_in(app: FmcApp, path: str, ref: str, what: str, domain: str | None) -> dict[str, Any]:
+    """Find one item of a (small) collection, e.g. a policy or device, by UUID or name."""
+    ref = ref.strip()
+    full = await app.config_path(path, domain)
+    if is_uuid(ref):
+        data: dict[str, Any] = await app.api.get(f"{full}/{ref}")
+        return data
+    page = await app.all(full)
+    return pick_by_name(page.items, ref, what)
+
+
+async def resolve_object(
+    app: FmcApp, ref: str, domain: str | None, types: list[str] | None = None
+) -> tuple[ObjType, dict[str, Any]]:
+    """Resolve an object name or UUID, optionally restricted to some types. Without types the
+    common types are searched in turn (SEARCH_ORDER) and the first type with a match wins."""
+    ref = ref.strip()
+    if not ref:
+        raise InvalidRequest("Empty object name.")
+    candidates = [obj_type(t) for t in (types or SEARCH_ORDER)]
+    found: list[tuple[ObjType, dict[str, Any]]] = []
+    for t in candidates:
+        full = await app.config_path(t.path, domain)
+        if is_uuid(ref):
+            try:
+                obj = await app.api.get(f"{full}/{ref}")
+            except NotFound:
+                continue
+            if isinstance(obj, dict) and obj.get("id"):
+                return t, obj
+            continue
+        params = {"filter": f"nameOrValue:{ref}"} if t.key in FILTERABLE else None
+        page = await app.all(full, params)
+        hits = [i for i in page.items if i.get("name") == ref] or [
+            i for i in page.items if str(i.get("name", "")).lower() == ref.lower()
+        ]
+        found += [(t, h) for h in hits]
+        if found and types is None:
+            break
+    if len(found) == 1:
+        return found[0]
+    if len(found) > 1:
+        kinds = ", ".join(f"{t.key} {o.get('id')}" for t, o in found)
+        raise InvalidRequest(f"Object name {ref!r} is ambiguous ({kinds}); pass `type` or the id.")
+    scope = ", ".join(t.key for t in candidates)
+    raise NotFound(
+        f"No object {ref!r} found (looked in: {scope}). Try fmc_list_objects or fmc_find_object.", 404
+    )
