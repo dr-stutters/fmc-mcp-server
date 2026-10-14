@@ -174,3 +174,61 @@ async def test_delete_policy(fmc: respx.MockRouter) -> None:
     )
     preview, _ = await confirm("fmc_delete_policy", {"kind": "access", "policy": "acp"})
     assert preview["preview"]["rules"] == 1 and delete.call_count == 1
+
+
+async def test_ha_switch_shows_state_and_rejects_force(fmc: respx.MockRouter) -> None:
+    ha = {
+        "id": "22222222-0000-0000-0000-000000000001",
+        "name": "ha1",
+        "primary": DEV,
+        "secondary": DEV2,
+        "metadata": {
+            "primaryStatus": {"currentStatus": "Active"},
+            "secondaryStatus": {"currentStatus": "Standby"},
+        },
+    }
+    fmc.get(f"{CFG}/devicehapairs/ftddevicehapairs").mock(return_value=items([ha]))
+    put = fmc.put(f"{CFG}/devicehapairs/ftddevicehapairs/{ha['id']}").mock(
+        return_value=httpx.Response(202, json={"metadata": {"task": {"id": "t6"}}})
+    )
+    preview, done = await confirm("fmc_ha_action", {"ha_pair": "ha1", "action": "switch", "wait": False})
+    assert preview["preview"]["primary_status"] == "Active"
+    assert json.loads(put.calls.last.request.content) == {"id": ha["id"], "action": "SWITCH"}
+    assert done["result"]["task_id"] == "t6"
+    async with Client(server()) as c:
+        r = await c.call_tool(
+            "fmc_ha_action", {"ha_pair": "ha1", "action": "switch", "force": True}, raise_on_error=False
+        )
+    assert r.is_error
+
+
+async def test_delete_device_returns_task(fmc: respx.MockRouter) -> None:
+    fmc.get(f"{CFG}/devices/devicerecords").mock(return_value=items([DEV]))
+    fmc.delete(f"{CFG}/devices/devicerecords/{DEV['id']}").mock(
+        return_value=httpx.Response(202, json={"metadata": {"task": {"id": "t7"}}})
+    )
+    _, done = await confirm("fmc_delete_device", {"device": "ftd1"})
+    assert done["result"]["task_id"] == "t7"
+
+
+async def test_deploy_task_failure_names_task(fmc: respx.MockRouter) -> None:
+    fmc.get(f"{CFG}/deployment/deployabledevices").mock(return_value=items([PENDING]))
+    fmc.post(f"{CFG}/deployment/deploymentrequests").mock(
+        return_value=httpx.Response(202, json={"metadata": {"task": {"id": "t8"}}})
+    )
+    fmc.get(f"{CFG}/job/taskstatuses/t8").mock(
+        return_value=httpx.Response(200, json={"status": "Deploy Failed"})
+    )
+    async with Client(server()) as c:
+        preview = await run(c, "fmc_deploy", {})
+        r = await c.call_tool("fmc_deploy", {"confirm": preview["confirm"]}, raise_on_error=False)
+    assert r.is_error and "task t8" in r.content[0].text  # type: ignore[union-attr]
+
+
+async def test_deploy_blocked_while_deploying(fmc: respx.MockRouter) -> None:
+    fmc.get(f"{CFG}/deployment/deployabledevices").mock(
+        return_value=items([{**PENDING, "isDeploying": True}])
+    )
+    async with Client(server()) as c:
+        out = await run(c, "fmc_deploy", {})
+    assert out["status"] == "blocked" and "already being deployed" in out["blockers"][0]

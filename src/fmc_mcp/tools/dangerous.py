@@ -10,7 +10,9 @@ from stutters_mcp_core import (
     InvalidRequest,
     NotFound,
     Plan,
+    TaskFailed,
     ToolRegistrar,
+    UpstreamTimeout,
     get_client,
     get_settings,
     poll_until,
@@ -28,13 +30,17 @@ DONE = {"deployed", "succeeded", "success", "completed", "complete"}
 Wait = Annotated[bool, Field(description="Wait for the FMC task to finish (otherwise return the task id)")]
 
 
+FAILED_WORDS = ("fail", "cancel", "error", "interrupt", "abort")
+
+
 def task_state(task: dict[str, Any]) -> tuple[bool, str | None]:
-    """(finished, failure message) for an FMC task status."""
+    """(finished, failure message) for an FMC task status. Matches by word so variants such as
+    'Deployed with warnings' or 'Deploy Failed' are recognised."""
     status = str(task.get("status") or "").strip()
     low = status.lower()
-    if "fail" in low or low in ("cancelled", "canceled", "error"):
+    if any(w in low for w in FAILED_WORDS):
         return True, f"{status}: {task.get('message') or ''}".strip(": ")
-    return low in DONE, None
+    return low in DONE or any(low.startswith(w) for w in DONE), None
 
 
 async def wait_task(ctx: Context, app: FmcApp, task_id: str, domain: str | None, what: str) -> dict[str, Any]:
@@ -60,6 +66,13 @@ async def wait_task(ctx: Context, app: FmcApp, task_id: str, domain: str | None,
     return out
 
 
+def _as_int(v: Any) -> int:
+    try:
+        return int(str(v))
+    except ValueError:
+        return 0
+
+
 def task_id_of(resp: Any) -> str | None:
     if isinstance(resp, dict):
         task = (resp.get("metadata") or {}).get("task") or {}
@@ -74,7 +87,16 @@ async def finish(ctx: Context, app: FmcApp, resp: Any, wait: bool, domain: str |
         return slim(resp) if isinstance(resp, dict) else resp
     if not wait:
         return {"task_id": tid, "note": "Started; check progress with fmc_get_task."}
-    return {"task_id": tid, "task": await wait_task(ctx, app, tid, domain, what)}
+    try:
+        return {"task_id": tid, "task": await wait_task(ctx, app, tid, domain, what)}
+    except (UpstreamTimeout, TaskFailed) as e:
+        # The change was submitted; say which task to follow up on instead of inviting a retry.
+        raise type(e)(f"{e} The request was submitted as task {tid}; check it with fmc_get_task.") from e
+
+
+async def _delete_and_finish(ctx: Context, app: FmcApp, path: str, domain: str | None, what: str) -> Any:
+    resp = await app.api.delete(path)
+    return await finish(ctx, app, resp, False, domain, what)
 
 
 def register(reg: ToolRegistrar) -> None:
@@ -111,7 +133,14 @@ def register(reg: ToolRegistrar) -> None:
         else:
             targets = [d for d in pending if d.get("canBeDeployed", True)]
         blockers = [] if targets else ["Nothing to deploy: no device has pending changes."]
-        version = max((str(d.get("version") or "0") for d in targets), default="0", key=int)
+        for d in targets:
+            if d.get("isDeploying"):
+                blockers.append(f"{d.get('name')!r} is already being deployed.")
+            elif d.get("canBeDeployed") is False:
+                blockers.append(
+                    f"{d.get('name')!r} can't be deployed right now (see fmc_list_deployable_devices)."
+                )
+        version = str(max((_as_int(d.get("version")) for d in targets), default=0))
         body: dict[str, Any] = {
             "type": "DeploymentRequest",
             "version": version,
@@ -230,6 +259,7 @@ def register(reg: ToolRegistrar) -> None:
             plan=Plan(
                 f"Register device {name!r} ({host})",
                 details={"body": shown, "access_policy": acp.get("name")},
+                fingerprint=acp["id"],
                 blockers=blockers,
                 side_effects=["Consumes licenses; FMC deploys the assigned policy as part of registration."],
             ),
@@ -258,7 +288,7 @@ def register(reg: ToolRegistrar) -> None:
                 fingerprint=dev.get("id"),
                 side_effects=["The device stops being managed by FMC; its events stop arriving."],
             ),
-            apply=lambda: applied(app, lambda: app.api.delete(path)),
+            apply=lambda: _delete_and_finish(ctx, app, path, domain, "device removal"),
         )
 
     @reg.dangerous(title="Form HA pair")
@@ -336,7 +366,7 @@ def register(reg: ToolRegistrar) -> None:
             plan=Plan(
                 f"Form HA pair {name!r}: {p.get('name')} (primary) + {s.get('name')} (secondary)",
                 details={"body": body},
-                fingerprint=[p["id"], s["id"]],
+                fingerprint=[p["id"], s["id"], iface["id"]],
                 side_effects=[
                     "The secondary's configuration is overwritten; both devices sync and may reload."
                 ],
@@ -363,7 +393,14 @@ def register(reg: ToolRegistrar) -> None:
         """Break an FTD HA pair into standalone devices, switch the active unit (failover), or delete
         the pair from FMC. All are disruptive; the preview states the effect."""
         app: FmcApp = get_client(ctx)
+        if force and action != "break":
+            raise InvalidRequest("force only applies to action='break'.")
         ha = await resolve_in(app, HA_PAIRS, ha_pair, "HA pair", domain)
+        meta = ha.get("metadata") or {}
+        state = {
+            "primary_status": (meta.get("primaryStatus") or {}).get("currentStatus"),
+            "secondary_status": (meta.get("secondaryStatus") or {}).get("currentStatus"),
+        }
         path = await app.config_path(f"{HA_PAIRS}/{ha['id']}", domain)
         effects = {
             "break": "Both units become standalone; the standby's interfaces are shut until reconfigured.",
@@ -394,8 +431,9 @@ def register(reg: ToolRegistrar) -> None:
                 details={
                     "primary": ref_label(ha.get("primary") or {}),
                     "secondary": ref_label(ha.get("secondary") or {}),
+                    **{k: v for k, v in state.items() if v},
                 },
-                fingerprint=ha.get("id"),
+                fingerprint={"id": ha.get("id"), **state},
                 side_effects=[effects[action]],
             ),
             apply=apply,
