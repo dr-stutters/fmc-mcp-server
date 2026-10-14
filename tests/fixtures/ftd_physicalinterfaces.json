@@ -1,0 +1,143 @@
+{
+ "items": [
+  {
+   "metadata": {
+    "timestamp": 1791995649637,
+    "domain": {
+     "name": "Global",
+     "id": "e276abec-e0f2-11e3-8169-6d9ed49b625f",
+     "type": "Domain"
+    },
+    "state": "COMMITTED",
+    "virtualRouter": {
+     "name": "Global",
+     "id": "42e95fbf-fd5a-42bf-a95f-bffd5a42bfd6",
+     "type": "VirtualRouter"
+    }
+   },
+   "type": "PhysicalInterface",
+   "nveOnly": false,
+   "MTU": 1500,
+   "mode": "NONE",
+   "description": "dCloud",
+   "enabled": true,
+   "name": "Ethernet0/0",
+   "id": "00000000-0000-0ed3-0000-021474850230",
+   "enableSGTPropagate": false,
+   "pathMonitoring": {
+    "enable": false
+   },
+   "applicationMonitoring": {
+    "enable": true
+   },
+   "ifname": "outside",
+   "securityZone": {
+    "id": "51015f2c-c7e9-11f1-88b7-6dea5174bd84",
+    "type": "SecurityZone"
+   },
+   "ipv4": {
+    "static": {
+     "address": "192.0.2.10",
+     "netmask": "18"
+    }
+   },
+   "ipv6": {
+    "enableIPV6": false
+   },
+   "managementOnly": false,
+   "priority": 0
+  },
+  {
+   "metadata": {
+    "timestamp": 1791995658711,
+    "domain": {
+     "name": "Global",
+     "id": "e276abec-e0f2-11e3-8169-6d9ed49b625f",
+     "type": "Domain"
+    },
+    "state": "COMMITTED",
+    "virtualRouter": {
+     "name": "Global",
+     "id": "42e95fbf-fd5a-42bf-a95f-bffd5a42bfd6",
+     "type": "VirtualRouter"
+    }
+   },
+   "type": "PhysicalInterface",
+   "nveOnly": false,
+   "MTU": 1500,
+   "mode": "NONE",
+   "enabled": true,
+   "name": "Ethernet0/1",
+   "id": "00000000-0000-0ed3-0000-021474850231",
+   "enableSGTPropagate": false,
+   "pathMonitoring": {
+    "enable": false
+   },
+   "applicationMonitoring": {
+    "enable": true
+   },
+   "ifname": "inside",
+   "securityZone": {
+    "id": "4fcc07ce-c7e9-11f1-88b7-6dea5174bd84",
+    "type": "SecurityZone"
+   },
+   "ipv4": {
+    "static": {
+     "address": "10.99.1.1",
+     "netmask": "24"
+    }
+   },
+   "ipv6": {
+    "enableIPV6": false
+   },
+   "managementOnly": false,
+   "priority": 0
+  },
+  {
+   "metadata": {
+    "readOnly": {
+     "state": true,
+     "reason": "SYSTEM"
+    },
+    "timestamp": 1791995551350,
+    "domain": {
+     "name": "Global",
+     "id": "e276abec-e0f2-11e3-8169-6d9ed49b625f",
+     "type": "Domain"
+    },
+    "state": "COMMITTED",
+    "virtualRouter": {
+     "name": "Global",
+     "id": "42e95fbf-fd5a-42bf-a95f-bffd5a42bfd6",
+     "type": "VirtualRouter"
+    }
+   },
+   "type": "PhysicalInterface",
+   "nveOnly": false,
+   "MTU": 1500,
+   "mode": "NONE",
+   "enabled": true,
+   "name": "Management0/0",
+   "id": "00000000-0000-0ed3-0000-021474850232",
+   "enableSGTPropagate": true,
+   "pathMonitoring": {
+    "enable": false
+   },
+   "applicationMonitoring": {
+    "enable": true
+   },
+   "ifname": "management",
+   "ipv6": {
+    "enableIPV6": false
+   },
+   "managementOnly": true,
+   "priority": 0
+  }
+ ],
+ "paging": {
+  "offset": 0,
+  "limit": 25,
+  "count": 3,
+  "pages": 1
+ }
+}

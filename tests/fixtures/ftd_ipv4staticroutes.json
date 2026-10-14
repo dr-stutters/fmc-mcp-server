@@ -1,0 +1,40 @@
+{
+ "items": [
+  {
+   "metadata": {
+    "egressInterfaceVirtualRouter": "Global",
+    "timestamp": 1791996186495,
+    "domain": {
+     "name": "Global",
+     "id": "e276abec-e0f2-11e3-8169-6d9ed49b625f",
+     "type": "Domain"
+    }
+   },
+   "interfaceName": "outside",
+   "selectedNetworks": [
+    {
+     "type": "Network",
+     "overridable": false,
+     "name": "any-ipv4",
+     "id": "cb7116e8-66a6-480b-8f9b-295191a0940a"
+    }
+   ],
+   "gateway": {
+    "literal": {
+     "type": "Host",
+     "value": "192.0.2.10"
+    }
+   },
+   "metricValue": 1,
+   "type": "IPv4StaticRoute",
+   "isTunneled": false,
+   "id": "00000000-0000-0ed3-0000-021474853332"
+  }
+ ],
+ "paging": {
+  "offset": 0,
+  "limit": 25,
+  "count": 1,
+  "pages": 1
+ }
+}

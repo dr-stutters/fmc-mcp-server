@@ -1,5 +1,39 @@
 # Changelog
 
+## 0.2.0 (unreleased)
+
+Phase 2: gap analysis against the full FMC 10.0.1 API (`docs/GAP-ANALYSIS.md`) and live testing with
+a real FTDv 10.0 managed by the lab FMC. Tools: 30 read -> 35, 14 write -> 20, 6 dangerous -> 7
+(62 with every tier on).
+
+### Added
+- Troubleshooting (read): `fmc_run_show_command` (FMC's approved show commands on a device, with line
+  filter), `fmc_packet_tracer` (verdict, drop reason and the matching access/prefilter rule),
+  `fmc_get_hit_counts` (refresh + per-rule hits with the device rule id), `fmc_device_health` (non-green
+  health modules, CPU and memory), `fmc_list_vpn_tunnels` (S2S tunnel status).
+- Device configuration (read/write): `fmc_list_routes`, `fmc_update_interface` (logical name, zone, IPv4
+  static/DHCP, MTU, admin state), `fmc_create_subinterface`, `fmc_delete_interface`,
+  `fmc_create_static_route` (global table or VRF), `fmc_delete_static_route`, `fmc_assign_policy`
+  (access, NAT, platform settings).
+- Dangerous: `fmc_rollback_deployment` (defaults to the previous successful deployment).
+- Live tests against a managed FTD (`tests/live/test_live_ftd.py`: onboarding, packet tracer, hit
+  counts, health, change/deploy/rollback), enabled by `FMC_LIVE_FTD_HOST` / `FMC_LIVE_FTD_REG_KEY`.
+- `scripts/capture_fixtures.py --ftd` records redacted device fixtures.
+
+### Changed
+- `fmc_register_device` waits for FMC's initial deployment after registration, and failures carry
+  FMC's reason (Smart Licensing / evaluation mode, registration timeout) with next steps.
+- `fmc_pending_changes` returns compact `Field: old -> new` changes and drops empty container rows.
+- `fmc_list_device_interfaces` shows zone names and `Ethernet0/1.100`-style subinterface names, and
+  skips interface kinds the model doesn't support (FTDv answers 405 for VLAN interfaces).
+- `fmc_deploy` explains FMC validation warnings and points at `ignore_warning`.
+- `fmc_delete_device` warns that the FTD forgets its manager.
+- Server instructions describe the onboarding, change and "why is it blocked" workflows.
+
+### Fixed
+- `fmc_create_access_rule` / `fmc_update_access_rule` with a block action failed with the default
+  logging (FMC rejects `logEnd` on block rules); block rules now log at the connection start.
+
 ## 0.1.1 (2026-10-15)
 
 - Requires stutters-mcp-core 0.1.1.

@@ -14,12 +14,14 @@ from fmc_mcp.tools import (
     analysis,
     dangerous,
     deploy,
+    device_config,
     devices,
     object_writes,
     objects,
     policies,
     policy_writes,
     system,
+    troubleshoot,
 )
 
 INSTRUCTIONS = """
@@ -31,12 +33,21 @@ interface groups). Policies are assigned to devices and pushed with a deployment
 
 Start with fmc_status (version, domains, API user). Every tool accepts names or UUIDs, and a
 `domain` (name or UUID) where FMC has several; it defaults to FMC_DOMAIN or the login's domain.
-Useful starting points: fmc_list_access_rules (rules flattened with object names),
-fmc_rule_lookup (which rule handles a flow), fmc_find_object (objects containing an IP or port),
-fmc_where_used before changing or deleting an object, fmc_pending_changes before fmc_deploy.
+
+Workflows:
+- Onboard an FTD: fmc_register_device (waits for the initial deployment) -> fmc_update_interface
+  (logical name, zone, IP) -> fmc_create_static_route -> fmc_assign_policy (NAT, platform settings)
+  -> fmc_deploy -> verify with fmc_run_show_command ('show route', 'show interface ip brief').
+- Change safely: make the change -> fmc_pending_changes (what the next deploy pushes) -> fmc_deploy
+  -> fmc_run_show_command / fmc_list_deployments; undo a bad deployment with fmc_rollback_deployment.
+- "Why is this traffic blocked?": fmc_packet_tracer (live verdict, drop reason and matching rule on
+  the device) + fmc_rule_lookup (offline walk of the policy) + fmc_get_hit_counts (is the rule hit?).
+- Health: fmc_list_devices, fmc_device_health, fmc_list_vpn_tunnels.
+Before changing or deleting an object, check fmc_where_used.
 
 Gotchas: FMC allows about 120 API requests per minute, so prefer the aggregate tools over many small
-calls. Changes only reach devices after a deployment. fmc_api_call fills {domainUUID} in spec paths
+calls. Changes only reach devices after a deployment. fmc_run_show_command only accepts FMC's
+approved show commands (mostly configuration views). fmc_api_call fills {domainUUID} in spec paths
 with the default domain.
 """
 
@@ -94,9 +105,11 @@ def create_server(
             objects.register,
             analysis.register,
             deploy.register,
+            device_config.register,
             object_writes.register,
             policy_writes.register,
             dangerous.register,
+            troubleshoot.register,
         ],
         status=FmcApp.status,
         spec_sources=spec_sources,

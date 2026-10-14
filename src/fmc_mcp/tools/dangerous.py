@@ -1,6 +1,7 @@
 """Dangerous-tier tools: deploy, device registration/removal, HA form/break/switch, policy deletion."""
 
 # No `from __future__ import annotations`: FastMCP inspects signatures at runtime.
+import time
 from typing import Annotated, Any, Literal
 
 from fastmcp import Context
@@ -13,6 +14,7 @@ from stutters_mcp_core import (
     TaskFailed,
     ToolRegistrar,
     UpstreamTimeout,
+    ValidationFailed,
     get_client,
     get_settings,
     poll_until,
@@ -21,10 +23,11 @@ from stutters_mcp_core import (
 
 from fmc_mcp.client import FmcApp
 from fmc_mcp.tools.common import Domain, ref_label, resolve_in, slim
-from fmc_mcp.tools.deploy import deployable, deployable_row
+from fmc_mcp.tools.deploy import JOBS, deployable, deployable_row
 from fmc_mcp.tools.devices import DEVICES, HA_PAIRS, DeviceRef
 from fmc_mcp.tools.object_writes import applied, editable
 from fmc_mcp.tools.policies import POLICY_KINDS, PolicyKind, all_rules
+from fmc_mcp.tools.system import iso
 
 DONE = {"deployed", "succeeded", "success", "completed", "complete"}
 Wait = Annotated[bool, Field(description="Wait for the FMC task to finish (otherwise return the task id)")]
@@ -39,13 +42,18 @@ def task_state(task: dict[str, Any]) -> tuple[bool, str | None]:
     status = str(task.get("status") or "").strip()
     low = status.lower()
     if any(w in low for w in FAILED_WORDS):
-        return True, f"{status}: {task.get('message') or ''}".strip(": ")
+        # FMC puts the reason in `description` (e.g. registration: "...register this console with the
+        # Smart Licensing Server") and only a code in `message` (REGISTRATION_FAILED).
+        parts = [str(task.get(k)).strip() for k in ("message", "description") if task.get(k)]
+        return True, f"{status}: {' - '.join(parts)}".strip(": ")
     return low in DONE or any(low.startswith(w) for w in DONE), None
 
 
-async def wait_task(ctx: Context, app: FmcApp, task_id: str, domain: str | None, what: str) -> dict[str, Any]:
+async def wait_task(
+    ctx: Context, app: FmcApp, task_id: str, domain: str | None, what: str, limit_s: float | None = None
+) -> dict[str, Any]:
     path = await app.config_path(f"job/taskstatuses/{task_id}", domain)
-    timeout = float(get_settings(ctx).mcp_task_timeout)
+    timeout = limit_s or float(get_settings(ctx).mcp_task_timeout)
 
     async def fetch() -> dict[str, Any]:
         data: dict[str, Any] = await app.api.get(path)
@@ -97,6 +105,49 @@ async def finish(ctx: Context, app: FmcApp, resp: Any, wait: bool, domain: str |
 async def _delete_and_finish(ctx: Context, app: FmcApp, path: str, domain: str | None, what: str) -> Any:
     resp = await app.api.delete(path)
     return await finish(ctx, app, resp, False, domain, what)
+
+
+async def _wait_initial_deploy(
+    ctx: Context, app: FmcApp, name: str, since: int, domain: str | None
+) -> dict[str, Any]:
+    """After a registration task succeeds FMC still runs the first deployment ("Deployment after
+    registration"); wait for that job so the device is really ready."""
+    timeout = float(get_settings(ctx).mcp_task_timeout)
+    jobs = await app.config_path(JOBS, domain)
+
+    async def fetch() -> dict[str, Any]:
+        try:
+            dev = await resolve_in(app, DEVICES, name, "device", domain)
+        except NotFound:
+            return {}
+        flt = f"deviceUUID:{dev['id']};startTime:{since - 60};endTime:{int(time.time()) + 60}"
+        page = await app.page(jobs, {"filter": flt}, limit=5)
+        job = page.items[0] if page.items else {}
+        return {
+            "device_id": dev["id"],
+            "job": job.get("jobName"),
+            "status": job.get("jobStatus"),
+            "note": job.get("deploymentNote"),
+        }
+
+    def done(s: dict[str, Any]) -> bool:
+        st = str(s.get("status") or "").upper()  # DEPLOYING -> DEPLOYED / FAILED
+        return st in ("DEPLOYED", "SUCCEEDED", "SUCCESS") or any(w.upper() in st for w in FAILED_WORDS)
+
+    try:
+        state = await poll_until(
+            fetch,
+            done=done,
+            describe=lambda s: str(s.get("status") or "waiting for the first deployment"),
+            timeout=timeout,
+            interval=10.0,
+            max_interval=30.0,
+            ctx=ctx,
+            what="initial deployment",
+        )
+    except UpstreamTimeout:
+        return {"status": "still running", "note": "Check fmc_list_deployments for the device."}
+    return {k: v for k, v in state.items() if v}
 
 
 def register(reg: ToolRegistrar) -> None:
@@ -157,7 +208,16 @@ def register(reg: ToolRegistrar) -> None:
         path = await app.config_path("deployment/deploymentrequests", domain)
 
         async def apply() -> Any:
-            resp = await app.api.post(path, body)
+            try:
+                resp = await app.api.post(path, body)
+            except ValidationFailed as e:
+                if "warning" in str(e).lower() and not ignore_warning:
+                    raise ValidationFailed(
+                        f"{e} FMC's pre-deployment validation raised warnings; nothing was deployed. "
+                        "Review them and repeat with ignore_warning=true to deploy anyway.",
+                        e.status_code,
+                    ) from e
+                raise
             return await finish(ctx, app, resp, wait, domain, "deployment")
 
         return await preview_or_apply(
@@ -182,6 +242,100 @@ def register(reg: ToolRegistrar) -> None:
                     else []
                 )
                 + ["Pushes every pending policy/object change to the listed devices."],
+            ),
+            apply=apply,
+        )
+
+    @reg.dangerous(title="Roll back a deployment")
+    async def fmc_rollback_deployment(
+        ctx: Context,
+        device: DeviceRef,
+        to_job: Annotated[
+            str | None,
+            Field(
+                description="Deployment job to return to (name like Deploy_Job_3 or UUID, from "
+                "fmc_list_deployments); default: the successful deployment before the latest one"
+            ),
+        ] = None,
+        wait: Wait = True,
+        domain: Domain = None,
+        confirm: Confirm = None,
+    ) -> dict[str, Any]:
+        """Roll a device back to the configuration of an earlier successful deployment (FMC rollback).
+        The preview lists the device's recent deployments, the one it returns to and the policy types
+        involved. FMC redeploys that snapshot, so later changes stay in FMC as pending changes until
+        you fix or redeploy them. With wait, polls the rollback task."""
+        app: FmcApp = get_client(ctx)
+        dev = await resolve_in(app, DEVICES, device, "device", domain)
+        now = int(time.time())
+        page = await app.all(
+            await app.config_path(f"deployment/deployabledevices/{dev['id']}/deployments", domain),
+            {"filter": f"startTime:{now - 90 * 86400};endTime:{now + 60}"},
+            cap=500,
+        )
+        history = sorted(page.items, key=lambda j: _as_int(j.get("startTime")), reverse=True)
+        ok = [j for j in history if str(j.get("status", "")).upper() in ("SUCCEEDED", "DEPLOYED", "SUCCESS")]
+        blockers: list[str] = []
+        target: dict[str, Any] | None = None
+        if to_job:
+            want = to_job.strip().lower()
+            target = next(
+                (
+                    j
+                    for j in history
+                    if str(j.get("id", "")).lower() == want or str(j.get("name", "")).lower() == want
+                ),
+                None,
+            )
+            if target is None:
+                raise NotFound(f"No deployment {to_job!r} for {dev.get('name')} in the last 90 days.", 404)
+            if target not in ok:
+                blockers.append(
+                    f"{target.get('name')} did not succeed ({target.get('status')}); pick a successful one."
+                )
+        elif len(ok) >= 2:
+            target = ok[1]
+        else:
+            blockers.append("No earlier successful deployment to roll back to.")
+        if target is not None and history and target is history[0]:
+            blockers.append(f"{target.get('name')} is already the latest deployment on this device.")
+
+        def row(j: dict[str, Any]) -> dict[str, Any]:
+            return {
+                "job": j.get("name"),
+                "status": j.get("status"),
+                "started": iso(j.get("startTime")),
+                "policies": [str(p.get("type", "")).split(".")[-1] for p in j.get("policyList") or []][:12],
+                "id": j.get("id"),
+            }
+
+        body = {
+            "type": "RollbackRequest",
+            "rollbackDeviceList": [{"deploymentJobId": (target or {}).get("id"), "deviceList": [dev["id"]]}],
+        }
+        path = await app.config_path("deployment/rollbackrequests", domain)
+
+        async def apply() -> Any:
+            resp = await app.api.post(path, body)
+            return await finish(ctx, app, resp, wait, domain, "rollback")
+
+        return await preview_or_apply(
+            ctx,
+            tool="fmc_rollback_deployment",
+            args={"device": device, "to_job": to_job, "wait": wait, "domain": domain},
+            confirm=confirm,
+            plan=Plan(
+                f"Roll {dev.get('name')} back to {(target or {}).get('name') or '?'}",
+                details={
+                    "roll_back_to": row(target) if target else None,
+                    "recent_deployments": [row(j) for j in history[:5]],
+                },
+                fingerprint=[j.get("id") for j in history[:5]],
+                blockers=blockers,
+                side_effects=[
+                    "Redeploys the earlier configuration snapshot to the device (traffic may be affected).",
+                    "Changes made after that deployment remain in FMC and show as pending again.",
+                ],
             ),
             apply=apply,
         )
@@ -212,8 +366,10 @@ def register(reg: ToolRegistrar) -> None:
         confirm: Confirm = None,
     ) -> dict[str, Any]:
         """Register (onboard) an FTD with this FMC. The device must already point at the FMC with the
-        same registration key (and NAT ID). With wait, polls the registration task (several minutes).
-        The registration key is not echoed back."""
+        same registration key (and NAT ID), e.g. `configure manager add <fmc> <key>`, and FMC needs
+        Smart Licensing or evaluation mode. With wait, polls the registration task and then FMC's
+        initial deployment to the device (several minutes). The registration key is not echoed
+        back. Next steps: fmc_update_interface, fmc_create_static_route, fmc_assign_policy, fmc_deploy."""
         app: FmcApp = get_client(ctx)
         acp = await resolve_in(app, POLICY_KINDS["access"], access_policy, "access policy", domain)
         body: dict[str, Any] = {
@@ -237,8 +393,25 @@ def register(reg: ToolRegistrar) -> None:
         path = await app.config_path(DEVICES, domain)
 
         async def apply() -> Any:
+            started = int(time.time())
             resp = await app.api.post(path, body)
-            return await finish(ctx, app, resp, wait, domain, "device registration")
+            try:
+                result = await finish(ctx, app, resp, wait, domain, "device registration")
+            except TaskFailed as e:
+                if "timed out" in str(e).lower():
+                    raise TaskFailed(
+                        f"{e} Check on the FTD that 'show managers' lists this FMC as Pending with the same "
+                        "registration key (configure manager add) and that it can reach FMC on TCP 8305."
+                    ) from e
+                if "smart licens" in str(e).lower():
+                    raise TaskFailed(
+                        f"{e} FMC must be registered with Smart Licensing or be in evaluation mode first "
+                        "(fmc_license_status shows it)."
+                    ) from e
+                raise
+            if wait and isinstance(result, dict) and "task" in result:
+                result["initial_deployment"] = await _wait_initial_deploy(ctx, app, name, started, domain)
+            return result
 
         shown = slim(body)
         return await preview_or_apply(
@@ -286,7 +459,11 @@ def register(reg: ToolRegistrar) -> None:
                     "device": {k: dev.get(k) for k in ("name", "hostName", "model", "sw_version", "id")}
                 },
                 fingerprint=dev.get("id"),
-                side_effects=["The device stops being managed by FMC; its events stop arriving."],
+                side_effects=[
+                    "The device stops being managed by FMC; its events stop arriving.",
+                    "The FTD forgets this manager ('show managers' -> none): registering it again needs "
+                    "`configure manager add <fmc> <reg_key>` on the device CLI first.",
+                ],
             ),
             apply=lambda: _delete_and_finish(ctx, app, path, domain, "device removal"),
         )

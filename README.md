@@ -1,9 +1,10 @@
 # fmc-mcp-server
 
 An MCP server for **Cisco Secure Firewall Management Center (FMC)**. It lets an AI assistant read
-and change FMC through its REST API: devices, HA pairs, access control and NAT policies, objects,
-deployments and the audit log. It also has analysis tools that answer questions such as "which rule
-would match this flow?", "where is this object used?" and "which rules are shadowed?".
+and change FMC through its REST API: device onboarding, interfaces and routes, access control and NAT
+policies, objects, deployments (with rollback), HA pairs and the audit log. Its troubleshooting tools
+answer "why is this traffic blocked?" (packet tracer, offline rule lookup, hit counts), "did my
+change land?" (show commands on the FTD) and "where is this object used?".
 
 It is built on [stutters-mcp-core](https://github.com/dr-stutters/stutters-mcp-core) and runs either
 over stdio for a local client or as an authenticated Streamable HTTP service in a container.
@@ -11,16 +12,17 @@ over stdio for a local client or as an authenticated Streamable HTTP service in 
 > **Not affiliated with or endorsed by Cisco Systems, Inc.** Cisco, Firepower and Secure Firewall are
 > trademarks of Cisco Systems, Inc.
 
-Tested against **FMC 10.0.1** with a single domain. FMC 7.2 and later should work. Older versions
-are best-effort.
+Tested against **FMC 10.0.1** with a single domain and a managed **FTDv 10.0**. FMC 7.2 and later
+should work. Older versions are best-effort. `docs/GAP-ANALYSIS.md` maps the whole FMC API to the
+tools.
 
 ## Safety model
 
 | Tier | Enabled by | What it can do |
 |---|---|---|
 | read | always | All the tools under "Read" below. `fmc_api_call` is GET-only. |
-| write | `MCP_ENABLE_WRITES=true` | Create, update and delete objects, groups, zones, access rules and NAT rules. |
-| dangerous | `MCP_ENABLE_DANGEROUS=true` (also needs writes) | Deploy, register and delete devices, form and break HA pairs, delete whole policies, and send raw non-GET `fmc_api_call` requests. |
+| write | `MCP_ENABLE_WRITES=true` | Create, update and delete objects, groups, zones, access rules and NAT rules; configure device interfaces and static routes; assign policies. Nothing reaches a device before a deploy. |
+| dangerous | `MCP_ENABLE_DANGEROUS=true` (also needs writes) | Deploy and roll back, register and delete devices, form and break HA pairs, delete whole policies, and send raw non-GET `fmc_api_call` requests. |
 
 Every write is **preview-first**:
 
@@ -37,14 +39,15 @@ Changes made in FMC reach the firewalls only after a **deployment** (`fmc_deploy
 
 ## Tools
 
-There are 50 tools when every tier is enabled: 30 read (29 when the dangerous tier turns `fmc_api_call` into a raw call), 14 write and 6 dangerous plus `fmc_api_call`.
+There are 62 tools when every tier is enabled: 35 read (34 when the dangerous tier turns `fmc_api_call` into a raw call), 20 write and 7 dangerous plus `fmc_api_call`.
 
-**Read (30)**
+**Read (35)**
 
 | Area | Tools |
 |---|---|
 | System | `fmc_status`, `fmc_list_domains`, `fmc_list_audit_records`, `fmc_get_task`, `fmc_license_status` |
-| Devices | `fmc_list_devices`, `fmc_get_device`, `fmc_list_device_interfaces`, `fmc_list_ha_pairs`, `fmc_list_clusters` |
+| Devices | `fmc_list_devices`, `fmc_get_device`, `fmc_list_device_interfaces`, `fmc_list_routes`, `fmc_list_ha_pairs`, `fmc_list_clusters` |
+| Troubleshooting | `fmc_packet_tracer`, `fmc_run_show_command`, `fmc_get_hit_counts`, `fmc_device_health`, `fmc_list_vpn_tunnels` |
 | Policies | `fmc_list_policies`, `fmc_get_access_policy`, `fmc_list_access_rules`, `fmc_get_access_rule`, `fmc_list_nat_rules`, `fmc_list_prefilter_rules`, `fmc_list_policy_assignments` |
 | Objects | `fmc_list_objects`, `fmc_get_object`, `fmc_find_object`, `fmc_where_used`, `fmc_unused_objects` |
 | Analysis | `fmc_rule_lookup`, `fmc_shadowed_rules` |
@@ -57,29 +60,47 @@ Notes on some read tools:
   identity, decryption, health, FlexConfig and VPN policies.
 - `fmc_find_object` finds objects by IP address, subnet or port.
 - `fmc_rule_lookup` works out, offline, which access rule handles traffic from a source to a
-  destination and port.
+  destination and port. `fmc_packet_tracer` asks the device itself (FMC runs packet-tracer; nothing
+  is transmitted) and names the rule that allowed or dropped the packet and why.
+- `fmc_run_show_command` runs FMC's approved show commands (mostly configuration views such as
+  `show route`, `show interface ip brief`, `show running-config nat`); FMC refuses stateful ones
+  such as `show conn`.
+- `fmc_get_hit_counts` refreshes the counters from the device first (packet-tracer packets count too).
 
-**Write (14)**
+**Write (20)**
 
 | Area | Tools |
 |---|---|
 | Objects | `fmc_create_object`, `fmc_update_object`, `fmc_delete_object`, `fmc_create_group`, `fmc_update_group`, `fmc_create_security_zone` |
 | Access control | `fmc_create_access_policy`, `fmc_create_access_rule`, `fmc_update_access_rule`, `fmc_delete_access_rule` |
 | NAT | `fmc_create_nat_policy`, `fmc_create_nat_rule`, `fmc_update_nat_rule`, `fmc_delete_nat_rule` |
+| Device configuration | `fmc_update_interface`, `fmc_create_subinterface`, `fmc_delete_interface`, `fmc_create_static_route`, `fmc_delete_static_route`, `fmc_assign_policy` |
 
 `fmc_create_access_rule` takes a position (`insert_before` or `insert_after`), a section and a
-category. `fmc_update_access_rule` can move a rule with `move_to`.
+category. `fmc_update_access_rule` can move a rule with `move_to`. `fmc_update_interface` sets the
+logical name, zone, IPv4 (static or DHCP), MTU and admin state of any existing interface.
 
-**Dangerous (6, plus raw `fmc_api_call`)**
+**Dangerous (7, plus raw `fmc_api_call`)**
 
 | Tool | What it does |
 |---|---|
 | `fmc_deploy` | Deploys pending changes and waits for the deployment task to finish. |
-| `fmc_register_device` | Registers a device with FMC. |
+| `fmc_rollback_deployment` | Rolls a device back to an earlier successful deployment. |
+| `fmc_register_device` | Registers a device with FMC and waits for the initial deployment. |
 | `fmc_delete_device` | Removes a device from FMC. |
 | `fmc_create_ha_pair` | Forms an HA pair. |
 | `fmc_ha_action` | Breaks, switches or deletes an HA pair. |
 | `fmc_delete_policy` | Deletes a whole policy. |
+
+### Workflows
+
+- **Onboard an FTD:** on the device, `configure manager add <fmc> <key>`; then `fmc_register_device`
+  -> `fmc_update_interface` (name, zone, IP) -> `fmc_create_static_route` -> NAT policy and rules ->
+  `fmc_assign_policy` -> `fmc_deploy` -> `fmc_run_show_command` to verify. FMC needs Smart Licensing or
+  evaluation mode before it accepts devices.
+- **Change safely:** change -> `fmc_pending_changes` -> `fmc_deploy` -> verify ->
+  `fmc_rollback_deployment` if needed.
+- **Why is this traffic blocked?** `fmc_packet_tracer` + `fmc_rule_lookup` + `fmc_get_hit_counts`.
 
 Tools accept **names or UUIDs**. Rule conditions accept object names or literal values:
 
@@ -146,6 +167,10 @@ Create a user for the server under **System > Users**, with a custom role:
 - **Read only:** base the role on *Security Analyst (Read Only)*. It needs view access to devices,
   access control, intrusion, NAT and prefilter policies, the object manager and the audit log.
 - **Writes:** add modify rights for *Object Manager*, *Access Control Policy* and *NAT Policy*.
+- **Device configuration:** add modify rights for *Devices* (interfaces, routing) and policy
+  assignment.
+- **Troubleshooting:** packet tracer, show commands, hit counts and health need the role's device
+  troubleshooting and health-monitoring permissions.
 - **Dangerous tier:** also add *Deploy Configuration to Devices* and *Device Management*.
 
 The REST API must be enabled under **System > Configuration > REST API Preferences**.
@@ -195,13 +220,16 @@ claude mcp add --transport http fmc http://<host>:8035/mcp --header "Authorizati
 uv run ruff check && uv run ruff format --check && uv run mypy && uv run pytest
 uv run python scripts/seed_lab.py          # create the mcp-test-* objects the live tests expect
 uv run pytest tests/live -m live           # live tests; the whole run uses a single FMC login
-uv run python scripts/capture_fixtures.py  # refresh the redacted fixtures in tests/fixtures
+# tests/live/test_live_ftd.py also needs a managed FTD: FMC_LIVE_FTD_HOST and FMC_LIVE_FTD_REG_KEY
+# (the CML recipe ftd-fmc in cml-mcp-server builds an FTDv on 198.18.128.151)
+uv run python scripts/capture_fixtures.py  # refresh the redacted fixtures in tests/fixtures (--ftd: device ones)
 ```
 
 The live write tests create `mcp-test-w-*` objects and policies, then delete them.
 
-Deployment, registration and HA can't be tested on a lab FMC with no managed devices. Unit tests
-cover them with mocked FMC replies.
+The live FTD tests onboard (or re-check) the FTD, configure interfaces, zones, a default route and
+NAT, deploy and verify with show commands, run packet tracer and hit counts, and deploy and roll back a
+subinterface. HA and clustering need two FTDs and are covered by unit tests with mocked FMC replies.
 
 ## License
 

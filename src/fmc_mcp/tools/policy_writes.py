@@ -52,12 +52,26 @@ UrlsParam = Annotated[
 ]
 
 
-def _log_fields(log: LogMode | None) -> dict[str, Any]:
+BLOCKING = {"BLOCK", "BLOCK_RESET", "BLOCK_INTERACTIVE", "BLOCK_RESET_INTERACTIVE"}
+
+
+def _log_fields(log: LogMode | None, action: str | None = None) -> dict[str, Any]:
     if log is None:
         return {}
     if log == "none":
         return {"logBegin": False, "logEnd": False, "sendEventsToFMC": False}
+    if str(action or "").upper() in BLOCKING:
+        # A blocked connection has no end: FMC rejects logEnd on block rules ("LogEnd is not supported
+        # for BLOCK Action"), so 'end' and 'begin_and_end' both mean log at the beginning.
+        return {"logBegin": True, "logEnd": False, "sendEventsToFMC": True}
     return {"logBegin": log == "begin_and_end", "logEnd": True, "sendEventsToFMC": True}
+
+
+def _fix_block_logging(rule: dict[str, Any]) -> None:
+    """A rule switched to a block action can't keep end-of-connection logging."""
+    if str(rule.get("action", "")).upper() in BLOCKING and rule.get("logEnd"):
+        rule["logEnd"] = False
+        rule["logBegin"] = True
 
 
 async def _conditions(resolver: RefResolver, values: dict[str, list[str] | None]) -> dict[str, Any]:
@@ -131,7 +145,10 @@ def register(reg: ToolRegistrar) -> None:
         destination_ports: PortsParam = None,
         urls: UrlsParam = None,
         enabled: Annotated[bool, Field(description="Create the rule enabled")] = True,
-        log: Annotated[LogMode, Field(description="Connection logging to FMC")] = "end",
+        log: Annotated[
+            LogMode,
+            Field(description="Connection logging to FMC (block rules log at the connection start)"),
+        ] = "end",
         intrusion_policy: Annotated[
             str | None,
             Field(description="Intrusion policy name for ALLOW rules (fmc_list_policies kind=intrusion)"),
@@ -179,7 +196,7 @@ def register(reg: ToolRegistrar) -> None:
             )
         )
         body = {k: v for k, v in body.items() if v != {}}
-        body.update(_log_fields(log))
+        body.update(_log_fields(log, action))
         if intrusion_policy:
             if action != "ALLOW":
                 raise InvalidRequest("An intrusion policy can only be set on ALLOW rules.")
@@ -307,7 +324,8 @@ def register(reg: ToolRegistrar) -> None:
                 desired[field] = block
             elif desired.pop(field, None):  # [] = any: FMC's PUT replaces the rule, so omit the field
                 cleared[field] = {"from": block_labels(current.get(field)), "to": "any"}
-        desired.update(_log_fields(log))
+        desired.update(_log_fields(log, desired.get("action")))
+        _fix_block_logging(desired)
         desired.pop("commentHistoryList", None)
         if comment:
             desired["newComments"] = [comment]

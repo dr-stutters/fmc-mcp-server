@@ -1,0 +1,38 @@
+{
+ "items": [
+  {
+   "metadata": {
+    "domain": {
+     "uuid": "e276abec-e0f2-11e3-8169-6d9ed49b625f",
+     "name": "Global",
+     "id": "e276abec-e0f2-11e3-8169-6d9ed49b625f",
+     "type": "Domain"
+    },
+    "policy": {
+     "description": "Phase 2 FTD lab policy",
+     "name": "mcp-test-ftd-acp",
+     "id": "00000000-0000-0ed3-0000-021474847655"
+    },
+    "deviceRuleId": "268434472",
+    "ruleIndex": 3
+   },
+   "lastFetchTimeStamp": "2026-10-14T12:43:55Z",
+   "rule": {
+    "name": "Default Action",
+    "id": "00000000-0000-0ed3-0000-000268434472",
+    "type": "AccessPolicyDefaultAction"
+   },
+   "firstHitTimeStamp": " ",
+   "lastHitTimeStamp": " ",
+   "lastDeployedTimeStamp": "2026-10-14T12:46:35Z",
+   "type": "HitCount",
+   "hitCount": 0
+  }
+ ],
+ "paging": {
+  "offset": 0,
+  "limit": 25,
+  "count": 1,
+  "pages": 1
+ }
+}
