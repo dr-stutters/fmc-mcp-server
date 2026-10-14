@@ -1,0 +1,43 @@
+[project]
+name = "fmc-mcp-server"
+version = "0.1.0"
+description = "MCP server for Cisco Secure Firewall Management Center (FMC)"
+readme = "README.md"
+license = "MIT"
+requires-python = ">=3.12,<3.15"
+dependencies = ["stutters-mcp-core"]
+
+[project.scripts]
+fmc-mcp-server = "fmc_mcp:main"
+
+[tool.uv.sources]
+stutters-mcp-core = { git = "https://github.com/dr-stutters/stutters-mcp-core", tag = "v0.1.0" }
+
+[build-system]
+requires = ["uv_build>=0.10.9,<0.11.0"]
+build-backend = "uv_build"
+
+[tool.uv.build-backend]
+module-name = "fmc_mcp"
+
+[dependency-groups]
+dev = ["mypy>=2.4.0", "pytest>=9.1.1", "pytest-asyncio>=1.4.0", "respx>=0.23.1", "ruff>=0.17.0"]
+
+[tool.pytest.ini_options]
+asyncio_mode = "auto"
+asyncio_default_fixture_loop_scope = "session"
+asyncio_default_test_loop_scope = "session"
+testpaths = ["tests/unit"]
+markers = ["live: needs the lab appliance (skipped when unreachable)"]
+
+[tool.ruff]
+line-length = 110
+target-version = "py312"
+extend-exclude = ["docs"]
+
+[tool.ruff.lint]
+select = ["E", "F", "I", "B", "UP", "SIM", "ASYNC"]
+
+[tool.mypy]
+strict = true
+files = ["src"]

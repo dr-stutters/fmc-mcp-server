@@ -1,0 +1,8 @@
+name: release
+on: {push: {tags: ["v*"]}}
+permissions: {contents: write, packages: write, id-token: write}
+jobs:
+  release:
+    uses: dr-stutters/stutters-mcp-core/.github/workflows/python-release.yml@main
+    with: {image: true}
+    secrets: inherit
