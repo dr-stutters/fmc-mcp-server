@@ -5,6 +5,7 @@ from __future__ import annotations
 import json
 import logging
 import re
+import time
 from typing import Any
 
 import httpx
@@ -29,6 +30,7 @@ LOGIN_PATH = "/api/fmc_platform/v1/auth/generatetoken"
 REFRESH_PATH = "/api/fmc_platform/v1/auth/refreshtoken"
 SPEC_PATH = "/api/api-explorer/fmc.json"
 TOKEN_LIFETIME = 30 * 60  # seconds
+LOGIN_FAILURE_BACKOFF = 30.0  # seconds a failed login is remembered
 MAX_REFRESHES = 3  # FMC allows three refreshes per login, then a new login is required
 ACCESS_HEADER = "X-auth-access-token"
 REFRESH_HEADER = "X-auth-refresh-token"
@@ -96,6 +98,7 @@ class FmcApp:
         self.logins = 0
         self.refreshes = 0
         self._version: str | None = None
+        self._login_failure: tuple[float, AuthError] | None = None
 
     async def aclose(self) -> None:
         await self.api.aclose()
@@ -110,6 +113,10 @@ class FmcApp:
         self.user_uuid = resp.headers.get("USER_UUID") or self.user_uuid
 
     async def _login(self, client: ApiClient) -> Token:
+        # Never log Token objects: their data holds the refresh token.
+        failed = self._login_failure
+        if failed is not None and time.monotonic() < failed[0]:
+            raise failed[1]
         try:
             user, password = self.settings.require_credentials("FMC_")
         except ValueError as e:
@@ -119,13 +126,17 @@ class FmcApp:
         )
         if resp.status_code != 204 or ACCESS_HEADER not in resp.headers:
             if resp.status_code in (401, 403):
-                raise AuthError(
+                err = AuthError(
                     f"FMC login failed ({resp.status_code}): {fmc_error_detail(_body(resp)) or 'denied'}. "
                     "Check FMC_USERNAME/FMC_PASSWORD; the account needs API access (REST API is enabled "
                     "under System > Configuration > REST API Preferences).",
                     resp.status_code,
                 )
+                # Don't hammer FMC with bad credentials (that can lock the account).
+                self._login_failure = (time.monotonic() + LOGIN_FAILURE_BACKOFF, err)
+                raise err
             raise client.error_from_response(resp)
+        self._login_failure = None
         self.logins += 1
         self._remember(resp)
         log.info("Logged in to FMC (login #%d)", self.logins)
@@ -145,9 +156,13 @@ class FmcApp:
             REFRESH_PATH,
             headers={ACCESS_HEADER: old.headers[ACCESS_HEADER], REFRESH_HEADER: old.data["refresh"]},
         )
-        if resp.status_code != 204 or ACCESS_HEADER not in resp.headers:
+        if resp.status_code in (401, 403):
             log.info("FMC token refresh refused (%s); logging in again", resp.status_code)
             return None
+        if resp.status_code != 204 or ACCESS_HEADER not in resp.headers:
+            # Transient trouble (429/5xx): fail this request rather than log in again, because a new
+            # login can end this user's other sessions.
+            raise client.error_from_response(resp)
         self.refreshes += 1
         self._remember(resp)
         return Token(

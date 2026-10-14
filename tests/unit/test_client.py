@@ -21,7 +21,9 @@ async def test_status(fmc: respx.MockRouter) -> None:
     assert info["managed_devices"] == 0
     assert info["api_user"] == "apiuser"
     assert info["session"]["logins"] == 1
-    assert "pw" not in str(data)
+    text = str(data)
+    for secret in ("'pw'", "access-1", "refresh-1"):
+        assert secret not in text
 
 
 async def test_login_sends_basic_and_token_header(fmc: respx.MockRouter) -> None:
@@ -198,3 +200,84 @@ async def test_list_domains(fmc: respx.MockRouter) -> None:
     data = await call_tool(create_server(make_settings()), "fmc_list_domains", {"response_format": "json"})
     assert [r["name"] for r in data["results"]] == ["Global", "Global/Branch"]
     assert data["results"][0]["default"] is True
+
+
+async def test_failed_login_is_not_retried_immediately(fmc: respx.MockRouter) -> None:
+    fmc.routes["login"].mock(
+        return_value=httpx.Response(401, json={"error": {"messages": [{"description": "no"}]}})
+    )
+    app = FmcApp(make_settings())
+    try:
+        for _ in range(3):
+            with pytest.raises(AuthError) as exc:
+                await app.server_version()
+            assert "pw" not in str(exc.value)
+    finally:
+        await app.aclose()
+    assert fmc.routes["login"].call_count == 1
+
+
+async def test_login_without_token_header_fails(fmc: respx.MockRouter) -> None:
+    fmc.routes["login"].mock(return_value=httpx.Response(204))
+    app = FmcApp(make_settings())
+    try:
+        with pytest.raises(Exception, match="FMC returned HTTP 204"):
+            await app.server_version()
+    finally:
+        await app.aclose()
+
+
+async def test_transient_refresh_error_does_not_relogin(fmc: respx.MockRouter) -> None:
+    fmc.post("/api/fmc_platform/v1/auth/refreshtoken").mock(return_value=httpx.Response(503))
+    app = FmcApp(make_settings())
+    try:
+        await app.ensure_login()
+        assert app._auth.token is not None
+        app._auth.token.expires_at = time.monotonic()
+        with pytest.raises(Exception, match="503"):
+            await app.ensure_login()
+    finally:
+        await app.aclose()
+    assert fmc.routes["login"].call_count == 1
+
+
+async def test_401_with_dead_refresh_logs_in_once(fmc: respx.MockRouter) -> None:
+    fmc.post("/api/fmc_platform/v1/auth/refreshtoken").mock(return_value=httpx.Response(401))
+    fmc.routes["login"].mock(side_effect=[login_response(1), login_response(2)])
+
+    def version(request: httpx.Request) -> httpx.Response:
+        if request.headers["X-auth-access-token"] == "access-1":
+            return httpx.Response(401)
+        return items([{"serverVersion": "10.0.1"}])
+
+    fmc.get("/api/fmc_platform/v1/info/serverversion").mock(side_effect=version)
+    app = FmcApp(make_settings())
+    try:
+        assert await app.server_version() == "10.0.1"
+    finally:
+        await app.aclose()
+    assert fmc.routes["login"].call_count == 2
+
+
+async def test_rotated_refresh_token_is_used(fmc: respx.MockRouter) -> None:
+    sent: list[str] = []
+
+    def do_refresh(request: httpx.Request) -> httpx.Response:
+        sent.append(request.headers["X-auth-refresh-token"])
+        n = len(sent)
+        return httpx.Response(
+            204, headers={"X-auth-access-token": f"a{n}", "X-auth-refresh-token": f"rot{n}"}
+        )
+
+    fmc.post("/api/fmc_platform/v1/auth/refreshtoken").mock(side_effect=do_refresh)
+    app = FmcApp(make_settings())
+    try:
+        for _ in range(3):
+            await app.ensure_login()
+            assert app._auth.token is not None
+            app._auth.token.expires_at = time.monotonic()
+        await app.ensure_login()
+    finally:
+        await app.aclose()
+    assert sent == ["refresh-1", "rot1", "rot2"]
+    assert app.domains  # kept from the login even though refreshes carry no DOMAINS header
