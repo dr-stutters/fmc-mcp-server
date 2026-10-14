@@ -31,6 +31,9 @@ interface groups). Policies are assigned to devices and pushed with a deployment
 
 Start with fmc_status (version, domains, API user). Every tool accepts names or UUIDs, and a
 `domain` (name or UUID) where FMC has several; it defaults to FMC_DOMAIN or the login's domain.
+Useful starting points: fmc_list_access_rules (rules flattened with object names),
+fmc_rule_lookup (which rule handles a flow), fmc_find_object (objects containing an IP or port),
+fmc_where_used before changing or deleting an object, fmc_pending_changes before fmc_deploy.
 
 Gotchas: FMC allows about 120 API requests per minute, so prefer the aggregate tools over many small
 calls. Changes only reach devices after a deployment. For fmc_api_call, substitute {domainUUID} in
