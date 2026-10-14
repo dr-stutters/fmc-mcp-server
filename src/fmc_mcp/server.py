@@ -12,6 +12,7 @@ from fmc_mcp.client import SPEC_PATH, FmcApp
 from fmc_mcp.config import Settings
 from fmc_mcp.tools import (
     analysis,
+    dangerous,
     deploy,
     devices,
     object_writes,
@@ -86,6 +87,7 @@ def create_server(
             deploy.register,
             object_writes.register,
             policy_writes.register,
+            dangerous.register,
         ],
         status=FmcApp.status,
         spec_sources=spec_sources,
