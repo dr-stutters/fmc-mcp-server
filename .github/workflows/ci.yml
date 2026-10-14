@@ -1,0 +1,6 @@
+name: ci
+on: {push: {branches: [main]}, pull_request: {}}
+jobs:
+  ci:
+    uses: dr-stutters/stutters-mcp-core/.github/workflows/python-ci.yml@main
+    secrets: inherit
