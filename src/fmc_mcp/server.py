@@ -36,8 +36,8 @@ fmc_rule_lookup (which rule handles a flow), fmc_find_object (objects containing
 fmc_where_used before changing or deleting an object, fmc_pending_changes before fmc_deploy.
 
 Gotchas: FMC allows about 120 API requests per minute, so prefer the aggregate tools over many small
-calls. Changes only reach devices after a deployment. For fmc_api_call, substitute {domainUUID} in
-spec paths with the domain UUID from fmc_status.
+calls. Changes only reach devices after a deployment. fmc_api_call fills {domainUUID} in spec paths
+with the default domain.
 """
 
 SPEC = ServerSpec(
@@ -59,6 +59,11 @@ async def _spec_version(app: FmcApp) -> str:
     return await app.server_version()
 
 
+def _path_params(app: FmcApp) -> dict[str, str]:
+    uuid = app.default_domain_cached()
+    return {"domainUUID": uuid} if uuid else {}
+
+
 def spec_sources(app: FmcApp) -> list[SpecSource]:
     return [
         SpecSource(
@@ -67,6 +72,7 @@ def spec_sources(app: FmcApp) -> list[SpecSource]:
             client=lambda a: a.api,
             version=_spec_version,
             description="FMC REST API (fmc_config, fmc_platform, fmc_tid, fmc_troubleshoot)",
+            path_params=_path_params,
         )
     ]
 

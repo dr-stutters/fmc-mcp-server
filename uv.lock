@@ -448,7 +448,7 @@ server = [
 
 [[package]]
 name = "fmc-mcp-server"
-version = "0.1.0"
+version = "0.1.1"
 source = { editable = "." }
 dependencies = [
     { name = "stutters-mcp-core" },
@@ -464,7 +464,7 @@ dev = [
 ]
 
 [package.metadata]
-requires-dist = [{ name = "stutters-mcp-core", git = "https://github.com/dr-stutters/stutters-mcp-core?tag=v0.1.0" }]
+requires-dist = [{ name = "stutters-mcp-core", git = "https://github.com/dr-stutters/stutters-mcp-core?tag=v0.1.1" }]
 
 [package.metadata.requires-dev]
 dev = [
@@ -1448,8 +1448,8 @@ wheels = [
 
 [[package]]
 name = "stutters-mcp-core"
-version = "0.1.0"
-source = { git = "https://github.com/dr-stutters/stutters-mcp-core?tag=v0.1.0#132ddfd5e976c325861be4abe82a50bcc535968f" }
+version = "0.1.1"
+source = { git = "https://github.com/dr-stutters/stutters-mcp-core?tag=v0.1.1#72f4a5573da02a339f195ab0a583573aefbb2750" }
 dependencies = [
     { name = "fastmcp" },
     { name = "httpx" },

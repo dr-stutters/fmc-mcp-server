@@ -83,3 +83,12 @@ async def test_spec_tools(client: Client[Any]) -> None:
         client, "fmc_api_call", {"method": "GET", "path": "/api/fmc_platform/v1/info/serverversion"}
     )
     assert ver["items"][0]["serverVersion"]
+
+
+async def test_api_call_fills_domain(client: Client[Any]) -> None:
+    hosts = await call(
+        client,
+        "fmc_api_call",
+        {"method": "GET", "path": "/api/fmc_config/v1/domain/{domainUUID}/object/hosts"},
+    )
+    assert "items" in hosts
