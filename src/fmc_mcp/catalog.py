@@ -81,15 +81,22 @@ class Catalog:
     async def _load(self, path: str) -> None:
         if path in self._loaded:
             return
-        page = await self.app.all(await self.app.config_path(path, self.domain), cap=CATALOG_CAP)
-        self.complete = self.complete and page.complete
-        for o in page.items:
+        full = await self.app.config_path(path, self.domain)
+        cached = self.app.cache_get(full)
+        if cached is None:
+            page = await self.app.all(full, cap=CATALOG_CAP)
+            cached = (page.items, page.complete)
+            self.app.cache_put(full, cached)
+        found, complete = cached
+        self.complete = self.complete and complete
+        for o in found:
             if o.get("id"):
                 self.objects[o["id"]] = o
         self._loaded.add(path)
 
     async def load_networks(self) -> None:
-        for p in ("object/networkaddresses", "object/networkgroups"):
+        # The networkaddresses aggregate leaves out ranges (FMC 10.0), so load them separately.
+        for p in ("object/networkaddresses", "object/ranges", "object/networkgroups"):
             await self._load(p)
 
     async def load_ports(self) -> None:
@@ -173,6 +180,8 @@ class Catalog:
         if "icmp" in typ or obj.get("icmpType") is not None:
             proto = "58" if "v6" in typ else "1"
             t = obj.get("icmpType")
+            if obj.get("code") not in (None, "", "Any"):
+                return None  # ICMP codes aren't modelled; the rule becomes conditional
             if t in (None, "", "Any"):
                 return [(proto, 0, 255)]
             try:

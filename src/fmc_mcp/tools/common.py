@@ -167,8 +167,12 @@ def block_labels(block: Any) -> list[str]:
 _META_KEEP = ("ruleIndex", "index", "section", "category", "readOnly", "lastUser", "timestamp", "domain")
 
 
+# Secret-ish FMC fields the core's masking doesn't recognise (device registration key, NAT id).
+SECRET_FIELDS = {"regkey", "natid"}
+
+
 def slim(obj: Any) -> Any:
-    """Trim FMC noise: `links` everywhere and most of `metadata`."""
+    """Trim FMC noise (`links` everywhere, most of `metadata`) and mask registration secrets."""
     if isinstance(obj, list):
         return [slim(x) for x in obj]
     if not isinstance(obj, dict):
@@ -176,6 +180,9 @@ def slim(obj: Any) -> Any:
     out: dict[str, Any] = {}
     for k, v in obj.items():
         if k == "links":
+            continue
+        if k.lower() in SECRET_FIELDS and v not in (None, ""):
+            out[k] = "********"
             continue
         if k == "metadata" and isinstance(v, dict):
             meta = {mk: v[mk] for mk in _META_KEEP if mk in v}
@@ -233,7 +240,9 @@ def object_summary(obj: dict[str, Any]) -> dict[str, Any]:
 # --- resolution -------------------------------------------------------------------------------
 
 
-def pick_by_name(items: list[dict[str, Any]], ref: str, what: str) -> dict[str, Any]:
+def pick_by_name(
+    items: list[dict[str, Any]], ref: str, what: str, *, partial: bool = False
+) -> dict[str, Any]:
     exact = [i for i in items if i.get("name") == ref]
     if not exact:
         exact = [i for i in items if str(i.get("name", "")).lower() == ref.lower()]
@@ -245,6 +254,8 @@ def pick_by_name(items: list[dict[str, Any]], ref: str, what: str) -> dict[str, 
     names = [str(i.get("name")) for i in items if i.get("name")]
     close = difflib.get_close_matches(ref, names, n=5, cutoff=0.5)
     hint = f" Did you mean: {', '.join(close)}?" if close else ""
+    if partial:
+        hint += " (The collection was too large to scan completely; pass the UUID instead.)"
     raise NotFound(f"No {what} named {ref!r}.{hint}", 404)
 
 
@@ -256,7 +267,7 @@ async def resolve_in(app: FmcApp, path: str, ref: str, what: str, domain: str | 
         data: dict[str, Any] = await app.api.get(f"{full}/{ref}")
         return data
     page = await app.all(full)
-    return pick_by_name(page.items, ref, what)
+    return pick_by_name(page.items, ref, what, partial=not page.complete)
 
 
 async def resolve_object(
@@ -269,6 +280,7 @@ async def resolve_object(
         raise InvalidRequest("Empty object name.")
     candidates = [obj_type(t) for t in (types or SEARCH_ORDER)]
     found: list[tuple[ObjType, dict[str, Any]]] = []
+    partial = False
     for t in candidates:
         full = await app.config_path(t.path, domain)
         if is_uuid(ref):
@@ -281,6 +293,7 @@ async def resolve_object(
             continue
         params = {"filter": f"nameOrValue:{ref}"} if t.key in FILTERABLE else None
         page = await app.all(full, params)
+        partial = partial or not page.complete
         hits = [i for i in page.items if i.get("name") == ref] or [
             i for i in page.items if str(i.get("name", "")).lower() == ref.lower()
         ]
@@ -293,6 +306,7 @@ async def resolve_object(
         kinds = ", ".join(f"{t.key} {o.get('id')}" for t, o in found)
         raise InvalidRequest(f"Object name {ref!r} is ambiguous ({kinds}); pass `type` or the id.")
     scope = ", ".join(t.key for t in candidates)
+    more = " Some collections were too large to scan completely; pass the UUID." if partial else ""
     raise NotFound(
-        f"No object {ref!r} found (looked in: {scope}). Try fmc_list_objects or fmc_find_object.", 404
+        f"No object {ref!r} found (looked in: {scope}). Try fmc_list_objects or fmc_find_object.{more}", 404
     )

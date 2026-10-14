@@ -22,12 +22,17 @@ OUT = Path(__file__).resolve().parent.parent / "tests" / "fixtures"
 
 def scrub(data: Any, host: str) -> Any:
     if isinstance(data, dict):
-        return {k: scrub(v, host) for k, v in data.items() if k != "links"}
+        out = {k: scrub(v, host) for k, v in data.items() if k != "links"}
+        if data.get("type") == "ServerVersion":
+            out["uuid"] = "00000000-0000-0000-0000-000000000001"
+            out["serialNumber"] = "REDACTED"
+        return out
     if isinstance(data, list):
         return [scrub(v, host) for v in data]
     if isinstance(data, str):
         data = data.replace(host, "fmc.test")
         data = re.sub(r"fmcv?\.[\w.-]*dcloud[\w.-]*", "fmc.example.com", data)
+        data = re.sub(r"\b198\.18\.\d+\.\d+\b", "192.0.2.10", data)  # lab addresses (not 198.18.0.0/15)
         return data
     return data
 

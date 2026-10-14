@@ -196,7 +196,7 @@ def register(reg: ToolRegistrar) -> None:
             else None,
             "rules": {
                 "total": len(flat),
-                "enabled": sum(1 for r in flat if r.get("enabled")),
+                "enabled": sum(1 for r in flat if r.get("enabled") is not False),
                 "by_section": dict(Counter(str(r.get("section")) for r in flat)),
                 "by_action": dict(Counter(str(r.get("action")) for r in flat)),
             },

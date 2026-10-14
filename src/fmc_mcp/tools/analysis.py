@@ -66,6 +66,9 @@ def _port_match(cat: Catalog, block: Any, proto: str, port: int | None) -> bool 
     same_proto = [s for s in specs if s[0] in ("", proto)]
     if not same_proto:
         return False
+    full = 255 if proto in ("1", "58") else 65535
+    if any(s[1] <= 0 and s[2] >= full for s in same_proto):
+        return True  # every port of this protocol
     if port is None:
         return None
     return any(s[1] <= port <= s[2] for s in same_proto)
@@ -112,9 +115,10 @@ def register(reg: ToolRegistrar) -> None:
         await cat.load_ports()
 
         conditional: list[dict[str, Any]] = []
+        monitored: list[dict[str, Any]] = []
         match: dict[str, Any] | None = None
         evaluated = 0
-        for r in rules.items:
+        for r in sorted(rules.items, key=_rule_index):
             if not r.get("enabled", True) and not include_disabled:
                 continue
             evaluated += 1
@@ -132,6 +136,9 @@ def register(reg: ToolRegistrar) -> None:
             row = flatten_access_rule(r)
             if unknown:
                 conditional.append({**row, "depends_on": unknown})
+                continue
+            if str(r.get("action", "")).upper() == "MONITOR":
+                monitored.append(row)  # MONITOR only logs; evaluation continues
                 continue
             match = row
             break
@@ -155,6 +162,8 @@ def register(reg: ToolRegistrar) -> None:
             action = (p.get("defaultAction") or {}).get("action")
             out["verdict"] = f"No rule matches definitively → default action {action}"
             out["default_action"] = action
+        if monitored:
+            out["monitor_rules_logged"] = monitored
         if conditional:
             out["may_match_first"] = conditional[:20]
             out["note"] = (
@@ -188,7 +197,7 @@ def register(reg: ToolRegistrar) -> None:
 
         prepared = []
         skipped = 0
-        for r in rules.items:
+        for r in sorted(rules.items, key=_rule_index):
             if not r.get("enabled", True):
                 continue
             dims = _dims(cat, r)
@@ -200,8 +209,8 @@ def register(reg: ToolRegistrar) -> None:
         findings = []
         for j, (rb, db, _) in enumerate(prepared):
             for ra, da, opaque_a in prepared[:j]:
-                if opaque_a:
-                    continue  # an earlier L7 rule doesn't cover everything
+                if opaque_a or str(ra.get("action", "")).upper() == "MONITOR":
+                    continue  # an earlier L7 rule doesn't cover everything; MONITOR never stops a flow
                 if _covers(da, db):
                     same = ra.get("action") == rb.get("action")
                     findings.append(
@@ -222,10 +231,19 @@ def register(reg: ToolRegistrar) -> None:
         }
         if not findings:
             out["summary"] = "No shadowed or redundant rules found."
+        if not rules.complete or not cat.complete:
+            out["warning"] = (
+                "Policy or object collections were larger than the scan cap; results are partial."
+            )
         return out
 
 
 Dims = dict[str, Any]
+
+
+def _rule_index(r: dict[str, Any]) -> int:
+    idx = (r.get("metadata") or {}).get("ruleIndex")
+    return idx if isinstance(idx, int) else 1_000_000
 
 
 def _dims(cat: Catalog, r: dict[str, Any]) -> Dims | None:
@@ -237,7 +255,7 @@ def _dims(cat: Catalog, r: dict[str, Any]) -> Dims | None:
     for key, field in (("sn", "sourceNetworks"), ("dn", "destinationNetworks")):
         if has_value(r.get(field)):
             nets = cat.networks(r.get(field))
-            if nets is None:
+            if not nets:
                 return None
             out[key] = nets
         else:
@@ -245,7 +263,7 @@ def _dims(cat: Catalog, r: dict[str, Any]) -> Dims | None:
     for key, field in (("sp", "sourcePorts"), ("dp", "destinationPorts")):
         if has_value(r.get(field)):
             ports = cat.ports(r.get(field))
-            if ports is None:
+            if not ports:
                 return None
             out[key] = ports
         else:

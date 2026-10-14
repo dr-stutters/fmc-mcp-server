@@ -8,9 +8,9 @@
    "hostname": "fmc.example.com",
    "model": "Cisco Secure Firewall Management Center for VMware",
    "serialNumber": "None",
-   "uptime": "2 hours, 19 minutes",
+   "uptime": "1 hour",
    "platform": "66",
-   "uuid": "79bc5d14-2ec8-11f1-b9c9-52b459adb5f3",
+   "uuid": "00000000-0000-0000-0000-000000000001",
    "type": "ServerVersion"
   }
  ],

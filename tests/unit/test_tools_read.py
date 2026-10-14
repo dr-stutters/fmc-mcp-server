@@ -249,3 +249,52 @@ async def test_deployment_history_rows(fmc: respx.MockRouter) -> None:
     data = await call("fmc_list_deployments", {"response_format": "json"})
     row = data["results"][0]
     assert row["devices"] == ["ftd1: SUCCEEDED"] and row["started"] == "2020-05-16T10:29:01Z"
+
+
+async def test_get_device_masks_reg_key(fmc: respx.MockRouter) -> None:
+    dev = {"id": "d1", "name": "ftd1", "model": "FTDv", "regKey": "secret-key", "natID": "nat-secret"}
+    fmc.get(f"{CFG}/devices/devicerecords").mock(return_value=items([dev]))
+    data = await call("fmc_get_device", {"device": "ftd1"})
+    text = json.dumps(data)
+    assert "secret-key" not in text and "nat-secret" not in text and data["name"] == "ftd1"
+
+
+async def test_monitor_rule_does_not_stop_lookup(fmc: respx.MockRouter) -> None:
+    acp = {"id": ACP_ID, "name": "p", "type": "AccessPolicy", "defaultAction": {"action": "BLOCK"}}
+    rules = [
+        {"id": "r1", "name": "watch", "action": "MONITOR", "enabled": True, "metadata": {"ruleIndex": 1}},
+        {
+            "id": "r2",
+            "name": "icmp-echo-code",
+            "action": "ALLOW",
+            "enabled": True,
+            "metadata": {"ruleIndex": 2},
+            "destinationPorts": {"objects": [{"id": "ic1", "type": "ICMPV4Object"}]},
+        },
+        {"id": "r3", "name": "any", "action": "TRUST", "enabled": True, "metadata": {"ruleIndex": 3}},
+    ]
+    fmc.get(f"{CFG}/policy/accesspolicies").mock(return_value=items([acp]))
+    fmc.get(f"{CFG}/policy/accesspolicies/{ACP_ID}/accessrules").mock(return_value=items(rules))
+    for name in (
+        "networkaddresses",
+        "ranges",
+        "networkgroups",
+        "protocolportobjects",
+        "portobjectgroups",
+        "icmpv6objects",
+    ):
+        fmc.get(f"{CFG}/object/{name}").mock(return_value=empty())
+    fmc.get(f"{CFG}/object/icmpv4objects").mock(
+        return_value=items(
+            [{"id": "ic1", "type": "ICMPV4Object", "name": "echo", "icmpType": "8", "code": 0}]
+        )
+    )
+    data = await call(
+        "fmc_rule_lookup",
+        {"policy": "p", "source": "1.1.1.1", "destination": "2.2.2.2", "protocol": "icmp", "port": 8},
+    )
+    assert [r["name"] for r in data["monitor_rules_logged"]] == ["watch"]
+    assert data["may_match_first"][0]["name"] == "icmp-echo-code"
+    assert data["matched_rule"]["name"] == "any"
+    shadow = await call("fmc_shadowed_rules", {"policy": "p"})
+    assert all(f["covered_by"]["name"] != "watch" for f in shadow["findings"])

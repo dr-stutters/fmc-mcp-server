@@ -31,6 +31,7 @@ REFRESH_PATH = "/api/fmc_platform/v1/auth/refreshtoken"
 SPEC_PATH = "/api/api-explorer/fmc.json"
 TOKEN_LIFETIME = 30 * 60  # seconds
 LOGIN_FAILURE_BACKOFF = 30.0  # seconds a failed login is remembered
+CACHE_TTL = 60.0  # seconds object catalogs are reused between analysis calls
 MAX_REFRESHES = 3  # FMC allows three refreshes per login, then a new login is required
 ACCESS_HEADER = "X-auth-access-token"
 REFRESH_HEADER = "X-auth-refresh-token"
@@ -99,6 +100,7 @@ class FmcApp:
         self.refreshes = 0
         self._version: str | None = None
         self._login_failure: tuple[float, AuthError] | None = None
+        self._cache: dict[str, tuple[float, Any]] = {}
 
     async def aclose(self) -> None:
         await self.api.aclose()
@@ -251,6 +253,21 @@ class FmcApp:
         if expanded:
             query["expanded"] = "true"
         return await fetch_all(self.pager, self.api, path, query, cap=cap)
+
+    # --- short-lived cache (object catalogs for the offline analysis tools) ------------------
+
+    def cache_get(self, key: str) -> Any:
+        hit = self._cache.get(key)
+        if hit is None or time.monotonic() - hit[0] > CACHE_TTL:
+            return None
+        return hit[1]
+
+    def cache_put(self, key: str, value: Any) -> None:
+        self._cache[key] = (time.monotonic(), value)
+
+    def invalidate_cache(self) -> None:
+        """Called after every write so analysis tools never see stale objects."""
+        self._cache.clear()
 
     # --- status ----------------------------------------------------------------------------
 

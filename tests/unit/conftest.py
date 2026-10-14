@@ -94,7 +94,7 @@ def lab(fmc: respx.MockRouter) -> respx.MockRouter:
     )
     for name in ("networkaddresses", "networkgroups", "protocolportobjects", "portobjectgroups"):
         fmc.get(f"{CFG}/object/{name}").mock(return_value=httpx.Response(200, json=fixture(name)))
-    for name in ("icmpv4objects", "icmpv6objects"):
+    for name in ("icmpv4objects", "icmpv6objects", "ranges"):
         fmc.get(f"{CFG}/object/{name}").mock(return_value=empty())
     fmc.get(f"{CFG}/assignment/policyassignments").mock(return_value=empty())
     return fmc
