@@ -271,10 +271,16 @@ async def resolve_in(app: FmcApp, path: str, ref: str, what: str, domain: str | 
 
 
 async def resolve_object(
-    app: FmcApp, ref: str, domain: str | None, types: list[str] | None = None
+    app: FmcApp,
+    ref: str,
+    domain: str | None,
+    types: list[str] | None = None,
+    *,
+    full_fallback: bool = True,
 ) -> tuple[ObjType, dict[str, Any]]:
     """Resolve an object name or UUID, optionally restricted to some types. Types are searched in
-    order (default SEARCH_ORDER) and the first type with a match wins."""
+    order (default SEARCH_ORDER) and the first type with a match wins (FMC keeps names unique within
+    a family such as network objects, so cross-type clashes are rare; pass `type` to be explicit)."""
     ref = ref.strip()
     if not ref:
         raise InvalidRequest("Empty object name.")
@@ -292,7 +298,8 @@ async def resolve_object(
     else:
         # First pass uses FMC's nameOrValue filter (cheap). That index lags a few seconds behind
         # creates, so when nothing matches and the caller named the types, retry with full listings.
-        passes = [True, False] if types is not None else [True]
+        # Existence checks (expected to miss) pass full_fallback=False to skip the costly second pass.
+        passes = [True, False] if types is not None and full_fallback else [True]
         for filtered in passes:
             for t in candidates:
                 params = {"filter": f"nameOrValue:{ref}"} if filtered and t.key in FILTERABLE else None

@@ -111,7 +111,7 @@ def value_fields(t: ObjType, value: str, protocol: str | None) -> dict[str, Any]
 
 async def exists(app: FmcApp, name: str, types: list[str], domain: str | None) -> dict[str, Any] | None:
     try:
-        _, obj = await resolve_object(app, name, domain, types)
+        _, obj = await resolve_object(app, name, domain, types, full_fallback=False)
     except NotFound:
         return None
     return obj
@@ -202,7 +202,15 @@ def register(reg: ToolRegistrar) -> None:
                     f"{t.key} objects have no single value; use fmc_update_group for members."
                 )
             v = value if value is not None else str(current.get("port") or current.get("value") or "")
-            desired.update(value_fields(t, v, protocol or str(current.get("protocol", "")).lower() or None))
+            fields = value_fields(t, v, protocol or str(current.get("protocol", "")).lower() or None)
+            if t.key == "fqdn":
+                fields.pop("dnsResolution", None)  # keep the object's resolution setting
+            if t.key == "port" and "port" not in fields:
+                desired.pop("port", None)  # all ports
+            if t.key == "icmpv4" and "icmpType" not in fields:
+                desired.pop("icmpType", None)  # any type
+                desired.pop("code", None)
+            desired.update(fields)
         if description is not None:
             desired["description"] = description
         changes = field_changes(editable(current), desired)
@@ -214,7 +222,7 @@ def register(reg: ToolRegistrar) -> None:
         plan = Plan(
             f"Update {t.key} {current.get('name')!r}",
             details={"changes": changes, "used_by": usage},
-            fingerprint=editable(current),
+            fingerprint={"current": editable(current), "desired": desired},
             blockers=blockers,
             side_effects=["Affects every policy listed in used_by after the next deployment."]
             if usage
@@ -318,6 +326,7 @@ def register(reg: ToolRegistrar) -> None:
             plan=Plan(
                 f"Create {t.key} {name!r}",
                 details={"members": block_labels(block), "body": body},
+                fingerprint=body,
                 blockers=blockers,
             ),
             apply=lambda: applied(app, lambda: app.api.post(path, body)),
@@ -387,7 +396,7 @@ def register(reg: ToolRegistrar) -> None:
                 "members_after": after,
                 "used_by": usage,
             },
-            fingerprint=editable(current),
+            fingerprint={"current": editable(current), "desired": desired},
             blockers=blockers,
         )
         return await preview_or_apply(

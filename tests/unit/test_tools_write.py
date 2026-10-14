@@ -231,3 +231,31 @@ async def test_writes_hidden_when_disabled(fmc: respx.MockRouter) -> None:
     async with Client(create_server(make_settings())) as c:
         names = {t.name for t in await c.list_tools()}
     assert "fmc_create_object" not in names and "fmc_list_objects" in names
+
+
+async def test_clear_condition_shows_any(lab: respx.MockRouter) -> None:
+    rule = next(r for r in fixture("accessrules")["items"] if r["name"] == "mcp-test-ssh-admin")
+    put = lab.put(f"{CFG}/policy/accesspolicies/{ACP_ID}/accessrules/{rule['id']}").mock(
+        return_value=httpx.Response(200, json=rule)
+    )
+    preview, _ = await preview_apply(
+        "fmc_update_access_rule", {"policy": "mcp-test-acp", "rule": "mcp-test-ssh-admin", "source_zones": []}
+    )
+    assert preview["preview"]["changes"]["sourceZones"] == {"from": ["mcp-test-inside"], "to": "any"}
+    assert "sourceZones" not in json.loads(put.calls.last.request.content)
+
+
+async def test_insert_before_and_after_rejected(lab: respx.MockRouter) -> None:
+    async with Client(create_server(make_settings(mcp_enable_writes=True))) as c:
+        with pytest.raises(ToolError, match="not both"):
+            await run(
+                c,
+                "fmc_create_access_rule",
+                {
+                    "policy": "mcp-test-acp",
+                    "name": "x",
+                    "action": "BLOCK",
+                    "insert_before": 1,
+                    "insert_after": 2,
+                },
+            )

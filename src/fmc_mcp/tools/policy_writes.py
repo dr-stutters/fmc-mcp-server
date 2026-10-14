@@ -19,7 +19,7 @@ from stutters_mcp_core import (
 from fmc_mcp.client import FmcApp, is_uuid
 from fmc_mcp.refs import NETWORK_TYPES, PORT_TYPES, RefResolver, network_literal
 from fmc_mcp.rules import flatten_access_rule, flatten_nat_rule
-from fmc_mcp.tools.common import Domain, resolve_in
+from fmc_mcp.tools.common import Domain, block_labels, resolve_in
 from fmc_mcp.tools.object_writes import applied, editable
 from fmc_mcp.tools.policies import ACCESS, NAT, all_rules, find_access_rule, resolve_policy
 
@@ -159,6 +159,8 @@ def register(reg: ToolRegistrar) -> None:
         app: FmcApp = get_client(ctx)
         if section and category:
             raise InvalidRequest("Give either section or category, not both.")
+        if insert_before and insert_after:
+            raise InvalidRequest("Give either insert_before or insert_after, not both.")
         p = await resolve_policy(app, "access", policy, domain)
         resolver = RefResolver(app, domain)
         body: dict[str, Any] = {"name": name, "type": "AccessRule", "action": action, "enabled": enabled}
@@ -215,7 +217,7 @@ def register(reg: ToolRegistrar) -> None:
         plan = Plan(
             f"Add {action} rule {name!r} to {p.get('name')!r} {where}",
             details={"rule": flatten_access_rule(body), "position": where, "rules_now": count, "body": body},
-            fingerprint={"rules": [r.get("id") for r in existing.items]},
+            fingerprint={"policy": p["id"], "rules": [r.get("id") for r in existing.items], "body": body},
             blockers=blockers,
             side_effects=["Takes effect on devices after the next deployment."],
         )
@@ -287,34 +289,50 @@ def register(reg: ToolRegistrar) -> None:
                 desired.pop("filePolicy", None)
         if enabled is not None:
             desired["enabled"] = enabled
-        desired.update(
-            await _conditions(
-                RefResolver(app, domain),
-                {
-                    "source_zones": source_zones,
-                    "destination_zones": destination_zones,
-                    "source_networks": source_networks,
-                    "destination_networks": destination_networks,
-                    "source_ports": source_ports,
-                    "destination_ports": destination_ports,
-                    "urls": urls,
-                },
-            )
+        new_conditions = await _conditions(
+            RefResolver(app, domain),
+            {
+                "source_zones": source_zones,
+                "destination_zones": destination_zones,
+                "source_networks": source_networks,
+                "destination_networks": destination_networks,
+                "source_ports": source_ports,
+                "destination_ports": destination_ports,
+                "urls": urls,
+            },
         )
+        cleared: dict[str, Any] = {}
+        for field, block in new_conditions.items():
+            if block:
+                desired[field] = block
+            elif desired.pop(field, None):  # [] = any: FMC's PUT replaces the rule, so omit the field
+                cleared[field] = {"from": block_labels(current.get(field)), "to": "any"}
         desired.update(_log_fields(log))
         desired.pop("commentHistoryList", None)
         if comment:
             desired["newComments"] = [comment]
         old_index = (current.get("metadata") or {}).get("ruleIndex")
         base = await app.config_path(f"{ACCESS}/{p['id']}/accessrules", domain)
-        changes = field_changes(editable(current), desired)
+        changes = {**field_changes(editable(current), desired), **cleared}
         changes.pop("commentHistoryList", None)
         details: dict[str, Any] = {"rule": current.get("name"), "index": old_index, "changes": changes}
         blockers = []
+        order = await all_rules(app, base)
         if move_to:
-            total = len((await all_rules(app, base)).items)
+            total = len(order.items)
             if move_to > total:
                 blockers.append(f"move_to {move_to} is beyond the last rule ({total} rules).")
+            else:
+                target = next(
+                    (r for r in order.items if (r.get("metadata") or {}).get("ruleIndex") == move_to), None
+                )
+                here = (current.get("metadata") or {}).get("section")
+                there = (target or {}).get("metadata", {}).get("section")
+                if target is not None and here != there:
+                    blockers.append(
+                        f"Rule {move_to} is in the {there} section and this rule is in {here}; moves stay "
+                        "within a section (delete and re-create the rule to change section)."
+                    )
             details["move"] = f"{old_index} -> {move_to}"
         if not changes and not (move_to and move_to != old_index):
             blockers.append("Nothing to change.")
@@ -355,7 +373,13 @@ def register(reg: ToolRegistrar) -> None:
             plan=Plan(
                 f"Update rule {current.get('name')!r} in {p.get('name')!r}",
                 details=details,
-                fingerprint=editable(current),
+                # rule content, its position and the policy's rule order: a move is index-based
+                fingerprint={
+                    "rule": editable(current),
+                    "index": old_index,
+                    "order": [r.get("id") for r in order.items],
+                    "desired": desired,
+                },
                 blockers=blockers,
                 side_effects=["Takes effect on devices after the next deployment."],
             ),
@@ -572,6 +596,7 @@ def register(reg: ToolRegistrar) -> None:
             plan=Plan(
                 f"Add {kind} {nat_type} NAT rule to {p.get('name')!r} ({where})",
                 details={"rule": flatten_nat_rule(body), "body": body},
+                fingerprint={"policy": p["id"], "body": body},
                 side_effects=["Takes effect on devices after the next deployment."],
             ),
             apply=lambda: applied(app, lambda: app.api.post(path, body, params=params)),
