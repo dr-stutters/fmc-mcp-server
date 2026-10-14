@@ -26,7 +26,7 @@ from stutters_mcp_core.http import page_of
 
 from fmc_mcp.client import FmcApp, is_uuid
 from fmc_mcp.refs import RefResolver
-from fmc_mcp.tools.common import Domain, ref_label, ref_of, resolve_in
+from fmc_mcp.tools.common import Domain, ref_label, ref_of, resolve_in, resolve_object
 from fmc_mcp.tools.devices import (
     DEVICES,
     INTERFACE_KINDS,
@@ -283,6 +283,11 @@ def register(reg: ToolRegistrar) -> None:
         )
         if kind != "physical" and current.get("type") == "PhysicalInterface":
             kind = "physical"
+        # FMC's PUT replaces the whole interface: start from the full object, not the list item.
+        item_path = await app.config_path(
+            f"{DEVICES}/{dev['id']}/{INTERFACE_KINDS[kind]}/{current['id']}", domain
+        )
+        current = await app.api.get(item_path)
         desired = editable(current)
         if logical_name is not None:
             if logical_name.strip().lower() == "none":
@@ -542,11 +547,21 @@ def register(reg: ToolRegistrar) -> None:
             gw: dict[str, Any] = {"literal": {"type": "Host", "value": str(gw_ip)}}
             version = gw_ip.version
         except ValueError:
-            host = await res.single(gateway, ["host"], "gateway")
-            gw = {"object": host}
-            version = 6 if ":" in str(host.get("name", "")) else 4
+            _, host_obj = await resolve_object(app, gateway, domain, ["host"])
+            gw = {"object": ref_of(host_obj)}
+            version = 6 if ":" in str(host_obj.get("value", "")) else 4
+        for n in networks:
+            try:
+                fam = ipaddress.ip_network(n.strip(), strict=False).version
+            except ValueError:
+                continue
+            if fam != version:
+                blockers.append(f"{n} is IPv{fam} but the gateway is IPv{version}.")
         names = [i.get("ifname") for _, i in await device_interfaces(app, dev["id"], domain)]
-        if interface not in names:
+        match_name = next((x for x in names if str(x or "").lower() == interface.strip().lower()), None)
+        if match_name:
+            interface = str(match_name)
+        else:
             known = ", ".join(sorted(str(x) for x in names if x)) or "none (name an interface first)"
             blockers.append(f"{dev.get('name')} has no interface named {interface!r}. Named: {known}.")
         body: dict[str, Any] = {
@@ -598,6 +613,8 @@ def register(reg: ToolRegistrar) -> None:
         app: FmcApp = get_client(ctx)
         dev = await resolve_device(app, device, domain)
         base, vr_name = await routing_base(app, dev, virtual_router, domain)
+        if not is_uuid(route_id):
+            raise InvalidRequest(f"route_id must be a route UUID from fmc_list_routes, got {route_id!r}.")
         current: dict[str, Any] | None = None
         kind = sub = ""
         for k, s in (("static4", "ipv4staticroutes"), ("static6", "ipv6staticroutes")):
@@ -645,7 +662,7 @@ def register(reg: ToolRegistrar) -> None:
         app: FmcApp = get_client(ctx)
         pol = await resolve_in(app, POLICY_KINDS[kind], policy, f"{kind} policy", domain)
         targets: list[dict[str, Any]] = []
-        for ref in devices:
+        for ref in dict.fromkeys(d.strip() for d in devices):
             try:
                 d = await resolve_device(app, ref, domain)
             except NotFound:

@@ -67,6 +67,26 @@ def split_command(command: str) -> tuple[str, str | None]:
     return head, rest
 
 
+SECRET = re.compile(
+    r"(?i)\b(password|passwd|secret|key|pre-shared-key|community|key-string|authentication-key|"
+    r"auth-key|priv(?:\s+(?:aes\s+\d+|3des|des))?|auth\s+(?:md5|sha\S*))(\s+(?:\d+\s+|encrypted\s+|ascii\s+|hex\s+)?)(\S+)"
+)
+
+
+def redact(text: str) -> tuple[str, int]:
+    """Mask secrets that `show running-config <section>` prints (aaa, snmp-server, crypto, users)."""
+    count = 0
+
+    def mask(m: re.Match[str]) -> str:
+        nonlocal count
+        if set(m.group(3)) == {"*"}:
+            return m.group(0)
+        count += 1
+        return f"{m.group(1)}{m.group(2)}********"
+
+    return SECRET.sub(mask, text), count
+
+
 def filter_lines(text: str, match: str | None, max_lines: int) -> tuple[str, int, bool]:
     """(output, total lines, truncated) keeping lines containing `match` (case-insensitive)."""
     lines = text.replace("\r", "").split("\n")
@@ -104,8 +124,8 @@ def parse_phase(p: dict[str, Any], verbose: bool) -> dict[str, Any]:
                 row["rule"] = value
             elif kind in ("ACCESS POLICY", "PREFILTER POLICY"):
                 row["policy"] = value
-    elif RULE_ID.search(config):
-        row["rule_id"] = RULE_ID.search(config).group(1)  # type: ignore[union-attr]
+    elif m := RULE_ID.search(config):
+        row["rule_id"] = m.group(1)
     if verbose:
         row["config"] = config.strip() or None
         row["info"] = info.strip() or None
@@ -222,7 +242,7 @@ def register(reg: ToolRegistrar) -> None:
         time; `match` filters the lines."""
         app: FmcApp = get_client(ctx)
         dev = await resolve_device(app, device, domain)
-        text = await run_show(app, dev["id"], command, domain)
+        text, redacted = redact(await run_show(app, dev["id"], command, domain))
         output, total, truncated = filter_lines(text, match, max_lines)
         out: dict[str, Any] = {
             "device": dev.get("name"),
@@ -231,6 +251,10 @@ def register(reg: ToolRegistrar) -> None:
         }
         if match:
             out["matched_lines"] = total
+        if redacted:
+            out["redacted"] = (
+                f"{redacted} secret value(s) (passwords, keys, communities) replaced with ********"
+            )
         if truncated:
             out["note"] = f"Output truncated to {max_lines} of {total} lines; narrow it with `match`."
         return out
@@ -326,7 +350,9 @@ def register(reg: ToolRegistrar) -> None:
         """Per-rule hit counts of an access control or prefilter policy on one device, in rule order:
         hits, first and last hit, and the device rule id (the 'rule-id' that packet tracer and syslog
         show). Includes the default action. Use it to confirm which rule traffic is hitting, or with
-        only_zero to find rules nothing has used. Timestamps are as FMC reports them."""
+        only_zero to find rules nothing has used. With refresh (default) FMC first pulls the counters
+        from the device (an operational task; no configuration changes). Timestamps are as FMC
+        reports them."""
         app: FmcApp = get_client(ctx)
         p = await resolve_policy(app, kind, policy, domain)
         dev = await resolve_device(app, device, domain)
@@ -414,7 +440,7 @@ def register(reg: ToolRegistrar) -> None:
         page = await app.all(await app.config_path("health/tunnelstatuses", domain), params, cap=5000)
         rows = [tunnel_row(t) for t in page.items]
         order = {"TUNNEL_DOWN": 0, "UNKNOWN": 1, "TUNNEL_UP": 2}
-        rows.sort(key=lambda r: (order.get(str(r["state"]), 1), str(r["topology"])))
+        rows.sort(key=lambda r: (order.get(str(r["state"]), 1), str(r["topology"] or "")))
         counts: dict[str, int] = {}
         for r in rows:
             counts[str(r["state"])] = counts.get(str(r["state"]), 0) + 1

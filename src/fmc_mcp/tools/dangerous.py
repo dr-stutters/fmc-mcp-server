@@ -121,8 +121,12 @@ async def _wait_initial_deploy(
         except NotFound:
             return {}
         flt = f"deviceUUID:{dev['id']};startTime:{since - 60};endTime:{int(time.time()) + 60}"
-        page = await app.page(jobs, {"filter": flt}, limit=5)
-        job = page.items[0] if page.items else {}
+        page = await app.page(jobs, {"filter": flt}, limit=25)
+        # Only jobs started after the registration request, newest first (a re-registered device
+        # also has older jobs).
+        fresh = [j for j in page.items if _as_int(j.get("startTime")) >= since - 5]
+        fresh.sort(key=lambda j: _as_int(j.get("startTime")), reverse=True)
+        job = fresh[0] if fresh else {}
         return {
             "device_id": dev["id"],
             "job": job.get("jobName"),
@@ -147,7 +151,14 @@ async def _wait_initial_deploy(
         )
     except UpstreamTimeout:
         return {"status": "still running", "note": "Check fmc_list_deployments for the device."}
-    return {k: v for k, v in state.items() if v}
+    out = {k: v for k, v in state.items() if v}
+    status = str(out.get("status", "")).upper()
+    out["ok"] = status in ("DEPLOYED", "SUCCEEDED", "SUCCESS")
+    if not out["ok"]:
+        out["note"] = (
+            "The initial deployment did not succeed; check fmc_list_deployments and fmc_deploy again."
+        )
+    return out
 
 
 def register(reg: ToolRegistrar) -> None:
@@ -294,7 +305,7 @@ def register(reg: ToolRegistrar) -> None:
                     f"{target.get('name')} did not succeed ({target.get('status')}); pick a successful one."
                 )
         elif len(ok) >= 2:
-            target = ok[1]
+            target = ok[1]  # the successful deployment before the one the device runs now
         else:
             blockers.append("No earlier successful deployment to roll back to.")
         if target is not None and history and target is history[0]:
@@ -327,10 +338,14 @@ def register(reg: ToolRegistrar) -> None:
             plan=Plan(
                 f"Roll {dev.get('name')} back to {(target or {}).get('name') or '?'}",
                 details={
+                    "device_runs": ok[0].get("name") if ok else None,
                     "roll_back_to": row(target) if target else None,
                     "recent_deployments": [row(j) for j in history[:5]],
                 },
-                fingerprint=[j.get("id") for j in history[:5]],
+                fingerprint={
+                    "target": (target or {}).get("id"),
+                    "recent": [j.get("id") for j in history[:5]],
+                },
                 blockers=blockers,
                 side_effects=[
                     "Redeploys the earlier configuration snapshot to the device (traffic may be affected).",

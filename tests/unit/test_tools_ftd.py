@@ -2,6 +2,7 @@
 managed by FMC 10.0.1 (tests/fixtures/ftd_*.json, captured by scripts/capture_fixtures.py --ftd)."""
 
 import json
+import time
 from typing import Any
 
 import httpx
@@ -13,7 +14,7 @@ from fastmcp.exceptions import ToolError
 from fmc_mcp.server import create_server
 from fmc_mcp.tools.deploy import pending_row
 from fmc_mcp.tools.device_config import ipv4_block
-from fmc_mcp.tools.troubleshoot import filter_lines, split_command, summarize_trace
+from fmc_mcp.tools.troubleshoot import filter_lines, redact, split_command, summarize_trace
 
 from .conftest import CFG, DOMAIN, empty, fixture, items, make_settings
 
@@ -67,6 +68,10 @@ def ftd(fmc: respx.MockRouter) -> respx.MockRouter:
     fmc.get(f"{DEVPATH}/physicalinterfaces").mock(
         return_value=httpx.Response(200, json=fixture("ftd_physicalinterfaces"))
     )
+    for i in PHYS:  # the full objects (the PUT starts from these)
+        fmc.get(f"{DEVPATH}/physicalinterfaces/{i['id']}").mock(
+            return_value=httpx.Response(200, json={**i, "fragmentReassembly": False})
+        )
     for kind in ("subinterfaces", "etherchannelinterfaces", "virtualtunnelinterfaces", "loopbackinterfaces"):
         fmc.get(f"{DEVPATH}/{kind}").mock(return_value=empty())
     for kind in ("vlaninterfaces", "bridgegroupinterfaces"):  # FTDv: not supported on this model
@@ -210,6 +215,7 @@ async def test_update_interface_diff_and_body(ftd: respx.MockRouter) -> None:
     assert body["securityZone"]["id"] == ZONES[2]["id"] and body["ifname"] == "inside"
     assert body["ipv4"] == {"static": {"address": "10.99.2.1", "netmask": "24"}}
     assert "metadata" not in body and "links" not in body
+    assert body["fragmentReassembly"] is False and body["ipv6"] == INSIDE["ipv6"]  # untouched fields kept
     assert done["status"] == "applied"
 
 
@@ -523,7 +529,19 @@ async def test_register_waits_for_initial_deployment(fmc: respx.MockRouter) -> N
     fmc.get(f"{CFG}/devices/devicerecords").mock(side_effect=devices)
     fmc.get(f"{CFG}/deployment/jobhistories").mock(
         return_value=items(
-            [{"jobName": "Deploy_Job_1", "jobStatus": "DEPLOYED", "deploymentNote": "after reg"}]
+            [
+                {
+                    "jobName": "Deploy_Job_0",
+                    "jobStatus": "DEPLOYED",
+                    "startTime": 1000,
+                },  # before registration
+                {
+                    "jobName": "Deploy_Job_1",
+                    "jobStatus": "DEPLOYED",
+                    "deploymentNote": "after reg",
+                    "startTime": int(time.time()) + 1,
+                },
+            ]
         )
     )
     args = {"name": "mcp-ftd1", "host": "10.0.0.9", "reg_key": "k", "access_policy": "mcp-test-ftd-acp"}
@@ -533,6 +551,7 @@ async def test_register_waits_for_initial_deployment(fmc: respx.MockRouter) -> N
         "job": "Deploy_Job_1",
         "status": "DEPLOYED",
         "note": "after reg",
+        "ok": True,
     }
 
 
@@ -586,3 +605,49 @@ async def test_vpn_tunnels_down_first(ftd: respx.MockRouter) -> None:
     assert route.calls.last.request.url.params["filter"] == f"deviceId:{DEV_ID}"
     assert [r["peer_b"] for r in out["results"]] == ["branch2 (198.51.100.7)", "branch1 (198.51.100.7)"]
     assert out["states"] == {"TUNNEL_DOWN": 1, "TUNNEL_UP": 1}
+
+
+def test_redact_secrets() -> None:
+    text = (
+        "username admin password AbC123 encrypted privilege 15\n"
+        "snmp-server host outside 192.0.2.1 community 0 s3cr3t version 2c\n"
+        "snmp-server user u grp v3 encrypted auth sha256 AA:BB priv aes 256 CC:DD\n"
+        " ikev2 remote-authentication pre-shared-key mypsk\n"
+        " key *****\n"
+        "route outside 0.0.0.0 0.0.0.0 192.0.2.1 1"
+    )
+    out, n = redact(text)
+    for secret in ("AbC123", "s3cr3t", "AA:BB", "CC:DD", "mypsk"):
+        assert secret not in out
+    assert n == 5 and "route outside 0.0.0.0 0.0.0.0 192.0.2.1 1" in out
+
+
+async def test_show_command_output_is_redacted(ftd: respx.MockRouter) -> None:
+    ftd.get(f"{DEVPATH}/operational/commands").mock(
+        return_value=items(
+            [{"commandOutput": "snmp-server host inside 192.0.2.9 community public", "type": "command"}]
+        )
+    )
+    async with Client(server()) as c:
+        out = await run(
+            c, "fmc_run_show_command", {"device": "mcp-ftd1", "command": "show running-config snmp-server"}
+        )
+    assert "public" not in out["output"] and out["redacted"].startswith("1 secret")
+
+
+async def test_delete_static_route_needs_uuid(ftd: respx.MockRouter) -> None:
+    with pytest.raises(ToolError, match="route UUID"):
+        await preview_of(
+            "fmc_delete_static_route", {"device": "mcp-ftd1", "route_id": "x/../../object/hosts"}
+        )
+
+
+async def test_rollback_preview_states_current_and_target(ftd: respx.MockRouter) -> None:
+    jobs = fixture("ftd_deployments")
+    ftd.get(f"{CFG}/deployment/deployabledevices/{DEV_ID}/deployments").mock(
+        return_value=httpx.Response(200, json=jobs)
+    )
+    ordered = sorted(jobs["items"], key=lambda j: j["startTime"], reverse=True)
+    out = await preview_of("fmc_rollback_deployment", {"device": "mcp-ftd1", "to_job": ordered[3]["name"]})
+    assert out["preview"]["device_runs"] == ordered[0]["name"]
+    assert out["preview"]["roll_back_to"]["job"] == ordered[3]["name"]
