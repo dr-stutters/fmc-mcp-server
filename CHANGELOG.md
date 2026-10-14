@@ -1,5 +1,13 @@
 # Changelog
 
+## 0.1.1 (2026-10-15)
+
+- Requires stutters-mcp-core 0.1.1.
+- `fmc_api_call` fills `{domainUUID}` in spec paths with the default domain (FMC_DOMAIN or the login's
+  domain), so paths from `fmc_search_spec` work as-is.
+- Missing credentials raise the core's AuthError (local ValueError workaround removed).
+- Added `.dockerignore`; the image now includes LICENSE.
+
 ## 0.1.0 (2026-10-15)
 
 First release, built on stutters-mcp-core 0.1.0 and tested against FMC 10.0.1.

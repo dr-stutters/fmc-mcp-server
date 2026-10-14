@@ -119,10 +119,7 @@ class FmcApp:
         failed = self._login_failure
         if failed is not None and time.monotonic() < failed[0]:
             raise failed[1]
-        try:
-            user, password = self.settings.require_credentials("FMC_")
-        except ValueError as e:
-            raise InvalidRequest(str(e)) from e
+        user, password = self.settings.require_credentials("FMC_")  # AuthError if unset
         resp = await client.send_raw(
             "POST", LOGIN_PATH, headers={"Authorization": basic_header(user, password)}
         )
@@ -200,21 +197,18 @@ class FmcApp:
             if domains:
                 return domains[0]["uuid"]
             raise InvalidRequest("FMC did not report a domain for this login; set FMC_DOMAIN.")
-        if is_uuid(want):
-            return want.lower()
-        low = want.lower()
-        for hits in (
-            [d for d in domains if d["name"] == want],
-            [d for d in domains if d["name"].lower() == low],
-            [d for d in domains if d["name"].split("/")[-1].lower() == low],
-        ):
-            if len(hits) == 1:
-                return hits[0]["uuid"]
-            if len(hits) > 1:
-                names = ", ".join(d["name"] for d in hits)
-                raise InvalidRequest(f"Domain {want!r} is ambiguous ({names}); use the full name or UUID.")
-        names = ", ".join(d["name"] for d in domains) or "none visible"
-        raise InvalidRequest(f"Unknown FMC domain {want!r}. Domains this account can see: {names}.")
+        return _match_domain(want, domains)
+
+    def default_domain_cached(self) -> str | None:
+        """The default domain UUID without any request (None until the first login). Used to fill
+        `{domainUUID}` in fmc_api_call paths; the server logs in at startup, so it is normally set."""
+        want = (self.settings.domain or "").strip()
+        if not want:
+            return self.login_domain
+        try:
+            return _match_domain(want, self.domains)
+        except InvalidRequest:
+            return None
 
     async def domain_name(self, uuid: str) -> str:
         for d in await self._known_domains():
@@ -307,3 +301,22 @@ def _body(resp: httpx.Response) -> Any:
         return resp.json()
     except ValueError:
         return resp.text
+
+
+def _match_domain(want: str, domains: list[dict[str, str]]) -> str:
+    """A domain UUID for a UUID, full name ('Global/Child') or unique leaf name ('Child')."""
+    if is_uuid(want):
+        return want.lower()
+    low = want.lower()
+    for hits in (
+        [d for d in domains if d["name"] == want],
+        [d for d in domains if d["name"].lower() == low],
+        [d for d in domains if d["name"].split("/")[-1].lower() == low],
+    ):
+        if len(hits) == 1:
+            return hits[0]["uuid"]
+        if len(hits) > 1:
+            names = ", ".join(d["name"] for d in hits)
+            raise InvalidRequest(f"Domain {want!r} is ambiguous ({names}); use the full name or UUID.")
+    names = ", ".join(d["name"] for d in domains) or "none visible"
+    raise InvalidRequest(f"Unknown FMC domain {want!r}. Domains this account can see: {names}.")

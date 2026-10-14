@@ -13,7 +13,7 @@ ENV UV_COMPILE_BYTECODE=1 \
     UV_PYTHON_DOWNLOADS=never
 WORKDIR /app
 
-COPY pyproject.toml uv.lock README.md ./
+COPY pyproject.toml uv.lock README.md LICENSE ./
 RUN --mount=type=secret,id=core_read_token,required=false \
     if [ -s /run/secrets/core_read_token ]; then \
       git config --global url."https://x-access-token:$(cat /run/secrets/core_read_token)@github.com/".insteadOf "https://github.com/"; \

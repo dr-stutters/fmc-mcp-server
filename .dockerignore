@@ -1,0 +1,16 @@
+# Keeps lab credentials and local state out of the docker build context.
+.env
+.env.*
+!.env.example
+.git
+.github
+.venv
+**/__pycache__
+.pytest_cache
+.mypy_cache
+.ruff_cache
+tests
+scripts
+docs
+*.pem
+*.key

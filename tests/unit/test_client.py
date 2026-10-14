@@ -281,3 +281,33 @@ async def test_rotated_refresh_token_is_used(fmc: respx.MockRouter) -> None:
         await app.aclose()
     assert sent == ["refresh-1", "rot1", "rot2"]
     assert app.domains  # kept from the login even though refreshes carry no DOMAINS header
+
+
+async def test_api_call_fills_domain_uuid(fmc: respx.MockRouter) -> None:
+    route = fmc.get(f"{CFG}/object/hosts").mock(return_value=items([{"id": "h", "name": "h1"}]))
+    data = await call_tool(
+        create_server(make_settings()),
+        "fmc_api_call",
+        {"path": "/api/fmc_config/v1/domain/{domainUUID}/object/hosts"},
+    )
+    assert route.call_count == 1 and "h1" in str(data)
+
+
+async def test_api_call_uses_configured_domain(fmc: respx.MockRouter) -> None:
+    child = f"/api/fmc_config/v1/domain/{CHILD}/object/hosts"
+    route = fmc.get(child).mock(return_value=items([]))
+    await call_tool(
+        create_server(make_settings(domain="Global/Branch")),
+        "fmc_api_call",
+        {"path": "/api/fmc_config/v1/domain/{domainUUID}/object/hosts"},
+    )
+    assert route.call_count == 1
+
+
+async def test_missing_credentials_is_auth_error(fmc: respx.MockRouter) -> None:
+    app = FmcApp(make_settings(password=None))
+    try:
+        with pytest.raises(AuthError, match="FMC_USERNAME"):
+            await app.server_version()
+    finally:
+        await app.aclose()
