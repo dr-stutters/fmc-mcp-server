@@ -273,33 +273,38 @@ async def resolve_in(app: FmcApp, path: str, ref: str, what: str, domain: str | 
 async def resolve_object(
     app: FmcApp, ref: str, domain: str | None, types: list[str] | None = None
 ) -> tuple[ObjType, dict[str, Any]]:
-    """Resolve an object name or UUID, optionally restricted to some types. Without types the
-    common types are searched in turn (SEARCH_ORDER) and the first type with a match wins."""
+    """Resolve an object name or UUID, optionally restricted to some types. Types are searched in
+    order (default SEARCH_ORDER) and the first type with a match wins."""
     ref = ref.strip()
     if not ref:
         raise InvalidRequest("Empty object name.")
     candidates = [obj_type(t) for t in (types or SEARCH_ORDER)]
     found: list[tuple[ObjType, dict[str, Any]]] = []
     partial = False
-    for t in candidates:
-        full = await app.config_path(t.path, domain)
-        if is_uuid(ref):
+    if is_uuid(ref):
+        for t in candidates:
             try:
-                obj = await app.api.get(f"{full}/{ref}")
+                obj = await app.api.get(f"{await app.config_path(t.path, domain)}/{ref}")
             except NotFound:
                 continue
             if isinstance(obj, dict) and obj.get("id"):
                 return t, obj
-            continue
-        params = {"filter": f"nameOrValue:{ref}"} if t.key in FILTERABLE else None
-        page = await app.all(full, params)
-        partial = partial or not page.complete
-        hits = [i for i in page.items if i.get("name") == ref] or [
-            i for i in page.items if str(i.get("name", "")).lower() == ref.lower()
-        ]
-        found += [(t, h) for h in hits]
-        if found and types is None:
-            break
+    else:
+        # First pass uses FMC's nameOrValue filter (cheap). That index lags a few seconds behind
+        # creates, so when nothing matches and the caller named the types, retry with full listings.
+        passes = [True, False] if types is not None else [True]
+        for filtered in passes:
+            for t in candidates:
+                params = {"filter": f"nameOrValue:{ref}"} if filtered and t.key in FILTERABLE else None
+                if not filtered and t.key not in FILTERABLE:
+                    continue  # already listed in full on the first pass
+                page = await app.all(await app.config_path(t.path, domain), params)
+                partial = partial or not page.complete
+                found += [(t, h) for h in _name_hits(page.items, ref)]
+                if found:
+                    break
+            if found:
+                break
     if len(found) == 1:
         return found[0]
     if len(found) > 1:
@@ -310,3 +315,9 @@ async def resolve_object(
     raise NotFound(
         f"No object {ref!r} found (looked in: {scope}). Try fmc_list_objects or fmc_find_object.{more}", 404
     )
+
+
+def _name_hits(items: list[dict[str, Any]], ref: str) -> list[dict[str, Any]]:
+    return [i for i in items if i.get("name") == ref] or [
+        i for i in items if str(i.get("name", "")).lower() == ref.lower()
+    ]

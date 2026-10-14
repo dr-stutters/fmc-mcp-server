@@ -1,0 +1,684 @@
+"""Policy write tools (preview-first): access policies and rules, NAT policies and rules."""
+
+# No `from __future__ import annotations`: FastMCP inspects signatures at runtime.
+from typing import Annotated, Any, Literal
+
+from fastmcp import Context
+from pydantic import Field
+from stutters_mcp_core import (
+    Confirm,
+    InvalidRequest,
+    NotFound,
+    Plan,
+    ToolRegistrar,
+    field_changes,
+    get_client,
+    preview_or_apply,
+)
+
+from fmc_mcp.client import FmcApp, is_uuid
+from fmc_mcp.refs import NETWORK_TYPES, PORT_TYPES, RefResolver, network_literal
+from fmc_mcp.rules import flatten_access_rule, flatten_nat_rule
+from fmc_mcp.tools.common import Domain, resolve_in
+from fmc_mcp.tools.object_writes import applied, editable
+from fmc_mcp.tools.policies import ACCESS, NAT, all_rules, find_access_rule, resolve_policy
+
+PolicyRef = Annotated[str, Field(description="Policy name or UUID")]
+RuleAction = Literal["ALLOW", "TRUST", "BLOCK", "BLOCK_RESET", "MONITOR", "BLOCK_INTERACTIVE"]
+LogMode = Literal["none", "end", "begin_and_end"]
+
+# Our parameter -> (FMC rule field, resolver kind)
+CONDITION_PARAMS = {
+    "source_zones": ("sourceZones", "zone"),
+    "destination_zones": ("destinationZones", "zone"),
+    "source_networks": ("sourceNetworks", "network"),
+    "destination_networks": ("destinationNetworks", "network"),
+    "source_ports": ("sourcePorts", "port"),
+    "destination_ports": ("destinationPorts", "port"),
+    "urls": ("urls", "url"),
+}
+
+ZonesParam = Annotated[list[str] | None, Field(description="Security zone / interface group names")]
+NetsParam = Annotated[
+    list[str] | None,
+    Field(description="Network object/group names or literals (10.1.1.5, 10.1.0.0/16, 10.1.1.1-10.1.1.9)"),
+]
+PortsParam = Annotated[
+    list[str] | None,
+    Field(description="Port object/group names or literals (tcp/443, udp/53, tcp/1000-2000, icmp, icmp/8)"),
+]
+UrlsParam = Annotated[
+    list[str] | None, Field(description="URL object/group names or literal URLs (https://...)")
+]
+
+
+def _log_fields(log: LogMode | None) -> dict[str, Any]:
+    if log is None:
+        return {}
+    if log == "none":
+        return {"logBegin": False, "logEnd": False, "sendEventsToFMC": False}
+    return {"logBegin": log == "begin_and_end", "logEnd": True, "sendEventsToFMC": True}
+
+
+async def _conditions(resolver: RefResolver, values: dict[str, list[str] | None]) -> dict[str, Any]:
+    """Rule fields for the condition parameters that were given ([] clears a condition = any)."""
+    out: dict[str, Any] = {}
+    for param, given in values.items():
+        if given is None:
+            continue
+        field, kind = CONDITION_PARAMS[param]
+        out[field] = await resolver.block(given, kind) or {}
+    return out
+
+
+def register(reg: ToolRegistrar) -> None:
+    @reg.write(title="Create access control policy")
+    async def fmc_create_access_policy(
+        ctx: Context,
+        name: Annotated[str, Field(description="New policy name", min_length=1, max_length=64)],
+        default_action: Annotated[
+            Literal["BLOCK", "TRUST", "PERMIT", "NETWORK_DISCOVERY"],
+            Field(description="What happens to traffic no rule matches (PERMIT = intrusion prevention)"),
+        ] = "BLOCK",
+        description: Annotated[str | None, Field(description="Optional description")] = None,
+        domain: Domain = None,
+        confirm: Confirm = None,
+    ) -> dict[str, Any]:
+        """Create an empty access control policy with a default action. Add rules with
+        fmc_create_access_rule; it affects devices only once assigned and deployed."""
+        app: FmcApp = get_client(ctx)
+        body: dict[str, Any] = {
+            "name": name,
+            "type": "AccessPolicy",
+            "defaultAction": {"action": default_action},
+        }
+        if description:
+            body["description"] = description
+        blockers = []
+        try:
+            await resolve_policy(app, "access", name, domain)
+            blockers.append(f"An access policy named {name!r} already exists.")
+        except NotFound:
+            pass
+        path = await app.config_path(ACCESS, domain)
+        return await preview_or_apply(
+            ctx,
+            tool="fmc_create_access_policy",
+            args={
+                "name": name,
+                "default_action": default_action,
+                "description": description,
+                "domain": domain,
+            },
+            confirm=confirm,
+            plan=Plan(f"Create access policy {name!r}", details={"body": body}, blockers=blockers),
+            apply=lambda: applied(app, lambda: app.api.post(path, body)),
+        )
+
+    @reg.write(title="Create access rule")
+    async def fmc_create_access_rule(
+        ctx: Context,
+        policy: PolicyRef,
+        name: Annotated[
+            str, Field(description="Rule name (unique in the policy)", min_length=1, max_length=50)
+        ],
+        action: Annotated[RuleAction, Field(description="Rule action")],
+        source_zones: ZonesParam = None,
+        destination_zones: ZonesParam = None,
+        source_networks: NetsParam = None,
+        destination_networks: NetsParam = None,
+        source_ports: PortsParam = None,
+        destination_ports: PortsParam = None,
+        urls: UrlsParam = None,
+        enabled: Annotated[bool, Field(description="Create the rule enabled")] = True,
+        log: Annotated[LogMode, Field(description="Connection logging to FMC")] = "end",
+        intrusion_policy: Annotated[
+            str | None,
+            Field(description="Intrusion policy name for ALLOW rules (fmc_list_policies kind=intrusion)"),
+        ] = None,
+        section: Annotated[
+            Literal["mandatory", "default"] | None, Field(description="Section to add to (default: Default)")
+        ] = None,
+        category: Annotated[
+            str | None, Field(description="Existing category to add to (not with section)")
+        ] = None,
+        insert_before: Annotated[
+            int | None,
+            Field(ge=1, description="Insert before this 1-based rule index (see fmc_list_access_rules)"),
+        ] = None,
+        insert_after: Annotated[
+            int | None, Field(ge=1, description="Insert after this 1-based rule index")
+        ] = None,
+        comment: Annotated[str | None, Field(description="Rule comment (kept in the rule's history)")] = None,
+        domain: Domain = None,
+        confirm: Confirm = None,
+    ) -> dict[str, Any]:
+        """Add a rule to an access control policy at a chosen position. Conditions accept object
+        names or literal values; omitted conditions mean 'any'. Preview shows the rule as FMC will store
+        it, where it lands, and fmc_rule_lookup-style context (rule count). Deploy to take effect."""
+        app: FmcApp = get_client(ctx)
+        if section and category:
+            raise InvalidRequest("Give either section or category, not both.")
+        p = await resolve_policy(app, "access", policy, domain)
+        resolver = RefResolver(app, domain)
+        body: dict[str, Any] = {"name": name, "type": "AccessRule", "action": action, "enabled": enabled}
+        body.update(
+            await _conditions(
+                resolver,
+                {
+                    "source_zones": source_zones,
+                    "destination_zones": destination_zones,
+                    "source_networks": source_networks,
+                    "destination_networks": destination_networks,
+                    "source_ports": source_ports,
+                    "destination_ports": destination_ports,
+                    "urls": urls,
+                },
+            )
+        )
+        body = {k: v for k, v in body.items() if v != {}}
+        body.update(_log_fields(log))
+        if intrusion_policy:
+            if action != "ALLOW":
+                raise InvalidRequest("An intrusion policy can only be set on ALLOW rules.")
+            ips = await resolve_in(
+                app, "policy/intrusionpolicies", intrusion_policy, "intrusion policy", domain
+            )
+            body["ipsPolicy"] = {"id": ips["id"], "type": "IntrusionPolicy", "name": ips.get("name")}
+        if comment:
+            body["newComments"] = [comment]
+        params: dict[str, Any] = {}
+        if section:
+            params["section"] = section
+        if category:
+            params["category"] = category
+        if insert_before:
+            params["insertBefore"] = insert_before
+        elif insert_after:
+            params["insertAfter"] = insert_after
+        rules_path = await app.config_path(f"{ACCESS}/{p['id']}/accessrules", domain)
+        existing = await all_rules(app, rules_path)
+        blockers = []
+        if any(str(r.get("name", "")).lower() == name.lower() for r in existing.items):
+            blockers.append(f"Policy {p.get('name')!r} already has a rule named {name!r}.")
+        count = len(existing.items)
+        for idx in (insert_before, insert_after):
+            if idx and idx > count:
+                blockers.append(f"Position {idx} is beyond the last rule ({count} rules).")
+        where = (
+            f"before rule {insert_before}"
+            if insert_before
+            else f"after rule {insert_after}"
+            if insert_after
+            else f"at the end of the {category or section or 'default'} section"
+        )
+        plan = Plan(
+            f"Add {action} rule {name!r} to {p.get('name')!r} {where}",
+            details={"rule": flatten_access_rule(body), "position": where, "rules_now": count, "body": body},
+            fingerprint={"rules": [r.get("id") for r in existing.items]},
+            blockers=blockers,
+            side_effects=["Takes effect on devices after the next deployment."],
+        )
+        return await preview_or_apply(
+            ctx,
+            tool="fmc_create_access_rule",
+            args={
+                "policy": policy,
+                "name": name,
+                "action": action,
+                "source_zones": source_zones,
+                "destination_zones": destination_zones,
+                "source_networks": source_networks,
+                "destination_networks": destination_networks,
+                "source_ports": source_ports,
+                "destination_ports": destination_ports,
+                "urls": urls,
+                "enabled": enabled,
+                "log": log,
+                "intrusion_policy": intrusion_policy,
+                "section": section,
+                "category": category,
+                "insert_before": insert_before,
+                "insert_after": insert_after,
+                "comment": comment,
+                "domain": domain,
+            },
+            confirm=confirm,
+            plan=plan,
+            apply=lambda: applied(app, lambda: app.api.post(rules_path, body, params=params)),
+        )
+
+    @reg.write(title="Update access rule")
+    async def fmc_update_access_rule(
+        ctx: Context,
+        policy: PolicyRef,
+        rule: Annotated[str, Field(description="Rule name, UUID or 1-based index")],
+        new_name: Annotated[str | None, Field(description="Rename the rule")] = None,
+        action: Annotated[RuleAction | None, Field(description="New action")] = None,
+        enabled: Annotated[bool | None, Field(description="Enable or disable the rule")] = None,
+        source_zones: ZonesParam = None,
+        destination_zones: ZonesParam = None,
+        source_networks: NetsParam = None,
+        destination_networks: NetsParam = None,
+        source_ports: PortsParam = None,
+        destination_ports: PortsParam = None,
+        urls: UrlsParam = None,
+        log: Annotated[LogMode | None, Field(description="Connection logging to FMC")] = None,
+        move_to: Annotated[
+            int | None, Field(ge=1, description="Move the rule so it sits at this 1-based index")
+        ] = None,
+        comment: Annotated[str | None, Field(description="Add a comment to the rule's history")] = None,
+        domain: Domain = None,
+        confirm: Confirm = None,
+    ) -> dict[str, Any]:
+        """Change an access rule: rename, action, enable/disable, logging, replace any condition (a
+        given list replaces the old one; [] means any), add a comment, or move it to another position.
+        Preview shows the field changes and the old/new index."""
+        app: FmcApp = get_client(ctx)
+        p = await resolve_policy(app, "access", policy, domain)
+        current = await find_access_rule(app, p, rule, domain)
+        desired = editable(current)
+        if new_name:
+            desired["name"] = new_name
+        if action:
+            desired["action"] = action
+            if action != "ALLOW":
+                desired.pop("ipsPolicy", None)
+                desired.pop("filePolicy", None)
+        if enabled is not None:
+            desired["enabled"] = enabled
+        desired.update(
+            await _conditions(
+                RefResolver(app, domain),
+                {
+                    "source_zones": source_zones,
+                    "destination_zones": destination_zones,
+                    "source_networks": source_networks,
+                    "destination_networks": destination_networks,
+                    "source_ports": source_ports,
+                    "destination_ports": destination_ports,
+                    "urls": urls,
+                },
+            )
+        )
+        desired.update(_log_fields(log))
+        desired.pop("commentHistoryList", None)
+        if comment:
+            desired["newComments"] = [comment]
+        old_index = (current.get("metadata") or {}).get("ruleIndex")
+        base = await app.config_path(f"{ACCESS}/{p['id']}/accessrules", domain)
+        changes = field_changes(editable(current), desired)
+        changes.pop("commentHistoryList", None)
+        details: dict[str, Any] = {"rule": current.get("name"), "index": old_index, "changes": changes}
+        blockers = []
+        if move_to:
+            total = len((await all_rules(app, base)).items)
+            if move_to > total:
+                blockers.append(f"move_to {move_to} is beyond the last rule ({total} rules).")
+            details["move"] = f"{old_index} -> {move_to}"
+        if not changes and not (move_to and move_to != old_index):
+            blockers.append("Nothing to change.")
+
+        async def apply() -> Any:
+            if move_to and move_to != old_index:
+                # FMC moves rules through the bulk PUT with an insert position.
+                params: dict[str, Any] = {"bulk": "true"}
+                if old_index is not None and move_to > old_index:
+                    params["insertAfter"] = move_to
+                else:
+                    params["insertBefore"] = move_to
+                return await app.api.put(base, [desired], params=params)
+            return await app.api.put(f"{base}/{current['id']}", desired)
+
+        return await preview_or_apply(
+            ctx,
+            tool="fmc_update_access_rule",
+            args={
+                "policy": policy,
+                "rule": rule,
+                "new_name": new_name,
+                "action": action,
+                "enabled": enabled,
+                "source_zones": source_zones,
+                "destination_zones": destination_zones,
+                "source_networks": source_networks,
+                "destination_networks": destination_networks,
+                "source_ports": source_ports,
+                "destination_ports": destination_ports,
+                "urls": urls,
+                "log": log,
+                "move_to": move_to,
+                "comment": comment,
+                "domain": domain,
+            },
+            confirm=confirm,
+            plan=Plan(
+                f"Update rule {current.get('name')!r} in {p.get('name')!r}",
+                details=details,
+                fingerprint=editable(current),
+                blockers=blockers,
+                side_effects=["Takes effect on devices after the next deployment."],
+            ),
+            apply=lambda: applied(app, apply),
+        )
+
+    @reg.write(title="Delete access rule", destructive=True)
+    async def fmc_delete_access_rule(
+        ctx: Context,
+        policy: PolicyRef,
+        rule: Annotated[str, Field(description="Rule name, UUID or 1-based index")],
+        domain: Domain = None,
+        confirm: Confirm = None,
+    ) -> dict[str, Any]:
+        """Delete one rule from an access control policy. Preview shows the rule being removed; traffic
+        it matched falls through to later rules after the next deployment."""
+        app: FmcApp = get_client(ctx)
+        p = await resolve_policy(app, "access", policy, domain)
+        current = await find_access_rule(app, p, rule, domain)
+        path = await app.config_path(f"{ACCESS}/{p['id']}/accessrules/{current['id']}", domain)
+        return await preview_or_apply(
+            ctx,
+            tool="fmc_delete_access_rule",
+            args={"policy": policy, "rule": rule, "domain": domain},
+            confirm=confirm,
+            plan=Plan(
+                f"Delete rule {current.get('name')!r} from {p.get('name')!r}",
+                details={"rule": flatten_access_rule(current)},
+                fingerprint=editable(current),
+                side_effects=["Matching traffic falls through to later rules after the next deployment."],
+            ),
+            apply=lambda: applied(app, lambda: app.api.delete(path)),
+        )
+
+    @reg.write(title="Create NAT policy")
+    async def fmc_create_nat_policy(
+        ctx: Context,
+        name: Annotated[
+            str, Field(description="New Threat Defense NAT policy name", min_length=1, max_length=64)
+        ],
+        description: Annotated[str | None, Field(description="Optional description")] = None,
+        domain: Domain = None,
+        confirm: Confirm = None,
+    ) -> dict[str, Any]:
+        """Create an empty Threat Defense NAT policy. Add rules with fmc_create_nat_rule; assign it to
+        devices and deploy for it to take effect."""
+        app: FmcApp = get_client(ctx)
+        body: dict[str, Any] = {"name": name, "type": "FTDNatPolicy"}
+        if description:
+            body["description"] = description
+        blockers = []
+        try:
+            await resolve_policy(app, "nat", name, domain)
+            blockers.append(f"A NAT policy named {name!r} already exists.")
+        except NotFound:
+            pass
+        path = await app.config_path(NAT, domain)
+        return await preview_or_apply(
+            ctx,
+            tool="fmc_create_nat_policy",
+            args={"name": name, "description": description, "domain": domain},
+            confirm=confirm,
+            plan=Plan(f"Create NAT policy {name!r}", details={"body": body}, blockers=blockers),
+            apply=lambda: applied(app, lambda: app.api.post(path, body)),
+        )
+
+    @reg.write(title="Create NAT rule")
+    async def fmc_create_nat_rule(
+        ctx: Context,
+        policy: PolicyRef,
+        kind: Annotated[
+            Literal["auto", "manual"], Field(description="auto (object) NAT or manual (twice) NAT")
+        ],
+        original_source: Annotated[
+            str, Field(description="Original source network object name/UUID (or literal)")
+        ],
+        translated_source: Annotated[
+            str | None,
+            Field(
+                description="Translated source object, or 'interface' for interface PAT; omit for identity"
+            ),
+        ] = None,
+        nat_type: Annotated[
+            Literal["STATIC", "DYNAMIC"], Field(description="Static or dynamic NAT")
+        ] = "STATIC",
+        original_destination: Annotated[
+            str | None, Field(description="Manual NAT: original destination")
+        ] = None,
+        translated_destination: Annotated[
+            str | None, Field(description="Manual NAT: translated destination")
+        ] = None,
+        original_port: Annotated[
+            str | None,
+            Field(description="Auto NAT: 'tcp/80'; manual NAT: original destination port object"),
+        ] = None,
+        translated_port: Annotated[
+            str | None,
+            Field(description="Auto NAT: 'tcp/8080'; manual NAT: translated destination port object"),
+        ] = None,
+        source_interface: Annotated[
+            str | None, Field(description="Source security zone / interface group")
+        ] = None,
+        destination_interface: Annotated[
+            str | None, Field(description="Destination security zone / interface group")
+        ] = None,
+        section: Annotated[
+            Literal["before_auto", "after_auto"], Field(description="Manual NAT section")
+        ] = "before_auto",
+        target_index: Annotated[
+            int | None, Field(ge=1, description="Manual NAT: position in the section")
+        ] = None,
+        enabled: Annotated[bool, Field(description="Manual NAT: create enabled")] = True,
+        description: Annotated[str | None, Field(description="Manual NAT: rule description")] = None,
+        domain: Domain = None,
+        confirm: Confirm = None,
+    ) -> dict[str, Any]:
+        """Add an auto (object) NAT or manual (twice) NAT rule to a Threat Defense NAT policy. Network
+        fields take object names/UUIDs (create objects for raw addresses first); 'interface' as the
+        translated source means interface PAT (requires a destination interface). Preview
+        shows the rule as FMC will store it."""
+        app: FmcApp = get_client(ctx)
+        p = await resolve_policy(app, "nat", policy, domain)
+        res = RefResolver(app, domain)
+
+        async def net(v: str | None, what: str) -> dict[str, Any] | None:
+            if not v:
+                return None
+            if network_literal(v) is not None and not is_uuid(v):
+                raise InvalidRequest(f"{what}: NAT rules need network objects; create one for {v!r} first.")
+            return await res.single(v, NETWORK_TYPES, what)
+
+        body: dict[str, Any] = {"natType": nat_type}
+        if source_interface:
+            body["sourceInterface"] = await res.single(
+                source_interface, ["security_zone", "interface_group"], "zone"
+            )
+        if destination_interface:
+            body["destinationInterface"] = await res.single(
+                destination_interface, ["security_zone", "interface_group"], "zone"
+            )
+        iface = (translated_source or "").lower() == "interface"
+        if iface and not destination_interface:
+            raise InvalidRequest("Interface PAT needs destination_interface.")
+        if kind == "auto":
+            body["type"] = "FTDAutoNatRule"
+            body["originalNetwork"] = await net(original_source, "original_source")
+            if iface:
+                body["interfaceInTranslatedNetwork"] = True
+            elif translated_source:
+                body["translatedNetwork"] = await net(translated_source, "translated_source")
+            if original_port or translated_port:
+                if not (original_port and translated_port):
+                    raise InvalidRequest(
+                        "Auto NAT port translation needs both original_port and translated_port."
+                    )
+                (op, oport), (tp, tport) = _proto_port(original_port), _proto_port(translated_port)
+                if op != tp:
+                    raise InvalidRequest("original_port and translated_port must use the same protocol.")
+                body.update(serviceProtocol=op, originalPort=oport, translatedPort=tport)
+            path = await app.config_path(f"{NAT}/{p['id']}/autonatrules", domain)
+            params: dict[str, Any] = {}
+        else:
+            body.update(type="FTDManualNatRule", enabled=enabled)
+            body["originalSource"] = await net(original_source, "original_source")
+            if iface:
+                body["interfaceInTranslatedSource"] = True
+            elif translated_source:
+                body["translatedSource"] = await net(translated_source, "translated_source")
+            if original_destination:
+                body["originalDestination"] = await net(original_destination, "original_destination")
+            if translated_destination:
+                body["translatedDestination"] = await net(translated_destination, "translated_destination")
+            if original_port:
+                body["originalDestinationPort"] = await res.single(original_port, PORT_TYPES, "original_port")
+            if translated_port:
+                body["translatedDestinationPort"] = await res.single(
+                    translated_port, PORT_TYPES, "translated_port"
+                )
+            if description:
+                body["description"] = description
+            path = await app.config_path(f"{NAT}/{p['id']}/manualnatrules", domain)
+            params = {"section": section}
+            if target_index:
+                params["targetIndex"] = target_index
+        if kind == "auto" and not (iface or translated_source):
+            raise InvalidRequest("Auto NAT needs translated_source (an object or 'interface').")
+        where = (
+            f"{section} section" + (f" at {target_index}" if target_index else "")
+            if kind == "manual"
+            else "auto NAT"
+        )
+        return await preview_or_apply(
+            ctx,
+            tool="fmc_create_nat_rule",
+            args={
+                "policy": policy,
+                "kind": kind,
+                "original_source": original_source,
+                "translated_source": translated_source,
+                "nat_type": nat_type,
+                "original_destination": original_destination,
+                "translated_destination": translated_destination,
+                "original_port": original_port,
+                "translated_port": translated_port,
+                "source_interface": source_interface,
+                "destination_interface": destination_interface,
+                "section": section,
+                "target_index": target_index,
+                "enabled": enabled,
+                "description": description,
+                "domain": domain,
+            },
+            confirm=confirm,
+            plan=Plan(
+                f"Add {kind} {nat_type} NAT rule to {p.get('name')!r} ({where})",
+                details={"rule": flatten_nat_rule(body), "body": body},
+                side_effects=["Takes effect on devices after the next deployment."],
+            ),
+            apply=lambda: applied(app, lambda: app.api.post(path, body, params=params)),
+        )
+
+    @reg.write(title="Update NAT rule")
+    async def fmc_update_nat_rule(
+        ctx: Context,
+        policy: PolicyRef,
+        rule_id: Annotated[str, Field(description="NAT rule UUID (from fmc_list_nat_rules)")],
+        enabled: Annotated[bool | None, Field(description="Manual NAT: enable or disable")] = None,
+        translated_source: Annotated[str | None, Field(description="New translated source object")] = None,
+        original_source: Annotated[str | None, Field(description="New original source object")] = None,
+        description: Annotated[str | None, Field(description="Manual NAT: new description")] = None,
+        domain: Domain = None,
+        confirm: Confirm = None,
+    ) -> dict[str, Any]:
+        """Change a NAT rule: enable/disable or describe a manual rule, or point it at a different
+        original/translated source object. Preview shows the field changes."""
+        app: FmcApp = get_client(ctx)
+        p = await resolve_policy(app, "nat", policy, domain)
+        current, path = await _nat_rule(app, p, rule_id, domain)
+        auto = current.get("type") == "FTDAutoNatRule"
+        desired = editable(current)
+        res = RefResolver(app, domain)
+        if enabled is not None:
+            if auto:
+                raise InvalidRequest("Auto NAT rules can't be disabled; delete the rule instead.")
+            desired["enabled"] = enabled
+        if description is not None:
+            desired["description"] = description
+        if original_source:
+            desired["originalNetwork" if auto else "originalSource"] = await res.single(
+                original_source, NETWORK_TYPES, "original_source"
+            )
+        if translated_source:
+            desired["translatedNetwork" if auto else "translatedSource"] = await res.single(
+                translated_source, NETWORK_TYPES, "translated_source"
+            )
+        changes = field_changes(editable(current), desired)
+        return await preview_or_apply(
+            ctx,
+            tool="fmc_update_nat_rule",
+            args={
+                "policy": policy,
+                "rule_id": rule_id,
+                "enabled": enabled,
+                "translated_source": translated_source,
+                "original_source": original_source,
+                "description": description,
+                "domain": domain,
+            },
+            confirm=confirm,
+            plan=Plan(
+                f"Update NAT rule {rule_id} in {p.get('name')!r}",
+                details={"rule": flatten_nat_rule(current), "changes": changes},
+                fingerprint=editable(current),
+                blockers=[] if changes else ["Nothing to change."],
+            ),
+            apply=lambda: applied(app, lambda: app.api.put(path, desired)),
+        )
+
+    @reg.write(title="Delete NAT rule", destructive=True)
+    async def fmc_delete_nat_rule(
+        ctx: Context,
+        policy: PolicyRef,
+        rule_id: Annotated[str, Field(description="NAT rule UUID (from fmc_list_nat_rules)")],
+        domain: Domain = None,
+        confirm: Confirm = None,
+    ) -> dict[str, Any]:
+        """Delete one NAT rule from a Threat Defense NAT policy. Preview shows the rule being removed."""
+        app: FmcApp = get_client(ctx)
+        p = await resolve_policy(app, "nat", policy, domain)
+        current, path = await _nat_rule(app, p, rule_id, domain)
+        return await preview_or_apply(
+            ctx,
+            tool="fmc_delete_nat_rule",
+            args={"policy": policy, "rule_id": rule_id, "domain": domain},
+            confirm=confirm,
+            plan=Plan(
+                f"Delete NAT rule {rule_id} from {p.get('name')!r}",
+                details={"rule": flatten_nat_rule(current)},
+                fingerprint=editable(current),
+                side_effects=["Takes effect on devices after the next deployment."],
+            ),
+            apply=lambda: applied(app, lambda: app.api.delete(path)),
+        )
+
+
+def _proto_port(text: str) -> tuple[str, int]:
+    proto, _, port = text.strip().lower().partition("/")
+    if proto not in ("tcp", "udp") or not port.isdigit():
+        raise InvalidRequest(f"Use 'tcp/80' or 'udp/53' for NAT ports, got {text!r}")
+    return proto.upper(), int(port)
+
+
+async def _nat_rule(
+    app: FmcApp, policy: dict[str, Any], rule_id: str, domain: str | None
+) -> tuple[dict[str, Any], str]:
+    """A NAT rule (auto or manual) by UUID and the path to PUT/DELETE it."""
+    if not is_uuid(rule_id):
+        raise InvalidRequest("NAT rules have no names; pass the rule UUID from fmc_list_nat_rules.")
+    for kind in ("manualnatrules", "autonatrules"):
+        path = await app.config_path(f"{NAT}/{policy['id']}/{kind}/{rule_id}", domain)
+        try:
+            rule: dict[str, Any] = await app.api.get(path)
+        except NotFound:
+            continue
+        return rule, path
+    raise NotFound(f"No NAT rule {rule_id} in {policy.get('name')!r}.", 404)
