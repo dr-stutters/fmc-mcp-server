@@ -1,0 +1,27 @@
+# Python
+__pycache__/
+*.py[cod]
+*.egg-info/
+build/
+dist/
+.venv/
+.pytest_cache/
+.mypy_cache/
+.ruff_cache/
+.coverage
+htmlcov/
+
+# Secrets / local config
+.env
+.env.*
+!.env.example
+*.pem
+*.key
+
+# Captured lab data must be redacted before committing
+tests/fixtures/raw/
+
+# Editors / OS
+.vscode/
+.idea/
+.DS_Store
