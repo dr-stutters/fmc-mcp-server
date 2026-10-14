@@ -1,0 +1,746 @@
+{
+ "items": [
+  {
+   "metadata": {
+    "readOnly": {
+     "state": true,
+     "reason": "SYSTEM"
+    },
+    "timestamp": 1775157449079,
+    "lastUser": {
+     "name": "admin"
+    },
+    "domain": {
+     "name": "Global",
+     "id": "e276abec-e0f2-11e3-8169-6d9ed49b625f",
+     "type": "Domain"
+    },
+    "parentType": "Port"
+   },
+   "type": "ProtocolPortObject",
+   "port": "5190",
+   "protocol": "TCP",
+   "overridable": false,
+   "name": "AOL",
+   "id": "1834d812-38bb-11e2-86aa-62f0c593a59a"
+  },
+  {
+   "metadata": {
+    "readOnly": {
+     "state": true,
+     "reason": "SYSTEM"
+    },
+    "timestamp": 1775157449080,
+    "lastUser": {
+     "name": "admin"
+    },
+    "domain": {
+     "name": "Global",
+     "id": "e276abec-e0f2-11e3-8169-6d9ed49b625f",
+     "type": "Domain"
+    },
+    "parentType": "Port"
+   },
+   "type": "ProtocolPortObject",
+   "port": "6881-6889",
+   "protocol": "TCP",
+   "overridable": false,
+   "name": "Bittorrent",
+   "id": "1834e5f0-38bb-11e2-86aa-62f0c593a59a"
+  },
+  {
+   "metadata": {
+    "readOnly": {
+     "state": true,
+     "reason": "SYSTEM"
+    },
+    "timestamp": 1775157449081,
+    "lastUser": {
+     "name": "admin"
+    },
+    "domain": {
+     "name": "Global",
+     "id": "e276abec-e0f2-11e3-8169-6d9ed49b625f",
+     "type": "Domain"
+    },
+    "parentType": "Port"
+   },
+   "type": "ProtocolPortObject",
+   "port": "53",
+   "protocol": "TCP",
+   "overridable": false,
+   "name": "DNS_over_TCP",
+   "id": "1834e712-38bb-11e2-86aa-62f0c593a59a"
+  },
+  {
+   "metadata": {
+    "readOnly": {
+     "state": true,
+     "reason": "SYSTEM"
+    },
+    "timestamp": 1775157449076,
+    "lastUser": {
+     "name": "admin"
+    },
+    "domain": {
+     "name": "Global",
+     "id": "e276abec-e0f2-11e3-8169-6d9ed49b625f",
+     "type": "Domain"
+    },
+    "parentType": "Port"
+   },
+   "type": "ProtocolPortObject",
+   "port": "53",
+   "protocol": "UDP",
+   "overridable": false,
+   "name": "DNS_over_UDP",
+   "id": "1834e8ca-38bb-11e2-86aa-62f0c593a59a"
+  },
+  {
+   "metadata": {
+    "readOnly": {
+     "state": true,
+     "reason": "SYSTEM"
+    },
+    "timestamp": 1775157449077,
+    "lastUser": {
+     "name": "admin"
+    },
+    "domain": {
+     "name": "Global",
+     "id": "e276abec-e0f2-11e3-8169-6d9ed49b625f",
+     "type": "Domain"
+    },
+    "parentType": "Port"
+   },
+   "type": "ProtocolPortObject",
+   "port": "21",
+   "protocol": "TCP",
+   "overridable": false,
+   "name": "FTP",
+   "id": "1834c674-38bb-11e2-86aa-62f0c593a59a"
+  },
+  {
+   "metadata": {
+    "readOnly": {
+     "state": true,
+     "reason": "SYSTEM"
+    },
+    "timestamp": 1775157449075,
+    "lastUser": {
+     "name": "admin"
+    },
+    "domain": {
+     "name": "Global",
+     "id": "e276abec-e0f2-11e3-8169-6d9ed49b625f",
+     "type": "Domain"
+    },
+    "parentType": "Port"
+   },
+   "type": "ProtocolPortObject",
+   "port": "80",
+   "protocol": "TCP",
+   "overridable": false,
+   "name": "HTTP",
+   "id": "18312adc-38bb-11e2-86aa-62f0c593a59a"
+  },
+  {
+   "metadata": {
+    "readOnly": {
+     "state": true,
+     "reason": "SYSTEM"
+    },
+    "timestamp": 1775157449076,
+    "lastUser": {
+     "name": "admin"
+    },
+    "domain": {
+     "name": "Global",
+     "id": "e276abec-e0f2-11e3-8169-6d9ed49b625f",
+     "type": "Domain"
+    },
+    "parentType": "Port"
+   },
+   "type": "ProtocolPortObject",
+   "port": "443",
+   "protocol": "TCP",
+   "overridable": false,
+   "name": "HTTPS",
+   "id": "1834bd00-38bb-11e2-86aa-62f0c593a59a"
+  },
+  {
+   "metadata": {
+    "readOnly": {
+     "state": true,
+     "reason": "SYSTEM"
+    },
+    "timestamp": 1775157449077,
+    "lastUser": {
+     "name": "admin"
+    },
+    "domain": {
+     "name": "Global",
+     "id": "e276abec-e0f2-11e3-8169-6d9ed49b625f",
+     "type": "Domain"
+    },
+    "parentType": "Port"
+   },
+   "type": "ProtocolPortObject",
+   "port": "143",
+   "protocol": "TCP",
+   "overridable": false,
+   "name": "IMAP",
+   "id": "1834c37c-38bb-11e2-86aa-62f0c593a59a"
+  },
+  {
+   "metadata": {
+    "readOnly": {
+     "state": true,
+     "reason": "SYSTEM"
+    },
+    "timestamp": 1775157449079,
+    "lastUser": {
+     "name": "admin"
+    },
+    "domain": {
+     "name": "Global",
+     "id": "e276abec-e0f2-11e3-8169-6d9ed49b625f",
+     "type": "Domain"
+    },
+    "parentType": "Port"
+   },
+   "type": "ProtocolPortObject",
+   "port": "389",
+   "protocol": "TCP",
+   "overridable": false,
+   "name": "LDAP",
+   "id": "1834d01a-38bb-11e2-86aa-62f0c593a59a"
+  },
+  {
+   "metadata": {
+    "timestamp": 1791980803544,
+    "lastUser": {
+     "name": "admin"
+    },
+    "domain": {
+     "name": "Global",
+     "id": "e276abec-e0f2-11e3-8169-6d9ed49b625f",
+     "type": "Domain"
+    },
+    "parentType": "Port"
+   },
+   "type": "ProtocolPortObject",
+   "port": "8443",
+   "protocol": "TCP",
+   "overridable": false,
+   "name": "mcp-test-tcp-8443",
+   "id": "00000000-0000-0ed3-0000-021474837293"
+  },
+  {
+   "metadata": {
+    "timestamp": 1791980804667,
+    "lastUser": {
+     "name": "admin"
+    },
+    "domain": {
+     "name": "Global",
+     "id": "e276abec-e0f2-11e3-8169-6d9ed49b625f",
+     "type": "Domain"
+    },
+    "parentType": "Port"
+   },
+   "type": "ProtocolPortObject",
+   "port": "5000-5100",
+   "protocol": "UDP",
+   "overridable": false,
+   "name": "mcp-test-udp-5000s",
+   "id": "00000000-0000-0ed3-0000-021474837311"
+  },
+  {
+   "metadata": {
+    "readOnly": {
+     "state": true,
+     "reason": "SYSTEM"
+    },
+    "timestamp": 1775157449078,
+    "lastUser": {
+     "name": "admin"
+    },
+    "domain": {
+     "name": "Global",
+     "id": "e276abec-e0f2-11e3-8169-6d9ed49b625f",
+     "type": "Domain"
+    },
+    "parentType": "Port"
+   },
+   "type": "ProtocolPortObject",
+   "port": "2049",
+   "protocol": "TCP",
+   "overridable": false,
+   "name": "NFSD-TCP",
+   "id": "1834c9c6-38bb-11e2-86aa-62f0c593a59a"
+  },
+  {
+   "metadata": {
+    "readOnly": {
+     "state": true,
+     "reason": "SYSTEM"
+    },
+    "timestamp": 1775157449078,
+    "lastUser": {
+     "name": "admin"
+    },
+    "domain": {
+     "name": "Global",
+     "id": "e276abec-e0f2-11e3-8169-6d9ed49b625f",
+     "type": "Domain"
+    },
+    "parentType": "Port"
+   },
+   "type": "ProtocolPortObject",
+   "port": "2049",
+   "protocol": "UDP",
+   "overridable": false,
+   "name": "NFSD-UDP",
+   "id": "1834caac-38bb-11e2-86aa-62f0c593a59a"
+  },
+  {
+   "metadata": {
+    "readOnly": {
+     "state": true,
+     "reason": "SYSTEM"
+    },
+    "timestamp": 1775157449078,
+    "lastUser": {
+     "name": "admin"
+    },
+    "domain": {
+     "name": "Global",
+     "id": "e276abec-e0f2-11e3-8169-6d9ed49b625f",
+     "type": "Domain"
+    },
+    "parentType": "Port"
+   },
+   "type": "ProtocolPortObject",
+   "port": "123",
+   "protocol": "TCP",
+   "overridable": false,
+   "name": "NTP-TCP",
+   "id": "1834cb92-38bb-11e2-86aa-62f0c593a59a"
+  },
+  {
+   "metadata": {
+    "readOnly": {
+     "state": true,
+     "reason": "SYSTEM"
+    },
+    "timestamp": 1775157449078,
+    "lastUser": {
+     "name": "admin"
+    },
+    "domain": {
+     "name": "Global",
+     "id": "e276abec-e0f2-11e3-8169-6d9ed49b625f",
+     "type": "Domain"
+    },
+    "parentType": "Port"
+   },
+   "type": "ProtocolPortObject",
+   "port": "123",
+   "protocol": "UDP",
+   "overridable": false,
+   "name": "NTP-UDP",
+   "id": "1834cc96-38bb-11e2-86aa-62f0c593a59a"
+  },
+  {
+   "metadata": {
+    "readOnly": {
+     "state": true,
+     "reason": "SYSTEM"
+    },
+    "timestamp": 1775157449077,
+    "lastUser": {
+     "name": "admin"
+    },
+    "domain": {
+     "name": "Global",
+     "id": "e276abec-e0f2-11e3-8169-6d9ed49b625f",
+     "type": "Domain"
+    },
+    "parentType": "Port"
+   },
+   "type": "ProtocolPortObject",
+   "port": "109",
+   "protocol": "TCP",
+   "overridable": false,
+   "name": "POP-2",
+   "id": "1834c462-38bb-11e2-86aa-62f0c593a59a"
+  },
+  {
+   "metadata": {
+    "readOnly": {
+     "state": true,
+     "reason": "SYSTEM"
+    },
+    "timestamp": 1775157449077,
+    "lastUser": {
+     "name": "admin"
+    },
+    "domain": {
+     "name": "Global",
+     "id": "e276abec-e0f2-11e3-8169-6d9ed49b625f",
+     "type": "Domain"
+    },
+    "parentType": "Port"
+   },
+   "type": "ProtocolPortObject",
+   "port": "110",
+   "protocol": "TCP",
+   "overridable": false,
+   "name": "POP-3",
+   "id": "1834c548-38bb-11e2-86aa-62f0c593a59a"
+  },
+  {
+   "metadata": {
+    "readOnly": {
+     "state": true,
+     "reason": "SYSTEM"
+    },
+    "timestamp": 1775157449078,
+    "lastUser": {
+     "name": "admin"
+    },
+    "domain": {
+     "name": "Global",
+     "id": "e276abec-e0f2-11e3-8169-6d9ed49b625f",
+     "type": "Domain"
+    },
+    "parentType": "Port"
+   },
+   "type": "ProtocolPortObject",
+   "port": "1645",
+   "protocol": "UDP",
+   "overridable": false,
+   "name": "RADIUS",
+   "id": "1834ce94-38bb-11e2-86aa-62f0c593a59a"
+  },
+  {
+   "metadata": {
+    "readOnly": {
+     "state": true,
+     "reason": "SYSTEM"
+    },
+    "timestamp": 1775157449079,
+    "lastUser": {
+     "name": "admin"
+    },
+    "domain": {
+     "name": "Global",
+     "id": "e276abec-e0f2-11e3-8169-6d9ed49b625f",
+     "type": "Domain"
+    },
+    "parentType": "Port"
+   },
+   "type": "ProtocolPortObject",
+   "port": "520",
+   "protocol": "UDP",
+   "overridable": false,
+   "name": "RIP",
+   "id": "1834d114-38bb-11e2-86aa-62f0c593a59a"
+  },
+  {
+   "metadata": {
+    "readOnly": {
+     "state": true,
+     "reason": "SYSTEM"
+    },
+    "timestamp": 1775157449079,
+    "lastUser": {
+     "name": "admin"
+    },
+    "domain": {
+     "name": "Global",
+     "id": "e276abec-e0f2-11e3-8169-6d9ed49b625f",
+     "type": "Domain"
+    },
+    "parentType": "Port"
+   },
+   "type": "ProtocolPortObject",
+   "port": "5060",
+   "protocol": "UDP",
+   "overridable": false,
+   "name": "SIP",
+   "id": "1834d204-38bb-11e2-86aa-62f0c593a59a"
+  },
+  {
+   "metadata": {
+    "readOnly": {
+     "state": true,
+     "reason": "SYSTEM"
+    },
+    "timestamp": 1775157449076,
+    "lastUser": {
+     "name": "admin"
+    },
+    "domain": {
+     "name": "Global",
+     "id": "e276abec-e0f2-11e3-8169-6d9ed49b625f",
+     "type": "Domain"
+    },
+    "parentType": "Port"
+   },
+   "type": "ProtocolPortObject",
+   "port": "25",
+   "protocol": "TCP",
+   "overridable": false,
+   "name": "SMTP",
+   "id": "1834bf44-38bb-11e2-86aa-62f0c593a59a"
+  },
+  {
+   "metadata": {
+    "readOnly": {
+     "state": true,
+     "reason": "SYSTEM"
+    },
+    "timestamp": 1775157449076,
+    "lastUser": {
+     "name": "admin"
+    },
+    "domain": {
+     "name": "Global",
+     "id": "e276abec-e0f2-11e3-8169-6d9ed49b625f",
+     "type": "Domain"
+    },
+    "parentType": "Port"
+   },
+   "type": "ProtocolPortObject",
+   "port": "465",
+   "protocol": "TCP",
+   "overridable": false,
+   "name": "SMTPS",
+   "id": "1834c07a-38bb-11e2-86aa-62f0c593a59a"
+  },
+  {
+   "metadata": {
+    "readOnly": {
+     "state": true,
+     "reason": "SYSTEM"
+    },
+    "timestamp": 1775157449076,
+    "lastUser": {
+     "name": "admin"
+    },
+    "domain": {
+     "name": "Global",
+     "id": "e276abec-e0f2-11e3-8169-6d9ed49b625f",
+     "type": "Domain"
+    },
+    "parentType": "Port"
+   },
+   "type": "ProtocolPortObject",
+   "port": "161",
+   "protocol": "UDP",
+   "overridable": false,
+   "name": "SNMP",
+   "id": "1834c264-38bb-11e2-86aa-62f0c593a59a"
+  },
+  {
+   "metadata": {
+    "readOnly": {
+     "state": true,
+     "reason": "SYSTEM"
+    },
+    "timestamp": 1775157449077,
+    "lastUser": {
+     "name": "admin"
+    },
+    "domain": {
+     "name": "Global",
+     "id": "e276abec-e0f2-11e3-8169-6d9ed49b625f",
+     "type": "Domain"
+    },
+    "parentType": "Port"
+   },
+   "type": "ProtocolPortObject",
+   "port": "22",
+   "protocol": "TCP",
+   "overridable": false,
+   "name": "SSH",
+   "id": "1834c890-38bb-11e2-86aa-62f0c593a59a"
+  },
+  {
+   "metadata": {
+    "readOnly": {
+     "state": true,
+     "reason": "SYSTEM"
+    },
+    "timestamp": 1775157449079,
+    "lastUser": {
+     "name": "admin"
+    },
+    "domain": {
+     "name": "Global",
+     "id": "e276abec-e0f2-11e3-8169-6d9ed49b625f",
+     "type": "Domain"
+    },
+    "parentType": "Port"
+   },
+   "type": "ProtocolPortObject",
+   "port": "514",
+   "protocol": "UDP",
+   "overridable": false,
+   "name": "SYSLOG",
+   "id": "1834d6e6-38bb-11e2-86aa-62f0c593a59a"
+  },
+  {
+   "metadata": {
+    "readOnly": {
+     "state": true,
+     "reason": "SYSTEM"
+    },
+    "timestamp": 1775157449081,
+    "lastUser": {
+     "name": "admin"
+    },
+    "domain": {
+     "name": "Global",
+     "id": "e276abec-e0f2-11e3-8169-6d9ed49b625f",
+     "type": "Domain"
+    },
+    "parentType": "Port"
+   },
+   "type": "ProtocolPortObject",
+   "port": "1021-65535",
+   "protocol": "TCP",
+   "overridable": false,
+   "name": "TCP_high_ports",
+   "id": "1834e50a-38bb-11e2-86aa-62f0c593a59a"
+  },
+  {
+   "metadata": {
+    "readOnly": {
+     "state": true,
+     "reason": "SYSTEM"
+    },
+    "timestamp": 1775157449080,
+    "lastUser": {
+     "name": "admin"
+    },
+    "domain": {
+     "name": "Global",
+     "id": "e276abec-e0f2-11e3-8169-6d9ed49b625f",
+     "type": "Domain"
+    },
+    "parentType": "Port"
+   },
+   "type": "ProtocolPortObject",
+   "port": "23",
+   "protocol": "TCP",
+   "overridable": false,
+   "name": "TELNET",
+   "id": "28e058e4-43b0-11e2-9bcd-7c2f9ed9bbee"
+  },
+  {
+   "metadata": {
+    "readOnly": {
+     "state": true,
+     "reason": "SYSTEM"
+    },
+    "timestamp": 1775157449079,
+    "lastUser": {
+     "name": "admin"
+    },
+    "domain": {
+     "name": "Global",
+     "id": "e276abec-e0f2-11e3-8169-6d9ed49b625f",
+     "type": "Domain"
+    },
+    "parentType": "Port"
+   },
+   "type": "ProtocolPortObject",
+   "port": "69",
+   "protocol": "UDP",
+   "overridable": false,
+   "name": "TFTP",
+   "id": "1834d5e2-38bb-11e2-86aa-62f0c593a59a"
+  },
+  {
+   "metadata": {
+    "readOnly": {
+     "state": true,
+     "reason": "SYSTEM"
+    },
+    "timestamp": 1775157449080,
+    "lastUser": {
+     "name": "admin"
+    },
+    "domain": {
+     "name": "Global",
+     "id": "e276abec-e0f2-11e3-8169-6d9ed49b625f",
+     "type": "Domain"
+    },
+    "parentType": "Port"
+   },
+   "type": "ProtocolPortObject",
+   "port": "5050",
+   "protocol": "TCP",
+   "overridable": false,
+   "name": "Yahoo_Messenger_Messages",
+   "id": "1834da1a-38bb-11e2-86aa-62f0c593a59a"
+  },
+  {
+   "metadata": {
+    "readOnly": {
+     "state": true,
+     "reason": "SYSTEM"
+    },
+    "timestamp": 1775157449080,
+    "lastUser": {
+     "name": "admin"
+    },
+    "domain": {
+     "name": "Global",
+     "id": "e276abec-e0f2-11e3-8169-6d9ed49b625f",
+     "type": "Domain"
+    },
+    "parentType": "Port"
+   },
+   "type": "ProtocolPortObject",
+   "port": "5000-5001",
+   "protocol": "TCP",
+   "overridable": false,
+   "name": "YahooMessenger_Voice_Chat_TCP",
+   "id": "1834db96-38bb-11e2-86aa-62f0c593a59a"
+  },
+  {
+   "metadata": {
+    "readOnly": {
+     "state": true,
+     "reason": "SYSTEM"
+    },
+    "timestamp": 1775157449080,
+    "lastUser": {
+     "name": "admin"
+    },
+    "domain": {
+     "name": "Global",
+     "id": "e276abec-e0f2-11e3-8169-6d9ed49b625f",
+     "type": "Domain"
+    },
+    "parentType": "Port"
+   },
+   "type": "ProtocolPortObject",
+   "port": "5000-5010",
+   "protocol": "UDP",
+   "overridable": false,
+   "name": "YahooMessenger_Voice_Chat_UDP",
+   "id": "1834dc86-38bb-11e2-86aa-62f0c593a59a"
+  }
+ ],
+ "paging": {
+  "offset": 0,
+  "limit": 1000,
+  "count": 31,
+  "pages": 1
+ }
+}

@@ -1,0 +1,74 @@
+{
+ "items": [
+  {
+   "metadata": {
+    "inherit": false,
+    "lockingStatus": {
+     "status": "UNLOCKED"
+    },
+    "timestamp": 1791980813559,
+    "lastUser": {
+     "name": "admin"
+    },
+    "domain": {
+     "name": "Global",
+     "id": "e276abec-e0f2-11e3-8169-6d9ed49b625f",
+     "type": "Domain"
+    }
+   },
+   "type": "AccessPolicy",
+   "rules": {
+    "refType": "list",
+    "type": "AccessRule"
+   },
+   "securityIntelligence": {
+    "id": "00000000-0000-0ed3-0000-021474837468",
+    "type": "SecurityIntelligencePolicy"
+   },
+   "advancedLoggingSetting": {
+    "type": "AdvancedLoggingSetting",
+    "id": "00000000-0000-0ed3-0000-021474837426"
+   },
+   "eveSetting": {
+    "id": "00000000-0000-0ed3-0000-021474837428",
+    "type": "EVESetting",
+    "enabled": false,
+    "inheritFromParent": false,
+    "isLockedForChild": false
+   },
+   "prefilterPolicySetting": {
+    "type": "PrefilterPolicy",
+    "name": "Default Prefilter Policy",
+    "id": "4897c8f4-e211-4661-b0a4-25b0826cded9"
+   },
+   "loggingPolicySetting": {
+    "isLockedForChild": false,
+    "inheritFromParent": false,
+    "enableipsSyslog": false,
+    "enableSplunk": true,
+    "syslogConfigFromPlatformSetting": false,
+    "enableFileAndMalwareSyslog": false,
+    "type": "LoggingSetting",
+    "id": "00000000-0000-0ed3-0000-021474837448"
+   },
+   "defaultAction": {
+    "enableSyslog": false,
+    "logBegin": false,
+    "logEnd": false,
+    "sendEventsToFMC": false,
+    "action": "BLOCK",
+    "type": "AccessPolicyDefaultAction",
+    "id": "00000000-0000-0ed3-0000-000268434436"
+   },
+   "name": "mcp-test-acp",
+   "description": "mcp live tests",
+   "id": "00000000-0000-0ed3-0000-021474837418"
+  }
+ ],
+ "paging": {
+  "offset": 0,
+  "limit": 25,
+  "count": 1,
+  "pages": 1
+ }
+}
