@@ -150,6 +150,19 @@ async def test_create_access_rule_position_and_refs(lab: respx.MockRouter) -> No
     assert body["logEnd"] is True and body["sendEventsToFMC"] is True
 
 
+async def test_block_rule_logs_at_connection_start(lab: respx.MockRouter) -> None:
+    # FMC 10.0.1 rejects logEnd on block rules ("LogEnd is not supported for BLOCK Action").
+    post = lab.post(f"{CFG}/policy/accesspolicies/{ACP_ID}/accessrules").mock(
+        return_value=httpx.Response(201, json={"id": "new", "name": "b"})
+    )
+    await preview_apply(
+        "fmc_create_access_rule",
+        {"policy": "mcp-test-acp", "name": "b", "action": "BLOCK", "destination_ports": ["tcp/23"]},
+    )
+    body = json.loads(post.calls.last.request.content)
+    assert body["logBegin"] is True and body["logEnd"] is False and body["sendEventsToFMC"] is True
+
+
 async def test_create_access_rule_blocks_duplicate_name(lab: respx.MockRouter) -> None:
     async with Client(create_server(make_settings(mcp_enable_writes=True))) as c:
         out = await run(

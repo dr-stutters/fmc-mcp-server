@@ -37,6 +37,34 @@ def deployable_row(d: dict[str, Any]) -> dict[str, Any]:
     }
 
 
+def _change_text(v: dict[str, Any], verb: str) -> str:
+    field = v.get("fieldName") or "?"
+    old, new = v.get("oldValue"), v.get("newValue")
+    if verb == "deleted":
+        return f"-{field}: {old if old is not None else new}"
+    if old is not None and new is not None:
+        return f"{field}: {old} -> {new}"
+    return f"{field}: {new if new is not None else old}"
+
+
+def pending_row(c: dict[str, Any]) -> dict[str, Any]:
+    """One pending change with its field values flattened to 'Field: old -> new' strings."""
+    changes: list[str] = []
+    for key, verb in (("valueAdded", "added"), ("valueUpdated", "updated"), ("valueDeleted", "deleted")):
+        for v in c.get(key) or []:
+            if isinstance(v, dict):
+                changes.append(_change_text(v, verb))
+    row = {
+        "entity": c.get("entityName"),
+        "type": c.get("entityType"),
+        "action": c.get("action"),
+        "changed_by": ", ".join(ref_label(u) for u in c.get("lastUpdatedByUsers") or []) or None,
+        "changes": changes or None,
+        "message": c.get("message"),
+    }
+    return {k: v for k, v in row.items() if v not in (None, "")}
+
+
 async def deployable(app: FmcApp, domain: str | None) -> list[dict[str, Any]]:
     page = await app.all(await app.config_path(DEPLOYABLE, domain), cap=5000)
     return page.items
@@ -74,21 +102,15 @@ def register(reg: ToolRegistrar) -> None:
         app: FmcApp = get_client(ctx)
         d = await resolve_in(app, DEVICES, device, "device", domain)
         path = await app.config_path(f"{DEPLOYABLE}/{d['id']}/pendingchanges", domain)
-        page = await app.page(path, limit=limit, offset=offset)
-        page.items = [
-            {
-                "entity": c.get("entityName"),
-                "type": c.get("entityType"),
-                "action": c.get("action"),
-                "changed_by": [ref_label(u) for u in c.get("lastUpdatedByUsers") or []] or None,
-                "updated": c.get("valueUpdated"),
-                "added": c.get("valueAdded"),
-                "deleted": c.get("valueDeleted"),
-                "message": c.get("message"),
-            }
-            for c in page.items
-        ]
-        return list_result(page, fmt=response_format, extra={"device": d.get("name")})
+        everything = await app.all(path, cap=5000)
+        rows = [pending_row(c) for c in everything.items]
+        # FMC also lists empty container entries ("Interface UPDATE", "Routing UPDATE") that only
+        # group the real changes; drop them.
+        rows = [r for r in rows if r.get("entity") or r.get("changes") or r.get("message")]
+        extra: dict[str, Any] = {"device": d.get("name")}
+        if not everything.complete:
+            extra["note"] = "Only the first 5000 change entries were read."
+        return list_result(page_of(rows, limit=limit, offset=offset), fmt=response_format, extra=extra)
 
     @reg.read(title="Deployment history")
     async def fmc_list_deployments(

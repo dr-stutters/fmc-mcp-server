@@ -1,0 +1,64 @@
+{
+ "items": [
+  {
+   "metadata": {
+    "domain": {
+     "uuid": "e276abec-e0f2-11e3-8169-6d9ed49b625f",
+     "name": "Global",
+     "id": "e276abec-e0f2-11e3-8169-6d9ed49b625f",
+     "type": "Domain"
+    },
+    "policy": {
+     "description": "Phase 2 FTD lab policy",
+     "name": "mcp-test-ftd-acp",
+     "id": "00000000-0000-0ed3-0000-021474847655"
+    },
+    "deviceRuleId": "268434474",
+    "ruleIndex": 1
+   },
+   "lastFetchTimeStamp": "2026-10-14T12:43:55Z",
+   "rule": {
+    "name": "mcp-test-allow-out",
+    "id": "00000000-0000-0ed3-0000-000268434474",
+    "type": "AccessRule"
+   },
+   "firstHitTimeStamp": "2026-10-14T12:13:45Z",
+   "lastHitTimeStamp": "2026-10-14T12:43:48Z",
+   "type": "HitCount",
+   "hitCount": 12
+  },
+  {
+   "metadata": {
+    "domain": {
+     "uuid": "e276abec-e0f2-11e3-8169-6d9ed49b625f",
+     "name": "Global",
+     "id": "e276abec-e0f2-11e3-8169-6d9ed49b625f",
+     "type": "Domain"
+    },
+    "policy": {
+     "description": "Phase 2 FTD lab policy",
+     "name": "mcp-test-ftd-acp",
+     "id": "00000000-0000-0ed3-0000-021474847655"
+    },
+    "deviceRuleId": "268434475",
+    "ruleIndex": 2
+   },
+   "lastFetchTimeStamp": "2026-10-14T12:43:55Z",
+   "rule": {
+    "name": "mcp-test-block-telnet",
+    "id": "00000000-0000-0ed3-0000-000268434475",
+    "type": "AccessRule"
+   },
+   "firstHitTimeStamp": "2026-10-14T12:14:05Z",
+   "lastHitTimeStamp": "2026-10-14T12:43:44Z",
+   "type": "HitCount",
+   "hitCount": 16
+  }
+ ],
+ "paging": {
+  "offset": 0,
+  "limit": 25,
+  "count": 2,
+  "pages": 1
+ }
+}

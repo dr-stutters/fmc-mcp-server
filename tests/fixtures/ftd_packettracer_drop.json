@@ -1,0 +1,50 @@
+{
+ "deviceResponse": [
+  {
+   "deviceDetails": {
+    "name": "mcp-ftd1",
+    "id": "2c11eaca-c7e3-11f1-a7ce-a8b537b1b4bb",
+    "type": "Device"
+   },
+   "phases": [
+    {
+     "id": 1,
+     "type": "ROUTE-LOOKUP",
+     "subType": "No ECMP load balancing",
+     "result": "ALLOW",
+     "config": "\n",
+     "additionalInformation": "\nDestination is locally connected. No ECMP load balancing.\nFound next-hop fmc.test using egress ifc  outside(vrfid:0)\n",
+     "elapsedTime": "32973 ns"
+    },
+    {
+     "id": 2,
+     "type": "OBJECT_GROUP_SEARCH",
+     "result": "ALLOW",
+     "config": "\n",
+     "additionalInformation": "\n Source object-group match count:          0\n Source NSG match count:                   0\n Destination NSG match count:              0\n Classify table lookup count:              1\n Total lookup count:                       1\n Duplicate key pair count:                 0\n Classify table match count:               5\n",
+     "elapsedTime": "26909 ns"
+    },
+    {
+     "id": 3,
+     "type": "ACCESS-LIST",
+     "result": "DROP",
+     "config": "\naccess-group CSM_FW_ACL_ global\naccess-list CSM_FW_ACL_ advanced deny tcp ifc inside any ifc outside any eq telnet rule-id 268434475 event-log flow-start \naccess-list CSM_FW_ACL_ remark rule-id 268434475: ACCESS POLICY: mcp-test-ftd-acp - Default\naccess-list CSM_FW_ACL_ remark rule-id 268434475: L4 RULE: mcp-test-block-telnet\n",
+     "additionalInformation": "\n Forward Flow based lookup yields rule:\n in  id=0x14a6e13586d0, priority=12, domain=permit, deny=true\n\thits=1, user_data=0x0000000000000006, cs_id=0x0, use_real_addr, flags=0x0, protocol=6\n\tsrc ip/id=0.0.0.0, mask=0.0.0.0, port=0, tag=any, ifc object-group id 6501\n\tdst ip/id=0.0.0.0, mask=0.0.0.0, port=23, tag=any, ifc=outside(vrfid:0), \n\tdscp=0x0, input_ifc=any, output_ifc=any\n",
+     "elapsedTime": "303 ns"
+    }
+   ],
+   "result": {
+    "inputInterface": "inside(vrfid:0)",
+    "inputStatus": "up",
+    "inputLineStatus": "up",
+    "outputInterface": "outside(vrfid:0)",
+    "outputStatus": "up",
+    "outputLineStatus": "up",
+    "action": "drop",
+    "timeTaken": "60185 ns",
+    "dropReason": "(acl-drop) Flow is denied by configured rule",
+    "dropDetail": "Drop-location: frame snp_classify_table_lookup:6167 flow (NA)/NA"
+   }
+  }
+ ]
+}
