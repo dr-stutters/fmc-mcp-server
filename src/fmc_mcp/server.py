@@ -10,7 +10,16 @@ from stutters_mcp_core.spec import SpecSource
 
 from fmc_mcp.client import SPEC_PATH, FmcApp
 from fmc_mcp.config import Settings
-from fmc_mcp.tools import analysis, deploy, devices, objects, policies, system
+from fmc_mcp.tools import (
+    analysis,
+    deploy,
+    devices,
+    object_writes,
+    objects,
+    policies,
+    policy_writes,
+    system,
+)
 
 INSTRUCTIONS = """
 Tools for Cisco Secure Firewall Management Center (FMC), which manages Firewall Threat Defense (FTD)
@@ -75,6 +84,8 @@ def create_server(
             objects.register,
             analysis.register,
             deploy.register,
+            object_writes.register,
+            policy_writes.register,
         ],
         status=FmcApp.status,
         spec_sources=spec_sources,

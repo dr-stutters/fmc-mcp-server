@@ -6,7 +6,15 @@ from typing import Annotated, Any
 from fastmcp import Context
 from fastmcp.tools import ToolResult
 from pydantic import Field
-from stutters_mcp_core import ResponseFormat, ToolRegistrar, get_client, list_result, object_result
+from stutters_mcp_core import (
+    InvalidRequest,
+    ResponseFormat,
+    ToolRegistrar,
+    ValidationFailed,
+    get_client,
+    list_result,
+    object_result,
+)
 from stutters_mcp_core.http import page_of
 
 from fmc_mcp.catalog import Catalog, parse_ip_value, parse_port_query, port_contains
@@ -165,11 +173,17 @@ def register(reg: ToolRegistrar) -> None:
         it directly or through a group. Use before changing or deleting an object."""
         app: FmcApp = get_client(ctx)
         t, obj = await resolve_object(app, object, domain, [type] if type else None)
-        usage = await app.all(
-            await app.config_path("object/operational/usage", domain),
-            {"filter": f"uuid:{obj['id']};type:{obj.get('type') or t.fmc_type}"},
-            cap=5000,
-        )
+        try:
+            usage = await app.all(
+                await app.config_path("object/operational/usage", domain),
+                {"filter": f"uuid:{obj['id']};type:{obj.get('type') or t.fmc_type}"},
+                cap=5000,
+            )
+        except ValidationFailed as e:
+            raise InvalidRequest(
+                f"FMC can't report usage for {t.key} objects ({e}). Search rules instead, e.g. "
+                f"fmc_list_access_rules(text={obj.get('name')!r})."
+            ) from None
         used_by = [{"type": u.get("type"), "name": u.get("name"), "id": u.get("id")} for u in usage.items]
         out: dict[str, Any] = {
             "object": {"name": obj.get("name"), "type": obj.get("type"), "id": obj["id"]},
