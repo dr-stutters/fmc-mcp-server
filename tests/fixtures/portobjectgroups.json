@@ -1,0 +1,44 @@
+{
+ "items": [
+  {
+   "metadata": {
+    "timestamp": 1791980809600,
+    "lastUser": {
+     "name": "admin"
+    },
+    "domain": {
+     "name": "Global",
+     "id": "e276abec-e0f2-11e3-8169-6d9ed49b625f",
+     "type": "Domain"
+    },
+    "parentType": "Port"
+   },
+   "type": "PortObjectGroup",
+   "objects": [
+    {
+     "type": "ProtocolPortObject",
+     "port": "443",
+     "overridable": false,
+     "name": "HTTPS",
+     "id": "1834bd00-38bb-11e2-86aa-62f0c593a59a"
+    },
+    {
+     "type": "ProtocolPortObject",
+     "port": "8443",
+     "overridable": false,
+     "name": "mcp-test-tcp-8443",
+     "id": "00000000-0000-0ed3-0000-021474837293"
+    }
+   ],
+   "overridable": false,
+   "name": "mcp-test-web-ports",
+   "id": "00000000-0000-0ed3-0000-021474837383"
+  }
+ ],
+ "paging": {
+  "offset": 0,
+  "limit": 1000,
+  "count": 1,
+  "pages": 1
+ }
+}

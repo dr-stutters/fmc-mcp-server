@@ -1,0 +1,52 @@
+{
+ "items": [
+  {
+   "category": "OBJECT",
+   "value": "0.0.0.0/0,::/0",
+   "type": "NetworkGroup",
+   "name": "any",
+   "id": "69fa2a3a-4487-4e3c-816f-4098f684826e"
+  },
+  {
+   "category": "OBJECT",
+   "value": "0.0.0.0/0",
+   "type": "Network",
+   "name": "any-ipv4",
+   "id": "cb7116e8-66a6-480b-8f9b-295191a0940a"
+  },
+  {
+   "category": "OBJECT",
+   "value": "10.0.0.0/8",
+   "type": "Network",
+   "name": "IPv4-Private-10.0.0.0-8",
+   "id": "95916354-5aa1-4057-8eea-b42a5a207abc"
+  },
+  {
+   "category": "OBJECT",
+   "value": "10.0.0.0/8,172.16.0.0/12,192.168.0.0/16",
+   "type": "NetworkGroup",
+   "name": "IPv4-Private-All-RFC1918",
+   "id": "15b12b14-dace-4117-b9d9-a9a7dcfa356f"
+  },
+  {
+   "category": "OBJECT",
+   "value": "10.10.20.0/24",
+   "type": "Network",
+   "name": "mcp-test-app-net",
+   "id": "00000000-0000-0ed3-0000-021474837257"
+  },
+  {
+   "category": "OBJECT",
+   "value": "10.10.20.5",
+   "type": "Host",
+   "name": "mcp-test-db",
+   "id": "00000000-0000-0ed3-0000-021474837203"
+  }
+ ],
+ "paging": {
+  "offset": 0,
+  "limit": 25,
+  "count": 6,
+  "pages": 1
+ }
+}

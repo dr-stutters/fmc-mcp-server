@@ -1,0 +1,431 @@
+{
+ "items": [
+  {
+   "type": "Network",
+   "value": "0.0.0.0/0",
+   "overridable": false,
+   "name": "any-ipv4",
+   "id": "cb7116e8-66a6-480b-8f9b-295191a0940a",
+   "metadata": {
+    "readOnly": {
+     "state": true,
+     "reason": "SYSTEM"
+    },
+    "wildcard": false,
+    "timestamp": 1775157448949,
+    "lastUser": {
+     "name": "admin"
+    },
+    "domain": {
+     "name": "Global",
+     "id": "e276abec-e0f2-11e3-8169-6d9ed49b625f",
+     "type": "Domain"
+    },
+    "ipType": "V_4",
+    "parentType": "NetworkAddress"
+   }
+  },
+  {
+   "type": "Host",
+   "value": "::/0",
+   "overridable": false,
+   "name": "any-ipv6",
+   "id": "dde11d62-288b-4b4c-92e0-1dad0496f14b",
+   "metadata": {
+    "readOnly": {
+     "state": true,
+     "reason": "SYSTEM"
+    },
+    "timestamp": 1775157448949,
+    "lastUser": {
+     "name": "admin"
+    },
+    "domain": {
+     "name": "Global",
+     "id": "e276abec-e0f2-11e3-8169-6d9ed49b625f",
+     "type": "Domain"
+    },
+    "ipType": "V_6",
+    "parentType": "NetworkAddress"
+   }
+  },
+  {
+   "type": "Network",
+   "value": "198.18.0.0/15",
+   "overridable": false,
+   "name": "IPv4-Benchmark-Tests",
+   "id": "86caab8a-9bdd-420d-858b-5690fde8ce58",
+   "metadata": {
+    "readOnly": {
+     "state": true,
+     "reason": "SYSTEM"
+    },
+    "wildcard": false,
+    "timestamp": 1775157448949,
+    "lastUser": {
+     "name": "admin"
+    },
+    "domain": {
+     "name": "Global",
+     "id": "e276abec-e0f2-11e3-8169-6d9ed49b625f",
+     "type": "Domain"
+    },
+    "ipType": "V_4",
+    "parentType": "NetworkAddress"
+   }
+  },
+  {
+   "type": "Network",
+   "value": "169.254.0.0/16",
+   "overridable": false,
+   "name": "IPv4-Link-Local",
+   "id": "f0ce41ae-6ee9-4e00-8762-da9370c4fee5",
+   "metadata": {
+    "readOnly": {
+     "state": true,
+     "reason": "SYSTEM"
+    },
+    "wildcard": false,
+    "timestamp": 1775157448948,
+    "lastUser": {
+     "name": "admin"
+    },
+    "domain": {
+     "name": "Global",
+     "id": "e276abec-e0f2-11e3-8169-6d9ed49b625f",
+     "type": "Domain"
+    },
+    "ipType": "V_4",
+    "parentType": "NetworkAddress"
+   }
+  },
+  {
+   "type": "Network",
+   "value": "224.0.0.0/4",
+   "overridable": false,
+   "name": "IPv4-Multicast",
+   "id": "5622db1c-5cd5-4199-a4c8-d8f86dec3bd4",
+   "metadata": {
+    "readOnly": {
+     "state": true,
+     "reason": "SYSTEM"
+    },
+    "wildcard": false,
+    "timestamp": 1775157448948,
+    "lastUser": {
+     "name": "admin"
+    },
+    "domain": {
+     "name": "Global",
+     "id": "e276abec-e0f2-11e3-8169-6d9ed49b625f",
+     "type": "Domain"
+    },
+    "ipType": "V_4",
+    "parentType": "NetworkAddress"
+   }
+  },
+  {
+   "type": "Network",
+   "value": "10.0.0.0/8",
+   "overridable": false,
+   "name": "IPv4-Private-10.0.0.0-8",
+   "id": "95916354-5aa1-4057-8eea-b42a5a207abc",
+   "metadata": {
+    "readOnly": {
+     "state": true,
+     "reason": "SYSTEM"
+    },
+    "wildcard": false,
+    "timestamp": 1775157448947,
+    "lastUser": {
+     "name": "admin"
+    },
+    "domain": {
+     "name": "Global",
+     "id": "e276abec-e0f2-11e3-8169-6d9ed49b625f",
+     "type": "Domain"
+    },
+    "ipType": "V_4",
+    "parentType": "NetworkAddress"
+   }
+  },
+  {
+   "type": "Network",
+   "value": "172.16.0.0/12",
+   "overridable": false,
+   "name": "IPv4-Private-172.16.0.0-12",
+   "id": "b7a78a7d-20c5-47b2-b02f-86b4360112ac",
+   "metadata": {
+    "readOnly": {
+     "state": true,
+     "reason": "SYSTEM"
+    },
+    "wildcard": false,
+    "timestamp": 1775157448947,
+    "lastUser": {
+     "name": "admin"
+    },
+    "domain": {
+     "name": "Global",
+     "id": "e276abec-e0f2-11e3-8169-6d9ed49b625f",
+     "type": "Domain"
+    },
+    "ipType": "V_4",
+    "parentType": "NetworkAddress"
+   }
+  },
+  {
+   "type": "Network",
+   "value": "192.168.0.0/16",
+   "overridable": false,
+   "name": "IPv4-Private-192.168.0.0-16",
+   "id": "1dcefdd8-07f7-438a-9221-97d63710614e",
+   "metadata": {
+    "readOnly": {
+     "state": true,
+     "reason": "SYSTEM"
+    },
+    "wildcard": false,
+    "timestamp": 1775157448948,
+    "lastUser": {
+     "name": "admin"
+    },
+    "domain": {
+     "name": "Global",
+     "id": "e276abec-e0f2-11e3-8169-6d9ed49b625f",
+     "type": "Domain"
+    },
+    "ipType": "V_4",
+    "parentType": "NetworkAddress"
+   }
+  },
+  {
+   "type": "Network",
+   "value": "::ffff:0.0.0.0/96",
+   "overridable": false,
+   "name": "IPv6-IPv4-Mapped",
+   "id": "1047b91f-db3a-45b8-9c10-f48ed3f0c3d6",
+   "metadata": {
+    "readOnly": {
+     "state": true,
+     "reason": "SYSTEM"
+    },
+    "wildcard": false,
+    "timestamp": 1775157448949,
+    "lastUser": {
+     "name": "admin"
+    },
+    "domain": {
+     "name": "Global",
+     "id": "e276abec-e0f2-11e3-8169-6d9ed49b625f",
+     "type": "Domain"
+    },
+    "ipType": "V_6",
+    "parentType": "NetworkAddress"
+   }
+  },
+  {
+   "type": "Network",
+   "value": "fe80::/10",
+   "overridable": false,
+   "name": "IPv6-Link-Local",
+   "id": "192c14f2-39d9-409d-81e9-357793bdf1ec",
+   "metadata": {
+    "readOnly": {
+     "state": true,
+     "reason": "SYSTEM"
+    },
+    "wildcard": false,
+    "timestamp": 1775157448948,
+    "lastUser": {
+     "name": "admin"
+    },
+    "domain": {
+     "name": "Global",
+     "id": "e276abec-e0f2-11e3-8169-6d9ed49b625f",
+     "type": "Domain"
+    },
+    "ipType": "V_6",
+    "parentType": "NetworkAddress"
+   }
+  },
+  {
+   "type": "Network",
+   "value": "fc00::/7",
+   "overridable": false,
+   "name": "IPv6-Private-Unique-Local-Addresses",
+   "id": "0434674f-87f8-4e17-810e-97100407858b",
+   "metadata": {
+    "readOnly": {
+     "state": true,
+     "reason": "SYSTEM"
+    },
+    "wildcard": false,
+    "timestamp": 1775157448948,
+    "lastUser": {
+     "name": "admin"
+    },
+    "domain": {
+     "name": "Global",
+     "id": "e276abec-e0f2-11e3-8169-6d9ed49b625f",
+     "type": "Domain"
+    },
+    "ipType": "V_6",
+    "parentType": "NetworkAddress"
+   }
+  },
+  {
+   "type": "Network",
+   "value": "192.88.99.0/24",
+   "overridable": false,
+   "name": "IPv6-to-IPv4-Relay-Anycast",
+   "id": "04ea3f1f-f5a9-4eca-b051-487ebeb4c97f",
+   "metadata": {
+    "readOnly": {
+     "state": true,
+     "reason": "SYSTEM"
+    },
+    "wildcard": false,
+    "timestamp": 1775157448949,
+    "lastUser": {
+     "name": "admin"
+    },
+    "domain": {
+     "name": "Global",
+     "id": "e276abec-e0f2-11e3-8169-6d9ed49b625f",
+     "type": "Domain"
+    },
+    "ipType": "V_4",
+    "parentType": "NetworkAddress"
+   }
+  },
+  {
+   "type": "Network",
+   "value": "10.10.20.0/24",
+   "overridable": false,
+   "name": "mcp-test-app-net",
+   "id": "00000000-0000-0ed3-0000-021474837257",
+   "metadata": {
+    "wildcard": false,
+    "timestamp": 1791980801757,
+    "lastUser": {
+     "name": "admin"
+    },
+    "domain": {
+     "name": "Global",
+     "id": "e276abec-e0f2-11e3-8169-6d9ed49b625f",
+     "type": "Domain"
+    },
+    "ipType": "V_4",
+    "parentType": "NetworkAddress"
+   }
+  },
+  {
+   "type": "Host",
+   "value": "10.10.20.5",
+   "overridable": false,
+   "name": "mcp-test-db",
+   "id": "00000000-0000-0ed3-0000-021474837203",
+   "metadata": {
+    "timestamp": 1791980798705,
+    "lastUser": {
+     "name": "admin"
+    },
+    "domain": {
+     "name": "Global",
+     "id": "e276abec-e0f2-11e3-8169-6d9ed49b625f",
+     "type": "Domain"
+    },
+    "ipType": "V_4",
+    "parentType": "NetworkAddress"
+   }
+  },
+  {
+   "type": "Network",
+   "value": "10.10.10.0/24",
+   "overridable": false,
+   "name": "mcp-test-dmz-net",
+   "id": "00000000-0000-0ed3-0000-021474837239",
+   "metadata": {
+    "wildcard": false,
+    "timestamp": 1791980800736,
+    "lastUser": {
+     "name": "admin"
+    },
+    "domain": {
+     "name": "Global",
+     "id": "e276abec-e0f2-11e3-8169-6d9ed49b625f",
+     "type": "Domain"
+    },
+    "ipType": "V_4",
+    "parentType": "NetworkAddress"
+   }
+  },
+  {
+   "type": "Range",
+   "value": "10.10.30.10-10.10.30.20",
+   "overridable": false,
+   "name": "mcp-test-range",
+   "id": "00000000-0000-0ed3-0000-021474837275",
+   "metadata": {
+    "timestamp": 1791980802650,
+    "lastUser": {
+     "name": "admin"
+    },
+    "domain": {
+     "name": "Global",
+     "id": "e276abec-e0f2-11e3-8169-6d9ed49b625f",
+     "type": "Domain"
+    },
+    "ipType": "V_4",
+    "parentType": "NetworkAddress"
+   }
+  },
+  {
+   "type": "Host",
+   "value": "10.99.99.99",
+   "overridable": false,
+   "name": "mcp-test-unused",
+   "id": "00000000-0000-0ed3-0000-021474837221",
+   "metadata": {
+    "timestamp": 1791980799707,
+    "lastUser": {
+     "name": "admin"
+    },
+    "domain": {
+     "name": "Global",
+     "id": "e276abec-e0f2-11e3-8169-6d9ed49b625f",
+     "type": "Domain"
+    },
+    "ipType": "V_4",
+    "parentType": "NetworkAddress"
+   }
+  },
+  {
+   "type": "Host",
+   "value": "10.10.10.80",
+   "overridable": false,
+   "name": "mcp-test-web",
+   "id": "00000000-0000-0ed3-0000-021474837185",
+   "metadata": {
+    "timestamp": 1791980797917,
+    "lastUser": {
+     "name": "admin"
+    },
+    "domain": {
+     "name": "Global",
+     "id": "e276abec-e0f2-11e3-8169-6d9ed49b625f",
+     "type": "Domain"
+    },
+    "ipType": "V_4",
+    "parentType": "NetworkAddress"
+   }
+  }
+ ],
+ "paging": {
+  "offset": 0,
+  "limit": 1000,
+  "count": 18,
+  "pages": 1
+ }
+}

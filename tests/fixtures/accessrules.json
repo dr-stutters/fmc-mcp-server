@@ -1,0 +1,396 @@
+{
+ "items": [
+  {
+   "metadata": {
+    "ruleIndex": 1,
+    "section": "Default",
+    "category": "--Undefined--",
+    "accessPolicy": {
+     "name": "mcp-test-acp",
+     "id": "00000000-0000-0ed3-0000-021474837418",
+     "type": "AccessPolicy"
+    },
+    "timestamp": 1791980813014,
+    "domain": {
+     "name": "Global",
+     "id": "e276abec-e0f2-11e3-8169-6d9ed49b625f",
+     "type": "Domain"
+    }
+   },
+   "enabled": true,
+   "advancedLogging": {},
+   "enableSyslog": false,
+   "destinationDynamicObjects": {},
+   "logBegin": false,
+   "logEnd": false,
+   "logFiles": false,
+   "sourceDynamicObjects": {},
+   "sendEventsToFMC": false,
+   "variableSet": {
+    "name": "Default-Set",
+    "id": "76fa83ea-c972-11e2-8be8-8e45bb1343c0",
+    "type": "VariableSet"
+   },
+   "destinationNetworks": {
+    "objects": [
+     {
+      "type": "NetworkGroup",
+      "overridable": false,
+      "name": "mcp-test-servers",
+      "id": "00000000-0000-0ed3-0000-021474837365"
+     }
+    ]
+   },
+   "vlanTags": {},
+   "destinationPorts": {
+    "objects": [
+     {
+      "type": "PortObjectGroup",
+      "overridable": false,
+      "name": "mcp-test-web-ports",
+      "id": "00000000-0000-0ed3-0000-021474837383"
+     }
+    ]
+   },
+   "type": "AccessRule",
+   "action": "ALLOW",
+   "name": "mcp-test-allow-web",
+   "id": "00000000-0000-0ed3-0000-000268434437"
+  },
+  {
+   "metadata": {
+    "ruleIndex": 2,
+    "section": "Default",
+    "category": "--Undefined--",
+    "accessPolicy": {
+     "name": "mcp-test-acp",
+     "id": "00000000-0000-0ed3-0000-021474837418",
+     "type": "AccessPolicy"
+    },
+    "timestamp": 1791980813014,
+    "domain": {
+     "name": "Global",
+     "id": "e276abec-e0f2-11e3-8169-6d9ed49b625f",
+     "type": "Domain"
+    }
+   },
+   "enabled": true,
+   "advancedLogging": {},
+   "enableSyslog": false,
+   "destinationDynamicObjects": {},
+   "logBegin": false,
+   "logEnd": false,
+   "logFiles": false,
+   "sourceDynamicObjects": {},
+   "sendEventsToFMC": false,
+   "variableSet": {
+    "name": "Default-Set",
+    "id": "76fa83ea-c972-11e2-8be8-8e45bb1343c0",
+    "type": "VariableSet"
+   },
+   "sourceZones": {
+    "objects": [
+     {
+      "name": "mcp-test-inside",
+      "id": "854aa1f4-c7ca-11f1-874c-6cea5174bd84",
+      "type": "SecurityZone",
+      "subType": "Routed"
+     }
+    ]
+   },
+   "sourceNetworks": {
+    "literals": [
+     {
+      "type": "Network",
+      "value": "10.0.0.0/8"
+     }
+    ]
+   },
+   "destinationNetworks": {
+    "objects": [
+     {
+      "type": "Host",
+      "overridable": false,
+      "name": "mcp-test-db",
+      "id": "00000000-0000-0ed3-0000-021474837203"
+     }
+    ]
+   },
+   "vlanTags": {},
+   "destinationPorts": {
+    "literals": [
+     {
+      "type": "PortLiteral",
+      "port": "22",
+      "protocol": "6"
+     }
+    ]
+   },
+   "type": "AccessRule",
+   "action": "ALLOW",
+   "name": "mcp-test-ssh-admin",
+   "id": "00000000-0000-0ed3-0000-000268434438"
+  },
+  {
+   "metadata": {
+    "ruleIndex": 3,
+    "section": "Default",
+    "category": "--Undefined--",
+    "accessPolicy": {
+     "name": "mcp-test-acp",
+     "id": "00000000-0000-0ed3-0000-021474837418",
+     "type": "AccessPolicy"
+    },
+    "timestamp": 1791980813014,
+    "domain": {
+     "name": "Global",
+     "id": "e276abec-e0f2-11e3-8169-6d9ed49b625f",
+     "type": "Domain"
+    }
+   },
+   "enabled": true,
+   "advancedLogging": {},
+   "enableSyslog": false,
+   "destinationDynamicObjects": {},
+   "logBegin": false,
+   "logEnd": false,
+   "logFiles": false,
+   "sourceDynamicObjects": {},
+   "sendEventsToFMC": false,
+   "variableSet": {
+    "name": "Default-Set",
+    "id": "76fa83ea-c972-11e2-8be8-8e45bb1343c0",
+    "type": "VariableSet"
+   },
+   "destinationNetworks": {
+    "objects": [
+     {
+      "type": "Host",
+      "overridable": false,
+      "name": "mcp-test-web",
+      "id": "00000000-0000-0ed3-0000-021474837185"
+     }
+    ]
+   },
+   "vlanTags": {},
+   "destinationPorts": {
+    "objects": [
+     {
+      "type": "ProtocolPortObject",
+      "protocol": "TCP",
+      "overridable": false,
+      "name": "HTTPS",
+      "id": "1834bd00-38bb-11e2-86aa-62f0c593a59a"
+     }
+    ]
+   },
+   "type": "AccessRule",
+   "action": "ALLOW",
+   "name": "mcp-test-redundant",
+   "id": "00000000-0000-0ed3-0000-000268434439"
+  },
+  {
+   "metadata": {
+    "ruleIndex": 4,
+    "section": "Default",
+    "category": "--Undefined--",
+    "accessPolicy": {
+     "name": "mcp-test-acp",
+     "id": "00000000-0000-0ed3-0000-021474837418",
+     "type": "AccessPolicy"
+    },
+    "timestamp": 1791980813014,
+    "domain": {
+     "name": "Global",
+     "id": "e276abec-e0f2-11e3-8169-6d9ed49b625f",
+     "type": "Domain"
+    }
+   },
+   "enabled": true,
+   "advancedLogging": {},
+   "enableSyslog": false,
+   "destinationDynamicObjects": {},
+   "logBegin": false,
+   "logEnd": false,
+   "logFiles": false,
+   "sourceDynamicObjects": {},
+   "sendEventsToFMC": false,
+   "variableSet": {
+    "name": "Default-Set",
+    "id": "76fa83ea-c972-11e2-8be8-8e45bb1343c0",
+    "type": "VariableSet"
+   },
+   "destinationNetworks": {
+    "objects": [
+     {
+      "type": "Network",
+      "overridable": false,
+      "name": "mcp-test-app-net",
+      "id": "00000000-0000-0ed3-0000-021474837257"
+     }
+    ]
+   },
+   "vlanTags": {},
+   "type": "AccessRule",
+   "action": "BLOCK",
+   "name": "mcp-test-block-app",
+   "id": "00000000-0000-0ed3-0000-000268434440"
+  },
+  {
+   "metadata": {
+    "ruleIndex": 5,
+    "section": "Default",
+    "category": "--Undefined--",
+    "accessPolicy": {
+     "name": "mcp-test-acp",
+     "id": "00000000-0000-0ed3-0000-021474837418",
+     "type": "AccessPolicy"
+    },
+    "timestamp": 1791980813014,
+    "domain": {
+     "name": "Global",
+     "id": "e276abec-e0f2-11e3-8169-6d9ed49b625f",
+     "type": "Domain"
+    }
+   },
+   "enabled": true,
+   "advancedLogging": {},
+   "enableSyslog": false,
+   "destinationDynamicObjects": {},
+   "logBegin": false,
+   "logEnd": false,
+   "logFiles": false,
+   "sourceDynamicObjects": {},
+   "sendEventsToFMC": false,
+   "variableSet": {
+    "name": "Default-Set",
+    "id": "76fa83ea-c972-11e2-8be8-8e45bb1343c0",
+    "type": "VariableSet"
+   },
+   "destinationNetworks": {
+    "objects": [
+     {
+      "type": "Host",
+      "overridable": false,
+      "name": "mcp-test-db",
+      "id": "00000000-0000-0ed3-0000-021474837203"
+     }
+    ]
+   },
+   "vlanTags": {},
+   "destinationPorts": {
+    "literals": [
+     {
+      "type": "PortLiteral",
+      "port": "3306",
+      "protocol": "6"
+     }
+    ]
+   },
+   "type": "AccessRule",
+   "action": "ALLOW",
+   "name": "mcp-test-shadowed",
+   "id": "00000000-0000-0ed3-0000-000268434441"
+  },
+  {
+   "metadata": {
+    "ruleIndex": 6,
+    "section": "Default",
+    "category": "--Undefined--",
+    "accessPolicy": {
+     "name": "mcp-test-acp",
+     "id": "00000000-0000-0ed3-0000-021474837418",
+     "type": "AccessPolicy"
+    },
+    "timestamp": 1791980813014,
+    "domain": {
+     "name": "Global",
+     "id": "e276abec-e0f2-11e3-8169-6d9ed49b625f",
+     "type": "Domain"
+    }
+   },
+   "enabled": true,
+   "advancedLogging": {},
+   "enableSyslog": false,
+   "destinationDynamicObjects": {},
+   "logBegin": false,
+   "logEnd": false,
+   "logFiles": false,
+   "sourceDynamicObjects": {},
+   "sendEventsToFMC": false,
+   "urls": {
+    "objects": [
+     {
+      "type": "Url",
+      "overridable": false,
+      "name": "mcp-test-url",
+      "id": "00000000-0000-0ed3-0000-021474837401"
+     }
+    ]
+   },
+   "variableSet": {
+    "name": "Default-Set",
+    "id": "76fa83ea-c972-11e2-8be8-8e45bb1343c0",
+    "type": "VariableSet"
+   },
+   "vlanTags": {},
+   "type": "AccessRule",
+   "action": "ALLOW",
+   "name": "mcp-test-url-rule",
+   "id": "00000000-0000-0ed3-0000-000268434442"
+  },
+  {
+   "metadata": {
+    "ruleIndex": 7,
+    "section": "Default",
+    "category": "--Undefined--",
+    "accessPolicy": {
+     "name": "mcp-test-acp",
+     "id": "00000000-0000-0ed3-0000-021474837418",
+     "type": "AccessPolicy"
+    },
+    "timestamp": 1791980813014,
+    "domain": {
+     "name": "Global",
+     "id": "e276abec-e0f2-11e3-8169-6d9ed49b625f",
+     "type": "Domain"
+    }
+   },
+   "enabled": false,
+   "advancedLogging": {},
+   "enableSyslog": false,
+   "destinationDynamicObjects": {},
+   "logBegin": false,
+   "logEnd": false,
+   "logFiles": false,
+   "sourceDynamicObjects": {},
+   "sendEventsToFMC": false,
+   "variableSet": {
+    "name": "Default-Set",
+    "id": "76fa83ea-c972-11e2-8be8-8e45bb1343c0",
+    "type": "VariableSet"
+   },
+   "destinationNetworks": {
+    "objects": [
+     {
+      "type": "Range",
+      "overridable": false,
+      "name": "mcp-test-range",
+      "id": "00000000-0000-0ed3-0000-021474837275"
+     }
+    ]
+   },
+   "vlanTags": {},
+   "type": "AccessRule",
+   "action": "ALLOW",
+   "name": "mcp-test-disabled",
+   "id": "00000000-0000-0ed3-0000-000268434443"
+  }
+ ],
+ "paging": {
+  "offset": 0,
+  "limit": 1000,
+  "count": 7,
+  "pages": 1
+ }
+}

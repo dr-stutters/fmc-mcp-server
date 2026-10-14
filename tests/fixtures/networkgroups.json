@@ -1,0 +1,111 @@
+{
+ "items": [
+  {
+   "literals": [
+    {
+     "type": "Network",
+     "value": "0.0.0.0/0"
+    },
+    {
+     "type": "Network",
+     "value": "::/0"
+    }
+   ],
+   "type": "NetworkGroup",
+   "overridable": false,
+   "name": "any",
+   "id": "69fa2a3a-4487-4e3c-816f-4098f684826e",
+   "metadata": {
+    "readOnly": {
+     "state": true,
+     "reason": "SYSTEM"
+    },
+    "timestamp": 1775157448949,
+    "lastUser": {
+     "name": "admin"
+    },
+    "domain": {
+     "name": "Global",
+     "id": "e276abec-e0f2-11e3-8169-6d9ed49b625f",
+     "type": "Domain"
+    }
+   }
+  },
+  {
+   "literals": [
+    {
+     "type": "Network",
+     "value": "10.0.0.0/8"
+    },
+    {
+     "type": "Network",
+     "value": "172.16.0.0/12"
+    },
+    {
+     "type": "Network",
+     "value": "192.168.0.0/16"
+    }
+   ],
+   "type": "NetworkGroup",
+   "overridable": false,
+   "name": "IPv4-Private-All-RFC1918",
+   "id": "15b12b14-dace-4117-b9d9-a9a7dcfa356f",
+   "metadata": {
+    "readOnly": {
+     "state": true,
+     "reason": "SYSTEM"
+    },
+    "timestamp": 1775157448947,
+    "lastUser": {
+     "name": "admin"
+    },
+    "domain": {
+     "name": "Global",
+     "id": "e276abec-e0f2-11e3-8169-6d9ed49b625f",
+     "type": "Domain"
+    }
+   }
+  },
+  {
+   "objects": [
+    {
+     "type": "Host",
+     "name": "mcp-test-web",
+     "id": "00000000-0000-0ed3-0000-021474837185"
+    },
+    {
+     "type": "Network",
+     "name": "mcp-test-app-net",
+     "id": "00000000-0000-0ed3-0000-021474837257"
+    }
+   ],
+   "literals": [
+    {
+     "type": "Network",
+     "value": "10.10.40.0/24"
+    }
+   ],
+   "type": "NetworkGroup",
+   "overridable": false,
+   "name": "mcp-test-servers",
+   "id": "00000000-0000-0ed3-0000-021474837365",
+   "metadata": {
+    "timestamp": 1791980808807,
+    "lastUser": {
+     "name": "admin"
+    },
+    "domain": {
+     "name": "Global",
+     "id": "e276abec-e0f2-11e3-8169-6d9ed49b625f",
+     "type": "Domain"
+    }
+   }
+  }
+ ],
+ "paging": {
+  "offset": 0,
+  "limit": 1000,
+  "count": 3,
+  "pages": 1
+ }
+}
