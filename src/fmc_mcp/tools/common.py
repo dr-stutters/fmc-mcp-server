@@ -167,8 +167,9 @@ def block_labels(block: Any) -> list[str]:
 _META_KEEP = ("ruleIndex", "index", "section", "category", "readOnly", "lastUser", "timestamp", "domain")
 
 
-# Secret-ish FMC fields the core's masking doesn't recognise (device registration key, NAT id).
-SECRET_FIELDS = {"regkey", "natid"}
+# Secret-ish FMC fields the core's masking doesn't recognise (device registration key, NAT id,
+# VPN pre-shared keys).
+SECRET_FIELDS = {"regkey", "natid", "manualpresharedkey", "presharedkey"}
 
 
 def slim(obj: Any) -> Any:

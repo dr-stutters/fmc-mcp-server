@@ -16,9 +16,31 @@
   interfaces and zones, default route and NAT, policies, deploy, then verify with show commands, packet
   tracer and real traffic. Live: a fresh FTDv (`mcp-ftd2`, CML lab `mcp-fmc-ha`) onboarded end to end
   by following the prompt; the inside host reached the dCloud gateway through PAT.
+- HA depth (F10): `fmc_get_ha_status` (units and states, failover link, trigger criteria, monitored
+  interfaces with active/standby IPs, failover MACs) and `fmc_configure_ha_monitoring` (monitor for
+  failures, standby IP checked against the interface network, failover virtual MACs). Live on two new
+  FTDv (CML lab `mcp-fmc-ha`): form HA, standby IPs + virtual MAC, deploy, `show failover` shows both
+  units Monitored, switch (traffic kept flowing from the inside host through the new active unit),
+  CLUSTER health alerts in `fmc_recent_activity`, break, re-form, delete.
+- VPN depth (F11): `fmc_list_vpn_topologies` (kind incl. SD-WAN/AUTO_VPN, tunnels up/down),
+  `fmc_get_vpn_topology` (endpoints, protected networks, NAT exemption, IKE/IPsec with the PSK masked,
+  live tunnel rows), `fmc_create_s2s_vpn` (point-to-point IKEv2 PSK, policy- or route-based, managed FTD,
+  HA pair or extranet peer; creates topology, IKE, IPsec and endpoints in order), `fmc_delete_s2s_vpn`,
+  and `fmc_get_ravpn` (RA VPN policies, connection profiles, pools, AAA, gateway sessions; read-only).
+  Live: policy-based tunnel between `mcp-ftd1` and the HA pair; pings 10.99.1.10 -> 10.99.2.10 went
+  through it (`show crypto ipsec sa` 4/4 packets, `fmc_list_vpn_tunnels` TUNNEL_UP), then deleted.
+  In FMC evaluation mode the builder picks DES policies (FMC refuses to deploy stronger crypto
+  without export-controlled licensing) and blocks explicit strong choices with an explanation.
 
 ### Changed
-- Core pinned to v0.3.1 (`fmc_get_definition(examples=True)`).
+- Core pinned to v0.3.1 (`fmc_get_definition(examples=True)`); the VPN builder's payloads were checked
+  against the spec examples. The remaining hand-coded defaults (OSPF process configuration) are still
+  required by FMC 10.0.1, so they stay.
+- `fmc_deploy` accepts HA pair names, and a unit's name deploys its pair (FMC lists the pair as one
+  deployable container).
+
+### Fixed
+- VPN pre-shared keys are masked anywhere they appear in tool output.
 
 ## 0.3.0 (2026-10-15)
 
