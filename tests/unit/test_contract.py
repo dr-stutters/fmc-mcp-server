@@ -5,7 +5,7 @@ from typing import Any
 
 import pytest
 import respx
-from fastmcp import FastMCP
+from fastmcp import Client, FastMCP
 from stutters_mcp_core.manifest import build_manifest
 from stutters_mcp_core.testing import (
     assert_inbound_references,
@@ -83,3 +83,29 @@ async def test_manifest_is_current(fmc: respx.MockRouter) -> None:
             f"tests/manifests/fmc.json is stale ({key}); regenerate: "
             "uv run fmc-mcp-server tools --json --out tests/manifests/fmc.json"
         )
+
+
+async def test_every_referenced_tool_exists(fmc: respx.MockRouter) -> None:
+    """F32: descriptions, argument help, instructions and prompt texts only name real tools."""
+    import re
+
+    from fmc_mcp.server import INSTRUCTIONS
+
+    # API areas, the package name and a CML recipe field are not tools.
+    api_areas = {
+        "fmc_config",
+        "fmc_platform",
+        "fmc_tid",
+        "fmc_troubleshoot",
+        "fmc_netmap",
+        "fmc_mcp",
+        "fmc_side",
+    }
+    async with Client(_server()) as c:
+        tools = await c.list_tools()
+        prompts = await c.list_prompts()
+    names = {t.name for t in tools} | {p.name for p in prompts}
+    texts = [INSTRUCTIONS] + [json.dumps([t.description, t.inputSchema]) for t in tools]
+    texts += [p.read_text() for p in (HERE / "snapshots" / "prompts").glob("*.md")]
+    seen = set(re.findall(r"\bfmc_[a-z0-9_]+", "\n".join(texts)))
+    assert sorted(seen - names - api_areas) == []

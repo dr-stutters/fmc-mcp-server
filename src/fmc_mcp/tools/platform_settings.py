@@ -158,8 +158,9 @@ def register(reg: ToolRegistrar) -> None:
         """Readable summary of an FTD platform settings policy: syslog (logging on/off, what goes to
         FMC, destinations and their levels, syslog servers with interface, protocol and port,
         facility, timestamp format, EMBLEM), NTP, SNMP (secrets masked), SSH and HTTP access,
-        banner, DNS, plus the devices it is assigned to. Edit syslog with fmc_configure_syslog; other
-        sections through fmc_api_call (fmc_get_definition for the models)."""
+        banner, DNS, plus the devices it is assigned to. Edit with fmc_configure_syslog,
+        fmc_configure_ntp, fmc_configure_snmp and fmc_configure_ssh_access; other sections through
+        fmc_api_call (fmc_get_definition for the models)."""
         app: FmcApp = get_client(ctx)
         pol = await resolve_ps(app, policy, domain)
         pid = pol["id"]
