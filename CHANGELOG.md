@@ -1,5 +1,14 @@
 # Changelog
 
+## Unreleased
+
+### Added
+- **Prefilter writes (F20)**: `fmc_create_prefilter_policy`, `fmc_set_prefilter_policy`, `fmc_create_prefilter_rule`,
+  `fmc_update_prefilter_rule`, `fmc_delete_prefilter_rule`. Live: a bidirectional FASTPATH rule for the inside host
+  in `mcp-test-pf` linked to mcp-test-ftd-acp, deployed, packet tracer shows the prefilter fastpath; removed and
+  the default prefilter policy linked again. FMC treats an access-policy PUT carrying the rules block as bulk (422),
+  so only the policy's own fields are sent.
+
 ## 0.5.0 (2026-10-15)
 
 Production gate (F16, F18, F19) and Later (F13 first slice, F14). Tools: 45 read -> 51, 35 write -> 42,
