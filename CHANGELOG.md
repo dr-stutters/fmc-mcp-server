@@ -1,6 +1,10 @@
 # Changelog
 
-## Unreleased
+## 0.5.0 (2026-10-15)
+
+Production gate (F16, F18, F19) and Later (F13 first slice, F14). Tools: 45 read -> 51, 35 write -> 42,
+7 dangerous -> 9 (102 with every tier on). Core v0.9.0. F17 (version matrix) and F15 (cdFMC) skipped: they need
+older FMC versions and an SCC tenant.
 
 ### Added
 - **Admin operations (F14)**: `fmc_upgrade_status`, `fmc_list_backups`, `fmc_get_health_policy`, `fmc_list_users`,
