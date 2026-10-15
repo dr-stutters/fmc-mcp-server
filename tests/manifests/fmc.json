@@ -1,5 +1,5 @@
 {
-  "core_version": "0.12.2",
+  "core_version": "0.12.4",
   "manifest": 1,
   "prefix": "fmc",
   "prompts": {
@@ -588,5 +588,5 @@
       "title": "Where is an object used"
     }
   },
-  "version": "0.9.0"
+  "version": "0.9.1"
 }

@@ -346,12 +346,12 @@ def register(reg: ToolRegistrar) -> None:
                 desired["enableLogging"] = logging_enabled
             if emblem_format is not None:
                 desired["enableEMBLEMFormat"] = emblem_format
-            diff = field_changes(editable(cur), desired)
+            diff = field_changes(editable(cur), desired, replace=True)
             needs_level = desired.get("loggingToFMCType") not in (None, "OFF")
             if diff and needs_level and not desired.get("loggingToFMCLogLevel"):
                 # FMC 10.0.1 rejects the PUT ("LoggingToSecureFMCType is missing") without a level here.
                 desired["loggingToFMCLogLevel"] = "ERR"
-                diff = field_changes(editable(cur), desired)
+                diff = field_changes(editable(cur), desired, replace=True)
             if diff:
                 changes["basic_logging"] = diff
                 path = f"{base}/{SINGLE['basic_logging']}/{cur['id']}"
@@ -366,7 +366,7 @@ def register(reg: ToolRegistrar) -> None:
                 desired["facility"] = facility
             if timestamp_format:
                 desired["timeStampFormat"] = timestamp_format
-            diff = field_changes(editable(cur), desired)
+            diff = field_changes(editable(cur), desired, replace=True)
             if diff:
                 changes["syslog_settings"] = diff
                 path = f"{base}/{SINGLE['syslog_settings']}/{cur['id']}"
@@ -512,7 +512,7 @@ def register(reg: ToolRegistrar) -> None:
             raise InvalidRequest(
                 "Intrusion and file syslog here use the platform-settings syslog: set use_platform_syslog."
             )
-        diff = field_changes(editable(cur), desired)
+        diff = field_changes(editable(cur), desired, replace=True)
         path = await app.config_path(f"{ACCESS}/{acp['id']}/loggingsettings/{cur['id']}", domain)
         return await fmc_preview(
             ctx,

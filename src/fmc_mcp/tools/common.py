@@ -372,7 +372,7 @@ def rule_changes(current: dict[str, Any], desired: dict[str, Any]) -> dict[str, 
 
     rest_cur = {k: v for k, v in current.items() if k not in RULE_CONDITION_FIELDS}
     rest_new = {k: v for k, v in desired.items() if k not in RULE_CONDITION_FIELDS}
-    changes = field_changes(rest_cur, rest_new)
+    changes = field_changes(rest_cur, rest_new, replace=True)  # rules are PUT whole
     for f in RULE_CONDITION_FIELDS:
         before, after = _condition_labels(current.get(f)), _condition_labels(desired.get(f))
         if before != after:
