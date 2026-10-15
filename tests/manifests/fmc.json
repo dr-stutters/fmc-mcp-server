@@ -96,6 +96,10 @@
       "tier": "dangerous",
       "title": "Back up devices"
     },
+    "fmc_change_tickets": {
+      "tier": "read",
+      "title": "Change-management tickets"
+    },
     "fmc_configure_bgp": {
       "tier": "write",
       "title": "Configure BGP"
@@ -487,6 +491,10 @@
     "fmc_status": {
       "tier": "read",
       "title": "Cisco Secure Firewall Management Center status"
+    },
+    "fmc_ticket": {
+      "tier": "write",
+      "title": "Open, submit or discard a ticket"
     },
     "fmc_unused_objects": {
       "tier": "read",

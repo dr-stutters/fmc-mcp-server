@@ -86,6 +86,23 @@ def _parse_domains(raw: str | None) -> list[dict[str, str]]:
     return out
 
 
+class _TicketHeaders:
+    """The login-token auth plus FMC's change-management `ticket-id` header while a ticket is open."""
+
+    def __init__(self, inner: LoginTokenAuth, app: FmcApp) -> None:
+        self.inner = inner
+        self.app = app
+
+    async def headers(self, client: ApiClient) -> dict[str, str]:
+        out = dict(await self.inner.headers(client))
+        if self.app.ticket_id:
+            out["ticket-id"] = self.app.ticket_id
+        return out
+
+    async def on_unauthorized(self, client: ApiClient, sent: dict[str, str]) -> bool:
+        return await self.inner.on_unauthorized(client, sent)
+
+
 class FmcApp:
     def __init__(self, settings: Settings, transport: httpx.AsyncBaseTransport | None = None) -> None:
         self.settings = settings
@@ -97,7 +114,7 @@ class FmcApp:
             settings.url,
             product="FMC",
             env_prefix="FMC_",
-            auth=self._auth,
+            auth=_TicketHeaders(self._auth, self),
             verify=settings.verify,
             timeout=settings.timeout,
             retries=settings.retries,
@@ -121,6 +138,8 @@ class FmcApp:
         )
         # FMC deploy warnings seen per (devices, pending version), for ignore_warning (fmc_mcp.rails)
         self.deploy_warnings: dict[str, tuple[float, list[str]]] = {}
+        # change-management ticket sent with every request (fmc_ticket / FMC_TICKET)
+        self.ticket_id: str | None = settings.ticket or None
 
     async def aclose(self) -> None:
         await self.api.aclose()
