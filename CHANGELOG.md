@@ -10,8 +10,8 @@
   `show running-config ssh`; all reverted.
 
 ### Fixed
-- `fmc_run_show_command` returns empty output with a note when FMC answers 404 for a command that printed
-  nothing (e.g. `show running-config ntp` with no NTP lines), instead of a "not found" error.
+- `fmc_run_show_command` explains FMC's 404 "The input command is invalid" (e.g. `show running-config ntp`: NTP
+  is not in the data-plane config) instead of a generic "not found", and passes FMC's 404 text through otherwise.
 
 ## 0.6.0 (2026-10-15)
 

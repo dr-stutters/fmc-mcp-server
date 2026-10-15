@@ -362,6 +362,21 @@ async def test_run_show_command(ftd: respx.MockRouter) -> None:
     assert out["output"].startswith("S*") and "outside" in out["output"] and out["matched_lines"] == 1
 
 
+async def test_show_command_invalid_vs_not_found(ftd: respx.MockRouter) -> None:
+    def reply(req: httpx.Request) -> httpx.Response:
+        msg = (
+            "The input command is invalid. Please enter a valid command" if "ntp" in str(req.url) else "gone"
+        )
+        return httpx.Response(404, json={"error": {"messages": [{"description": msg}]}})
+
+    ftd.get(f"{DEVPATH}/operational/commands").mock(side_effect=reply)
+    async with Client(server()) as c:
+        with pytest.raises(ToolError, match="rejects 'show running-config ntp' as invalid"):
+            await run(c, "fmc_run_show_command", {"device": "mcp-ftd1", "command": "show running-config ntp"})
+        with pytest.raises(ToolError, match="404 for 'show route': gone"):
+            await run(c, "fmc_run_show_command", {"device": "mcp-ftd1", "command": "show route"})
+
+
 async def test_packet_tracer_request_and_summary(ftd: respx.MockRouter) -> None:
     post = ftd.post(f"/api/fmc_troubleshoot/v1/domain/{DOMAIN}/packettracer/traces").mock(
         return_value=httpx.Response(200, json=fixture("ftd_packettracer_drop"))

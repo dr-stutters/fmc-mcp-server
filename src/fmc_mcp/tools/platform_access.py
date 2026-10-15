@@ -2,6 +2,8 @@
 SSH management access, in an FTD platform settings policy. Secrets FMC masks on read are never echoed back."""
 
 # No `from __future__ import annotations`: FastMCP inspects signatures at runtime.
+import hashlib
+import re
 from typing import Annotated, Any, Literal
 
 from fastmcp import Context
@@ -48,9 +50,18 @@ def register(reg: ToolRegistrar) -> None:
         app: FmcApp = get_client(ctx)
         pol = await resolve_ps(app, policy, domain)
         path, cur = await _single(app, pol["id"], "ntpsettings", domain)
-        want_servers = [s.strip() for s in servers or [] if s.strip()]
+        want_servers = list(dict.fromkeys(s.strip() for s in servers or [] if s.strip()))
+        for srv in want_servers:
+            if not network_literal(srv) and not re.match(r"^[A-Za-z0-9.-]+\.[A-Za-z]{2,}$", srv):
+                raise InvalidRequest(f"{srv!r} is not an IP address or host name.")
         mode = "SYNC_VIA_NTP_SERVER" if want_servers else "SYNC_VIA_MGMT_CENTER_NTP"
-        before = {"mode": cur.get("ntpMode"), "servers": cur.get("ntpServerInfos") or []}
+        before = {
+            "mode": cur.get("ntpMode"),
+            "servers": [
+                s if isinstance(s, str) else str(s.get("value") or s.get("name"))
+                for s in cur.get("ntpServerInfos") or []
+            ],
+        }
         after = {"mode": mode, "servers": want_servers}
 
         async def apply() -> Any:
@@ -85,7 +96,8 @@ def register(reg: ToolRegistrar) -> None:
             SecretStr | None,
             Field(
                 description="SNMPv2c community for the server and the v2c hosts. FMC never shows it again, "
-                "so it must be given whenever SNMP has hosts or a community and anything changes"
+                "so it must be given whenever SNMP has hosts or a community and anything changes "
+                "(a different community than previewed invalidates the confirm)"
             ),
         ] = None,
         location: Annotated[str | None, Field(description="sysLocation")] = None,
@@ -117,7 +129,7 @@ def register(reg: ToolRegistrar) -> None:
             if not interfaces:
                 raise InvalidRequest("Give the interfaces (zones) the SNMP managers are reached through.")
             zones = await resolver.block(interfaces, "zone") or {}
-            for h in add_hosts:
+            for h in dict.fromkeys(add_hosts):
                 lit = network_literal(h)
                 ref = (
                     await _find_host(app, lit["value"], domain)
@@ -138,6 +150,15 @@ def register(reg: ToolRegistrar) -> None:
                     }
                 )
         gone = {h.lower() for h in remove_hosts or []}
+        host_names = {str((h.get("ipAddress") or {}).get("name", "")).lower() for h in hosts}
+        host_values = {
+            str((h.get("ipAddress") or {}).get("value", "")).lower(): str(
+                (h.get("ipAddress") or {}).get("name", "")
+            ).lower()
+            for h in hosts
+        }
+        gone |= {host_values[g] for g in list(gone) if g in host_values}
+        unmatched = sorted(g for g in gone if g not in host_names and g not in host_values)
         kept = [h for h in hosts if str((h.get("ipAddress") or {}).get("name", "")).lower() not in gone]
         removed = [ref_label(h.get("ipAddress") or {}) for h in hosts if h not in kept]
         secret = community.get_secret_value() if community else None
@@ -148,6 +169,13 @@ def register(reg: ToolRegistrar) -> None:
         blockers = []
         if not changing:
             blockers.append("Nothing to change.")
+        if unmatched:
+            blockers.append(
+                f"No SNMP manager {', '.join(unmatched)} to remove "
+                f"(managers: {', '.join(sorted(host_names)) or 'none'})."
+            )
+        if added and not secret and not cur.get("communityString"):
+            blockers.append("New v2c managers need a community: give `community`.")
         if changing and needs_secret and not secret and (cur.get("enableSNMPServers") or enabled):
             blockers.append(
                 "FMC masks the SNMP community; give `community` again, or FMC would store the mask as the "
@@ -199,7 +227,8 @@ def register(reg: ToolRegistrar) -> None:
             args={
                 "policy": policy,
                 "enabled": enabled,
-                "community": "********" if community else None,
+                # binds the confirm to the previewed community without revealing it
+                "community": "sha256:" + hashlib.sha256(secret.encode()).hexdigest()[:16] if secret else None,
                 "location": location,
                 "contact": contact,
                 "add_hosts": add_hosts,
@@ -220,6 +249,10 @@ def register(reg: ToolRegistrar) -> None:
                     "location": location,
                     "contact": contact,
                     "add_hosts": [h["ipAddress"]["name"] for h in added] or None,
+                    "creates_host_objects": [
+                        h["ipAddress"]["name"] for h in added if not h["ipAddress"].get("id")
+                    ]
+                    or None,
                     "remove_hosts": removed or None,
                     "hosts_after": [ref_label(h.get("ipAddress") or {}) for h in kept]
                     + [h["ipAddress"]["name"] for h in added],
