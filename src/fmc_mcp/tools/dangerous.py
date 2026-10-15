@@ -88,6 +88,31 @@ def task_id_of(resp: Any) -> str | None:
     return None
 
 
+async def _deploy_target(
+    app: FmcApp, ref: str, pending: list[dict[str, Any]], by_id: dict[Any, dict[str, Any]], domain: str | None
+) -> dict[str, Any]:
+    """The deployable entry for a device, HA pair or cluster name/UUID. FMC lists an HA pair as
+    one deployable container, so a unit's name maps to its pair."""
+    low = ref.strip().lower()
+    for d in pending:
+        dev = d.get("device") or {}
+        if low in {
+            str(dev.get("id", "")).lower(),
+            str(dev.get("name", "")).lower(),
+            str(d.get("name", "")).lower(),
+        }:
+            return d
+    dev = await resolve_in(app, DEVICES, ref, "device", domain)
+    if dev["id"] in by_id:
+        return by_id[dev["id"]]
+    pairs = await app.all(await app.config_path(HA_PAIRS, domain))
+    for h in pairs.items:
+        units = {(h.get("primary") or {}).get("id"), (h.get("secondary") or {}).get("id")}
+        if dev["id"] in units and h.get("id") in by_id:
+            return by_id[h["id"]]
+    raise InvalidRequest(f"{dev.get('name')!r} has no pending changes (see fmc_list_deployable_devices).")
+
+
 async def finish(ctx: Context, app: FmcApp, resp: Any, wait: bool, domain: str | None, what: str) -> Any:
     app.invalidate_cache()
     tid = task_id_of(resp)
@@ -186,12 +211,7 @@ def register(reg: ToolRegistrar) -> None:
         targets: list[dict[str, Any]] = []
         if devices:
             for ref in devices:
-                dev = await resolve_in(app, DEVICES, ref, "device", domain)
-                if dev["id"] not in by_id:
-                    raise InvalidRequest(
-                        f"{dev.get('name')!r} has no pending changes (see fmc_list_deployable_devices)."
-                    )
-                targets.append(by_id[dev["id"]])
+                targets.append(await _deploy_target(app, ref, pending, by_id, domain))
         else:
             targets = [d for d in pending if d.get("canBeDeployed", True)]
         blockers = [] if targets else ["Nothing to deploy: no device has pending changes."]
