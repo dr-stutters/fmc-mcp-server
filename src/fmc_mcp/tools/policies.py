@@ -194,6 +194,12 @@ def register(reg: ToolRegistrar) -> None:
             "prefilter_policy": ref_label(p["prefilterPolicySetting"])
             if p.get("prefilterPolicySetting")
             else None,
+            "decryption_policy": ref_label(p["decryptionPolicySetting"])
+            if p.get("decryptionPolicySetting")
+            else None,
+            "identity_policy": ref_label(p["identityPolicySetting"])
+            if p.get("identityPolicySetting")
+            else None,
             "rules": {
                 "total": len(flat),
                 "enabled": sum(1 for r in flat if r.get("enabled") is not False),
