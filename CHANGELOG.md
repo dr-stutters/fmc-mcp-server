@@ -8,6 +8,15 @@
   deployments, audit trail, then a preview-first fix. Exercised live against the FTDv (TCP 23 blocked,
   TCP 443 allowed, no-ARP drop) after real traffic from the inside host.
 
+- Dynamic objects (F4): `fmc_list_dynamic_objects` (with current mappings), `fmc_create_dynamic_object`,
+  `fmc_delete_dynamic_object` (blocked while an access rule references it) and `fmc_map_dynamic_object`
+  (add/remove IPs; takes effect without a deployment; the preview lists the rules it affects).
+  `fmc_create_access_rule` / `fmc_update_access_rule` take `source_dynamic_objects` /
+  `destination_dynamic_objects`. Live: mapping the inside host blocked ping and TCP 443 within seconds,
+  with nothing to deploy; unmapping restored it.
+- `fmc_packet_tracer` names the rule Snort decided on (`verdict_rule`); with a Snort-evaluated rule
+  (dynamic objects, applications, URLs) the ACCESS-LIST phase only shows a "send to Snort" permit.
+
 ### Changed
 - Core pinned to stutters-mcp-core v0.3.0 (pull-only; `list_result` keeps `Page.more`; prompts via
   `reg.prompt`).

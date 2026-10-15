@@ -199,6 +199,44 @@ def summarize_trace(resp: dict[str, Any], verbose: bool) -> list[dict[str, Any]]
     return out
 
 
+async def name_snort_rules(app: FmcApp, traces: list[dict[str, Any]], domain: str | None) -> None:
+    """Name the rule Snort decided on and set `verdict_rule`.
+
+    When a rule needs Snort (dynamic objects, applications, URLs, users), the ACCESS-LIST phase shows
+    the first such rule as a 'permit to Snort' and Snort's phase only carries a numeric rule id. FMC
+    rule UUIDs end in that id (…-000268434474), so the policy's rules map it back to a name."""
+    for t in traces:
+        rules = t.get("matched_rules") or []
+        unnamed = [r for r in rules if r.get("rule_id") and not r.get("rule")]
+        policy = next((str(r["policy"]) for r in rules if r.get("policy")), None)
+        if unnamed and policy:
+            policy_name = policy.rsplit(" - ", 1)[0]
+            try:
+                pol = await resolve_policy(app, "access", policy_name, domain)
+                page = await all_rules(
+                    app, await app.config_path(f"{ACCESS}/{pol['id']}/accessrules", domain)
+                )
+            except UpstreamError:
+                page = None
+            by_id = {
+                str(r.get("id", "")).rsplit("-", 1)[-1].lstrip("0"): r.get("name")
+                for r in (page.items if page else [])
+            }
+            for r in unnamed:
+                name = by_id.get(str(r["rule_id"]).lstrip("0"))
+                if name:
+                    r["rule"] = name
+                    for ph in t.get("phases") or []:
+                        if ph.get("rule_id") == r["rule_id"] and not ph.get("rule"):
+                            ph["rule"] = name
+        if rules:
+            # Snort's decision comes last and wins over the ACCESS-LIST 'send to Snort' permit.
+            last = rules[-1]
+            t["verdict_rule"] = last.get("rule") or (
+                f"Default Action or rule id {last['rule_id']}" if last.get("rule_id") else None
+            )
+
+
 def _ts(value: Any) -> str | None:
     v = str(value or "").strip()
     return v or None
@@ -322,6 +360,7 @@ def register(reg: ToolRegistrar) -> None:
         path = f"/api/fmc_troubleshoot/v1/domain/{await app.domain_uuid(domain)}/packettracer/traces"
         resp = await app.api.post(path, body, timeout=180)
         traces = summarize_trace(resp if isinstance(resp, dict) else {}, verbose)
+        await name_snort_rules(app, traces, domain)
         flow = f"{protocol} {src}" + (f":{source_port}" if protocol != "icmp" else "")
         flow += f" -> {dst}" + (f":{destination_port}" if protocol != "icmp" else f" type {icmp_type}")
         return {"flow": flow, "input_interface": iface.get("ifname"), "results": traces}

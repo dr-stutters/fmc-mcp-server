@@ -87,6 +87,8 @@ gives a definite answer that the later steps cannot change. All steps before ste
    - a NAT phase drop or an unexpected translation: see the NAT policy;
    - allow: the device would pass it. Then the problem is elsewhere (return path, another device, the
      host itself) or the test doesn't match the real flow (ports, interface).
+   A drop "snort-blacklist" means an earlier flow with the same 5-tuple was blocked and is still
+   cached; repeat with another source_port to see what a new connection gets.
    If packet tracer and the offline walk disagree, the device runs a different configuration than
    FMC holds: go to step 4.
 
@@ -109,7 +111,9 @@ gives a definite answer that the later steps cannot change. All steps before ste
 7. Fix proposal (only if the user wants it changed), always preview-first:
    - allow it: {tool_ref("fmc_create_access_rule")} (an ALLOW rule placed above the blocking one with
      insert_before) or {tool_ref("fmc_update_access_rule")} on the blocking rule;
-   - block it: an access rule with action BLOCK above the rule that allows it.
+   - block it: an access rule with action BLOCK above the rule that allows it, or for single hosts
+     map them into a dynamic object that a BLOCK rule already references with
+     {tool_ref("fmc_map_dynamic_object")} (no deployment needed; see {tool_ref("fmc_list_dynamic_objects")}).
    Show the preview and wait for the user's approval before confirming. Access rule changes reach
    the device only after {tool_ref("fmc_deploy")}; check {tool_ref("fmc_pending_changes")} first, deploy
    (preview-first too), then rerun {tool_ref("fmc_packet_tracer")} to prove the fix.

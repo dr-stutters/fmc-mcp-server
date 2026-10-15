@@ -36,6 +36,8 @@ CONDITION_PARAMS = {
     "source_ports": ("sourcePorts", "port"),
     "destination_ports": ("destinationPorts", "port"),
     "urls": ("urls", "url"),
+    "source_dynamic_objects": ("sourceDynamicObjects", "dynamic"),
+    "destination_dynamic_objects": ("destinationDynamicObjects", "dynamic"),
 }
 
 ZonesParam = Annotated[list[str] | None, Field(description="Security zone / interface group names")]
@@ -49,6 +51,10 @@ PortsParam = Annotated[
 ]
 UrlsParam = Annotated[
     list[str] | None, Field(description="URL object/group names or literal URLs (https://...)")
+]
+DynamicParam = Annotated[
+    list[str] | None,
+    Field(description="Dynamic object names (fmc_list_dynamic_objects); mappings change without a deploy"),
 ]
 
 
@@ -144,6 +150,8 @@ def register(reg: ToolRegistrar) -> None:
         source_ports: PortsParam = None,
         destination_ports: PortsParam = None,
         urls: UrlsParam = None,
+        source_dynamic_objects: DynamicParam = None,
+        destination_dynamic_objects: DynamicParam = None,
         enabled: Annotated[bool, Field(description="Create the rule enabled")] = True,
         log: Annotated[
             LogMode,
@@ -192,6 +200,8 @@ def register(reg: ToolRegistrar) -> None:
                     "source_ports": source_ports,
                     "destination_ports": destination_ports,
                     "urls": urls,
+                    "source_dynamic_objects": source_dynamic_objects,
+                    "destination_dynamic_objects": destination_dynamic_objects,
                 },
             )
         )
@@ -252,6 +262,8 @@ def register(reg: ToolRegistrar) -> None:
                 "source_ports": source_ports,
                 "destination_ports": destination_ports,
                 "urls": urls,
+                "source_dynamic_objects": source_dynamic_objects,
+                "destination_dynamic_objects": destination_dynamic_objects,
                 "enabled": enabled,
                 "log": log,
                 "intrusion_policy": intrusion_policy,
@@ -282,6 +294,8 @@ def register(reg: ToolRegistrar) -> None:
         source_ports: PortsParam = None,
         destination_ports: PortsParam = None,
         urls: UrlsParam = None,
+        source_dynamic_objects: DynamicParam = None,
+        destination_dynamic_objects: DynamicParam = None,
         log: Annotated[LogMode | None, Field(description="Connection logging to FMC")] = None,
         move_to: Annotated[
             int | None, Field(ge=1, description="Move the rule so it sits at this 1-based index")
@@ -316,6 +330,8 @@ def register(reg: ToolRegistrar) -> None:
                 "source_ports": source_ports,
                 "destination_ports": destination_ports,
                 "urls": urls,
+                "source_dynamic_objects": source_dynamic_objects,
+                "destination_dynamic_objects": destination_dynamic_objects,
             },
         )
         cleared: dict[str, Any] = {}
@@ -382,6 +398,8 @@ def register(reg: ToolRegistrar) -> None:
                 "source_ports": source_ports,
                 "destination_ports": destination_ports,
                 "urls": urls,
+                "source_dynamic_objects": source_dynamic_objects,
+                "destination_dynamic_objects": destination_dynamic_objects,
                 "log": log,
                 "move_to": move_to,
                 "comment": comment,

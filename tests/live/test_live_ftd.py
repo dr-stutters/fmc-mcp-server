@@ -16,6 +16,7 @@ inside Ethernet0/1 10.99.1.1/24.
 
 import json
 import os
+import time
 from pathlib import Path
 from typing import Any
 
@@ -48,6 +49,16 @@ def _env(name: str) -> str | None:
 FTD_HOST = _env("FMC_LIVE_FTD_HOST")
 REG_KEY = _env("FMC_LIVE_FTD_REG_KEY")
 needs_ftd = pytest.mark.skipif(not (FTD_HOST and REG_KEY), reason="FMC_LIVE_FTD_HOST/REG_KEY not set")
+
+
+_port = [40000 + int(time.time()) % 20000]
+
+
+def fresh_port() -> int:
+    """A new TCP source port per trace: packet tracer reuses a cached flow with the same 5-tuple,
+    and Snort keeps blocked flows black-listed for a while."""
+    _port[0] = 40000 + (_port[0] - 39999) % 20000
+    return _port[0]
 
 
 async def call(client: Client[Any], name: str, args: dict[str, Any]) -> Any:
@@ -249,15 +260,18 @@ async def test_why_is_this_blocked(client: Client[Any]) -> None:
             "device": DEVICE,
             "input_interface": "inside",
             "protocol": "tcp",
+            "source_port": fresh_port(),
             "source_ip": "10.99.1.10",
             "destination_ip": FMC_HOST,
             "destination_port": 23,
         },
     )
     res = blocked["results"][0]
-    assert res["action"] == "drop" and "acl-drop" in res["drop_reason"]
-    assert res["matched_rules"][0]["rule"] == "mcp-test-block-telnet"
-    blocked_rule_id = res["matched_rules"][0]["rule_id"]
+    # acl-drop when the ACL decides; "firewall" (Snort) when a Snort-evaluated rule such as the
+    # dynamic-object quarantine rule sits above it.
+    assert res["action"] == "drop" and ("acl-drop" in res["drop_reason"] or "firewall" in res["drop_reason"])
+    assert res["verdict_rule"] == "mcp-test-block-telnet", res
+    blocked_rule_id = res["matched_rules"][-1]["rule_id"]
     allowed = await call(
         client,
         "fmc_packet_tracer",
@@ -265,6 +279,7 @@ async def test_why_is_this_blocked(client: Client[Any]) -> None:
             "device": DEVICE,
             "input_interface": "inside",
             "protocol": "tcp",
+            "source_port": fresh_port(),
             "source_ip": "10.99.1.10",
             "destination_ip": FMC_HOST,
             "destination_port": 443,
@@ -273,7 +288,7 @@ async def test_why_is_this_blocked(client: Client[Any]) -> None:
     res = allowed["results"][0]
     # The policy allows it; on a freshly deployed device the simulated packet can still drop for a
     # missing ARP entry of the next hop (no-v4-adjacency), which the tool reports as the reason.
-    assert res["matched_rules"][0]["rule"] == "mcp-test-allow-out"
+    assert res["verdict_rule"] == "mcp-test-allow-out", res
     assert res["action"] == "allow" or "adjacency" in res.get("drop_reason", ""), res
     assert any(p.get("type") == "NAT" and "translate" in p.get("info", "") for p in res["phases"])
 
@@ -368,7 +383,7 @@ async def test_why_blocked_prompt_steps(client: Client[Any]) -> None:
     assert all(f"`{s}`" in body and s in tools for s in steps)
     zones = {"source_zone": ZONE_IN, "destination_zone": ZONE_OUT}
     cases = [
-        (FMC_HOST, 23, "BLOCK", "drop", "acl-drop"),
+        (FMC_HOST, 23, "BLOCK", "drop", None),
         (FMC_HOST, 443, "ALLOW", "allow", None),
         ("198.18.128.199", 443, "ALLOW", "drop", "adjacency"),
     ]
@@ -396,10 +411,17 @@ async def test_why_blocked_prompt_steps(client: Client[Any]) -> None:
                 "source_ip": "10.99.1.10",
                 "destination_ip": dst,
                 "destination_port": port,
+                "source_port": fresh_port(),
             },
         )
         res = trace["results"][0]
+        if action == "allow" and "adjacency" in res.get("drop_reason", ""):
+            # Allowed by policy; the FTD just has no ARP entry for the next hop right now.
+            assert res["verdict_rule"] == "mcp-test-allow-out", res
+            continue
         assert res["action"] == action and (reason is None or reason in res.get("drop_reason", "")), res
+        if port == 23:
+            assert res["verdict_rule"] == "mcp-test-block-telnet", res
     hits = await call(
         client,
         "fmc_get_hit_counts",
@@ -413,3 +435,61 @@ async def test_why_blocked_prompt_steps(client: Client[Any]) -> None:
     ):
         out = await call(client, name, {**args, "response_format": "json"})
         assert "results" in out
+
+
+QUARANTINE = "mcp-test-quarantine"
+QUARANTINE_RULE = "mcp-test-quarantine-block"
+
+
+@needs_ftd
+async def test_dynamic_object_blocks_without_deploy(client: Client[Any]) -> None:
+    """F4: a BLOCK rule on a dynamic object (deployed once), then mapping/unmapping the inside host
+    changes the verdict with no deployment. Object and rule are kept for later runs (empty = no effect)."""
+    objs = await call(client, "fmc_list_dynamic_objects", {"name": QUARANTINE, "response_format": "json"})
+    if not any(o["name"] == QUARANTINE for o in objs["results"]):
+        await apply(client, "fmc_create_dynamic_object", {"name": QUARANTINE, "description": "mcp live test"})
+    rules = await call(client, "fmc_list_access_rules", {"policy": ACP, "response_format": "json"})
+    if not any(r["name"] == QUARANTINE_RULE for r in rules["results"]):
+        await apply(
+            client,
+            "fmc_create_access_rule",
+            {
+                "policy": ACP,
+                "name": QUARANTINE_RULE,
+                "action": "BLOCK",
+                "source_dynamic_objects": [QUARANTINE],
+                "insert_before": 1,
+            },
+        )
+    await deploy(client, "mcp live test: quarantine rule")
+    blocked_delete = await call(client, "fmc_delete_dynamic_object", {"object": QUARANTINE})
+    assert blocked_delete["status"] == "blocked" and QUARANTINE_RULE in " ".join(blocked_delete["blockers"])
+
+    trace_args = {
+        "device": DEVICE,
+        "input_interface": "inside",
+        "protocol": "tcp",
+        "source_ip": "10.99.1.10",
+        "destination_ip": FMC_HOST,
+        "destination_port": 443,
+    }
+    try:
+        preview = await call(client, "fmc_map_dynamic_object", {"object": QUARANTINE, "add": ["10.99.1.10"]})
+        assert any(r["rule"] == QUARANTINE_RULE for r in preview["preview"]["rules"]), preview
+        await call(
+            client,
+            "fmc_map_dynamic_object",
+            {"object": QUARANTINE, "add": ["10.99.1.10"], "confirm": preview["confirm"]},
+        )
+        res = (await call(client, "fmc_packet_tracer", trace_args))["results"][0]
+        assert res["action"] == "drop" and res["verdict_rule"] == QUARANTINE_RULE, res
+        pending = await call(client, "fmc_list_deployable_devices", {"response_format": "json"})
+        assert not any(r["device"] == DEVICE for r in pending["results"]), "a mapping must not need a deploy"
+    finally:
+        await apply(client, "fmc_map_dynamic_object", {"object": QUARANTINE, "remove": ["10.99.1.10"]})
+    # The blocked 5-tuple stays black-listed in Snort for a while; packet tracer with the same source
+    # port reuses that flow ("snort-blacklist"), so trace a fresh flow.
+    trace_args["source_port"] = fresh_port()
+    res = (await call(client, "fmc_packet_tracer", trace_args))["results"][0]
+    assert res["verdict_rule"] == "mcp-test-allow-out", res
+    assert res["action"] == "allow" or "adjacency" in res.get("drop_reason", ""), res
