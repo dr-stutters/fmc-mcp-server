@@ -36,7 +36,10 @@ DNS = "policy/dnspolicies"
 LISTS = "object/customsidnslists"
 RULE = "mcp-dns-block"
 PREFIX = "mcp-dns-"
-DOMAIN_RE = re.compile(r"^(?=.{1,253}$)(\*\.)?([A-Za-z0-9-]{1,63}\.)+[A-Za-z]{2,63}$")
+DOMAIN_RE = re.compile(
+    r"(?=.{1,253})(\*\.)?([A-Za-z0-9_](?:[A-Za-z0-9_-]{0,61}[A-Za-z0-9_])?\.)+(?:[A-Za-z]{2,63}|xn--[A-Za-z0-9-]{1,59})"
+)
+MARKER = ".fmc-mcp.txt"  # file name of the lists this tool uploads (FMC keeps no description for them)
 PolicyRef = Annotated[str, Field(description="DNS policy name or UUID (fmc_get_dns_policy)")]
 
 
@@ -44,7 +47,7 @@ def list_name(domain: str) -> str:
     clean = re.sub(r"[^A-Za-z0-9.-]+", "_", domain)
     if len(clean) <= 50 and clean == domain:
         return PREFIX + clean
-    return f"{PREFIX}{clean[:41]}-{hashlib.sha1(domain.encode()).hexdigest()[:8]}"
+    return f"{PREFIX}{clean[:41]}-{hashlib.sha1(domain.encode(), usedforsecurity=False).hexdigest()[:8]}"
 
 
 def rule_row(r: dict[str, Any]) -> dict[str, Any]:
@@ -70,7 +73,7 @@ async def upload_list(app: FmcApp, path: str, name: str, domain_name: str) -> di
         "http://upload/",
         files={
             "name": (None, name),
-            "payloadFile": (f"{name}.txt", f"{domain_name}\n".encode(), "text/plain"),
+            "payloadFile": (f"{name}{MARKER}", f"{domain_name}\n".encode(), "text/plain"),
         },
     )
     content = req.read()
@@ -153,7 +156,7 @@ def register(reg: ToolRegistrar) -> None:
         page = await app.all(base)
         if not page.items:
             raise InvalidRequest(f"{acp.get('name')!r} has no Security Intelligence settings.")
-        si = page.items[0]
+        si = await app.api.get(f"{base}/{page.items[0]['id']}")
         now = si.get("dnsPolicy") or {}
         path = f"{base}/{si['id']}"
 
@@ -207,7 +210,7 @@ def register(reg: ToolRegistrar) -> None:
         p = await resolve_in(app, DNS, policy, "DNS policy", domain)
         wanted = []
         for d in dict.fromkeys(x.strip().lower().rstrip(".") for x in domains):
-            if not DOMAIN_RE.match(d):
+            if len(d) > 253 or not DOMAIN_RE.fullmatch(d):
                 raise InvalidRequest(f"{d!r} is not a domain name.")
             wanted.append(d)
         rules_path = await app.config_path(f"{DNS}/{p['id']}/dnsrules", domain)
@@ -221,20 +224,48 @@ def register(reg: ToolRegistrar) -> None:
             blockers.append(
                 f"The rule {RULE!r} answers with {rule.get('action')}; use mode={rule.get('action')}."
             )
-        existing_lists = {str(o.get("name")): o for o in (await app.all(lists_path, expanded=False)).items}
+        if rule and (
+            (rule.get("dnsFeeds") or {}).get("objects")
+            or rule.get("sourceZones")
+            or (rule.get("networks") or {}).get("objects")
+            or (rule.get("networks") or {}).get("literals")
+        ):
+            blockers.append(
+                f"The rule {RULE!r} has other match criteria (feeds, zones, networks); rename it."
+            )
+        existing_lists = {str(o.get("name")): o for o in (await app.all(lists_path)).items}
+        foreign = [
+            list_name(d)
+            for d in todo
+            if list_name(d) in existing_lists
+            and not str(existing_lists[list_name(d)].get("fileName", "")).endswith(MARKER)
+        ]
+        if foreign and action == "block":
+            blockers.append(
+                f"DNS lists {', '.join(foreign)} exist but were not made by this tool; rename them."
+            )
 
         async def apply() -> Any:
             created: list[str] = []
+            kept_lists: list[str] = []
             refs: list[dict[str, Any]] = []
             body: dict[str, Any]
             result: Any
             current = await app.api.get(f"{rules_path}/{rule['id']}") if rule else None
             try:
                 if action == "block":
+                    have_now = {str(o.get("name")): o for o in (await app.all(lists_path)).items}
                     for d in todo:
                         name = list_name(d)
-                        obj = existing_lists.get(name) or await upload_list(app, lists_path, name, d)
-                        if name not in existing_lists:
+                        obj = have_now.get(name)
+                        if obj is not None and not str(obj.get("fileName", "")).endswith(MARKER):
+                            raise InvalidRequest(
+                                f"DNS list {name!r} was not made by this tool; nothing changed."
+                            )
+                        if obj is None:
+                            obj = await upload_list(app, lists_path, name, d)
+                            if not isinstance(obj, dict) or not obj.get("id"):
+                                raise UpstreamError(f"FMC returned no id for the uploaded DNS list {name!r}.")
                             created.append(obj["id"])
                         refs.append(
                             {"id": obj["id"], "type": obj.get("type", "CustomSIDNSListObject"), "name": name}
@@ -251,7 +282,8 @@ def register(reg: ToolRegistrar) -> None:
                     else:
                         body = editable(current)
                         objs = (body.get("dnsLists") or {}).get("objects") or []
-                        body["dnsLists"] = {"objects": objs + refs}
+                        have_ids = {o.get("id") for o in objs}
+                        body["dnsLists"] = {"objects": objs + [r for r in refs if r["id"] not in have_ids]}
                         result = await app.api.put(f"{rules_path}/{current['id']}", body)
                 else:
                     if current is None:
@@ -265,11 +297,17 @@ def register(reg: ToolRegistrar) -> None:
                         result = await app.api.put(f"{rules_path}/{current['id']}", body)
                     else:
                         result = await app.api.delete(f"{rules_path}/{current['id']}")
+                    kept_lists = []
                     for o in objs:
                         if o.get("name") in names:
-                            with contextlib.suppress(UpstreamError):
+                            mine = str((existing_lists.get(str(o.get("name"))) or {}).get("fileName", ""))
+                            try:
+                                if not mine.endswith(MARKER):
+                                    raise UpstreamError("not made by this tool")
                                 await app.api.delete(f"{lists_path}/{o['id']}")
-            except UpstreamError:
+                            except UpstreamError:
+                                kept_lists.append(str(o.get("name")))
+            except BaseException:
                 for oid in created:  # don't leave lists we just uploaded behind
                     with contextlib.suppress(UpstreamError):
                         await app.api.delete(f"{lists_path}/{oid}")
@@ -278,6 +316,7 @@ def register(reg: ToolRegistrar) -> None:
                 app.invalidate_cache()
             return {
                 "policy": p.get("name"),
+                "lists_kept": (kept_lists or None) if action == "unblock" else None,
                 "rule": rule_row(result) if isinstance(result, dict) and result.get("name") else None,
                 "next": "fmc_deploy to the devices whose access policy uses this DNS policy",
             }
@@ -299,7 +338,7 @@ def register(reg: ToolRegistrar) -> None:
                         if rule is None and action == "block"
                         else ""
                     ),
-                    "mode": mode,
+                    "mode": mode if action == "block" else None,
                 },
                 fingerprint={"rule": (rule or {}).get("id"), "lists": sorted(in_rule)},
                 blockers=blockers,

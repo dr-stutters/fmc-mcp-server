@@ -54,3 +54,23 @@ async def test_block_uploads_list_and_creates_rule(fmc: respx.MockRouter) -> Non
     )
     body = json.loads(rule.calls.last.request.content)
     assert body["action"] == "NXDOMAIN" and body["dnsLists"]["objects"][0]["id"] == "l1"
+
+
+async def test_foreign_list_with_our_name_is_refused(fmc: respx.MockRouter) -> None:
+    fmc.get(f"{CFG}/policy/dnspolicies").mock(return_value=items([POL]))
+    fmc.get(RULES).mock(return_value=items([]))
+    fmc.get(LISTS).mock(
+        return_value=items([{"id": "x", "name": "mcp-dns-bad.example.com", "fileName": "theirs.txt"}])
+    )
+    async with Client(create_server(make_settings(mcp_enable_writes=True))) as c:
+        out = await run(c, "fmc_dns_block", {"policy": "mcp-test-dns", "domains": ["bad.example.com"]})
+    assert out["status"] == "blocked" and "not made by this tool" in out["blockers"][0]
+
+
+def test_domain_validation() -> None:
+    from fmc_mcp.tools.dns import DOMAIN_RE
+
+    for ok in ("bad.example.com", "*.evil.test", "x.xn--p1ai", "_dmarc.example.org"):
+        assert DOMAIN_RE.fullmatch(ok), ok
+    for bad in ("-bad.example.com", "localhost", "a..b.com", "bad.example.com."):
+        assert not DOMAIN_RE.fullmatch(bad), bad
