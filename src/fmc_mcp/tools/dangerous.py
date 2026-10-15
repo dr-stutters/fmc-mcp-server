@@ -13,6 +13,7 @@ from stutters_mcp_core import (
     Plan,
     TaskFailed,
     ToolRegistrar,
+    UpstreamError,
     UpstreamTimeout,
     ValidationFailed,
     get_client,
@@ -378,6 +379,18 @@ def register(reg: ToolRegistrar) -> None:
             cap=500,
         )
         history = sorted(page.items, key=lambda j: _as_int(j.get("startTime")), reverse=True)
+        notes: dict[str, str] = {}
+        try:  # the per-device list has no notes; the job history does (same job ids)
+            jobs = await app.page(
+                await app.config_path("deployment/jobhistories", domain),
+                {"filter": f"deviceUUID:{dev['id']};startTime:{now - 90 * 86400};endTime:{now + 60}"},
+                limit=25,
+            )
+            notes = {
+                str(j.get("id")): str(j["deploymentNote"]) for j in jobs.items if j.get("deploymentNote")
+            }
+        except UpstreamError:
+            pass
         ok = [j for j in history if str(j.get("status", "")).upper() in ("SUCCEEDED", "DEPLOYED", "SUCCESS")]
         blockers: list[str] = []
         target: dict[str, Any] | None = None
@@ -413,6 +426,7 @@ def register(reg: ToolRegistrar) -> None:
                 "status": j.get("status"),
                 "started": iso(j.get("startTime")),
                 "policies": [str(p.get("type", "")).split(".")[-1] for p in j.get("policyList") or []][:12],
+                **({"note": notes[str(j.get("id"))]} if str(j.get("id")) in notes else {}),
                 "id": j.get("id"),
             }
 
@@ -576,7 +590,7 @@ def register(reg: ToolRegistrar) -> None:
         ctx: Context, device: DeviceRef, domain: Domain = None, confirm: Confirm = None
     ) -> dict[str, Any]:
         """Unregister a device from FMC. The device keeps running its last deployed configuration but is
-        no longer managed; HA members must be broken out of the pair first (fmc_break_ha_pair)."""
+        no longer managed; HA members must be broken out of the pair first (fmc_ha_action action=break)."""
         app: FmcApp = get_client(ctx)
         dev = await resolve_in(app, DEVICES, device, "device", domain)
         path = await app.config_path(f"{DEVICES}/{dev['id']}", domain)
