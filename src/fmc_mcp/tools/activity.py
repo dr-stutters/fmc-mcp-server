@@ -43,17 +43,24 @@ def _same_details(text: str) -> tuple[str, ...]:
     return tuple(sorted(p.strip() for p in text.split("*")))
 
 
+def _ts(a: dict[str, Any]) -> int:
+    try:
+        return int(float(a.get("timestamp") or 0))
+    except (TypeError, ValueError):
+        return 0
+
+
 def collapse_alerts(raw: list[dict[str, Any]], names: dict[str, str]) -> list[dict[str, Any]]:
     """FMC repeats every module's alert on each health run. Collapse runs of the same (device,
     module, status, details) into one row with first/last seen and a count; newest first."""
     rows: list[dict[str, Any]] = []
     last: dict[tuple[str, str], dict[str, Any]] = {}
-    for a in sorted(raw, key=lambda x: int(x.get("timestamp") or 0)):
+    for a in sorted(raw, key=_ts):
         dev = str(a.get("deviceUUID", ""))
         module = str(a.get("moduleID", ""))
         status = str(a.get("status", ""))
         details = clean_details(a.get("details"))
-        ts = int(a.get("timestamp") or 0)
+        ts = _ts(a)
         prev = last.get((dev, module))
         if prev and prev["status"] == status and _same_details(prev["details"]) == _same_details(details):
             prev["_last"] = ts
@@ -152,7 +159,8 @@ def register(reg: ToolRegistrar) -> None:
     ) -> ToolResult:
         """Health alerts across all managed devices and the FMC itself over a time window, newest
         first. FMC re-reports each module on every health run, so repeats are collapsed into one row
-        with first/last seen and a count; `changed_from` marks a status change (e.g. GREEN -> RED).
+        with first/last seen and a count; `changed_from` marks a status change between the levels
+        requested (e.g. YELLOW -> RED; add RECOVERED to see recoveries).
         'device disconnected' shows up as module APPLIANCE_HEARTBEAT. For one device's current state
         use fmc_device_health; for alerts together with audit and deployments use fmc_recent_activity."""
         app: FmcApp = get_client(ctx)
@@ -188,7 +196,8 @@ def register(reg: ToolRegistrar) -> None:
         """What changed or broke recently? One timeline, newest first, merged from three FMC sources
         queried now: health alerts (RED, YELLOW and RECOVERED), audit records (who
         changed what; logins and API writes) and deployments. Each row has time, source
-        (health/audit/deploy), device, summary and user. With `device`, health and deployments are
+        (health/audit/deploy), device, summary and user; a health row's time is when that status
+        began (first seen). With `device`, health and deployments are
         filtered to it (plus FMC's own alerts that name it, such as lost heartbeats) and audit records
         to messages that name it (a policy edit names the policy, not the device: drop `device` to
         see it). A failing source is reported in `errors` and the others are still returned."""
@@ -201,6 +210,7 @@ def register(reg: ToolRegistrar) -> None:
             dev_id, dev_name = str(d["id"]), str(d.get("name"))
         rows: list[dict[str, Any]] = []
         errors: dict[str, str] = {}
+        notes: dict[str, str] = {}
 
         try:
             raw, total = await fetch_alerts(app, start, end, dev_id, ACTIVITY_STATUSES, None, domain)
@@ -220,7 +230,7 @@ def register(reg: ToolRegistrar) -> None:
                     }
                 )
             if partial:
-                errors["health"] = f"partial: newest {fetched} of {total} raw alerts"
+                notes["health"] = f"partial: newest {fetched} of {total} raw alerts"
         except UpstreamError as e:
             errors["health"] = str(e)
 
@@ -245,7 +255,7 @@ def register(reg: ToolRegistrar) -> None:
                     }
                 )
             if not page.complete:
-                errors["audit"] = f"partial: newest {AUDIT_FETCH} records only"
+                notes["audit"] = f"partial: newest {AUDIT_FETCH} records only"
         except UpstreamError as e:
             errors["audit"] = str(e)
 
@@ -256,6 +266,8 @@ def register(reg: ToolRegistrar) -> None:
             page = await app.page(
                 await app.config_path(JOBS, domain), {"filter": ";".join(filters)}, limit=DEPLOY_FETCH
             )
+            if not page.complete:
+                notes["deploy"] = f"partial: newest {DEPLOY_FETCH} jobs only"
             for j in page.items:
                 devs = ", ".join(str(x.get("deviceName")) for x in j.get("deviceList") or []) or None
                 note = f" ({j.get('deploymentNote')})" if j.get("deploymentNote") else ""
@@ -278,4 +290,6 @@ def register(reg: ToolRegistrar) -> None:
             extra["device"] = dev_name
         if errors:
             extra["errors"] = errors
+        if notes:
+            extra["partial"] = notes
         return list_result(page_of(rows, limit=limit, offset=offset), fmt=response_format, extra=extra)

@@ -504,7 +504,7 @@ async def test_recent_activity(client: Client[Any]) -> None:
     )
     sources = {r["source"] for r in out["results"]}
     assert "deploy" in sources, out
-    assert not {k: v for k, v in (out.get("errors") or {}).items() if not str(v).startswith("partial")}, out
+    assert not out.get("errors"), out
     alerts = await call(
         client,
         "fmc_list_health_alerts",
