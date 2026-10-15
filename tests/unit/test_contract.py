@@ -30,6 +30,7 @@ async def test_prompt_contract(fmc: respx.MockRouter) -> None:
                 "gateway": "198.18.128.1",
                 "inside_ip": "10.99.2.1/24",
                 "host": "198.18.128.161",
+                "test_destination": "198.18.128.1",
             },
         },
         known_prefixes={"cml", "ise", "fmc", "catc"},

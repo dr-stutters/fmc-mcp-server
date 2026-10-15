@@ -1,6 +1,7 @@
 """Workflow prompts (MCP prompts) that chain this server's tools for common operator questions."""
 
 # No `from __future__ import annotations`: FastMCP inspects signatures at runtime.
+import ipaddress
 import json
 import re
 from typing import Annotated, Literal
@@ -137,6 +138,14 @@ def _onboard_text(
     """The fmc_onboard_ftd instructions."""
     if not host and not recipe:
         raise InvalidRequest("Give the FTD's management `host`, or a CML `recipe` to build it from.")
+    try:
+        for v in (gateway, test_destination, host):
+            if v:
+                ipaddress.ip_address(v.strip())
+        inside_iface = ipaddress.ip_interface(inside_ip.strip())
+        ipaddress.ip_interface(outside_ip.strip())
+    except ValueError as e:
+        raise InvalidRequest(f"Not an IP address: {e}") from None
     dev = _q(name, "name")
     acp = _q(access_policy, "access_policy")
     out_if, in_if = _q(outside_interface, "outside_interface"), _q(inside_interface, "inside_interface")
@@ -146,7 +155,7 @@ def _onboard_text(
     natp = _q(nat_policy, "nat_policy") if nat_policy else None
     psp = _q(platform_settings, "platform_settings") if platform_settings else None
     dest = _q(test_destination, "test_destination") if test_destination else gw
-    inside_net = f"<the network of {json.loads(in_ip)}>"
+    inside_net = json.dumps(str(inside_iface.network))
     if recipe:
         build = (
             f"1. Build the FTD in CML: {tool_ref('cml_build_recipe')} with recipe={_q(recipe, 'recipe')} "
@@ -185,10 +194,11 @@ around a failed registration or deployment.
 
 0. Preconditions. {tool_ref("fmc_status")} (FMC reachable, API user). {tool_ref("fmc_license_status")}:
    FMC must be registered with Smart Licensing or be in evaluation mode, otherwise registration fails
-   ("license" errors). {tool_ref("fmc_list_devices")}: if {dev} is already registered, stop and say so (to
-   re-register, first {tool_ref("fmc_delete_device")}, wait 1-2 minutes until the FTD's `show managers`
-   no longer says "in the process of Unregistration", then run `configure manager add <fmc-ip>
-   <reg-key>` on the FTD again). Check {acp} exists ({tool_ref("fmc_list_policies")} kind='access').
+   ("license" errors). {tool_ref("fmc_list_devices")}: if {dev} is already registered, stop and ask
+   the user whether to delete and re-register it. To re-register: {tool_ref("fmc_delete_device")},
+   wait 1-2 minutes until the FTD's `show managers` no longer says "in the process of
+   Unregistration", then run `configure manager add <fmc-ip> <reg-key>` on the FTD again.
+   Check {acp} exists ({tool_ref("fmc_list_policies")} kind='access').
 
 {build}
 
