@@ -275,6 +275,8 @@ def ensure_eval_licence(url: str, verify: bool, admin: tuple[str, str]) -> str:
         if status in ("EVALUATION", "REGISTERED"):
             return f"licence: ok ({status})"
         done = http.post(path, headers=headers, json={"registrationType": "EVALUATION"})
+        if done.is_error:
+            sys.exit(f"licence: {status}; switching to evaluation mode failed (HTTP {done.status_code})")
         return f"licence: {status} -> evaluation (HTTP {done.status_code})"
 
 
@@ -300,6 +302,8 @@ def main() -> None:
             continue
         if user == admin_user:
             sys.exit(f"{prefix}USERNAME is the admin user; give the server its own API user")
+        if any(u == user and r != role for u, _, r in wanted_users):
+            sys.exit(f"{user} is configured with two different roles; give each prefix its own user")
         wanted_users.append((user, pw, role))
 
     if not args.no_licence and not args.check and not args.delete:
