@@ -160,6 +160,14 @@
       "tier": "write",
       "title": "Create platform settings policy"
     },
+    "fmc_create_prefilter_policy": {
+      "tier": "write",
+      "title": "Create prefilter policy"
+    },
+    "fmc_create_prefilter_rule": {
+      "tier": "write",
+      "title": "Create prefilter rule"
+    },
     "fmc_create_s2s_vpn": {
       "tier": "write",
       "title": "Create site-to-site VPN"
@@ -211,6 +219,10 @@
     "fmc_delete_policy": {
       "tier": "dangerous",
       "title": "Delete policy"
+    },
+    "fmc_delete_prefilter_rule": {
+      "tier": "write",
+      "title": "Delete prefilter rule"
     },
     "fmc_delete_s2s_vpn": {
       "tier": "write",
@@ -448,6 +460,10 @@
       "tier": "write",
       "title": "Set object override"
     },
+    "fmc_set_prefilter_policy": {
+      "tier": "write",
+      "title": "Link prefilter policy to access policy"
+    },
     "fmc_shadowed_rules": {
       "tier": "read",
       "title": "Find shadowed access rules"
@@ -483,6 +499,10 @@
     "fmc_update_object": {
       "tier": "write",
       "title": "Update object"
+    },
+    "fmc_update_prefilter_rule": {
+      "tier": "write",
+      "title": "Update prefilter rule"
     },
     "fmc_upgrade_status": {
       "tier": "read",
