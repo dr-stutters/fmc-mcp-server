@@ -52,6 +52,7 @@ There are 87 tools when every tier is enabled: 45 read (44 when the dangerous ti
 | Troubleshooting | `fmc_packet_tracer`, `fmc_run_show_command`, `fmc_get_hit_counts`, `fmc_device_health`, `fmc_list_vpn_tunnels` |
 | Policies | `fmc_list_policies`, `fmc_get_access_policy`, `fmc_list_access_rules`, `fmc_get_access_rule`, `fmc_list_nat_rules`, `fmc_list_prefilter_rules`, `fmc_list_policy_assignments` |
 | Objects | `fmc_list_objects`, `fmc_get_object`, `fmc_find_object`, `fmc_where_used`, `fmc_unused_objects`, `fmc_list_dynamic_objects` |
+| Security Intelligence | `fmc_get_security_intelligence` |
 | Intrusion (Snort 3) | `fmc_get_intrusion_policy` (base, mode, usage, overridden rules), `fmc_find_intrusion_rules` (gid:sid, SID or text; per-policy state) |
 | Admin | `fmc_upgrade_status` (versions, upgrade history, packages), `fmc_list_backups`, `fmc_get_health_policy`, `fmc_list_users`, `fmc_list_object_overrides` |
 | Analysis | `fmc_rule_lookup`, `fmc_shadowed_rules` |
@@ -90,7 +91,7 @@ Notes on some read tools:
 | Intrusion tuning | `fmc_set_intrusion_rule_state` (ALERT/BLOCK/DROP/REJECT/PASS/DISABLE/DEFAULT per policy), `fmc_create_intrusion_policy`, `fmc_create_intrusion_rule` / `fmc_delete_intrusion_rule` (custom Snort 3 rules); `fmc_update_access_rule(intrusion_policy=...)` |
 | Licences | `fmc_set_device_licenses` (IPS, MALWARE_DEFENSE, URL, ...) |
 | Admin | `fmc_update_health_policy` (module on/off, thresholds), `fmc_set_object_override` (per-device object values) |
-| Containment | `fmc_contain_host`, `fmc_release_host` |
+| Containment | `fmc_contain_host`, `fmc_release_host` (instant, no deploy); `fmc_si_block` (Security Intelligence block list for IPs, networks, URLs; logged; needs a deploy) |
 | HA | `fmc_configure_ha_monitoring` (monitored interfaces, standby IPs, failover MACs) |
 | VPN | `fmc_create_s2s_vpn` (point-to-point IKEv2 PSK; policy- or route-based), `fmc_delete_s2s_vpn` |
 
