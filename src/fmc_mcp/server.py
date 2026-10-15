@@ -19,6 +19,7 @@ from fmc_mcp.tools import (
     device_config,
     devices,
     dynamic_objects,
+    ha,
     object_writes,
     objects,
     platform_settings,
@@ -28,6 +29,7 @@ from fmc_mcp.tools import (
     routing,
     system,
     troubleshoot,
+    vpn,
 )
 
 INSTRUCTIONS = """
@@ -129,6 +131,8 @@ def create_server(
             troubleshoot.register,
             dynamic_objects.register,
             containment.register,
+            ha.register,
+            vpn.register,
             activity.register,
             platform_settings.register,
             routing.register,
