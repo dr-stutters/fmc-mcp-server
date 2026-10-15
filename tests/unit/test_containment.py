@@ -15,13 +15,17 @@ from .test_dynamic_objects import ACP, ALLOW, DYN, MAPPINGS, RULE
 DEV = {"id": "dev-1", "name": "mcp-ftd1", "type": "Device"}
 ASSIGN = {"id": ACP["id"], "policy": ACP, "targets": [DEV]}
 QDYN = {**DYN, "name": "mcp-quarantine"}
-QRULE = {
-    **RULE,
-    "sourceDynamicObjects": {"objects": [{"id": DYN["id"], "name": QDYN["name"], "type": "DynamicObject"}]},
-    "destinationDynamicObjects": {
-        "objects": [{"id": DYN["id"], "name": QDYN["name"], "type": "DynamicObject"}]
-    },
+QREF = {"objects": [{"id": DYN["id"], "name": "mcp-quarantine", "type": "DynamicObject"}]}
+QOUT = {**RULE, "name": "mcp-quarantine-out", "sourceDynamicObjects": QREF}
+QIN = {
+    "id": "in-1",
+    "name": "mcp-quarantine-in",
+    "action": "BLOCK",
+    "enabled": True,
+    "metadata": {"ruleIndex": 2},
+    "destinationDynamicObjects": QREF,
 }
+QRULES = [QOUT, QIN]
 MAP_POST = f"{CFG}/object/dynamicobjectmappings"
 RULES = f"{CFG}/policy/accesspolicies/{ACP['id']}/accessrules"
 
@@ -49,14 +53,14 @@ def base(
 
 
 async def test_contain_with_rule_in_place_needs_no_deploy(fmc: respx.MockRouter) -> None:
-    base(fmc, objects=[QDYN], rules=[QRULE, ALLOW], mapped=["10.99.1.250"])
+    base(fmc, objects=[QDYN], rules=[*QRULES, ALLOW], mapped=["10.99.1.250"])
     post = fmc.post(MAP_POST).mock(return_value=httpx.Response(201, json={}))
     args = {"ip": "10.99.1.10", "reason": "ISE ANC quarantine"}
     async with Client(server()) as c:
         preview = await run(c, "fmc_contain_host", args)
         p = preview["preview"]
         assert preview["status"] == "preview" and not p["deploy_needed"]
-        assert p["devices"] == ["mcp-ftd1"] and p["block_rules"][0]["rule"] == RULE["name"]
+        assert p["devices"] == ["mcp-ftd1"] and p["block_rules"][0]["rule"] == "mcp-quarantine-out"
         assert p["steps"] == ["Map 10.99.1.10 into 'mcp-quarantine'"]
         assert any("without a deployment" in s for s in preview["side_effects"])
         done = await run(c, "fmc_contain_host", {**args, "confirm": preview["confirm"]})
@@ -65,7 +69,7 @@ async def test_contain_with_rule_in_place_needs_no_deploy(fmc: respx.MockRouter)
 
 
 async def test_contain_is_idempotent(fmc: respx.MockRouter) -> None:
-    base(fmc, objects=[QDYN], rules=[QRULE], mapped=["10.99.1.10"])
+    base(fmc, objects=[QDYN], rules=QRULES, mapped=["10.99.1.10"])
     post = fmc.post(MAP_POST).mock(return_value=httpx.Response(201, json={}))
     args = {"ip": "10.99.1.10/32", "reason": "again"}
     async with Client(server()) as c:
@@ -92,7 +96,8 @@ async def test_contain_sets_up_object_and_rules(fmc: respx.MockRouter) -> None:
     assert json.loads(mk.calls.last.request.content)["objectType"] == "IP"
     bodies = [json.loads(call.request.content) for call in rule.calls]
     assert [b["name"] for b in bodies] == ["mcp-quarantine-in", "mcp-quarantine-out"]  # -out inserted last
-    assert all(call.request.url.params["insertBefore"] == "1" for call in rule.calls)
+    params = [dict(call.request.url.params) for call in rule.calls]
+    assert params == [{"section": "mandatory"}, {"insertBefore": "1"}]
     assert bodies[1]["sourceDynamicObjects"]["objects"][0]["id"] == DYN["id"]
     assert bodies[0]["destinationDynamicObjects"]["objects"][0]["id"] == DYN["id"]
     assert bodies[1]["action"] == "BLOCK" and bodies[1]["logBegin"] and not bodies[1]["logEnd"]
@@ -113,7 +118,7 @@ async def test_contain_needs_policy_when_ambiguous(fmc: respx.MockRouter) -> Non
 
 
 async def test_release_and_release_again(fmc: respx.MockRouter) -> None:
-    base(fmc, objects=[QDYN], rules=[QRULE], mapped=["10.99.1.10", "10.99.1.11"])
+    base(fmc, objects=[QDYN], rules=QRULES, mapped=["10.99.1.10", "10.99.1.11"])
     post = fmc.post(MAP_POST).mock(return_value=httpx.Response(201, json={}))
     async with Client(server()) as c:
         preview = await run(c, "fmc_release_host", {"ip": "10.99.1.10"})
@@ -136,3 +141,35 @@ async def test_object_from_settings(fmc: respx.MockRouter) -> None:
     async with Client(srv) as c:
         out = await run(c, "fmc_release_host", {"ip": "10.99.1.10"})
     assert out["preview"]["object"] == DYN["name"]
+
+
+async def test_ineffective_rule_is_flagged_and_replaced(fmc: respx.MockRouter) -> None:
+    # The only quarantine rule sits below an ALLOW rule and has a port condition: not containment.
+    weak = {
+        **QOUT,
+        "name": "old-q",
+        "metadata": {"ruleIndex": 2},
+        "destinationPorts": {"objects": [{"name": "HTTPS"}]},
+    }
+    base(fmc, objects=[QDYN], rules=[ALLOW, weak], mapped=[])
+    async with Client(server()) as c:
+        out = await run(c, "fmc_contain_host", {"ip": "10.99.1.10", "reason": "x"})
+    assert out["preview"]["deploy_needed"] and out["preview"]["block_rules"] == []
+    flagged = next(s for s in out["side_effects"] if "old-q" in s)
+    assert "destinationPorts" in flagged and "below an enabled non-block rule" in flagged
+
+
+async def test_rule_name_collision_blocks(fmc: respx.MockRouter) -> None:
+    disabled = {**QOUT, "enabled": False}
+    base(fmc, objects=[QDYN], rules=[disabled, QIN, ALLOW], mapped=[])
+    async with Client(server()) as c:
+        out = await run(c, "fmc_contain_host", {"ip": "10.99.1.10", "reason": "x"})
+    assert out["status"] == "blocked" and "mcp-quarantine-out" in out["blockers"][0]
+
+
+async def test_bad_object_name(fmc: respx.MockRouter) -> None:
+    async with Client(server()) as c:
+        r = await c.call_tool(
+            "fmc_release_host", {"ip": "10.99.1.10", "object": "x" * 46}, raise_on_error=False
+        )
+    assert r.is_error

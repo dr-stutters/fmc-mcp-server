@@ -22,6 +22,7 @@ from stutters_mcp_core import (
     NotFound,
     Plan,
     ToolRegistrar,
+    UpstreamError,
     get_client,
     preview_or_apply,
 )
@@ -35,13 +36,29 @@ from fmc_mcp.tools.dynamic_objects import (
     mappings_of,
     normalize_ips,
     resolve_dynamic,
-    rules_using,
 )
 from fmc_mcp.tools.object_writes import applied
 from fmc_mcp.tools.policies import ACCESS, all_rules, resolve_policy
-from fmc_mcp.tools.policy_writes import BLOCKING
 
 DEFAULT_OBJECT = "mcp-quarantine"
+EFFECTIVE_ACTIONS = {"BLOCK", "BLOCK_RESET"}  # interactive blocks can be bypassed by the user
+POLICY_SCAN_CAP = 50
+# Rule conditions that would narrow a quarantine rule (it must match everything from/to the object).
+CRITERIA = (
+    "sourceZones",
+    "destinationZones",
+    "sourceNetworks",
+    "destinationNetworks",
+    "sourcePorts",
+    "destinationPorts",
+    "applications",
+    "urls",
+    "users",
+    "vlanTags",
+    "sourceSecurityGroupTags",
+    "destinationSecurityGroupTags",
+    "timeRangeObjects",
+)
 
 HostIp = Annotated[
     str, Field(description="IPv4/IPv6 address (or CIDR network) of the host, e.g. 10.99.1.10", min_length=2)
@@ -60,7 +77,68 @@ def _one_ip(ip: str) -> str:
 
 
 def _object_name(app: FmcApp, given: str | None) -> str:
-    return (given or getattr(app.settings, "quarantine_object", None) or DEFAULT_OBJECT).strip()
+    name = (given or app.settings.quarantine_object or DEFAULT_OBJECT).strip()
+    if not name or len(name) > 45:
+        raise InvalidRequest("The quarantine object name must be 1-45 characters (rules add '-out'/'-in').")
+    return name
+
+
+def _refs(rule: dict[str, Any], field: str, obj_id: str) -> bool:
+    return any(o.get("id") == obj_id for o in (rule.get(field) or {}).get("objects") or [])
+
+
+def _narrowed(rule: dict[str, Any], own_field: str) -> list[str]:
+    """Conditions besides the object itself that limit what the rule matches."""
+    out = [f for f in CRITERIA if (rule.get(f) or {}) not in ({}, [], None)]
+    other = "destinationDynamicObjects" if own_field == "sourceDynamicObjects" else "sourceDynamicObjects"
+    if rule.get(other):
+        out.append(other)
+    return out
+
+
+async def scan_quarantine(app: FmcApp, obj_id: str | None, domain: str | None) -> dict[str, Any]:
+    """Fresh (uncached) scan of every access policy for rules that reference the object, with
+    whether each one really blocks everything from (out) / to (in) the object: enabled, BLOCK or
+    BLOCK_RESET, no other conditions, and no enabled non-block rule above it."""
+    policies = await app.all(await app.config_path(ACCESS, domain), expanded=False, cap=POLICY_SCAN_CAP)
+    complete = policies.complete
+    rules_out: list[dict[str, Any]] = []
+    names: dict[str, list[str]] = {}
+    firsts: dict[str, str | None] = {}
+    for pol in policies.items:
+        rules = await all_rules(app, await app.config_path(f"{ACCESS}/{pol['id']}/accessrules", domain))
+        complete = complete and rules.complete
+        names[pol["id"]] = [str(r.get("name")) for r in rules.items]
+        firsts[pol["id"]] = ((rules.items[0].get("metadata") or {}).get("section")) if rules.items else None
+        open_above = False  # an enabled non-block rule sits above
+        for r in rules.items:
+            action = str(r.get("action", "")).upper()
+            for field, side in (("sourceDynamicObjects", "out"), ("destinationDynamicObjects", "in")):
+                if obj_id and _refs(r, field, obj_id):
+                    problems = []
+                    if not r.get("enabled", True):
+                        problems.append("disabled")
+                    if action not in EFFECTIVE_ACTIONS:
+                        problems.append(f"action {action}")
+                    if narrowed := _narrowed(r, field):
+                        problems.append("also conditioned on " + ", ".join(narrowed))
+                    if open_above:
+                        problems.append("below an enabled non-block rule")
+                    rules_out.append(
+                        {
+                            "policy": pol.get("name"),
+                            "policy_id": pol["id"],
+                            "rule": r.get("name"),
+                            "index": (r.get("metadata") or {}).get("ruleIndex"),
+                            "action": action,
+                            "direction": side,
+                            "effective": not problems,
+                            "problems": problems,
+                        }
+                    )
+            if r.get("enabled", True) and action not in EFFECTIVE_ACTIONS:
+                open_above = True
+    return {"rules": rules_out, "complete": complete, "rule_names": names, "first_section": firsts}
 
 
 async def _assignments(app: FmcApp, domain: str | None) -> dict[str, dict[str, Any]]:
@@ -136,16 +214,29 @@ def register(reg: ToolRegistrar) -> None:
         except NotFound:
             obj = None
         current: list[str] = []
-        used: list[dict[str, Any]] = []
+        maps_complete = True
         if obj:
-            current, _ = await mappings_of(app, obj["id"], domain)
-            used, _ = await rules_using(app, obj["id"], domain)
-        blocking = [u for u in used if u["enabled"] and str(u["action"]).upper() in BLOCKING]
-        blocks_out = any("source" in u["as"] for u in blocking)
-        blocks_in = any("destination" in u["as"] for u in blocking)
+            current, maps_complete = await mappings_of(app, obj["id"], domain)
+        scan = await scan_quarantine(app, obj["id"] if obj else None, domain)
+        used = scan["rules"]
+        blocking = [u for u in used if u["effective"]]
+        blocks_out = any(u["direction"] == "out" for u in blocking)
+        blocks_in = any(u["direction"] == "in" for u in blocking)
         assigned = await _assignments(app, domain)
         blockers: list[str] = []
-        side_effects: list[str] = []
+        side_effects: list[str] = [
+            f"Rule {u['policy']}/{u['rule']} references {name!r} but doesn't contain it: "
+            + "; ".join(u["problems"])
+            for u in used
+            if not u["effective"]
+        ]
+        if not scan["complete"]:
+            blockers.append(
+                f"Only the first {POLICY_SCAN_CAP} access policies could be checked for quarantine rules; "
+                "use fmc_map_dynamic_object directly."
+            )
+        if not maps_complete:
+            blockers.append(f"{name!r} has too many mappings to check; use fmc_map_dynamic_object.")
         steps: list[str] = []
         new_rules: list[tuple[str, dict[str, Any]]] = []  # (field, body) without the object ref
         target: dict[str, Any] | None = None
@@ -171,7 +262,15 @@ def register(reg: ToolRegistrar) -> None:
                     wanted.append(("sourceDynamicObjects", f"{name}-out"))
                 if not blocks_in:
                     wanted.append(("destinationDynamicObjects", f"{name}-in"))
+                taken = {n.lower() for n in scan["rule_names"].get(target["id"], [])}
                 for field, rname in wanted:
+                    if rname.lower() in taken:
+                        blockers.append(
+                            f"Policy {target['name']!r} already has a rule named {rname!r} that doesn't "
+                            f"block {name!r} effectively; fix or delete it (fmc_update_access_rule / "
+                            "fmc_delete_access_rule) and retry."
+                        )
+                        continue
                     new_rules.append((field, _rule_body(rname, reason)))
                     side = "source" if field.startswith("source") else "destination"
                     steps.append(
@@ -240,19 +339,29 @@ def register(reg: ToolRegistrar) -> None:
                     ),
                 )
             ref = {"id": o["id"], "type": "DynamicObject", "name": name}
-            created_rules = []
+            created_rules: list[str] = []
             if new_rules and target:
                 rules_path = await app.config_path(f"{ACCESS}/{target['id']}/accessrules", domain)
-                # Insert in reverse so the -out rule ends up first.
+                # Top of the Mandatory section: before rule 1 if that is a Mandatory rule, else the
+                # (then empty) Mandatory section. Inserted in reverse so the -out rule ends up first.
+                first_mandatory = str(scan["first_section"].get(target["id"]) or "").lower() == "mandatory"
+                params: dict[str, Any] = {"insertBefore": 1} if first_mandatory else {"section": "mandatory"}
                 for field, body in reversed(new_rules):
-                    existing = await all_rules(app, rules_path)
-                    params: dict[str, Any] = (
-                        {"insertBefore": 1} if existing.items else {"section": "mandatory"}
-                    )
                     rule = {**body, field: {"objects": [ref]}}
-                    made = await app.api.post(rules_path, rule, params=params)
+                    try:
+                        made = await app.api.post(rules_path, rule, params=params)
+                    except UpstreamError as e:
+                        done = ["object " + name] if obj is None else []
+                        done += [f"rule {r}" for r in created_rules]
+                        raise UpstreamError(
+                            f"Creating rule {body['name']!r} failed: {e}. Already created: "
+                            f"{', '.join(done) or 'nothing'}. The host is NOT contained yet; fix and retry "
+                            "(the retry skips what exists).",
+                            e.status_code,
+                        ) from e
                     app.invalidate_cache()
-                    created_rules.append(made.get("name"))
+                    created_rules.append(str(made.get("name")))
+                    params = {"insertBefore": 1}
             if not already:
                 await applied(
                     app, lambda: app.api.post(map_path, {"add": [{"mappings": [addr], "dynamicObject": ref}]})
@@ -286,8 +395,10 @@ def register(reg: ToolRegistrar) -> None:
                 fingerprint={
                     "object": obj and obj["id"],
                     "mapped": already,
-                    "rules": [(u["policy"], u["rule"], u["action"], u["enabled"], u["as"]) for u in used],
+                    "mappings": sorted(current),
+                    "rules": [(u["policy_id"], u["rule"], u["direction"], u["effective"]) for u in used],
                     "target": target and target["id"],
+                    "target_rules": scan["rule_names"].get(target["id"]) if target else None,
                 },
                 blockers=blockers,
                 side_effects=side_effects,
@@ -318,7 +429,7 @@ def register(reg: ToolRegistrar) -> None:
         used: list[dict[str, Any]] = []
         if obj:
             current, _ = await mappings_of(app, obj["id"], domain)
-            used, _ = await rules_using(app, obj["id"], domain)
+            used = (await scan_quarantine(app, obj["id"], domain))["rules"]
         contained = obj is not None and addr in current
         map_path = await app.config_path("object/dynamicobjectmappings", domain)
 
