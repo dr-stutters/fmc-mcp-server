@@ -54,6 +54,7 @@ There are 87 tools when every tier is enabled: 45 read (44 when the dangerous ti
 | Objects | `fmc_list_objects`, `fmc_get_object`, `fmc_find_object`, `fmc_where_used`, `fmc_unused_objects`, `fmc_list_dynamic_objects` |
 | Security Intelligence | `fmc_get_security_intelligence` |
 | Intrusion (Snort 3) | `fmc_get_intrusion_policy` (base, mode, usage, overridden rules), `fmc_find_intrusion_rules` (gid:sid, SID or text; per-policy state) |
+| Change management | `fmc_change_tickets` (status, tickets, a ticket's changes and validation) |
 | Admin | `fmc_upgrade_status` (versions, upgrade history, packages), `fmc_list_backups`, `fmc_get_health_policy`, `fmc_list_users`, `fmc_list_object_overrides` |
 | Analysis | `fmc_rule_lookup`, `fmc_shadowed_rules`, `fmc_export_access_rules` (rows or CSV, re-importable) |
 | Deployment | `fmc_list_deployable_devices`, `fmc_pending_changes`, `fmc_list_deployments` |
@@ -89,6 +90,7 @@ Notes on some read tools:
 | Platform settings / logging | `fmc_create_platform_settings_policy`, `fmc_configure_syslog`, `fmc_set_access_logging` |
 | Dynamic objects | `fmc_create_dynamic_object`, `fmc_delete_dynamic_object`, `fmc_map_dynamic_object` |
 | Intrusion tuning | `fmc_set_intrusion_rule_state` (ALERT/BLOCK/DROP/REJECT/PASS/DISABLE/DEFAULT per policy), `fmc_create_intrusion_policy`, `fmc_create_intrusion_rule` / `fmc_delete_intrusion_rule` (custom Snort 3 rules); `fmc_update_access_rule(intrusion_policy=...)` |
+| Change management | `fmc_ticket` (open / submit / discard / release; an open ticket is sent as `ticket-id` with every change) |
 | Licences | `fmc_set_device_licenses` (IPS, MALWARE_DEFENSE, URL, ...) |
 | Admin | `fmc_update_health_policy` (module on/off, thresholds), `fmc_set_object_override` (per-device object values) |
 | Containment | `fmc_contain_host`, `fmc_release_host` (instant, no deploy); `fmc_si_block` (Security Intelligence block list for IPs, networks, URLs; logged; needs a deploy) |
@@ -191,6 +193,7 @@ including nested groups, to ranges, then walk the rules in order. The results ar
 | `FMC_TIMEOUT`, `FMC_RETRIES` | `30`, `2` | Request timeout in seconds, and retries |
 | `FMC_QUARANTINE_OBJECT` | `mcp-quarantine` | Dynamic object that `fmc_contain_host` / `fmc_release_host` map hosts into |
 | `FMC_DEPLOY_WINDOW` | off | Maintenance window for changes that reach devices (deploy, rollback, register, delete device, HA). Same syntax as `MCP_CHANGE_WINDOW`. See "Deploy safety rails". |
+| `FMC_TICKET` | | Change-management ticket id sent with every request (FMC 7.6+ change management; `fmc_ticket` sets it at run time) |
 | `FMC_ALLOW_IGNORE_WARNING` | `false` | Allow `fmc_deploy(ignore_warning=true)` (the preview must then list the FMC warnings being ignored) |
 | `MCP_TRANSPORT` | `stdio` | `stdio` or `http` |
 | `MCP_HOST`, `MCP_PORT`, `MCP_PATH` | `0.0.0.0`, `8000`, `/mcp` | HTTP listener |

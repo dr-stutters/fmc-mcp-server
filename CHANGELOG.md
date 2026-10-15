@@ -3,6 +3,11 @@
 ## Unreleased
 
 ### Added
+- **Change-management tickets (F22)**: `fmc_change_tickets` (read: on/off, tickets, a ticket's changes and
+  validation) and `fmc_ticket` (write: open / submit / discard / release). An open ticket, or `FMC_TICKET`, is sent
+  as `ticket-id` with every request. Roles gain view_tickets / modify_tickets. Live: change management switched on
+  for ~10 s, a host created inside a ticket, the ticket's changes listed, the ticket discarded (FMC reverts the
+  change in the background), switched off again.
 - **Access rule export/import (F23)**: `fmc_export_access_rules` (rows or CSV with object names and literals like
   tcp/443, icmp/8) and `fmc_import_access_rules` (write; validates and resolves every row in the preview, refuses
   applications/users/VLAN/SGT conditions and duplicate names, posts with FMC's bulk API in chunks of 100). Live:

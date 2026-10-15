@@ -35,6 +35,7 @@ FMC 10.0 user roles are menu-based. Permission names as the FMC role editor show
 | Troubleshooting | Health, Health Policy, Health Events | `advanced_troubleshooting`, `health`, `health_policy`, `health_alarm_syslog` | `fmc_device_health`, `fmc_list_health_alerts`, `fmc_recent_activity`, `fmc_get_health_policy` |
 | Troubleshooting > Tools | Packet Tracer **+ Modify Packet Tracer**, Threat Defense CLI | `troubleshooting_tools`, `packet_tracer`, `packet_tracer.modify`, `threat_defense_cli` | `fmc_packet_tracer` (running a trace needs *Modify Packet Tracer*; it simulates a packet and changes no configuration), `fmc_run_show_command` |
 | Administration | Product Upgrades, Content Updates, Smart Licenses (view) | `system`, `upgrade_updates`, `device_upgrade`, `update`, `license`, `smart_license` | `fmc_license_status`, `fmc_upgrade_status` |
+| Change management | View tickets | `view_tickets` | `fmc_change_tickets` |
 
 `fmc_status`, `fmc_list_domains`, `fmc_get_task`, `fmc_search_spec`, `fmc_get_definition` and GET
 `fmc_api_call` need no specific permission beyond a valid login.
@@ -61,6 +62,7 @@ Everything in `mcp-ro`, plus:
 | Secure Connections | Modify Secure Connections | `vpn.modify` | `fmc_create_s2s_vpn`, VPN deletes |
 | (top level) | Deploy Configuration to Devices | `deploy` (FMC adds `task_status`, `task_status.all_users`) | `fmc_deploy`, `fmc_rollback_deployment`, deployment reads |
 | Troubleshooting | Modify Health, Modify Health Policy, Apply Health Policy, Modify Threat Defense CLI | `health.modify`, `health_policy.modify`, `health_policy.apply`, `threat_defense_cli.modify` | `fmc_update_health_policy` (F14) |
+| Change management | Modify tickets | `modify_tickets` | `fmc_ticket` |
 | Administration > Advanced | Backup Management | `tools`, `backup_management` | `fmc_list_backups`, `fmc_backup_devices` (F14); not *Restore Backup* |
 
 Still denied: users and roles, external authentication, domains, FMC system configuration, restore, smart
