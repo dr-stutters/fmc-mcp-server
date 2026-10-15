@@ -258,6 +258,21 @@ async def test_clear_condition_shows_any(lab: respx.MockRouter) -> None:
     assert "sourceZones" not in json.loads(put.calls.last.request.content)
 
 
+async def test_replaced_condition_preview_shows_what_it_removes(lab: respx.MockRouter) -> None:
+    """F29: an object replaced by a literal used to show only 'literals: null -> [...]'."""
+    rule = next(r for r in fixture("accessrules")["items"] if r["name"] == "mcp-test-ssh-admin")
+    lab.put(f"{CFG}/policy/accesspolicies/{ACP_ID}/accessrules/{rule['id']}").mock(
+        return_value=httpx.Response(200, json=rule)
+    )
+    preview, _ = await preview_apply(
+        "fmc_update_access_rule",
+        {"policy": "mcp-test-acp", "rule": "mcp-test-ssh-admin", "destination_networks": ["10.1.1.1"]},
+    )
+    changes = preview["preview"]["changes"]
+    assert changes["destinationNetworks"] == {"from": ["mcp-test-db"], "to": ["10.1.1.1"]}
+    assert not any(k.startswith("destinationNetworks.") for k in changes)
+
+
 async def test_insert_before_and_after_rejected(lab: respx.MockRouter) -> None:
     async with Client(create_server(make_settings(mcp_enable_writes=True))) as c:
         with pytest.raises(ToolError, match="not both"):

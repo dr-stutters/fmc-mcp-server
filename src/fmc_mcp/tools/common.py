@@ -6,6 +6,7 @@ from typing import Annotated, Any, Literal
 
 from pydantic import Field
 from stutters_mcp_core import InvalidRequest, NotFound
+from stutters_mcp_core.writes import field_changes
 
 from fmc_mcp.client import FmcApp, is_uuid
 
@@ -334,3 +335,46 @@ def _name_hits(items: list[dict[str, Any]], ref: str) -> list[dict[str, Any]]:
     return [i for i in items if i.get("name") == ref] or [
         i for i in items if str(i.get("name", "")).lower() == ref.lower()
     ]
+
+
+# Rule condition fields (access and prefilter rules) shown by label in update previews.
+RULE_CONDITION_FIELDS = (
+    "sourceZones",
+    "destinationZones",
+    "sourceInterfaces",
+    "destinationInterfaces",
+    "sourceNetworks",
+    "destinationNetworks",
+    "sourcePorts",
+    "destinationPorts",
+    "sourceDynamicObjects",
+    "destinationDynamicObjects",
+    "vlanTags",
+    "urls",
+)
+
+
+def _condition_labels(block: Any) -> list[str]:
+    """block_labels plus URL categories (they live in the urls block too)."""
+    out = block_labels(block)
+    if isinstance(block, dict):
+        for c in block.get("urlCategoriesWithReputation") or []:
+            cat = ref_label(c.get("category") or {})
+            rep = c.get("reputation")
+            out.append(f"category:{cat}" + (f" ({rep})" if rep else ""))
+    return out
+
+
+def rule_changes(current: dict[str, Any], desired: dict[str, Any]) -> dict[str, dict[str, Any]]:
+    """Field changes for a rule update. Conditions are compared as labels before/after, so a
+    replaced condition shows what it removes (a literal replaced by an object, for example); the
+    other fields as dotted field changes."""
+
+    rest_cur = {k: v for k, v in current.items() if k not in RULE_CONDITION_FIELDS}
+    rest_new = {k: v for k, v in desired.items() if k not in RULE_CONDITION_FIELDS}
+    changes = field_changes(rest_cur, rest_new)
+    for f in RULE_CONDITION_FIELDS:
+        before, after = _condition_labels(current.get(f)), _condition_labels(desired.get(f))
+        if before != after:
+            changes[f] = {"from": before or "any", "to": after or "any"}
+    return changes

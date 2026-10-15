@@ -1,6 +1,7 @@
 """Policy write tools (preview-first): access policies and rules, NAT policies and rules."""
 
 # No `from __future__ import annotations`: FastMCP inspects signatures at runtime.
+from collections.abc import Awaitable, Callable
 from typing import Annotated, Any, Literal
 
 from fastmcp import Context
@@ -19,7 +20,7 @@ from fmc_mcp.client import FmcApp, is_uuid
 from fmc_mcp.preview import fmc_preview
 from fmc_mcp.refs import NETWORK_TYPES, PORT_TYPES, RefResolver, network_literal
 from fmc_mcp.rules import flatten_access_rule, flatten_nat_rule
-from fmc_mcp.tools.common import Domain, block_labels, ref_label, resolve_in
+from fmc_mcp.tools.common import Domain, block_labels, ref_label, resolve_in, rule_changes
 from fmc_mcp.tools.object_writes import applied, editable
 from fmc_mcp.tools.policies import ACCESS, NAT, all_rules, find_access_rule, resolve_policy
 
@@ -89,6 +90,18 @@ async def _conditions(resolver: RefResolver, values: dict[str, list[str] | None]
         field, kind = CONDITION_PARAMS[param]
         out[field] = await resolver.block(given, kind) or {}
     return out
+
+
+async def applied_rule(app: FmcApp, fn: Callable[[], Awaitable[Any]]) -> Any:
+    """Run an access-rule write and return the rule as one flattened row (FMC echoes the whole
+    rule with ids and empty blocks); a bulk move answers with a list."""
+    result = await applied(app, fn)
+    items = result.get("items") if isinstance(result, dict) and "items" in result else result
+    if isinstance(items, list) and len(items) == 1:
+        items = items[0]
+    if isinstance(items, dict) and items.get("type") == "AccessRule":
+        return {"rule": flatten_access_rule(items), "next": "fmc_deploy (fmc_pending_changes shows the diff)"}
+    return result
 
 
 def register(reg: ToolRegistrar) -> None:
@@ -277,7 +290,7 @@ def register(reg: ToolRegistrar) -> None:
             },
             confirm=confirm,
             plan=plan,
-            apply=lambda: applied(app, lambda: app.api.post(rules_path, body, params=params)),
+            apply=lambda: applied_rule(app, lambda: app.api.post(rules_path, body, params=params)),
         )
 
     @reg.write(title="Update access rule")
@@ -365,7 +378,7 @@ def register(reg: ToolRegistrar) -> None:
             desired["newComments"] = [comment]
         old_index = (current.get("metadata") or {}).get("ruleIndex")
         base = await app.config_path(f"{ACCESS}/{p['id']}/accessrules", domain)
-        changes = {**field_changes(editable(current), desired), **cleared}
+        changes = {**rule_changes(editable(current), desired), **cleared}
         changes.pop("commentHistoryList", None)
         details: dict[str, Any] = {"rule": current.get("name"), "index": old_index, "changes": changes}
         blockers = []
@@ -439,7 +452,7 @@ def register(reg: ToolRegistrar) -> None:
                 blockers=blockers,
                 side_effects=["Takes effect on devices after the next deployment."],
             ),
-            apply=lambda: applied(app, apply),
+            apply=lambda: applied_rule(app, apply),
         )
 
     @reg.write(title="Delete access rule", destructive=True)

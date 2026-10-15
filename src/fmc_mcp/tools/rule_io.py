@@ -200,15 +200,24 @@ def register(reg: ToolRegistrar) -> None:
         p = await resolve_policy(app, "access", policy, domain)
         page = await all_rules(app, await app.config_path(f"{ACCESS}/{p['id']}/accessrules", domain))
         rows = [export_row(r) for r in page.items]
+        if not p.get("defaultAction"):
+            p = await app.api.get(await app.config_path(f"{ACCESS}/{p['id']}", domain)) or p
+        default = (p.get("defaultAction") or {}).get("action")
         if format == "csv":
             return object_result(
-                {"policy": p.get("name"), "rules": len(rows), "csv": to_csv(rows), "complete": page.complete},
+                {
+                    "policy": p.get("name"),
+                    "default_action": default,
+                    "rules": len(rows),
+                    "csv": to_csv(rows),
+                    "complete": page.complete,
+                },
                 fmt=response_format,
             )
         return list_result(
             page_of(rows, limit=limit, offset=offset),
             fmt=response_format,
-            extra={"policy": p.get("name"), "complete": page.complete},
+            extra={"policy": p.get("name"), "default_action": default, "complete": page.complete},
         )
 
     @reg.write(title="Import access rules")

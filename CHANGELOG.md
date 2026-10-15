@@ -19,11 +19,18 @@ Operator-eyes quality pass (F26-F33): 12 operator tasks run through the tools ag
   matches the block rule.
 - **NAT lookup by IP (F30)**: `fmc_list_nat_rules(address=..., device=...)` keeps rules whose original or translated
   addresses contain the IP through objects or groups (text search found nothing) and shows object values.
+- **Rule update previews (F29)**: replacing a condition showed only the new part (core's field_changes walks only the
+  new body), so a literal replaced by an object vanished unseen; conditions are now shown as labels before/after.
+- **Cross-references (F32)**: fmc_delete_device named a non-existent `fmc_break_ha_pair`, fmc_list_vpn_tunnels and
+  fmc_get_platform_settings pointed at old routes; a contract test checks every `fmc_*` name in descriptions,
+  argument help, instructions and prompts.
 
 ### Changed
 - **Flow context (F31)**: `fmc_rule_lookup` takes `device` (policy and ingress/egress zones from its interface
   subnets and static routes, reported under `device`; `policy` is now optional); `fmc_packet_tracer`'s
   `input_interface` is optional (picked from the source IP). The `fmc_why_blocked` prompt drops its discovery steps.
+- **Token trims (F33)**: access-rule create/update results are the flattened rule (was FMC's full echo), `show route`
+  drops the codes legend, rollback previews show each deployment's note, the rule export carries the default action.
 
 ## 0.8.0 (2026-10-15)
 

@@ -162,6 +162,7 @@ async def test_rollback_lists_undone_deployments(fmc: respx.MockRouter) -> None:
         {"id": f"j{i}", "name": f"Deploy_Job_{i}", "status": "SUCCEEDED", "startTime": 1000 + i}
         for i in range(1, 5)
     ]
+    fmc.get(f"{CFG}/deployment/jobhistories").mock(return_value=items([{"id": "j-none"}]))
     fmc.get(f"{CFG}/deployment/deployabledevices/{DEV_ID}/deployments").mock(return_value=items(jobs))
     async with Client(server()) as c:
         default = await run(c, "fmc_rollback_deployment", {"device": "ftd1"})

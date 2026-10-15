@@ -491,6 +491,7 @@ async def test_device_health(ftd: respx.MockRouter) -> None:
 
 async def test_rollback_defaults_to_previous_success(ftd: respx.MockRouter) -> None:
     jobs = fixture("ftd_deployments")
+    ftd.get(f"{CFG}/deployment/jobhistories").mock(return_value=items([{"id": "j-none"}]))
     ftd.get(f"{CFG}/deployment/deployabledevices/{DEV_ID}/deployments").mock(
         return_value=httpx.Response(200, json=jobs)
     )
@@ -679,6 +680,7 @@ async def test_delete_static_route_needs_uuid(ftd: respx.MockRouter) -> None:
 
 async def test_rollback_preview_states_current_and_target(ftd: respx.MockRouter) -> None:
     jobs = fixture("ftd_deployments")
+    ftd.get(f"{CFG}/deployment/jobhistories").mock(return_value=items([{"id": "j-none"}]))
     ftd.get(f"{CFG}/deployment/deployabledevices/{DEV_ID}/deployments").mock(
         return_value=httpx.Response(200, json=jobs)
     )
@@ -857,3 +859,15 @@ def test_flow_leg_prefers_longest_match_then_connected_then_metric() -> None:
     assert dc.leg(ipa.ip_address("10.0.1.1")).interface == "inside"  # type: ignore[union-attr]
     assert dc.leg(ipa.ip_address("10.9.0.5")).interface == "dmz"  # disabled iface skipped; best default
     assert dc.leg(ipa.ip_address("2001:db8::5")).zone == "z6"  # type: ignore[union-attr]
+
+
+def test_show_route_legend_is_stripped() -> None:
+    from fmc_mcp.tools.troubleshoot import ROUTE_LEGEND
+
+    text = (
+        "\nCodes: L - local, C - connected, S - static\n       D - EIGRP, EX - EIGRP external\n"
+        "Gateway of last resort is 198.18.128.1 to network 0.0.0.0\n\n"
+        "S*  0.0.0.0 0.0.0.0 via 198.18.128.1, outside\n"
+    )
+    out = ROUTE_LEGEND.sub("", text)
+    assert "Codes:" not in out and "EIGRP" not in out and "Gateway of last resort" in out and "S*" in out

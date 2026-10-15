@@ -55,6 +55,8 @@ ROUTINE = {
     "NAT-PER-SESSION",
 }
 REMARK = re.compile(r"rule-id (\d+): (ACCESS POLICY|PREFILTER POLICY|L4 RULE|L7 RULE|RULE): (.+)")
+# The 'show route' codes legend (11 lines before every table); the route codes are standard.
+ROUTE_LEGEND = re.compile(r"^Codes: .*?\n(?=\s*\n|Gateway of last resort|\S)", re.S | re.M)
 HIT_ID_CHUNK = 40  # rule ids per hit-count request (they go in the query string)
 
 
@@ -345,6 +347,8 @@ def register(reg: ToolRegistrar) -> None:
         app: FmcApp = get_client(ctx)
         dev = await resolve_device(app, device, domain)
         text, redacted = redact(await run_show(app, dev["id"], command, domain))
+        if re.match(r"show\s+(ipv6\s+)?route\b", command.strip(), re.I):
+            text = ROUTE_LEGEND.sub("", text)
         output, total, truncated = filter_lines(text, match, max_lines)
         out: dict[str, Any] = {
             "device": dev.get("name"),
@@ -569,7 +573,7 @@ def register(reg: ToolRegistrar) -> None:
         """Site-to-site VPN tunnels FMC monitors, down tunnels first: topology, both peers (device and
         tunnel addresses), state (TUNNEL_UP/DOWN/UNKNOWN), FMC's message and last change, plus up/down
         counts. Use it for "is the VPN to X up?"; the topologies themselves are listed by
-        fmc_list_policies(kind='site_to_site_vpn')."""
+        fmc_list_vpn_topologies."""
         app: FmcApp = get_client(ctx)
         filters = []
         if device:

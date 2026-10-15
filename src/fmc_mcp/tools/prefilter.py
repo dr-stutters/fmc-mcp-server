@@ -12,7 +12,6 @@ from stutters_mcp_core import (
     NotFound,
     Plan,
     ToolRegistrar,
-    field_changes,
     get_client,
 )
 
@@ -20,7 +19,7 @@ from fmc_mcp.client import FmcApp
 from fmc_mcp.preview import fmc_preview
 from fmc_mcp.refs import RefResolver
 from fmc_mcp.rules import flatten_prefilter_rule
-from fmc_mcp.tools.common import Domain, ref_label, resolve_in
+from fmc_mcp.tools.common import Domain, ref_label, resolve_in, rule_changes
 from fmc_mcp.tools.object_writes import applied, editable
 from fmc_mcp.tools.policies import ACCESS, PREFILTER, acp_settings_body, all_rules
 from fmc_mcp.tools.policy_writes import NetsParam, PortsParam, ZonesParam
@@ -340,7 +339,7 @@ def register(reg: ToolRegistrar) -> None:
                 str(r.get("name", "")).lower() == new_name.lower() for r in (await all_rules(app, base)).items
             ):
                 blockers.append(f"{p.get('name')!r} already has a rule named {new_name!r}.")
-        changes = {**field_changes(editable(current), desired), **cleared}
+        changes = {**rule_changes(editable(current), desired), **cleared}
         if not changes:
             blockers.append("Nothing to change.")
         path = await app.config_path(f"{PREFILTER}/{p['id']}/prefilterrules/{current['id']}", domain)
