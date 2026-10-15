@@ -55,6 +55,7 @@ UNSUPPORTED = {
 COLUMNS = [
     "index",
     "section",
+    "category",
     "name",
     "action",
     "enabled",
@@ -62,6 +63,7 @@ COLUMNS = [
     "intrusion_policy",
     "log",
     *UNSUPPORTED,
+    "not_importable",
 ]
 
 
@@ -115,7 +117,30 @@ def export_row(r: dict[str, Any]) -> dict[str, Any]:
             or [ref_label(a) for a in (r.get(field) or {}).get("applications") or []]
             or None
         )
+    cat = meta.get("category")
+    row["category"] = cat if cat not in (None, "", "--Undefined--") else None
+    row["not_importable"] = not_importable(r) or None
     return {k: v for k, v in row.items() if v not in (None, [])}
+
+
+def not_importable(r: dict[str, Any]) -> list[str]:
+    """Rule settings the importer can't rebuild; a re-import of such a row would widen the rule."""
+    out = [col for col, field in UNSUPPORTED.items() if r.get(field)]
+    apps = r.get("applications") or {}
+    if apps.get("inlineApplicationFilters") or apps.get("applicationFilters"):
+        out.append("application filters")
+    if (r.get("urls") or {}).get("urlCategoriesWithReputation"):
+        out.append("URL categories")
+    for field, label in (("filePolicy", "file policy"), ("syslogConfig", "syslog"), ("snmpConfig", "SNMP")):
+        if r.get(field):
+            out.append(label)
+    for block in (r.get("sourcePorts"), r.get("destinationPorts")):
+        for lit in (block or {}).get("literals") or []:
+            if lit.get("code") not in (None, ""):
+                out.append("ICMP codes")
+    if r.get("logBegin") and not r.get("logEnd") and str(r.get("action", "")).upper() not in BLOCKING:
+        out.append("begin-only logging")
+    return sorted(set(out))
 
 
 def to_csv(rows: list[dict[str, Any]]) -> str:
@@ -150,7 +175,9 @@ class RuleRow(BaseModel):
     vlan_tags: list[str] | None = None
     src_sgts: list[str] | None = None
     dst_sgts: list[str] | None = None
-    index: int | None = None
+    category: str | None = None
+    not_importable: list[str] | None = None
+    index: int | None = None  # informational: rows are created in list order
 
 
 def register(reg: ToolRegistrar) -> None:
@@ -166,8 +193,9 @@ def register(reg: ToolRegistrar) -> None:
     ) -> ToolResult:
         """Every rule of an access policy in order, as flat rows with object names and literals (tcp/443,
         icmp/8, 10.1.0.0/16) that fmc_import_access_rules accepts back: for reviews, audits, diffs and
-        migrations. CSV joins list values with ';'. Applications, users, VLAN tags and SGTs are exported
-        but can't be imported."""
+        migrations. CSV joins list values with ';'. Rows list in `not_importable` what the importer can't
+        rebuild (applications, users, URL categories, file policy, ...); such rows are refused on import so
+        a rule is never re-created wider than it was."""
         app: FmcApp = get_client(ctx)
         p = await resolve_policy(app, "access", policy, domain)
         page = await all_rules(app, await app.config_path(f"{ACCESS}/{p['id']}/accessrules", domain))
@@ -178,7 +206,9 @@ def register(reg: ToolRegistrar) -> None:
                 fmt=response_format,
             )
         return list_result(
-            page_of(rows, limit=limit, offset=offset), fmt=response_format, extra={"policy": p.get("name")}
+            page_of(rows, limit=limit, offset=offset),
+            fmt=response_format,
+            extra={"policy": p.get("name"), "complete": page.complete},
         )
 
     @reg.write(title="Import access rules")
@@ -191,11 +221,15 @@ def register(reg: ToolRegistrar) -> None:
                 min_length=1, max_length=MAX_IMPORT, description="Rules in order, in the export's row format"
             ),
         ],
+        skip_existing: Annotated[
+            bool, Field(description="Skip rows whose rule name exists (resume an interrupted import)")
+        ] = False,
         domain: Domain = None,
         confirm: Confirm = None,
     ) -> dict[str, Any]:
-        """Append many access rules at once, in order, to the end of their section (Default unless a row
-        says mandatory). The preview resolves every object and literal and lists each row's problems
+        """Append many access rules at once, in list order, to the end of their section or category
+        (Default unless a row says mandatory or names a category; `index` is informational).
+        The preview resolves every object and literal and lists each row's problems
         (unknown objects, duplicate names, unsupported conditions); nothing is created while any row has
         one. Rules are posted with FMC's bulk API in chunks of 100. Deploy to take effect."""
         app: FmcApp = get_client(ctx)
@@ -205,18 +239,26 @@ def register(reg: ToolRegistrar) -> None:
         taken = {str(r.get("name", "")).lower() for r in existing.items}
         resolver = RefResolver(app, domain)
         problems: list[str] = []
-        bodies: dict[str, list[dict[str, Any]]] = {"mandatory": [], "default": []}
+        bodies: dict[tuple[str, str | None], list[dict[str, Any]]] = {}
+        skipped: list[str] = []
         seen: set[str] = set()
         ips_cache: dict[str, dict[str, Any]] = {}
         for n, row in enumerate(rules, 1):
             where = f"row {n} ({row.name!r})"
-            unsupported = [c for c in UNSUPPORTED if getattr(row, c)]
+            if row.name.lower() in seen:
+                problems.append(f"{where}: the name appears twice in the import.")
+            seen.add(row.name.lower())
+            unsupported = [c for c in UNSUPPORTED if getattr(row, c)] + list(row.not_importable or [])
             if unsupported:
                 problems.append(f"{where}: can't import {', '.join(unsupported)}; create it with the FMC UI.")
                 continue
-            if row.name.lower() in taken or row.name.lower() in seen:
-                problems.append(f"{where}: a rule with that name already exists.")
-            seen.add(row.name.lower())
+            if row.name.lower() in taken:
+                if skip_existing:
+                    skipped.append(row.name)
+                    continue
+                problems.append(
+                    f"{where}: a rule with that name already exists (skip_existing=true to resume)."
+                )
             body: dict[str, Any] = {
                 "name": row.name,
                 "type": "AccessRule",
@@ -231,10 +273,10 @@ def register(reg: ToolRegistrar) -> None:
                 problems.append(f"{where}: {e}")
                 continue
             body.update({k: v for k, v in conds.items() if v})
-            # begin-only logging: block rules log at the start anyway; others log begin and end
-            log: LogMode = (
-                ("end" if row.action in BLOCKING else "begin_and_end") if row.log == "begin" else row.log
-            )
+            if row.log == "begin" and row.action not in BLOCKING:
+                problems.append(f"{where}: FMC can't log only the start of an allowed connection; use end.")
+                continue
+            log: LogMode = "end" if row.log == "begin" else row.log  # block rules log at the start
             body.update(_log_fields(log, row.action))
             if row.intrusion_policy:
                 if row.action != "ALLOW":
@@ -251,24 +293,31 @@ def register(reg: ToolRegistrar) -> None:
                         continue
                 ips = ips_cache[key]
                 body["ipsPolicy"] = {"id": ips["id"], "type": "IntrusionPolicy", "name": ips.get("name")}
-            bodies[row.section or "default"].append(body)
+            bodies.setdefault((row.section or "default", row.category), []).append(body)
 
         async def apply() -> Any:
             created: list[str] = []
-            for section, items in bodies.items():
-                for i in range(0, len(items), CHUNK):
-                    chunk = items[i : i + CHUNK]
-                    try:
-                        await app.api.post(base, chunk, params={"bulk": "true", "section": section})
-                    except UpstreamError as e:
-                        raise UpstreamError(
-                            f"Import stopped: {len(created)} rules created "
-                            f"(last: {', '.join(created[-5:]) or 'none'}); "
-                            f"chunk starting at {chunk[0]['name']!r} failed: {e}",
-                            e.status_code,
-                        ) from e
-                    created += [b["name"] for b in chunk]
-            app.invalidate_cache()
+            try:
+                for (section, category), items in bodies.items():
+                    params = {
+                        "bulk": "true",
+                        **({"category": category} if category else {"section": section}),
+                    }
+                    for i in range(0, len(items), CHUNK):
+                        chunk = items[i : i + CHUNK]
+                        try:
+                            await app.api.post(base, chunk, params=params)
+                        except Exception as e:
+                            raise UpstreamError(
+                                f"Import stopped: {len(created)} rules created "
+                                f"(last: {', '.join(created[-5:]) or 'none'}); chunk starting at "
+                                f"{chunk[0]['name']!r} failed: {e}. "
+                                "Repeat with skip_existing=true to resume.",
+                                getattr(e, "status_code", None),
+                            ) from e
+                        created += [b["name"] for b in chunk]
+            finally:
+                app.invalidate_cache()
             return {"policy": p.get("name"), "created": len(created), "next": "fmc_deploy to take effect"}
 
         total = sum(len(v) for v in bodies.values())
@@ -278,6 +327,7 @@ def register(reg: ToolRegistrar) -> None:
             args={
                 "policy": policy,
                 "rules": [r.model_dump(exclude_none=True) for r in rules],
+                "skip_existing": skip_existing,
                 "domain": domain,
             },
             confirm=confirm,
@@ -286,9 +336,12 @@ def register(reg: ToolRegistrar) -> None:
                 f"Import {total} access rules into {p.get('name')!r}",
                 details={
                     "rules_now": len(existing.items),
-                    "by_section": {k: len(v) for k, v in bodies.items() if v},
-                    "first": [b["name"] for b in (bodies["mandatory"] + bodies["default"])[:10]],
-                    "problems": problems or None,
+                    "by_section": {
+                        (f"{sec}/{cat}" if cat else sec): len(v) for (sec, cat), v in bodies.items() if v
+                    },
+                    "first": [b["name"] for v in bodies.values() for b in v][:10],
+                    "skipped_existing": skipped or None,
+                    "problems": problems[:50] or None,
                 },
                 fingerprint={"policy": p["id"], "rules": [r.get("id") for r in existing.items]},
                 blockers=problems[:20] + (["...and more problems"] if len(problems) > 20 else []),

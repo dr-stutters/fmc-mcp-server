@@ -41,7 +41,7 @@ async def test_export_import_round_trip(client: Client[Any]) -> None:
     rows = out["results"]
     assert rows and all("name" in r for r in rows)
     csv_out = await call(client, "fmc_export_access_rules", {"policy": "mcp-test-acp", "format": "csv"})
-    assert csv_out["csv"].startswith("index,section,name,action")
+    assert csv_out["csv"].startswith("index,section,category,name,action")
     importable = [r for r in rows if not any(r.get(k) for k in ("applications", "users", "vlan_tags"))]
     found = await call(
         client, "fmc_list_policies", {"kind": "access", "name": SCRATCH, "response_format": "json"}

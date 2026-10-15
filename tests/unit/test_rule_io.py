@@ -67,3 +67,12 @@ async def test_import_validates_then_posts_in_bulk(fmc: respx.MockRouter) -> Non
         body[0]["name"] == "r-new" and body[0]["destinationNetworks"]["literals"][0]["value"] == "10.9.9.0/24"
     )
     assert body[0]["logBegin"] is True and body[0]["logEnd"] is False  # block rules log at the start
+
+
+def test_rows_that_would_widen_are_marked() -> None:
+    rule = {
+        **RULE,
+        "urls": {"urlCategoriesWithReputation": [{"category": {"name": "Gambling"}}]},
+        "filePolicy": {"id": "f"},
+    }
+    assert export_row(rule)["not_importable"] == ["URL categories", "file policy"]
