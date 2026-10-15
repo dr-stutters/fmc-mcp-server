@@ -309,6 +309,7 @@ def register(reg: ToolRegistrar) -> None:
         return await fmc_preview(
             ctx,
             tool="fmc_map_dynamic_object",
+            owned=[obj],
             args={"object": object, "add": add, "remove": remove, "domain": domain},
             confirm=confirm,
             plan=Plan(

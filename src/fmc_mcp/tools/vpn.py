@@ -554,6 +554,7 @@ def register(reg: ToolRegistrar) -> None:
         return await fmc_preview(
             ctx,
             tool="fmc_delete_s2s_vpn",
+            owned=[t],
             args={"topology": topology, "domain": domain},
             confirm=confirm,
             plan=Plan(

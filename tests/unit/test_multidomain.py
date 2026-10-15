@@ -89,3 +89,38 @@ async def test_device_paths_go_to_the_owning_leaf_domain(fmc: respx.MockRouter) 
         assert await app.config_path("object/hosts") == f"{CFG}/object/hosts"
     finally:
         await app.aclose()
+
+
+def test_is_below_uses_whole_path_segments() -> None:
+    from fmc_mcp.client import FmcApp
+
+    app = FmcApp(make_settings())
+    app.domains = [
+        {"name": "Global", "uuid": DOMAIN},
+        {"name": "Global/A", "uuid": "a" * 8 + "-0000-0000-0000-000000000000"},
+        {"name": "Global/AB", "uuid": "b" * 8 + "-0000-0000-0000-000000000000"},
+    ]
+    a, ab = app.domains[1]["uuid"], app.domains[2]["uuid"]
+    assert app._is_below(ab, DOMAIN) and app._is_below(a, DOMAIN)
+    assert not app._is_below(ab, a) and not app._is_below(DOMAIN, a)
+
+
+async def test_listing_teaches_device_domains_without_lookups(fmc: respx.MockRouter) -> None:
+    from fmc_mcp.client import FmcApp
+
+    dev_id = "2c11eaca-c7e3-11f1-a7ce-a8b537b1b4bb"
+    fmc.get(f"{CFG}/devices/devicerecords").mock(
+        return_value=items([{"id": dev_id, "name": "ftd1", "metadata": {"domain": CHILD_REF}}])
+    )
+    lookup = fmc.get(f"{CFG}/devices/devicerecords/{dev_id}")
+    app = FmcApp(make_settings())
+    try:
+        await app.ensure_login()
+        await app.all(await app.config_path("devices/devicerecords"))
+        sub = f"devices/devicerecords/{dev_id}/physicalinterfaces"
+        assert await app.config_path(sub) == f"{CHILD_CFG}/{sub}"
+        assert not lookup.called
+        app.forget_devices()
+        assert dev_id not in app.device_domains
+    finally:
+        await app.aclose()

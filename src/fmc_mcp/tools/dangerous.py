@@ -126,6 +126,7 @@ async def _deploy_target(
 
 async def finish(ctx: Context, app: FmcApp, resp: Any, wait: bool, domain: str | None, what: str) -> Any:
     app.invalidate_cache()
+    app.forget_devices()  # registrations, deletes and HA changes can change which domain owns a device
     tid = task_id_of(resp)
     if tid is None:
         return slim(resp) if isinstance(resp, dict) else resp
@@ -804,6 +805,7 @@ def register(reg: ToolRegistrar) -> None:
         return await fmc_preview(
             ctx,
             tool="fmc_delete_policy",
+            owned=[p],
             args={"kind": kind, "policy": policy, "domain": domain},
             confirm=confirm,
             plan=Plan(

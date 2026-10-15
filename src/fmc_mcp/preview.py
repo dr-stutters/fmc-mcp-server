@@ -4,6 +4,7 @@ of objects or policies that a descendant domain only inherits (FMC refuses them 
 from __future__ import annotations
 
 import asyncio
+import time
 from collections.abc import Awaitable, Callable, Iterable
 from typing import Any
 
@@ -11,6 +12,8 @@ from fastmcp import Context
 from stutters_mcp_core import Plan, get_client, preview_or_apply
 
 from fmc_mcp.client import FmcApp
+
+REROUTE_FRESH = 300.0  # seconds; older entries on a reused task are not this call's
 
 
 def owner_domain(obj: dict[str, Any] | None) -> dict[str, Any] | None:
@@ -39,10 +42,14 @@ async def fmc_preview(
     if "domain" not in plan.details:
         plan.details = {"domain": name, **plan.details}
     task = asyncio.current_task()
-    moved = app.rerouted.pop(task, set()) if task is not None else set()
+    seen = app.rerouted.pop(task, {}) if task is not None else {}
+    moved = sorted(d for d, at in seen.items() if time.monotonic() - at < REROUTE_FRESH)
     if moved:
-        # the device lives in a leaf domain below the requested one; its config is changed there
-        plan.details["device_domain"] = ", ".join(sorted([await app.domain_name(d) for d in moved]))
+        # The device lives in a leaf domain below the requested one; its config is changed there. Part of
+        # the fingerprint, so a confirm is refused if the device has moved to another domain since.
+        names = [await app.domain_name(d) for d in moved]
+        plan.details["device_domain"] = ", ".join(names)
+        plan.fingerprint = {"plan": plan.fingerprint, "device_domain": moved}
     for obj in owned:
         dom = owner_domain(obj)
         if dom and str(dom["id"]).lower() != uuid.lower():

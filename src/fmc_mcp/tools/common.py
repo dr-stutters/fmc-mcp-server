@@ -236,6 +236,9 @@ def object_summary(obj: dict[str, Any]) -> dict[str, Any]:
         row["description"] = obj["description"]
     if is_system(obj):
         row["system"] = True
+    ro = (obj.get("metadata") or {}).get("readOnly") or {}
+    if isinstance(ro, dict) and ro.get("reason") == "DOMAIN":
+        row["inherited_from"] = ((obj.get("metadata") or {}).get("domain") or {}).get("name")
     row["id"] = obj.get("id")
     return row
 
