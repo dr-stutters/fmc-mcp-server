@@ -293,6 +293,19 @@ async def test_create_static_route_blockers(ftd: respx.MockRouter) -> None:
     assert "No network object with value 10.50.0.0/16" in text and "no interface named 'dmz'" in text
 
 
+async def test_create_static_route_blocks_exact_duplicate(ftd: respx.MockRouter) -> None:
+    ftd.get(f"{CFG}/object/networks").mock(return_value=items([ANY4]))
+    ftd.get(f"{CFG}/object/hosts").mock(return_value=empty())
+    post = ftd.post(f"{DEVPATH}/routing/ipv4staticroutes")
+    args = {"device": "mcp-ftd1", "interface": "OUTSIDE", "networks": ["0.0.0.0/0"], "gateway": "192.0.2.10"}
+    out = await preview_of("fmc_create_static_route", {**args, "metric": 5})
+    assert out["status"] == "blocked" and not post.called
+    assert any("already has this route" in b for b in out["blockers"])
+    # another gateway is a different route
+    out = await preview_of("fmc_create_static_route", {**args, "gateway": "192.0.2.11"})
+    assert out["status"] == "preview"
+
+
 async def test_delete_static_route(ftd: respx.MockRouter) -> None:
     rid = fixture("ftd_ipv4staticroutes")["items"][0]["id"]
     ftd.get(f"{DEVPATH}/routing/ipv4staticroutes/{rid}").mock(
