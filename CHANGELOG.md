@@ -1,5 +1,15 @@
 # Changelog
 
+## Unreleased
+
+### Changed
+- Core pinned to stutters-mcp-core v0.3.0 (pull-only; `list_result` keeps `Page.more`; prompts via
+  `reg.prompt`).
+
+### Fixed
+- `fmc_create_static_route` refuses an exact duplicate (same table, interface, destinations and
+  gateway) in the preview instead of letting FMC reject it at create or deploy time.
+
 ## 0.2.0 (2026-10-15)
 
 Phase 2: gap analysis against the full FMC 10.0.1 API (`docs/GAP-ANALYSIS.md`) and live testing with

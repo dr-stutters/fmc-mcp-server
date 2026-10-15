@@ -172,6 +172,12 @@ async def configure_and_deploy(client: Client[Any]) -> None:
         "fmc_create_static_route",
         {"device": DEVICE, "interface": "outside", "networks": ["0.0.0.0/0"], "gateway": "198.18.128.1"},
     )
+    dup = await call(
+        client,
+        "fmc_create_static_route",
+        {"device": DEVICE, "interface": "outside", "networks": ["0.0.0.0/0"], "gateway": "198.18.128.1"},
+    )
+    assert dup["status"] == "blocked" and any("already has this route" in b for b in dup["blockers"]), dup
     routes = await call(client, "fmc_list_routes", {"device": DEVICE, "response_format": "json"})
     assert [r["networks"] for r in routes["results"]] == [["any-ipv4"]]
 
