@@ -139,8 +139,15 @@ def _strip(obj: dict[str, Any]) -> dict[str, Any]:
     return {k: v for k, v in editable(obj).items() if k not in ("type", "id", "name", "description")}
 
 
+def _norm(addr: str) -> str:
+    try:
+        return str(ipaddress.ip_address(addr.strip()))
+    except ValueError:
+        return addr.strip().lower()
+
+
 def server_key(s: dict[str, Any]) -> str:
-    return str(_addr(s.get("ipAddress")) or "").lower()
+    return _norm(str(_addr(s.get("ipAddress")) or ""))
 
 
 def register(reg: ToolRegistrar) -> None:
@@ -176,7 +183,7 @@ def register(reg: ToolRegistrar) -> None:
                 ),
                 "event_lists": [e.get("name") for e in got["event_lists"]] or None,
             },
-            "ntp": {"mode": ntp.get("ntpMode"), "servers": ntp.get("ntpServerInfos")},
+            "ntp": mask_secrets({"mode": ntp.get("ntpMode"), "servers": ntp.get("ntpServerInfos")}),
             "snmp": mask_secrets(_strip(got["snmp"])),
             "ssh_access": [
                 {
@@ -186,9 +193,9 @@ def register(reg: ToolRegistrar) -> None:
                 for s in got["ssh_access"]
             ]
             or None,
-            "http_access": _strip(got["http_access"]) or None,
+            "http_access": mask_secrets(_strip(got["http_access"])) or None,
             "banner": got["banner"].get("bannerText") or None,
-            "dns": _strip(got["dns"]) or None,
+            "dns": mask_secrets(_strip(got["dns"])) or None,
         }
 
     @reg.write(title="Create platform settings policy")
@@ -299,7 +306,7 @@ def register(reg: ToolRegistrar) -> None:
                     except ValueError:
                         host = await RefResolver(app, domain).single(v, ["host"], "host object")
                         wrapper = {"object": host}
-                    key = str(_addr(wrapper)).lower()
+                    key = _norm(str(_addr(wrapper)))
                     if key in have:
                         blockers.append(f"Syslog server {v} is already configured.")
                         continue
@@ -315,7 +322,7 @@ def register(reg: ToolRegistrar) -> None:
                         row["interfaces"] = iface_block
                     new_rows.append(row)
                     have.add(key)
-            drop = {r.strip().lower() for r in remove_servers or []}
+            drop = {_norm(r) for r in remove_servers or []}
             missing = drop - {server_key(s) for s in servers}
             if missing:
                 blockers.append(f"Not configured, can't remove: {', '.join(sorted(missing))}.")
@@ -338,12 +345,12 @@ def register(reg: ToolRegistrar) -> None:
                 desired["enableLogging"] = logging_enabled
             if emblem_format is not None:
                 desired["enableEMBLEMFormat"] = emblem_format
-            if desired.get("loggingToFMCType") not in (None, "OFF") and not desired.get(
-                "loggingToFMCLogLevel"
-            ):
+            diff = field_changes(editable(cur), desired)
+            needs_level = desired.get("loggingToFMCType") not in (None, "OFF")
+            if diff and needs_level and not desired.get("loggingToFMCLogLevel"):
                 # FMC 10.0.1 rejects the PUT ("LoggingToSecureFMCType is missing") without a level here.
                 desired["loggingToFMCLogLevel"] = "ERR"
-            diff = field_changes(editable(cur), desired)
+                diff = field_changes(editable(cur), desired)
             if diff:
                 changes["basic_logging"] = diff
                 path = f"{base}/{SINGLE['basic_logging']}/{cur['id']}"
@@ -400,21 +407,25 @@ def register(reg: ToolRegistrar) -> None:
 
         async def apply() -> Any:
             done: list[str] = []
-            for name, method, spath, sbody in steps:
-                try:
-                    if method == "DELETE":
-                        await app.api.delete(spath)
-                    elif method == "POST":
-                        await app.api.post(spath, sbody)
-                    else:
-                        await app.api.put(spath, sbody)
-                except UpstreamError as e:
-                    app.invalidate_cache()
-                    raise UpstreamError(
-                        f"Step {name!r} failed after {done or 'no'} steps were applied: {e}", e.status_code
-                    ) from e
-                done.append(name)
-            app.invalidate_cache()
+            try:
+                for name, method, spath, sbody in steps:
+                    try:
+                        if method == "DELETE":
+                            await app.api.delete(spath)
+                        elif method == "POST":
+                            await app.api.post(spath, sbody)
+                        else:
+                            await app.api.put(spath, sbody)
+                    except Exception as e:
+                        rest = [n for n, *_ in steps][len(done) :]
+                        raise UpstreamError(
+                            f"Step {name!r} failed ({e}). Applied: {done or 'none'}; not applied: {rest}. "
+                            "Check with fmc_get_platform_settings, then repeat the call.",
+                            getattr(e, "status_code", None),
+                        ) from e
+                    done.append(name)
+            finally:
+                app.invalidate_cache()
             return {"applied": done, "next": "fmc_deploy to the devices using this policy"}
 
         return await preview_or_apply(

@@ -102,7 +102,7 @@ async def test_summary(ps: respx.MockRouter) -> None:
         "secure": None,
     }
     assert sl["destinations"][0]["all_events"] == "SEVERITY INFO" and sl["send_to_fmc"] == "VPN"
-    assert "s3cret" not in json.dumps(out)
+    assert "s3cret" not in json.dumps(out), out["snmp"]
 
 
 async def test_configure_syslog_steps(ps: respx.MockRouter) -> None:
@@ -175,3 +175,36 @@ async def test_access_logging(fmc: respx.MockRouter) -> None:
         await run(c, "fmc_set_access_logging", {**args, "confirm": preview["confirm"]})
     body = json.loads(put.calls.last.request.content)
     assert body["syslogConfigFromPlatformSetting"] and body["ipsSyslogSeverity"] == "INFO"
+
+
+async def test_remove_only_and_destination_off(ps: respx.MockRouter) -> None:
+    put = ps.put(f"{BASE}/syslog/servers/{PID}").mock(return_value=httpx.Response(200, json={}))
+    delete = ps.delete(f"{BASE}/syslog/loggingdestinations/{DEST['id']}").mock(
+        return_value=httpx.Response(200, json={})
+    )
+    args = {"policy": "mcp-test-ps", "remove_servers": ["10.99.1.10"], "server_level": "OFF"}
+    async with Client(server()) as c:
+        preview = await run(c, "fmc_configure_syslog", args)
+        await run(c, "fmc_configure_syslog", {**args, "confirm": preview["confirm"]})
+    body = json.loads(put.calls.last.request.content)
+    assert (
+        body["servers"] == []
+        and body["messageSizeQueue"] == "512"
+        and body["allowUserTrafficWhenDown"] is True
+    )
+    assert delete.called
+
+
+async def test_partial_failure_names_the_steps(ps: respx.MockRouter) -> None:
+    ps.put(f"{BASE}/syslog/servers/{PID}").mock(return_value=httpx.Response(200, json={}))
+    ps.put(f"{BASE}/syslog/syslogsettings/{PID}").mock(
+        return_value=httpx.Response(400, json={"error": {"messages": [{"description": "bad facility"}]}})
+    )
+    args = {"policy": "mcp-test-ps", "remove_servers": ["10.99.1.10"], "facility": "LOCAL7"}
+    async with Client(server()) as c:
+        preview = await run(c, "fmc_configure_syslog", args)
+        r = await c.call_tool(
+            "fmc_configure_syslog", {**args, "confirm": preview["confirm"]}, raise_on_error=False
+        )
+    text = r.content[0].text  # type: ignore[union-attr]
+    assert r.is_error and "Applied: ['servers']" in text and "syslog_settings" in text
