@@ -2,6 +2,12 @@
 
 ## Unreleased
 
+### Added
+- Prompt `fmc_why_blocked` (source, destination, protocol, port; optional device, ingress interface,
+  policy): offline rule match with zones, live packet tracer, hit counts, pending changes and recent
+  deployments, audit trail, then a preview-first fix. Exercised live against the FTDv (TCP 23 blocked,
+  TCP 443 allowed, no-ARP drop) after real traffic from the inside host.
+
 ### Changed
 - Core pinned to stutters-mcp-core v0.3.0 (pull-only; `list_result` keeps `Page.more`; prompts via
   `reg.prompt`).
