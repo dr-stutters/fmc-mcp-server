@@ -23,6 +23,13 @@
   source is reported, not fatal). Live: pulling the FTD management link raised APPLIANCE_HEARTBEAT
   YELLOW then RED within ~2 minutes, shown next to the rule edit (audit) and deploy rows.
 
+- Platform settings (F3): `fmc_get_platform_settings` (syslog, NTP, SNMP with secrets masked, SSH/HTTP
+  access, banner, DNS, assigned devices), `fmc_create_platform_settings_policy`, `fmc_configure_syslog`
+  (servers with interface/protocol/port/EMBLEM/TLS, logging on/off, level to the servers, facility,
+  RFC 5424 timestamps) and `fmc_set_access_logging` (ACP connection/intrusion/file events to the
+  platform-settings syslog). Live: added a server, assigned, deployed and checked
+  `show running-config logging` on the FTD, then removed it. The server never receives syslog (ADR-003).
+
 ### Changed
 - Core pinned to stutters-mcp-core v0.3.0 (pull-only; `list_result` keeps `Page.more`; prompts via
   `reg.prompt`).

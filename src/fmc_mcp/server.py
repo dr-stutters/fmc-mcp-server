@@ -20,6 +20,7 @@ from fmc_mcp.tools import (
     dynamic_objects,
     object_writes,
     objects,
+    platform_settings,
     policies,
     policy_writes,
     prompts,
@@ -46,6 +47,9 @@ Workflows:
 - "Why is this traffic blocked?": fmc_packet_tracer (live verdict, drop reason and matching rule on
   the device) + fmc_rule_lookup (offline walk of the policy) + fmc_get_hit_counts (is the rule hit?).
   The fmc_why_blocked prompt walks these steps in order.
+- Send FTD logs to the customer's syslog/SIEM: fmc_get_platform_settings -> fmc_configure_syslog
+  (servers, level, facility, RFC 5424) -> fmc_assign_policy(kind='platform_settings') -> fmc_deploy;
+  fmc_set_access_logging sends connection/intrusion events there too.
 - Block a host fast: map its IP into a dynamic object that a BLOCK rule references
   (fmc_map_dynamic_object); mapping changes need no deployment, only the rule does (once).
 - Health: fmc_list_devices, fmc_device_health, fmc_list_vpn_tunnels; "what changed or broke in the
@@ -119,6 +123,7 @@ def create_server(
             troubleshoot.register,
             dynamic_objects.register,
             activity.register,
+            platform_settings.register,
             prompts.register,
         ],
         status=FmcApp.status,
