@@ -108,9 +108,21 @@
       "tier": "write",
       "title": "Configure HA monitored interface"
     },
+    "fmc_configure_ntp": {
+      "tier": "write",
+      "title": "Configure NTP"
+    },
     "fmc_configure_ospf": {
       "tier": "write",
       "title": "Configure OSPF"
+    },
+    "fmc_configure_snmp": {
+      "tier": "write",
+      "title": "Configure SNMP"
+    },
+    "fmc_configure_ssh_access": {
+      "tier": "write",
+      "title": "Configure SSH management access"
     },
     "fmc_configure_syslog": {
       "tier": "write",

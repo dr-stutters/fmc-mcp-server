@@ -1,5 +1,18 @@
 # Changelog
 
+## Unreleased
+
+### Added
+- **Platform settings writes (F24)**: `fmc_configure_ntp`, `fmc_configure_snmp` (enable, community, location,
+  contact, manager hosts; FMC masks communities on read, so they must be given again and are never echoed),
+  `fmc_configure_ssh_access`. Live on mcp-ftd1: NTP server (seen in the policy; FTD NTP runs on the management
+  side), SNMP host + location in `show running-config snmp-server`, SSH from the inside network in
+  `show running-config ssh`; all reverted.
+
+### Fixed
+- `fmc_run_show_command` returns empty output with a note when FMC answers 404 for a command that printed
+  nothing (e.g. `show running-config ntp` with no NTP lines), instead of a "not found" error.
+
 ## 0.6.0 (2026-10-15)
 
 New roadmap items found overnight (F20-F23) and the second F13 slice. Tools: 51 read -> 55, 42 write -> 54,

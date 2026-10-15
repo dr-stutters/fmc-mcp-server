@@ -17,6 +17,7 @@ from fastmcp.tools import ToolResult
 from pydantic import Field
 from stutters_mcp_core import (
     InvalidRequest,
+    NotFound,
     ResponseFormat,
     ToolRegistrar,
     UpstreamError,
@@ -258,7 +259,12 @@ async def run_show(app: FmcApp, device_id: str, command: str, domain: str | None
     if rest:
         params["parameters"] = rest
     path = await app.config_path(f"devices/devicerecords/{device_id}/operational/commands", domain)
-    data = await app.api.get(path, params, timeout=120)
+    try:
+        data = await app.api.get(path, params, timeout=120)
+    except NotFound:
+        # FMC answers 404 when the command ran but printed nothing (e.g. 'show running-config ntp'
+        # with no NTP lines); an unknown device fails earlier, when it is resolved.
+        return ""
     items = (data or {}).get("items") or []
     return "\n".join(str(i.get("commandOutput") or "") for i in items)
 
@@ -297,6 +303,8 @@ def register(reg: ToolRegistrar) -> None:
             "command": " ".join(command.split()),
             "output": output,
         }
+        if not text.strip():
+            out["note"] = "The command printed nothing (e.g. that section is not configured on the device)."
         if match:
             out["matched_lines"] = total
         if redacted:
