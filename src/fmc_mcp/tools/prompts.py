@@ -1,13 +1,26 @@
 """Workflow prompts (MCP prompts) that chain this server's tools for common operator questions."""
 
 # No `from __future__ import annotations`: FastMCP inspects signatures at runtime.
-from typing import Annotated
+import json
+import re
+from typing import Annotated, Literal
 
 from pydantic import Field
-from stutters_mcp_core import ToolRegistrar, tool_ref
+from stutters_mcp_core import InvalidRequest, ToolRegistrar, tool_ref
+
+# Prompt arguments end up inside instructions: keep them to one line of plain characters.
+_SAFE = re.compile(r"^[\w.:/@ ()+,-]{1,200}$")
 
 
-def why_blocked_text(
+def _q(value: str, what: str) -> str:
+    """A user-supplied value as a quoted literal, refusing anything that could carry instructions."""
+    v = value.strip()
+    if not _SAFE.match(v):
+        raise InvalidRequest(f"{what} {value!r} has characters that aren't allowed here.")
+    return json.dumps(v)
+
+
+def _why_blocked_text(
     source: str,
     destination: str,
     protocol: str,
@@ -16,13 +29,20 @@ def why_blocked_text(
     ingress_interface: str | None,
     policy: str | None,
 ) -> str:
-    proto = protocol.strip().lower() or "tcp"
+    """The fmc_why_blocked instructions for one flow."""
+    proto = protocol.strip().lower()
+    if proto not in ("tcp", "udp", "icmp"):
+        raise InvalidRequest(f"protocol must be tcp, udp or icmp, not {protocol!r}.")
+    if proto == "icmp":
+        port = None
+    src, dst = _q(source, "source"), _q(destination, "destination")
+    source, destination = json.loads(src), json.loads(dst)
     flow = f"{proto} {source} -> {destination}" + (f" port {port}" if port is not None else "")
     port_arg = f", port={port}" if port is not None else ""
-    tracer_port = f", destination_port={port}" if port is not None and proto in ("tcp", "udp") else ""
-    dev = f'"{device}"' if device else "<the device>"
-    iface = f'"{ingress_interface}"' if ingress_interface else "<the ingress interface>"
-    pol = f'"{policy}"' if policy else "<the device's access control policy>"
+    tracer_port = f", destination_port={port}" if port is not None else ""
+    dev = _q(device, "device") if device else "<the device>"
+    iface = _q(ingress_interface, "ingress_interface") if ingress_interface else "<the ingress interface>"
+    pol = _q(policy, "policy") if policy else "<the device's access control policy>"
     find_device = (
         f"The device is {dev}."
         if device
@@ -49,8 +69,8 @@ gives a definite answer that the later steps cannot change. All steps before ste
 
 0. Context. {find_device} {find_iface} {find_policy}
 
-1. Offline policy walk: {tool_ref("fmc_rule_lookup")} with policy={pol}, source="{source}",
-   destination="{destination}", protocol="{proto}"{port_arg}, source_zone=<the ingress interface's
+1. Offline policy walk: {tool_ref("fmc_rule_lookup")} with policy={pol}, source={src},
+   destination={dst}, protocol="{proto}"{port_arg}, source_zone=<the ingress interface's
    zone> and destination_zone=<the zone of the interface the route to {destination} leaves by> (both
    from {tool_ref("fmc_list_device_interfaces")}; {tool_ref("fmc_list_routes")} for the egress). Without
    the zones, rules with zone conditions show up only under `may_match_first`. Note the first definite
@@ -58,7 +78,7 @@ gives a definite answer that the later steps cannot change. All steps before ste
    action. This is what FMC's configuration says.
 
 2. Live verdict: {tool_ref("fmc_packet_tracer")} with device={dev}, input_interface={iface},
-   protocol="{proto}", source_ip="{source}", destination_ip="{destination}"{tracer_port}.
+   protocol="{proto}", source_ip={src}, destination_ip={dst}{tracer_port}.
    Read `action`, `drop_reason`, the phase that dropped it and `matched_rules`:
    - acl-drop with a matched rule: the access (or prefilter) rule named there blocks it;
    - no-v4-adjacency / no-adjacency: the policy allows it but the FTD has no ARP entry for the
@@ -101,9 +121,10 @@ def register(reg: ToolRegistrar) -> None:
     def fmc_why_blocked(
         source: Annotated[str, Field(description="Source IP address of the flow, e.g. 10.99.1.10")],
         destination: Annotated[str, Field(description="Destination IP address, e.g. 198.18.134.76")],
-        protocol: Annotated[str, Field(description="tcp, udp or icmp")] = "tcp",
+        protocol: Annotated[Literal["tcp", "udp", "icmp"], Field(description="tcp, udp or icmp")] = "tcp",
         port: Annotated[
-            int | None, Field(description="Destination port for tcp/udp; omit for icmp or any port")
+            int | None,
+            Field(ge=1, le=65535, description="Destination port for tcp/udp; omit for icmp or any port"),
         ] = None,
         device: Annotated[
             str | None, Field(description="FTD device name or UUID; found from the source if omitted")
@@ -123,4 +144,4 @@ def register(reg: ToolRegistrar) -> None:
         an FTD: the offline rule match, a live packet-tracer verdict and drop reason, hit counts on the
         matching rule, pending changes and recent deployments, and who changed the rule. Ends with the
         cause and a preview-first fix proposal."""
-        return why_blocked_text(source, destination, protocol, port, device, ingress_interface, policy)
+        return _why_blocked_text(source, destination, protocol, port, device, ingress_interface, policy)
