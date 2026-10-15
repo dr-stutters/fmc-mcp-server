@@ -25,7 +25,7 @@ from fmc_mcp.preview import fmc_preview
 from fmc_mcp.refs import RefResolver
 from fmc_mcp.tools.common import Domain, block_labels, ref_label, resolve_in
 from fmc_mcp.tools.object_writes import applied
-from fmc_mcp.tools.policies import ACCESS, all_rules
+from fmc_mcp.tools.policies import ACCESS, acp_settings_body, all_rules
 from fmc_mcp.tools.policy_writes import NetsParam, PortsParam, UrlsParam, ZonesParam
 
 DECRYPTION = "policy/decryptionpolicies"
@@ -168,6 +168,13 @@ def register(reg: ToolRegistrar) -> None:
         blockers = []
         if any(str(r.get("name", "")).lower() == name.lower() for r in existing.items):
             blockers.append(f"{p.get('name')!r} already has a rule named {name!r}.")
+        match_all = not any(
+            (source_zones, destination_zones, source_networks, destination_networks, destination_ports, urls)
+        )
+        if match_all and action != "DO_NOT_DECRYPT":
+            blockers.append(
+                f"A {action} rule without conditions would match all TLS traffic; add a condition."
+            )
         return await fmc_preview(
             ctx,
             tool="fmc_create_decryption_rule",
@@ -235,7 +242,10 @@ def register(reg: ToolRegistrar) -> None:
         ctx: Context,
         access_policy: Annotated[str, Field(description="Access control policy name or UUID")],
         decryption_policy: Annotated[
-            str, Field(description="Decryption policy name or UUID; '' removes the link")
+            str,
+            Field(
+                description="Decryption policy name or UUID (FMC's API can't remove the link: '' is refused)"
+            ),
         ],
         domain: Domain = None,
         confirm: Confirm = None,
@@ -263,8 +273,7 @@ def register(reg: ToolRegistrar) -> None:
 
         async def apply() -> Any:
             fresh = await app.api.get(path)
-            keep = ("id", "type", "name", "description", "defaultAction", "prefilterPolicySetting")
-            body = {k: fresh[k] for k in keep if k in fresh}
+            body = acp_settings_body(fresh)
             body["decryptionPolicySetting"] = (
                 {"id": target["id"], "type": "DecryptionPolicy", "name": target.get("name")}
                 if target

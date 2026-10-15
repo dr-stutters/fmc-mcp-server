@@ -58,3 +58,31 @@ async def test_unlink_is_refused_with_explanation(fmc: respx.MockRouter) -> None
     async with Client(server()) as c:
         out = await run(c, "fmc_set_decryption_policy", {"access_policy": "acp", "decryption_policy": ""})
     assert out["status"] == "blocked" and "can't remove" in out["blockers"][0]
+
+
+def test_acp_settings_body_keeps_settings_but_not_collections() -> None:
+    from fmc_mcp.tools.policies import acp_settings_body
+
+    acp = {
+        "id": "a",
+        "type": "AccessPolicy",
+        "name": "acp",
+        "metadata": {"x": 1},
+        "links": {"self": "u"},
+        "rules": {"refType": "list", "links": {"self": "u"}},
+        "advancedLoggingSetting": {"links": {"self": "u"}},
+        "securityIntelligence": {"id": "si", "type": "SecurityIntelligencePolicy", "links": {"self": "u"}},
+        "identityPolicySetting": {"id": "i", "type": "IdentityPolicy"},
+        "defaultAction": {"action": "BLOCK"},
+    }
+    body = acp_settings_body(acp, prefilterPolicySetting={"id": "p"})
+    assert set(body) == {
+        "id",
+        "type",
+        "name",
+        "securityIntelligence",
+        "identityPolicySetting",
+        "defaultAction",
+        "prefilterPolicySetting",
+    }
+    assert "links" not in body["securityIntelligence"]
