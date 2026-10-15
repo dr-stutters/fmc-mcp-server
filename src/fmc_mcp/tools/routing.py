@@ -55,6 +55,38 @@ OSPF_PROCESS_DEFAULTS: dict[str, Any] = {
 # --- helpers -------------------------------------------------------------------------------------
 
 
+def check_as(value: str | None, what: str) -> str | None:
+    """An AS number as FMC takes it: 1-4294967295 (asplain) or x.y (asdot)."""
+    if value is None:
+        return None
+    v = str(value).strip()
+    parts = v.split(".")
+    ok = (len(parts) == 1 and v.isdigit() and 1 <= int(v) <= 4_294_967_295) or (
+        len(parts) == 2 and all(p.isdigit() and int(p) <= 65535 for p in parts)
+    )
+    if not ok:
+        raise InvalidRequest(f"{what} {value!r} is not an AS number (1-4294967295 or x.y).")
+    return v
+
+
+def check_router_id(value: str | None) -> str | None:
+    if value is None or value.strip().upper() == "AUTOMATIC":
+        return None
+    try:
+        return str(ipaddress.IPv4Address(value.strip()))
+    except ValueError:
+        raise InvalidRequest(f"router_id must be an IPv4 address or AUTOMATIC, got {value!r}.") from None
+
+
+def area_key(value: Any) -> int:
+    """OSPF area ids compare by value: '0' and '0.0.0.0' are the same area."""
+    v = str(value).strip()
+    try:
+        return int(v) if v.isdigit() else int(ipaddress.IPv4Address(v))
+    except ValueError:
+        raise InvalidRequest(f"OSPF area {value!r} must be a number or dotted quad.") from None
+
+
 async def _items(app: FmcApp, path: str, domain: str | None) -> list[dict[str, Any]]:
     # One big page, de-duplicated: FMC 10.0.1 reports `count: 2` for a single OSPFv2 process and
     # returns it again at offset 1, so paging through these collections never ends.
@@ -233,6 +265,13 @@ def register(reg: ToolRegistrar) -> None:
         ] = None,
         remove_neighbor: Annotated[bool, Field(description="Remove `neighbor` instead of adding it")] = False,
         neighbor_description: Annotated[str | None, Field(description="Neighbor description")] = None,
+        neighbor_password: Annotated[
+            str | None,
+            Field(
+                description="MD5 password for `neighbor` (FMC never returns it; required again when the "
+                "neighbor already has one and BGP is edited)"
+            ),
+        ] = None,
         advertise: NetList = None,
         withdraw: NetList = None,
         local_as: Annotated[
@@ -248,9 +287,10 @@ def register(reg: ToolRegistrar) -> None:
         domain: Domain = None,
         confirm: Confirm = None,
     ) -> dict[str, Any]:
-        """Edit BGP (IPv4 unicast) on an FTD: add, change or remove a neighbor (remote AS), and
-        advertise or withdraw networks (network objects). Sets up BGP first (local AS, router id) when
-        the device has none. remove_bgp deletes the whole BGP configuration. The preview shows the
+        """Edit BGP (IPv4 unicast) on an FTD: add, change or remove a neighbor (remote AS, MD5
+        password), and advertise or withdraw networks (network objects). Sets up BGP first (local AS,
+        router id) when the device has none; the AS and router id are device-wide, so a VRF uses them
+        too. remove_bgp deletes the whole BGP configuration. The preview shows the
         neighbor and network lists before and after. Deploy to apply; verify with
         fmc_run_show_command('show route') and the peer ('show bgp summary')."""
         app: FmcApp = get_client(ctx)
@@ -266,7 +306,18 @@ def register(reg: ToolRegistrar) -> None:
         gen_path = await app.config_path(f"{root}/bgpgeneralsettings", domain)
 
         if remove_bgp:
-            if any((neighbor, remote_as, advertise, withdraw, local_as, router_id)):
+            if any(
+                (
+                    neighbor,
+                    remote_as,
+                    advertise,
+                    withdraw,
+                    local_as,
+                    router_id,
+                    remove_neighbor,
+                    neighbor_description,
+                )
+            ):
                 raise InvalidRequest("remove_bgp can't be combined with other changes.")
             if bgp:
                 steps.append(("delete bgp", "DELETE", f"{bgp_path}/{bgp['id']}", None))
@@ -279,6 +330,11 @@ def register(reg: ToolRegistrar) -> None:
         else:
             if not any((neighbor, advertise, withdraw)):
                 raise InvalidRequest("Give a neighbor, networks to advertise/withdraw, or remove_bgp.")
+            if remove_neighbor and not neighbor:
+                raise InvalidRequest("remove_neighbor needs the neighbor address.")
+            remote_as = check_as(remote_as, "remote_as")
+            local_as = check_as(local_as, "local_as")
+            rid = check_router_id(router_id)
             if general is None:
                 if not local_as:
                     blockers.append(
@@ -289,7 +345,7 @@ def register(reg: ToolRegistrar) -> None:
                         "type": "BGPGeneralSetting",
                         "name": "AsaBGPGeneralTable",
                         "asNumber": str(local_as),
-                        "routerId": router_id or "AUTOMATIC",
+                        "routerId": rid or "AUTOMATIC",
                         "logNeighborChanges": True,
                     }
                     steps.append(("create bgp general settings", "POST", gen_path, body))
@@ -353,6 +409,31 @@ def register(reg: ToolRegistrar) -> None:
                 if rid not in have:
                     blockers.append(f"{ref.get('name')} isn't advertised.")
             networks = [x for x in networks if str((x.get("ipv4Address") or {}).get("id")) not in drop]
+            if neighbor and neighbor_password and not remove_neighbor:
+                addr = str(ipaddress.IPv4Address(neighbor.strip()))
+                neighbors = [
+                    {
+                        **x,
+                        "neighborAdvanced": {
+                            **(x.get("neighborAdvanced") or {}),
+                            "neighborSecret": neighbor_password,
+                        },
+                    }
+                    if x.get("ipv4Address") == addr
+                    else x
+                    for x in neighbors
+                ]
+            for x in neighbors:
+                secret = (x.get("neighborAdvanced") or {}).get("neighborSecret")
+                if secret and set(str(secret)) == {"*"}:
+                    # FMC returns MD5 passwords masked; a PUT with the mask sets the mask as the password
+                    # and one without it removes authentication (both seen live). Refuse to break peering.
+                    blockers.append(
+                        f"Neighbor {x.get('ipv4Address')} has an MD5 password that FMC only returns masked; "
+                        "editing BGP would replace it. Pass neighbor=<that address> with neighbor_password, "
+                        "or change it in the FMC UI."
+                    )
+            af.pop("maximumPaths", None)  # FMC 10.0.1 echoes it on GET but rejects it on PUT (use ebgp/ibgp)
             af["neighbors"] = neighbors
             af["networks"] = networks
             desired["addressFamilyIPv4"] = af
@@ -393,6 +474,7 @@ def register(reg: ToolRegistrar) -> None:
                 "remote_as": remote_as,
                 "remove_neighbor": remove_neighbor,
                 "neighbor_description": neighbor_description,
+                "neighbor_password": neighbor_password,
                 "advertise": advertise,
                 "withdraw": withdraw,
                 "local_as": local_as,
@@ -457,7 +539,7 @@ def register(reg: ToolRegistrar) -> None:
                 used = {p.get("enableProcess") for p in procs}
                 conf = dict(OSPF_PROCESS_DEFAULTS)
                 if router_id:
-                    conf["routerId"] = str(ipaddress.IPv4Address(router_id.strip()))
+                    conf["routerId"] = check_router_id(router_id) or "AUTOMATIC"
                 desired: dict[str, Any] = {
                     "type": "OspfRoute",
                     "processId": str(process_id),
@@ -471,7 +553,8 @@ def register(reg: ToolRegistrar) -> None:
                 desired = editable(proc)
                 target = f"{path}/{proc['id']}"
             areas = [dict(a) for a in desired.get("areas") or []]
-            entry = next((a for a in areas if str(a.get("areaId")) == str(area)), None)
+            want_area = area_key(area)
+            entry = next((a for a in areas if area_key(a.get("areaId")) == want_area), None)
             if entry is None:
                 entry = {"areaId": str(area), "areaType": {"type": "normal"}, "areaNetworks": []}
                 areas.append(entry)
@@ -489,7 +572,8 @@ def register(reg: ToolRegistrar) -> None:
                     blockers.append(f"{ref.get('name')} isn't in area {area}.")
             nets = [x for x in nets if str(x.get("id")) not in drop]
             entry["areaNetworks"] = nets
-            areas = [a for a in areas if a.get("areaNetworks")]  # an emptied area goes away
+            if not nets and not any(entry.get(k) for k in ("areaRanges", "virtualLinks", "filterList")):
+                areas = [a for a in areas if a is not entry]  # the edited area is now empty: drop it
             if not areas:
                 blockers.append("That would leave the process with no networks; use remove_process instead.")
             desired["areas"] = areas

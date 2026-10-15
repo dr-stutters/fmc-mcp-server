@@ -123,7 +123,35 @@ async def test_add_neighbor_keeps_the_rest(rt: respx.MockRouter) -> None:
     af = json.loads(put.calls.last.request.content)["addressFamilyIPv4"]
     assert [n["ipv4Address"] for n in af["neighbors"]] == ["10.99.1.2", "10.99.1.3"]
     assert af["neighbors"][0]["neighborAdvanced"] == {"neighborHops": {"maxHopCount": 1}}  # untouched
-    assert af["networks"] == [] and af["maximumPaths"] == [{"value": 1}]
+    assert af["networks"] == [] and "maximumPaths" not in af  # FMC rejects it on PUT
+    assert body_neighbors_have_no_secret(af)
+
+
+def body_neighbors_have_no_secret(af: dict[str, Any]) -> bool:
+    return all("neighborSecret" not in (n.get("neighborAdvanced") or {}) for n in af["neighbors"])
+
+
+async def test_masked_neighbor_password_blocks_edit_until_reentered(rt: respx.MockRouter) -> None:
+    masked = json.loads(json.dumps(BGP))
+    masked["addressFamilyIPv4"]["neighbors"][0]["neighborAdvanced"]["neighborSecret"] = "*" * 11
+    rt.get(f"{R}/bgp").mock(return_value=_paged([masked]))
+    put = rt.put(f"{R}/bgp/b1").mock(return_value=httpx.Response(200, json={}))
+    async with Client(server()) as c:
+        out = await run(
+            c, "fmc_configure_bgp", {"device": "mcp-ftd1", "advertise": ["10.99.1.0/24"], "withdraw": []}
+        )
+        assert out["status"] == "blocked" and any("MD5 password" in b for b in out["blockers"])
+        args = {
+            "device": "mcp-ftd1",
+            "neighbor": "10.99.1.2",
+            "neighbor_password": "S3cret!",
+            "neighbor_description": "peer1",
+        }
+        preview = await run(c, "fmc_configure_bgp", args)
+        assert "S3cret!" not in json.dumps(preview)
+        await run(c, "fmc_configure_bgp", {**args, "confirm": preview["confirm"]})
+    n = json.loads(put.calls.last.request.content)["addressFamilyIPv4"]["neighbors"][0]
+    assert n["neighborAdvanced"]["neighborSecret"] == "S3cret!"
 
 
 async def test_bgp_blockers(rt: respx.MockRouter) -> None:
@@ -211,3 +239,33 @@ async def test_vrf_create_and_delete(rt: respx.MockRouter) -> None:
         "interfaces": [],
     }
     assert glob["status"] == "blocked"
+
+
+async def test_ospf_edit_keeps_other_areas(rt: respx.MockRouter) -> None:
+    proc = json.loads(json.dumps(OSPF))
+    proc["areas"].append(
+        {"areaId": "1", "areaType": {"type": "stub"}, "areaNetworks": [], "areaRanges": [{"x": 1}]}
+    )
+    rt.get(f"{R}/ospfv2routes").mock(return_value=_paged([proc]))
+    other = {"id": "n2", "name": "lab-net", "type": "Network", "value": "10.50.0.0/16"}
+    rt.get(f"{CFG}/object/networks").mock(return_value=items([NET, other]))
+    put = rt.put(f"{R}/ospfv2routes/o1").mock(return_value=httpx.Response(200, json={}))
+    args = {"device": "mcp-ftd1", "area": "0.0.0.0", "add_networks": ["lab-net"]}
+    async with Client(server()) as c:
+        preview = await run(c, "fmc_configure_ospf", args)
+        await run(c, "fmc_configure_ospf", {**args, "confirm": preview["confirm"]})
+    areas = json.loads(put.calls.last.request.content)["areas"]
+    assert [a["areaId"] for a in areas] == ["0", "1"]  # 0.0.0.0 is area 0; the stub area survives
+    assert [n["id"] for n in areas[0]["areaNetworks"]] == [NET["id"], "n2"]
+
+
+async def test_bad_inputs(rt: respx.MockRouter) -> None:
+    async with Client(server()) as c:
+        for tool, args in (
+            ("fmc_configure_bgp", {"device": "mcp-ftd1", "neighbor": "10.99.1.9", "remote_as": "abc"}),
+            ("fmc_configure_bgp", {"device": "mcp-ftd1", "remove_neighbor": True, "advertise": ["x"]}),
+            ("fmc_configure_bgp", {"device": "mcp-ftd1", "remove_bgp": True, "neighbor_description": "x"}),
+            ("fmc_configure_ospf", {"device": "mcp-ftd1", "area": "zero", "add_networks": [NET["name"]]}),
+        ):
+            r = await c.call_tool(tool, args, raise_on_error=False)
+            assert r.is_error, (tool, args)

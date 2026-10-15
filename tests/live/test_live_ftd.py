@@ -601,6 +601,10 @@ async def test_routing_bgp_ospf_vrf(client: Client[Any]) -> None:
     view = await call(client, "fmc_get_routing", {"device": DEVICE})
     assert view["bgp"]["as"] == "65000" and view["bgp"]["ipv4"]["neighbors"][0]["address"] == PEER
     assert view["ospfv2"][0]["areas"][0]["networks"] == [INSIDE_NET]
+    # a read-modify-PUT of the existing BGP object (FMC rejects echoed maximumPaths; the tool drops it)
+    await apply(
+        client, "fmc_configure_bgp", {"device": DEVICE, "neighbor": PEER, "neighbor_description": "peer1"}
+    )
     dup = await call(client, "fmc_configure_bgp", {"device": DEVICE, "neighbor": PEER, "remote_as": "65001"})
     assert dup["status"] == "blocked", dup
     await deploy(client, "mcp live test: bgp + ospf", ignore_warning=True)
