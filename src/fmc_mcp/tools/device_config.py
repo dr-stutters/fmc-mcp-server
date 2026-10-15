@@ -222,6 +222,9 @@ def route_key(r: dict[str, Any]) -> tuple[str, frozenset[str], str]:
     return str(r.get("interfaceName", "")).lower(), nets, gateway
 
 
+LicenseCap = Literal["ESSENTIALS", "IPS", "MALWARE_DEFENSE", "URL", "CARRIER"]
+
+
 def register(reg: ToolRegistrar) -> None:
     # --- read: routes -------------------------------------------------------------------------
 
@@ -270,6 +273,53 @@ def register(reg: ToolRegistrar) -> None:
         return list_result(page_of(rows, limit=limit, offset=offset), fmt=response_format, extra=extra)
 
     # --- write: interfaces ------------------------------------------------------------------------
+
+    @reg.write(title="Set device licences")
+    async def fmc_set_device_licenses(
+        ctx: Context,
+        device: DeviceRef,
+        add: Annotated[
+            list[LicenseCap] | None, Field(description="Licences to add, e.g. IPS for intrusion policies")
+        ] = None,
+        remove: Annotated[list[LicenseCap] | None, Field(description="Licences to remove")] = None,
+        domain: Domain = None,
+        confirm: Confirm = None,
+    ) -> dict[str, Any]:
+        """Add or remove a device's licence capabilities (ESSENTIALS, IPS, MALWARE_DEFENSE, URL, CARRIER).
+        Intrusion policies on access rules need IPS, file policies MALWARE_DEFENSE, URL categories URL;
+        without them the deploy fails validation ("requires a Threat license"). Uses the FMC's Smart
+        Licensing (or evaluation) entitlements; takes effect with the next deployment."""
+        app: FmcApp = get_client(ctx)
+        d = await resolve_in(app, DEVICES, device, "device", domain)
+        path = await app.config_path(f"{DEVICES}/{d['id']}", domain)
+        cur = await app.api.get(path)
+        have = list(cur.get("license_caps") or [])
+        want = [c for c in have if c not in (remove or [])] + [c for c in (add or []) if c not in have]
+        if "ESSENTIALS" not in want:
+            raise InvalidRequest("ESSENTIALS is the base licence and can't be removed.")
+        body = {
+            "id": cur["id"],
+            "type": "Device",
+            "name": cur.get("name"),
+            "hostName": cur.get("hostName"),
+            "license_caps": want,
+        }
+        if cur.get("performanceTier"):
+            body["performanceTier"] = cur["performanceTier"]
+        return await fmc_preview(
+            ctx,
+            tool="fmc_set_device_licenses",
+            args={"device": device, "add": add, "remove": remove, "domain": domain},
+            confirm=confirm,
+            plan=Plan(
+                f"Licences of {cur.get('name')!r}: {', '.join(have)} -> {', '.join(want)}",
+                details={"from": have, "to": want},
+                fingerprint=have,
+                blockers=[] if want != have else ["Nothing to change."],
+                side_effects=["Consumes the licences from Smart Licensing; effective after the next deploy."],
+            ),
+            apply=lambda: applied(app, lambda: app.api.put(path, body)),
+        )
 
     @reg.write(title="Configure interface")
     async def fmc_update_interface(

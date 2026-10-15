@@ -3,6 +3,12 @@
 ## Unreleased
 
 ### Added
+- **Intrusion policy tuning (F13, first slice)**: `fmc_get_intrusion_policy`, `fmc_find_intrusion_rules` (read);
+  `fmc_set_intrusion_rule_state`, `fmc_create_intrusion_policy`, `fmc_create_intrusion_rule`,
+  `fmc_delete_intrusion_rule` (write); `fmc_update_access_rule` gains `intrusion_policy` ('' removes it).
+  `fmc_set_device_licenses` (write) adds the IPS/malware/URL licence capabilities that such rules need. Live on
+  the FTD: a custom Snort 3 ICMP rule set to DROP in `mcp-test-ips` on an allow rule, deployed, packet tracer
+  drops in Snort; DEFAULT and removal restore it. Decryption, DNS and identity policy editing are left for later.
 - **Multi-domain (F19)**: `fmc_list_domains` shows the domain tree (parent, leaf, devices per domain); every
   write preview names its domain; edits of objects or policies a descendant domain only inherits are blocked
   with the owner domain to use; device-level calls made from an ancestor domain go to the device's leaf domain

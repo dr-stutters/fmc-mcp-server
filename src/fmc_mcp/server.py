@@ -20,6 +20,7 @@ from fmc_mcp.tools import (
     devices,
     dynamic_objects,
     ha,
+    intrusion,
     object_writes,
     objects,
     platform_settings,
@@ -60,6 +61,10 @@ Workflows:
   (fmc_map_dynamic_object); mapping changes need no deployment, only the rule does (once).
   fmc_contain_host / fmc_release_host do this for one host with the quarantine object (and propose
   the block rules if they are missing).
+- Tune intrusion prevention: fmc_find_intrusion_rules (gid:sid or text) -> fmc_get_intrusion_policy ->
+  fmc_set_intrusion_rule_state in a custom policy (fmc_create_intrusion_policy on top of a system one;
+  fmc_update_access_rule intrusion_policy=... puts it on an ALLOW rule) -> fmc_deploy. Custom Snort 3
+  rules: fmc_create_intrusion_rule.
 - Health: fmc_list_devices, fmc_device_health, fmc_list_vpn_tunnels; "what changed or broke in the
   last hour?": fmc_recent_activity (health alerts + audit + deployments), fmc_list_health_alerts.
 Before changing or deleting an object, check fmc_where_used.
@@ -136,6 +141,7 @@ def create_server(
             activity.register,
             platform_settings.register,
             routing.register,
+            intrusion.register,
             prompts.register,
         ],
         status=FmcApp.status,

@@ -52,6 +52,7 @@ There are 87 tools when every tier is enabled: 45 read (44 when the dangerous ti
 | Troubleshooting | `fmc_packet_tracer`, `fmc_run_show_command`, `fmc_get_hit_counts`, `fmc_device_health`, `fmc_list_vpn_tunnels` |
 | Policies | `fmc_list_policies`, `fmc_get_access_policy`, `fmc_list_access_rules`, `fmc_get_access_rule`, `fmc_list_nat_rules`, `fmc_list_prefilter_rules`, `fmc_list_policy_assignments` |
 | Objects | `fmc_list_objects`, `fmc_get_object`, `fmc_find_object`, `fmc_where_used`, `fmc_unused_objects`, `fmc_list_dynamic_objects` |
+| Intrusion (Snort 3) | `fmc_get_intrusion_policy` (base, mode, usage, overridden rules), `fmc_find_intrusion_rules` (gid:sid, SID or text; per-policy state) |
 | Analysis | `fmc_rule_lookup`, `fmc_shadowed_rules` |
 | Deployment | `fmc_list_deployable_devices`, `fmc_pending_changes`, `fmc_list_deployments` |
 | API spec | `fmc_search_spec`, `fmc_get_definition`, `fmc_api_call` (GET only) |
@@ -84,6 +85,8 @@ Notes on some read tools:
 | Routing | `fmc_configure_bgp`, `fmc_configure_ospf`, `fmc_create_vrf`, `fmc_delete_vrf` |
 | Platform settings / logging | `fmc_create_platform_settings_policy`, `fmc_configure_syslog`, `fmc_set_access_logging` |
 | Dynamic objects | `fmc_create_dynamic_object`, `fmc_delete_dynamic_object`, `fmc_map_dynamic_object` |
+| Intrusion tuning | `fmc_set_intrusion_rule_state` (ALERT/BLOCK/DROP/REJECT/PASS/DISABLE/DEFAULT per policy), `fmc_create_intrusion_policy`, `fmc_create_intrusion_rule` / `fmc_delete_intrusion_rule` (custom Snort 3 rules); `fmc_update_access_rule(intrusion_policy=...)` |
+| Licences | `fmc_set_device_licenses` (IPS, MALWARE_DEFENSE, URL, ...) |
 | Containment | `fmc_contain_host`, `fmc_release_host` |
 | HA | `fmc_configure_ha_monitoring` (monitored interfaces, standby IPs, failover MACs) |
 | VPN | `fmc_create_s2s_vpn` (point-to-point IKEv2 PSK; policy- or route-based), `fmc_delete_s2s_vpn` |

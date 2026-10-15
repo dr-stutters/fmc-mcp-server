@@ -19,7 +19,7 @@ from fmc_mcp.client import FmcApp, is_uuid
 from fmc_mcp.preview import fmc_preview
 from fmc_mcp.refs import NETWORK_TYPES, PORT_TYPES, RefResolver, network_literal
 from fmc_mcp.rules import flatten_access_rule, flatten_nat_rule
-from fmc_mcp.tools.common import Domain, block_labels, resolve_in
+from fmc_mcp.tools.common import Domain, block_labels, ref_label, resolve_in
 from fmc_mcp.tools.object_writes import applied, editable
 from fmc_mcp.tools.policies import ACCESS, NAT, all_rules, find_access_rule, resolve_policy
 
@@ -298,6 +298,10 @@ def register(reg: ToolRegistrar) -> None:
         source_dynamic_objects: DynamicParam = None,
         destination_dynamic_objects: DynamicParam = None,
         log: Annotated[LogMode | None, Field(description="Connection logging to FMC")] = None,
+        intrusion_policy: Annotated[
+            str | None,
+            Field(description="Intrusion policy for an ALLOW rule (name or UUID); '' removes it"),
+        ] = None,
         move_to: Annotated[
             int | None, Field(ge=1, description="Move the rule so it sits at this 1-based index")
         ] = None,
@@ -321,6 +325,14 @@ def register(reg: ToolRegistrar) -> None:
                 desired.pop("filePolicy", None)
         if enabled is not None:
             desired["enabled"] = enabled
+        removed_ips = desired.pop("ipsPolicy", None) if intrusion_policy == "" else None
+        if intrusion_policy:
+            if desired.get("action") != "ALLOW":
+                raise InvalidRequest("An intrusion policy can only be set on ALLOW rules.")
+            ips = await resolve_in(
+                app, "policy/intrusionpolicies", intrusion_policy, "intrusion policy", domain
+            )
+            desired["ipsPolicy"] = {"id": ips["id"], "type": "IntrusionPolicy", "name": ips.get("name")}
         new_conditions = await _conditions(
             RefResolver(app, domain),
             {
@@ -336,6 +348,8 @@ def register(reg: ToolRegistrar) -> None:
             },
         )
         cleared: dict[str, Any] = {}
+        if removed_ips:
+            cleared["ipsPolicy"] = {"from": ref_label(removed_ips), "to": None}
         for field, block in new_conditions.items():
             if block:
                 desired[field] = block
@@ -403,6 +417,7 @@ def register(reg: ToolRegistrar) -> None:
                 "source_dynamic_objects": source_dynamic_objects,
                 "destination_dynamic_objects": destination_dynamic_objects,
                 "log": log,
+                "intrusion_policy": intrusion_policy,
                 "move_to": move_to,
                 "comment": comment,
                 "domain": domain,
