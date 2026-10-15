@@ -1,8 +1,10 @@
 # Changelog
 
-## Unreleased
+## 0.9.0 (2026-10-15)
 
 Operator-eyes quality pass (F26-F33): 12 operator tasks run through the tools against the live FMC 10.0.1 + FTDv.
+Core pinned to v0.12.2 (truncation note kept next to a tool's note; `server_version` in fmc_status; FMC examples in the spec tools' descriptions). Tools unchanged:
+56 read, 61 write, 9 dangerous (126).
 
 ### Fixed
 - **Audit lookups (F26)**: FMC returns only the newest 100 audit records per request and logs every API read, so
