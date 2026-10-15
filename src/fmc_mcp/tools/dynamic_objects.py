@@ -19,6 +19,7 @@ from stutters_mcp_core import (
     Plan,
     ResponseFormat,
     ToolRegistrar,
+    UpstreamError,
     get_client,
     list_result,
     preview_or_apply,
@@ -76,7 +77,18 @@ async def mappings_of(app: FmcApp, obj_id: str, domain: str | None) -> tuple[lis
 
 async def rules_using(app: FmcApp, obj_id: str, domain: str | None) -> tuple[list[dict[str, Any]], bool]:
     """Access rules that reference the dynamic object (FMC's usage API doesn't cover this type).
-    Returns (rules, complete)."""
+    Returns (rules, complete). Cached for a minute (writes clear the cache), so a preview and its
+    confirm cost one scan."""
+    key = f"dynamic-rules:{domain}:{obj_id}"
+    hit = app.cache_get(key)
+    if hit is not None:
+        return hit  # type: ignore[no-any-return]
+    result = await _scan_rules(app, obj_id, domain)
+    app.cache_put(key, result)
+    return result
+
+
+async def _scan_rules(app: FmcApp, obj_id: str, domain: str | None) -> tuple[list[dict[str, Any]], bool]:
     policies = await app.all(await app.config_path(ACCESS, domain), expanded=False, cap=POLICY_SCAN_CAP)
     found: list[dict[str, Any]] = []
     complete = policies.complete
@@ -180,7 +192,14 @@ def register(reg: ToolRegistrar) -> None:
             created = await applied(app, lambda: app.api.post(path, body))
             if ips:
                 ref = {"id": created["id"]}
-                await app.api.post(map_path, {"add": [{"mappings": ips, "dynamicObject": ref}]})
+                try:
+                    await app.api.post(map_path, {"add": [{"mappings": ips, "dynamicObject": ref}]})
+                except UpstreamError as e:
+                    raise UpstreamError(
+                        f"Created dynamic object {name!r} (id {created['id']}) but adding its mappings "
+                        f"failed: {e}. Add them with fmc_map_dynamic_object.",
+                        e.status_code,
+                    ) from e
             return {**created, "mappings": ips}
 
         return await preview_or_apply(
@@ -215,7 +234,10 @@ def register(reg: ToolRegistrar) -> None:
             blockers.append(f"Still used by access rules: {names}. Remove it from those rules first.")
         details: dict[str, Any] = {"object": _row(obj, maps)}
         if not complete:
-            details["note"] = f"Only the first {POLICY_SCAN_CAP} access policies were checked for references."
+            blockers.append(
+                f"Only the first {POLICY_SCAN_CAP} access policies could be checked for references; "
+                "check the rest (fmc_list_access_rules) and remove the object with fmc_api_call."
+            )
         path = await app.config_path(f"{DYNAMIC}/{obj['id']}", domain)
         return await preview_or_apply(
             ctx,
@@ -255,7 +277,7 @@ def register(reg: ToolRegistrar) -> None:
         have = set(current)
         new_adds = [ip for ip in to_add if ip not in have] if complete else to_add
         new_removes = [ip for ip in to_remove if ip in have] if complete else to_remove
-        used, _ = await rules_using(app, obj["id"], domain)
+        used, scanned_all = await rules_using(app, obj["id"], domain)
         blockers = []
         if not new_adds and not new_removes:
             blockers.append(
@@ -269,6 +291,8 @@ def register(reg: ToolRegistrar) -> None:
                     f"{u['policy']}/{u['rule']} ({u['action']}, as {'+'.join(u['as'])})" for u in used
                 )
             )
+        elif not scanned_all:
+            side_effects.append(f"No referencing rule in the first {POLICY_SCAN_CAP} access policies.")
         else:
             side_effects.append(
                 "No access rule references this object yet, so the mappings have no effect on traffic until "
@@ -295,7 +319,11 @@ def register(reg: ToolRegistrar) -> None:
                     "remove": new_removes,
                     "rules": used,
                 },
-                fingerprint={"id": obj["id"], "mappings": sorted(current)},
+                fingerprint={
+                    "id": obj["id"],
+                    "mappings": sorted(current),
+                    "rules": [(u["policy"], u["rule"], u["action"], u["enabled"]) for u in used],
+                },
                 blockers=blockers,
                 side_effects=side_effects,
             ),

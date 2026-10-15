@@ -156,3 +156,29 @@ async def test_name_snort_rules(dyn: respx.MockRouter) -> None:
         await app.aclose()
     assert traces[0]["verdict_rule"] == "mcp-test-allow-out"
     assert traces[0]["phases"][0]["rule"] == "mcp-test-allow-out"
+
+
+async def test_create_reports_partial_failure(fmc: respx.MockRouter) -> None:
+    fmc.get(f"{CFG}/object/dynamicobjects").mock(return_value=items([]))
+    fmc.post(f"{CFG}/object/dynamicobjects").mock(return_value=httpx.Response(201, json=DYN))
+    fmc.post(f"{CFG}/object/dynamicobjectmappings").mock(
+        return_value=httpx.Response(400, json={"error": {"messages": [{"description": "bad"}]}})
+    )
+    args = {"name": DYN["name"], "mappings": ["10.99.1.10"]}
+    async with Client(server()) as c:
+        preview = await run(c, "fmc_create_dynamic_object", args)
+        r = await c.call_tool(
+            "fmc_create_dynamic_object", {**args, "confirm": preview["confirm"]}, raise_on_error=False
+        )
+    assert r.is_error and DYN["id"] in r.content[0].text  # type: ignore[union-attr]
+
+
+async def test_rule_scan_cached_between_preview_and_confirm(dyn: respx.MockRouter) -> None:
+    dyn.post(f"{CFG}/object/dynamicobjectmappings").mock(return_value=httpx.Response(201, json={}))
+    args = {"object": DYN["name"], "add": ["10.99.1.10"]}
+    async with Client(server()) as c:
+        preview = await run(c, "fmc_map_dynamic_object", args)
+        calls_after_preview = sum(1 for call in dyn.calls if "/accessrules" in str(call.request.url))
+        await run(c, "fmc_map_dynamic_object", {**args, "confirm": preview["confirm"]})
+    calls = sum(1 for call in dyn.calls if "/accessrules" in str(call.request.url))
+    assert calls == calls_after_preview == 1

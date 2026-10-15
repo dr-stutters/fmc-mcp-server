@@ -199,41 +199,51 @@ def summarize_trace(resp: dict[str, Any], verbose: bool) -> list[dict[str, Any]]
     return out
 
 
+def _rule_number(rule_id: Any) -> str:
+    return str(rule_id).strip().lstrip("0") or "0"
+
+
+async def _rule_names(app: FmcApp, policy_name: str, domain: str | None) -> dict[str, str]:
+    """{device rule id: rule name} for an access policy; {} when it can't be read."""
+    try:
+        pol = await resolve_policy(app, "access", policy_name, domain)
+        page = await all_rules(app, await app.config_path(f"{ACCESS}/{pol['id']}/accessrules", domain))
+    except UpstreamError:  # includes NotFound: naming is best-effort, the trace itself stands
+        return {}
+    return {_rule_number(str(r.get("id", "")).rsplit("-", 1)[-1]): str(r.get("name")) for r in page.items}
+
+
 async def name_snort_rules(app: FmcApp, traces: list[dict[str, Any]], domain: str | None) -> None:
     """Name the rule Snort decided on and set `verdict_rule`.
 
     When a rule needs Snort (dynamic objects, applications, URLs, users), the ACCESS-LIST phase shows
     the first such rule as a 'permit to Snort' and Snort's phase only carries a numeric rule id. FMC
-    rule UUIDs end in that id (…-000268434474), so the policy's rules map it back to a name."""
+    rule UUIDs end in that id (...-000268434474), so the policy's rules map it back to a name."""
+    names_by_policy: dict[str, dict[str, str]] = {}
     for t in traces:
         rules = t.get("matched_rules") or []
         unnamed = [r for r in rules if r.get("rule_id") and not r.get("rule")]
         policy = next((str(r["policy"]) for r in rules if r.get("policy")), None)
         if unnamed and policy:
-            policy_name = policy.rsplit(" - ", 1)[0]
-            try:
-                pol = await resolve_policy(app, "access", policy_name, domain)
-                page = await all_rules(
-                    app, await app.config_path(f"{ACCESS}/{pol['id']}/accessrules", domain)
-                )
-            except UpstreamError:
-                page = None
-            by_id = {
-                str(r.get("id", "")).rsplit("-", 1)[-1].lstrip("0"): r.get("name")
-                for r in (page.items if page else [])
-            }
+            policy_name = policy.rsplit(" - ", 1)[0]  # "<policy> - <section>"
+            if policy_name not in names_by_policy:
+                names_by_policy[policy_name] = await _rule_names(app, policy_name, domain)
+            by_id = names_by_policy[policy_name]
             for r in unnamed:
-                name = by_id.get(str(r["rule_id"]).lstrip("0"))
-                if name:
-                    r["rule"] = name
-                    for ph in t.get("phases") or []:
-                        if ph.get("rule_id") == r["rule_id"] and not ph.get("rule"):
-                            ph["rule"] = name
-        if rules:
-            # Snort's decision comes last and wins over the ACCESS-LIST 'send to Snort' permit.
-            last = rules[-1]
-            t["verdict_rule"] = last.get("rule") or (
-                f"Default Action or rule id {last['rule_id']}" if last.get("rule_id") else None
+                name = by_id.get(_rule_number(r["rule_id"]))
+                if not name:
+                    continue
+                r["rule"] = name
+                for ph in t.get("phases") or []:
+                    if ph.get("rule_id") == r["rule_id"] and not ph.get("rule"):
+                        ph["rule"] = name
+        snort = [r for r in rules if r.get("type") == "SNORT"]
+        decider = (snort or rules)[-1] if rules else None
+        if decider:
+            # Snort's decision wins over the ACCESS-LIST 'send to Snort' permit.
+            t["verdict_rule"] = (
+                decider.get("rule")
+                or f"rule id {decider.get('rule_id')} (not in the policy: default action?)"
             )
 
 
