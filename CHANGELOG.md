@@ -1,5 +1,17 @@
 # Changelog
 
+## 0.9.1 (2026-10-15)
+
+Core pinned to v0.12.4. Tools unchanged: 56 read, 61 write, 9 dangerous (126).
+
+### Fixed
+- **Write previews show what a PUT removes**: every update whose preview is a field diff and whose apply sends the
+  whole object now uses `field_changes(..., replace=True)`, so a field the replacement drops is listed as
+  `"removed": true` instead of being hidden: `fmc_update_access_rule` (switching a rule away from ALLOW drops its
+  intrusion and file policy), `fmc_update_prefilter_rule`, `fmc_update_object` (a port object set to all ports
+  drops `port`; ICMP set to any drops `icmpType`/`code`), `fmc_update_nat_rule`, `fmc_configure_syslog` (basic
+  logging, syslog settings) and `fmc_set_access_logging`. FMC has no PATCH endpoints, so nothing stays partial.
+
 ## 0.9.0 (2026-10-15)
 
 Operator-eyes quality pass (F26-F33): 12 operator tasks run through the tools against the live FMC 10.0.1 + FTDv.

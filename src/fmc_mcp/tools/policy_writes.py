@@ -365,7 +365,7 @@ def register(reg: ToolRegistrar) -> None:
         )
         cleared: dict[str, Any] = {}
         if removed_ips:
-            cleared["ipsPolicy"] = {"from": ref_label(removed_ips), "to": None}
+            cleared["ipsPolicy"] = {"from": ref_label(removed_ips), "to": None, "removed": True}
         for field, block in new_conditions.items():
             if block:
                 desired[field] = block
@@ -707,7 +707,7 @@ def register(reg: ToolRegistrar) -> None:
             desired["translatedNetwork" if auto else "translatedSource"] = await res.single(
                 translated_source, NETWORK_TYPES, "translated_source"
             )
-        changes = field_changes(editable(current), desired)
+        changes = field_changes(editable(current), desired, replace=True)
         return await fmc_preview(
             ctx,
             tool="fmc_update_nat_rule",
