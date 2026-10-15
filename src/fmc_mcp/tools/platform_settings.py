@@ -111,13 +111,12 @@ def syslog_summary(
     basic: dict[str, Any], servers: dict[str, Any], settings: dict[str, Any], dests: list[dict[str, Any]]
 ) -> dict[str, Any]:
     tofmc = basic.get("loggingToFMCType")
+    to_fmc = "OFF" if tofmc in (None, "OFF") else str(tofmc)
+    if to_fmc != "OFF" and basic.get("loggingToFMCLogLevel"):
+        to_fmc += f" at {basic['loggingToFMCLogLevel']}"
     return {
         "logging_enabled": bool(basic.get("enableLogging")),
-        "send_to_fmc": "OFF"
-        if tofmc in (None, "OFF")
-        else f"{tofmc}" + (f" at {basic['loggingToFMCLogLevel']}" if basic.get("loggingToFMCLogLevel") else ""),
-        if tofmc not in (None, "OFF")
-        else "OFF",
+        "send_to_fmc": to_fmc,
         "emblem_format": basic.get("enableEMBLEMFormat") or False,
         "timestamp_format": settings.get("timeStampFormat") or "LEGACY",
         "facility": settings.get("facility"),
