@@ -354,6 +354,17 @@ RULE_CONDITION_FIELDS = (
 )
 
 
+def _condition_labels(block: Any) -> list[str]:
+    """block_labels plus URL categories (they live in the urls block too)."""
+    out = block_labels(block)
+    if isinstance(block, dict):
+        for c in block.get("urlCategoriesWithReputation") or []:
+            cat = ref_label(c.get("category") or {})
+            rep = c.get("reputation")
+            out.append(f"category:{cat}" + (f" ({rep})" if rep else ""))
+    return out
+
+
 def rule_changes(current: dict[str, Any], desired: dict[str, Any]) -> dict[str, dict[str, Any]]:
     """Field changes for a rule update. Conditions are compared as labels before/after, so a
     replaced condition shows what it removes (a literal replaced by an object, for example); the
@@ -363,7 +374,7 @@ def rule_changes(current: dict[str, Any], desired: dict[str, Any]) -> dict[str, 
     rest_new = {k: v for k, v in desired.items() if k not in RULE_CONDITION_FIELDS}
     changes = field_changes(rest_cur, rest_new)
     for f in RULE_CONDITION_FIELDS:
-        before, after = block_labels(current.get(f)), block_labels(desired.get(f))
+        before, after = _condition_labels(current.get(f)), _condition_labels(desired.get(f))
         if before != after:
             changes[f] = {"from": before or "any", "to": after or "any"}
     return changes

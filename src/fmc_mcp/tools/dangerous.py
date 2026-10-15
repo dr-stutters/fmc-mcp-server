@@ -384,7 +384,7 @@ def register(reg: ToolRegistrar) -> None:
             jobs = await app.page(
                 await app.config_path("deployment/jobhistories", domain),
                 {"filter": f"deviceUUID:{dev['id']};startTime:{now - 90 * 86400};endTime:{now + 60}"},
-                limit=25,
+                limit=100,
             )
             notes = {
                 str(j.get("id")): str(j["deploymentNote"]) for j in jobs.items if j.get("deploymentNote")

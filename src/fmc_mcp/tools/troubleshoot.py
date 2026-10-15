@@ -347,7 +347,8 @@ def register(reg: ToolRegistrar) -> None:
         app: FmcApp = get_client(ctx)
         dev = await resolve_device(app, device, domain)
         text, redacted = redact(await run_show(app, dev["id"], command, domain))
-        text = ROUTE_LEGEND.sub("", text)
+        if re.match(r"show\s+(ipv6\s+)?route\b", command.strip(), re.I):
+            text = ROUTE_LEGEND.sub("", text)
         output, total, truncated = filter_lines(text, match, max_lines)
         out: dict[str, Any] = {
             "device": dev.get("name"),
