@@ -20,6 +20,7 @@ from fmc_mcp.tools import (
     objects,
     policies,
     policy_writes,
+    prompts,
     system,
     troubleshoot,
 )
@@ -42,6 +43,7 @@ Workflows:
   -> fmc_run_show_command / fmc_list_deployments; undo a bad deployment with fmc_rollback_deployment.
 - "Why is this traffic blocked?": fmc_packet_tracer (live verdict, drop reason and matching rule on
   the device) + fmc_rule_lookup (offline walk of the policy) + fmc_get_hit_counts (is the rule hit?).
+  The fmc_why_blocked prompt walks these steps in order.
 - Health: fmc_list_devices, fmc_device_health, fmc_list_vpn_tunnels.
 Before changing or deleting an object, check fmc_where_used.
 
@@ -110,6 +112,7 @@ def create_server(
             policy_writes.register,
             dangerous.register,
             troubleshoot.register,
+            prompts.register,
         ],
         status=FmcApp.status,
         spec_sources=spec_sources,

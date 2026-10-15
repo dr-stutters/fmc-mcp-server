@@ -346,3 +346,70 @@ async def test_change_deploy_rollback(client: Client[Any]) -> None:
         await deploy(client, "mcp live test: remove subinterface", ignore_warning=True)
     pending = await call(client, "fmc_list_deployable_devices", {"response_format": "json"})
     assert not any(r["device"] == DEVICE for r in pending["results"])
+
+
+@needs_ftd
+async def test_why_blocked_prompt_steps(client: Client[Any]) -> None:
+    """Render fmc_why_blocked and run its steps for the three lab cases: TCP 23 blocked by
+    mcp-test-block-telnet, TCP 443 allowed, and a no-ARP drop to an unused outside address."""
+    prompt = await client.get_prompt(
+        "fmc_why_blocked", {"source": "10.99.1.10", "destination": FMC_HOST, "port": "23", "device": DEVICE}
+    )
+    body = prompt.messages[0].content.text  # type: ignore[union-attr]
+    tools = {t.name for t in await client.list_tools()}
+    steps = [
+        "fmc_rule_lookup",
+        "fmc_packet_tracer",
+        "fmc_get_hit_counts",
+        "fmc_pending_changes",
+        "fmc_list_deployments",
+        "fmc_list_audit_records",
+    ]
+    assert all(f"`{s}`" in body and s in tools for s in steps)
+    zones = {"source_zone": ZONE_IN, "destination_zone": ZONE_OUT}
+    cases = [
+        (FMC_HOST, 23, "BLOCK", "drop", "acl-drop"),
+        (FMC_HOST, 443, "ALLOW", "allow", None),
+        ("198.18.128.199", 443, "ALLOW", "drop", "adjacency"),
+    ]
+    for dst, port, verdict, action, reason in cases:
+        lookup = await call(
+            client,
+            "fmc_rule_lookup",
+            {
+                "policy": ACP,
+                "source": "10.99.1.10",
+                "destination": dst,
+                "protocol": "tcp",
+                "port": port,
+                **zones,
+            },
+        )
+        assert verdict in lookup["verdict"], lookup
+        trace = await call(
+            client,
+            "fmc_packet_tracer",
+            {
+                "device": DEVICE,
+                "input_interface": "inside",
+                "protocol": "tcp",
+                "source_ip": "10.99.1.10",
+                "destination_ip": dst,
+                "destination_port": port,
+            },
+        )
+        res = trace["results"][0]
+        assert res["action"] == action and (reason is None or reason in res.get("drop_reason", "")), res
+    hits = await call(
+        client,
+        "fmc_get_hit_counts",
+        {"policy": ACP, "device": DEVICE, "rule": "block-telnet", "response_format": "json"},
+    )
+    assert hits["results"][0]["hits"] >= 1
+    for name, args in (
+        ("fmc_pending_changes", {"device": DEVICE}),
+        ("fmc_list_deployments", {"device": DEVICE, "since_hours": 24}),
+        ("fmc_list_audit_records", {"since_minutes": 1440, "text": ACP}),
+    ):
+        out = await call(client, name, {**args, "response_format": "json"})
+        assert "results" in out
