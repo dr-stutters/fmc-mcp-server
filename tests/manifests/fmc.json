@@ -148,6 +148,10 @@
       "tier": "write",
       "title": "Create decryption rule"
     },
+    "fmc_create_dns_policy": {
+      "tier": "write",
+      "title": "Create DNS policy"
+    },
     "fmc_create_dynamic_object": {
       "tier": "write",
       "title": "Create dynamic object"
@@ -272,6 +276,10 @@
       "tier": "read",
       "title": "Device health"
     },
+    "fmc_dns_block": {
+      "tier": "write",
+      "title": "Block or unblock domains (DNS)"
+    },
     "fmc_export_access_rules": {
       "tier": "read",
       "title": "Export access rules"
@@ -303,6 +311,10 @@
     "fmc_get_device": {
       "tier": "read",
       "title": "Get device"
+    },
+    "fmc_get_dns_policy": {
+      "tier": "read",
+      "title": "DNS policies"
     },
     "fmc_get_ha_status": {
       "tier": "read",
@@ -503,6 +515,10 @@
     "fmc_set_device_licenses": {
       "tier": "write",
       "title": "Set device licences"
+    },
+    "fmc_set_dns_policy": {
+      "tier": "write",
+      "title": "Link DNS policy to access policy"
     },
     "fmc_set_intrusion_rule_state": {
       "tier": "write",
