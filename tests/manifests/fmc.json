@@ -132,6 +132,14 @@
       "tier": "dangerous",
       "title": "Form HA pair"
     },
+    "fmc_create_intrusion_policy": {
+      "tier": "write",
+      "title": "Create intrusion policy"
+    },
+    "fmc_create_intrusion_rule": {
+      "tier": "write",
+      "title": "Create custom intrusion rule"
+    },
     "fmc_create_nat_policy": {
       "tier": "write",
       "title": "Create NAT policy"
@@ -184,6 +192,10 @@
       "tier": "write",
       "title": "Delete interface"
     },
+    "fmc_delete_intrusion_rule": {
+      "tier": "write",
+      "title": "Delete custom intrusion rule"
+    },
     "fmc_delete_nat_rule": {
       "tier": "write",
       "title": "Delete NAT rule"
@@ -216,6 +228,10 @@
       "tier": "read",
       "title": "Device health"
     },
+    "fmc_find_intrusion_rules": {
+      "tier": "read",
+      "title": "Find intrusion rules"
+    },
     "fmc_find_object": {
       "tier": "read",
       "title": "Find objects by value"
@@ -243,6 +259,10 @@
     "fmc_get_hit_counts": {
       "tier": "read",
       "title": "Rule hit counts"
+    },
+    "fmc_get_intrusion_policy": {
+      "tier": "read",
+      "title": "Intrusion policy summary"
     },
     "fmc_get_object": {
       "tier": "read",
@@ -395,6 +415,14 @@
     "fmc_set_access_logging": {
       "tier": "write",
       "title": "Set access policy logging (syslog)"
+    },
+    "fmc_set_device_licenses": {
+      "tier": "write",
+      "title": "Set device licences"
+    },
+    "fmc_set_intrusion_rule_state": {
+      "tier": "write",
+      "title": "Set intrusion rule state"
     },
     "fmc_shadowed_rules": {
       "tier": "read",
