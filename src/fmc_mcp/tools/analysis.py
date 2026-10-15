@@ -51,14 +51,16 @@ async def dynamic_sets(
         nets: list[IpInterval] = []
         for m in maps:
             got = parse_ip_value(m)
-            if got:
-                nets += got
+            if not got:  # not an address: the object can't be evaluated offline
+                complete = False
+                break
+            nets += got
         out[oid] = nets if complete else None
     return out
 
 
 def _dyn_match(block: Any, ip: IpInterval, sets: dict[str, list[IpInterval] | None]) -> bool | None:
-    objs = (block or {}).get("objects") or [] if isinstance(block, dict) else []
+    objs = (block.get("objects") or []) if isinstance(block, dict) else []
     if not objs:
         return True
     hit = False

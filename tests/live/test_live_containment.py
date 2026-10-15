@@ -34,7 +34,12 @@ async def test_contain_release_idempotent(client: Client[Any]) -> None:
             look = await call(
                 client,
                 "fmc_rule_lookup",
-                {"device": devices["results"][0]["name"], "source": IP, "destination": "8.8.8.8", "port": 443},
+                {
+                    "device": devices["results"][0]["name"],
+                    "source": IP,
+                    "destination": "8.8.8.8",
+                    "port": 443,
+                },
             )
             assert look["verdict"].endswith("BLOCK") and "quarantine" in look["matched_rule"]["name"]
     finally:

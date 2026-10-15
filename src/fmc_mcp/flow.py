@@ -4,6 +4,7 @@ device's access policy, worked out from FMC's configuration (interface subnets a
 This saves the model the fmc_list_device_interfaces / fmc_list_routes / fmc_list_policy_assignments
 round trips before fmc_rule_lookup and fmc_packet_tracer."""
 
+import contextlib
 import ipaddress
 from dataclasses import dataclass
 from typing import Any
@@ -34,29 +35,50 @@ class Leg:
 @dataclass
 class DeviceContext:
     interfaces: list[dict[str, Any]]  # interface_row()s with a logical name and zone names
-    routes: list[tuple[Net, str, str]]  # (destination network, interface name, gateway label)
+    routes: list[tuple[Net, str, str, int]]  # (destination, interface name, gateway label, metric)
 
     def leg(self, ip: Address) -> Leg | None:
-        """The interface traffic to/from `ip` uses: a connected subnet first, then the longest
-        matching static route."""
-        best: tuple[int, dict[str, Any], str] | None = None
+        """The interface traffic to/from `ip` uses: the longest match among connected subnets
+        (enabled interfaces) and static routes; on a tie a connected subnet wins, then the lower
+        metric."""
+        best: tuple[int, int, int, str, str | None, str] | None = None  # (prefix, connected, -metric, ...)
         for row in self.interfaces:
-            try:
-                net = ipaddress.ip_interface(str(row.get("ipv4") or "")).network
-            except ValueError:
+            if row.get("enabled") is False:
                 continue
-            if ip in net and (best is None or net.prefixlen > best[0]):
-                best = (net.prefixlen, row, f"connected {net}")
-        if best is not None:
-            return Leg(str(best[1]["logical_name"]), best[1].get("zone"), best[2])
-        hit: tuple[int, str, str] | None = None
-        for net, ifname, gw in self.routes:
-            if ip.version == net.version and ip in net and (hit is None or net.prefixlen > hit[0]):
-                hit = (net.prefixlen, ifname, f"route {net} via {gw}")
-        if hit is None:
+            for net in row.get("_nets") or []:
+                if ip.version == net.version and ip in net:
+                    cand = (
+                        net.prefixlen,
+                        1,
+                        0,
+                        str(row["logical_name"]),
+                        row.get("zone"),
+                        f"connected {net}",
+                    )
+                    if best is None or cand[:3] > best[:3]:
+                        best = cand
+        for net, ifname, gw, metric in self.routes:
+            if ip.version == net.version and ip in net:
+                zone = next((r.get("zone") for r in self.interfaces if r.get("logical_name") == ifname), None)
+                cand = (net.prefixlen, 0, -metric, ifname, zone, f"route {net} via {gw}")
+                if best is None or cand[:3] > best[:3]:
+                    best = cand
+        if best is None:
             return None
-        zone = next((r.get("zone") for r in self.interfaces if r.get("logical_name") == hit[1]), None)
-        return Leg(hit[1], zone, hit[2])
+        return Leg(best[3], best[4], best[5])
+
+
+def _interface_nets(row: dict[str, Any], raw: dict[str, Any]) -> list[Net]:
+    """Connected IPv4 and IPv6 subnets of an interface."""
+    nets: list[Net] = []
+    with contextlib.suppress(ValueError):
+        nets.append(ipaddress.ip_interface(str(row.get("ipv4") or "")).network)
+    for a in ((raw.get("ipv6") or {}).get("addresses")) or []:
+        try:
+            nets.append(ipaddress.ip_interface(f"{a.get('address')}/{a.get('prefix')}").network)
+        except ValueError:
+            continue
+    return nets
 
 
 async def device_context(app: FmcApp, dev: dict[str, Any], cat: Catalog, domain: str | None) -> DeviceContext:
@@ -67,11 +89,12 @@ async def device_context(app: FmcApp, dev: dict[str, Any], cat: Catalog, domain:
         row = interface_row(kind, i)
         if not row.get("logical_name"):
             continue
+        row["_nets"] = _interface_nets(row, i)
         if row.get("zone") in zones:
             row["zone"] = zones[row["zone"]]
         rows.append(row)
     await cat.load_networks()
-    routes: list[tuple[Net, str, str]] = []
+    routes: list[tuple[Net, str, str, int]] = []
     base = f"{DEVICES}/{dev['id']}/routing"
     for sub in ("ipv4staticroutes", "ipv6staticroutes"):
         try:
@@ -103,7 +126,8 @@ async def device_context(app: FmcApp, dev: dict[str, Any], cat: Catalog, domain:
                         )
                     except (TypeError, ValueError):
                         continue
-                    routes += [(n, str(r.get("interfaceName") or ""), gw_label) for n in nets]
+                    metric = int(r.get("metricValue") or 1)
+                    routes += [(n, str(r.get("interfaceName") or ""), gw_label, metric) for n in nets]
     return DeviceContext(rows, routes)
 
 

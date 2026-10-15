@@ -491,9 +491,9 @@ def register(reg: ToolRegistrar) -> None:
             try:
                 resp = await app.api.put(hc_path, None, params={"filter": f"deviceId:{dev['id']}"})
                 tid = task_id_of(resp)
-                if tid:
+                if tid:  # learn FMC's clock offset only from a refresh that really ran
                     await wait_task(ctx, app, tid, domain, "hit count refresh", limit_s=120)
-                refreshed_at = time.time()
+                    refreshed_at = time.time()
             except UpstreamError as e:
                 notes.append(f"Refresh failed ({e}); showing the last counters FMC has.")
         rules = (await all_rules(app, await app.config_path(f"{coll}/{p['id']}/{sub}", domain))).items
@@ -545,7 +545,7 @@ def register(reg: ToolRegistrar) -> None:
             "device": dev.get("name"),
             "counters_fetched": to_utc(last, tz_offset),
         }
-        if offset is None:
+        if tz_offset is None:
             notes.append(
                 "FMC reports these times in its local time zone; refresh once to convert them to UTC."
             )

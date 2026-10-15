@@ -834,3 +834,26 @@ def test_rule_columns_show_dynamic_objects_and_drop_empty_ones() -> None:
 
     rows = [{"index": 1, "name": "q", "action": "BLOCK", "enabled": True, "src_dynamic": ["mcp-quarantine"]}]
     assert rule_columns(rows) == ["index", "name", "action", "enabled", "src_dynamic"]
+
+
+def test_flow_leg_prefers_longest_match_then_connected_then_metric() -> None:
+    import ipaddress as ipa
+
+    from fmc_mcp.flow import DeviceContext
+
+    rows = [
+        {"logical_name": "inside", "zone": "in", "enabled": True, "_nets": [ipa.ip_network("10.0.0.0/16")]},
+        {"logical_name": "dmz", "zone": "dmz", "enabled": True, "_nets": []},
+        {"logical_name": "off", "zone": "x", "enabled": False, "_nets": [ipa.ip_network("10.9.0.0/24")]},
+        {"logical_name": "v6", "zone": "z6", "enabled": True, "_nets": [ipa.ip_network("2001:db8::/64")]},
+    ]
+    routes = [
+        (ipa.ip_network("10.0.5.0/24"), "dmz", "10.0.0.9", 1),
+        (ipa.ip_network("0.0.0.0/0"), "outside", "gw2", 10),
+        (ipa.ip_network("0.0.0.0/0"), "dmz", "gw1", 1),
+    ]
+    dc = DeviceContext(rows, routes)  # type: ignore[arg-type]
+    assert dc.leg(ipa.ip_address("10.0.5.7")).interface == "dmz"  # type: ignore[union-attr]
+    assert dc.leg(ipa.ip_address("10.0.1.1")).interface == "inside"  # type: ignore[union-attr]
+    assert dc.leg(ipa.ip_address("10.9.0.5")).interface == "dmz"  # disabled iface skipped; best default
+    assert dc.leg(ipa.ip_address("2001:db8::5")).zone == "z6"  # type: ignore[union-attr]
