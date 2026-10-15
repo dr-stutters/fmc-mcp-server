@@ -493,3 +493,21 @@ async def test_dynamic_object_blocks_without_deploy(client: Client[Any]) -> None
     res = (await call(client, "fmc_packet_tracer", trace_args))["results"][0]
     assert res["verdict_rule"] == "mcp-test-allow-out", res
     assert res["action"] == "allow" or "adjacency" in res.get("drop_reason", ""), res
+
+
+@needs_ftd
+async def test_recent_activity(client: Client[Any]) -> None:
+    """F5: the merged timeline answers from FMC alone (no appliance setup); earlier tests in this
+    module deployed to the device, so its deploy rows are in the window."""
+    out = await call(
+        client, "fmc_recent_activity", {"since_minutes": 120, "device": DEVICE, "response_format": "json"}
+    )
+    sources = {r["source"] for r in out["results"]}
+    assert "deploy" in sources, out
+    assert not out.get("errors"), out
+    alerts = await call(
+        client,
+        "fmc_list_health_alerts",
+        {"since_minutes": 1440, "status": ["RED", "YELLOW", "RECOVERED"], "response_format": "json"},
+    )
+    assert "raw_alerts" in alerts
