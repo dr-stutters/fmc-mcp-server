@@ -17,6 +17,7 @@ from fastmcp.tools import ToolResult
 from pydantic import Field
 from stutters_mcp_core import (
     InvalidRequest,
+    NotFound,
     ResponseFormat,
     ToolRegistrar,
     UpstreamError,
@@ -25,7 +26,7 @@ from stutters_mcp_core import (
 )
 from stutters_mcp_core.http import page_of
 
-from fmc_mcp.client import FmcApp
+from fmc_mcp.client import FmcApp, fmc_error_detail
 from fmc_mcp.tools.common import Domain
 from fmc_mcp.tools.dangerous import task_id_of, wait_task
 from fmc_mcp.tools.device_config import device_interfaces, pick_interface, resolve_device
@@ -252,13 +253,29 @@ def _ts(value: Any) -> str | None:
     return v or None
 
 
+def _json(resp: Any) -> Any:
+    try:
+        return resp.json()
+    except ValueError:
+        return None
+
+
 async def run_show(app: FmcApp, device_id: str, command: str, domain: str | None) -> str:
     head, rest = split_command(command)
     params: dict[str, Any] = {"command": head}
     if rest:
         params["parameters"] = rest
     path = await app.config_path(f"devices/devicerecords/{device_id}/operational/commands", domain)
-    data = await app.api.get(path, params, timeout=120)
+    resp = await app.api.request("GET", path, params=params, timeout=120, expect="response", ok_status={404})
+    if resp.status_code == 404:
+        detail = fmc_error_detail(_json(resp)) or ""
+        if "command is invalid" in detail.lower():
+            raise InvalidRequest(
+                f"The FTD rejects {command!r} as invalid. Some sections live outside the data plane "
+                "(e.g. NTP); check those with fmc_get_platform_settings instead."
+            )
+        raise NotFound(f"FMC answered 404 for {command!r}: {detail or 'not found'}", 404)
+    data = _json(resp)
     items = (data or {}).get("items") or []
     return "\n".join(str(i.get("commandOutput") or "") for i in items)
 
@@ -297,6 +314,8 @@ def register(reg: ToolRegistrar) -> None:
             "command": " ".join(command.split()),
             "output": output,
         }
+        if not text.strip():
+            out["note"] = "The command printed nothing."
         if match:
             out["matched_lines"] = total
         if redacted:
