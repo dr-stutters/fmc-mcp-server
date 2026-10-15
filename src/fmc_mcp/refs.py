@@ -16,6 +16,7 @@ NETWORK_TYPES = ["host", "network", "range", "fqdn", "network_group"]
 PORT_TYPES = ["port", "port_group", "icmpv4", "icmpv6"]
 URL_TYPES = ["url", "url_group"]
 ZONE_TYPES = ["security_zone", "interface_group"]
+DYNAMIC_TYPES = ["dynamic_object"]
 
 
 def network_literal(text: str) -> dict[str, str] | None:
@@ -100,7 +101,13 @@ class RefResolver:
             if lit is not None:
                 literals.append(lit)
                 continue
-            types = {"network": NETWORK_TYPES, "port": PORT_TYPES, "url": URL_TYPES, "zone": ZONE_TYPES}[kind]
+            types = {
+                "network": NETWORK_TYPES,
+                "port": PORT_TYPES,
+                "url": URL_TYPES,
+                "zone": ZONE_TYPES,
+                "dynamic": DYNAMIC_TYPES,
+            }[kind]
             objects.append(await self.obj(v, types))
         out: dict[str, Any] = {}
         if objects:

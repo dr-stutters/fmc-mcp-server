@@ -16,6 +16,7 @@ from fmc_mcp.tools import (
     deploy,
     device_config,
     devices,
+    dynamic_objects,
     object_writes,
     objects,
     policies,
@@ -44,6 +45,8 @@ Workflows:
 - "Why is this traffic blocked?": fmc_packet_tracer (live verdict, drop reason and matching rule on
   the device) + fmc_rule_lookup (offline walk of the policy) + fmc_get_hit_counts (is the rule hit?).
   The fmc_why_blocked prompt walks these steps in order.
+- Block a host fast: map its IP into a dynamic object that a BLOCK rule references
+  (fmc_map_dynamic_object); mapping changes need no deployment, only the rule does (once).
 - Health: fmc_list_devices, fmc_device_health, fmc_list_vpn_tunnels.
 Before changing or deleting an object, check fmc_where_used.
 
@@ -112,6 +115,7 @@ def create_server(
             policy_writes.register,
             dangerous.register,
             troubleshoot.register,
+            dynamic_objects.register,
             prompts.register,
         ],
         status=FmcApp.status,
