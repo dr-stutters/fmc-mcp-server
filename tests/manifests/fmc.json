@@ -62,9 +62,8 @@
       ],
       "references": [
         "fmc_rule_lookup",
-        "fmc_list_device_interfaces",
-        "fmc_list_routes",
         "fmc_packet_tracer",
+        "fmc_list_routes",
         "fmc_get_hit_counts",
         "fmc_pending_changes",
         "fmc_list_deployments",

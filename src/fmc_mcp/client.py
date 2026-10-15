@@ -128,6 +128,8 @@ class FmcApp:
         self.user_uuid: str | None = None
         self.logins = 0
         self.refreshes = 0
+        # Seconds FMC's local clock is ahead of UTC (hit counts report local time with a 'Z'), once learned.
+        self.local_offset: int | None = None
         self._version: str | None = None
         self._login_failure: tuple[float, AuthError] | None = None
         self._cache: dict[str, tuple[float, Any]] = {}

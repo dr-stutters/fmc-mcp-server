@@ -29,6 +29,19 @@ async def test_contain_release_idempotent(client: Client[Any]) -> None:
             client, "fmc_list_dynamic_objects", {"name": "quarantine", "response_format": "json"}
         )
         assert any(IP in (o.get("mappings") or []) for o in listed["results"])
+        devices = await call(client, "fmc_list_devices", {"response_format": "json"})
+        if devices["results"]:  # F28: the offline lookup sees the mapping
+            look = await call(
+                client,
+                "fmc_rule_lookup",
+                {
+                    "device": devices["results"][0]["name"],
+                    "source": IP,
+                    "destination": "8.8.8.8",
+                    "port": 443,
+                },
+            )
+            assert look["verdict"].endswith("BLOCK") and "quarantine" in look["matched_rule"]["name"]
     finally:
         out = await apply(client, "fmc_release_host", {"ip": IP})
     assert out["result"]["released"]

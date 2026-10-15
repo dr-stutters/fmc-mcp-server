@@ -32,7 +32,7 @@ def test__why_blocked_text_with_everything_known() -> None:
 def test__why_blocked_text_icmp_finds_context() -> None:
     text = _why_blocked_text("10.99.1.10", "8.8.8.8", "icmp", None, None, None, None)
     assert "destination_port" not in text and ", port=" not in text
-    assert "`fmc_list_devices`" in text and "`fmc_list_policy_assignments`" in text
+    assert "`fmc_list_devices`" in text and "device=<candidate>" in text
 
 
 async def test_prompt_listed_and_rendered(fmc: respx.MockRouter) -> None:
