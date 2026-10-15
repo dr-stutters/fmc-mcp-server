@@ -14,18 +14,15 @@ Explain why this traffic is blocked (or confirm it is allowed): tcp 10.99.1.10 -
 Work through the steps in order, keep notes of what each step shows, and stop early only when a step
 gives a definite answer that the later steps cannot change. All steps before step 7 are read-only.
 
-0. Context. The device is "mcp-ftd1". The ingress interface is "inside". Use access control policy "mcp-test-ftd-acp".
+0. Context. The device is "mcp-ftd1".
 
-1. Offline policy walk: `fmc_rule_lookup` with policy="mcp-test-ftd-acp", source="10.99.1.10",
-   destination="198.18.134.76", protocol="tcp", port=23, source_zone=<the ingress interface's
-   zone> and destination_zone=<the zone of the interface the route to 198.18.134.76 leaves by> (both
-   from `fmc_list_device_interfaces`; `fmc_list_routes` for the egress). Without
-   the zones, rules with zone conditions show up only under `may_match_first`. Note the first definite
-   match, any earlier 'conditional' rules (application, URL or user conditions) and the default
-   action. This is what FMC's configuration says.
+1. Offline policy walk: `fmc_rule_lookup` with device="mcp-ftd1", policy="mcp-test-ftd-acp", source="10.99.1.10",
+   destination="198.18.134.76", protocol="tcp", port=23. The ingress interface is "inside": pass its zone as source_zone. If `device.egress` is null, no route
+   covers 198.18.134.76. Note the first definite match, any earlier 'conditional' rules (application,
+   URL or user conditions) and the default action. This is what FMC's configuration says.
 
-2. Live verdict: `fmc_packet_tracer` with device="mcp-ftd1", input_interface="inside",
-   protocol="tcp", source_ip="10.99.1.10", destination_ip="198.18.134.76", destination_port=23.
+2. Live verdict: `fmc_packet_tracer` with device="mcp-ftd1", input_interface="inside", protocol="tcp",
+   source_ip="10.99.1.10", destination_ip="198.18.134.76", destination_port=23 (it picks the ingress interface from the source).
    Read `action`, `drop_reason`, the phase that dropped it and `matched_rules`:
    - acl-drop with a matched rule: the access (or prefilter) rule named there blocks it;
    - no-v4-adjacency / no-adjacency: the policy allows it but the FTD has no ARP entry for the
