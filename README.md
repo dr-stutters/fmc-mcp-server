@@ -12,7 +12,7 @@ over stdio for a local client or as an authenticated Streamable HTTP service in 
 > **Not affiliated with or endorsed by Cisco Systems, Inc.** Cisco, Firepower and Secure Firewall are
 > trademarks of Cisco Systems, Inc.
 
-Tested against **FMC 10.0.1** with a single domain and a managed **FTDv 10.0**. FMC 7.2 and later
+Tested against **FMC 10.0.1** (Global plus a leaf domain) with managed **FTDv 10.0**. FMC 7.2 and later
 should work. Older versions are best-effort. `docs/GAP-ANALYSIS.md` maps the whole FMC API to the
 tools.
 
@@ -137,7 +137,23 @@ Tools accept **names or UUIDs**. Rule conditions accept object names or literal 
 - ports and protocols: `tcp/443`, `udp/1000-2000`, `icmp/8`
 - URLs: `https://...`
 
-On multi-domain FMCs, pass `domain=` with a name such as `Global/Branch` or a UUID.
+### Multi-domain FMC (F19)
+
+Every tool takes `domain=` (a name such as `Global/Branch`, a unique leaf name such as `Branch`, or a UUID),
+defaulting to `FMC_DOMAIN` or the login's domain. `fmc_list_domains` shows the tree: parent, whether a domain
+is a leaf, and the devices in each one. FMC's rules, which the tools follow:
+
+- **Devices live only in leaf domains.** An ancestor domain sees them, but FMC refuses changes there
+  ("Object does not belong to current domain"). Device tools called in an ancestor domain therefore send
+  device-level calls (interfaces, routes, routing, HA, packet tracer) to the device's own leaf domain, and
+  the preview shows it as `device_domain`. Deploys work from the ancestor.
+- **Objects and policies are inherited downwards, read-only.** A leaf sees Global's objects and policies but
+  can't change them: the preview is blocked and names the domain to use. Objects created in a leaf are not
+  visible in Global.
+- Every write preview shows the `domain` it changes.
+- The API user's role applies to the domain where it is assigned and the domains below it.
+- Several FMCs per server: core `FMC_INSTANCES` (an `instance` argument on every tool).
+
 
 ### Limits of `fmc_rule_lookup` and `fmc_shadowed_rules`
 

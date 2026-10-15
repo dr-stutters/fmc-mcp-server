@@ -16,11 +16,11 @@ from stutters_mcp_core import (
     ValidationFailed,
     field_changes,
     get_client,
-    preview_or_apply,
 )
 
 from fmc_mcp.catalog import parse_port_query
 from fmc_mcp.client import FmcApp
+from fmc_mcp.preview import fmc_preview
 from fmc_mcp.refs import NETWORK_TYPES, PORT_TYPES, URL_TYPES, RefResolver
 from fmc_mcp.tools.common import (
     Domain,
@@ -153,7 +153,7 @@ def register(reg: ToolRegistrar) -> None:
         if await exists(app, name, [t.key], domain):
             blockers.append(f"A {t.key} object named {name!r} already exists.")
         path = await app.config_path(t.path, domain)
-        return await preview_or_apply(
+        return await fmc_preview(
             ctx,
             tool="fmc_create_object",
             args={
@@ -228,9 +228,10 @@ def register(reg: ToolRegistrar) -> None:
             if usage
             else [],
         )
-        return await preview_or_apply(
+        return await fmc_preview(
             ctx,
             tool="fmc_update_object",
+            owned=[current],
             args={
                 "object": object,
                 "type": type,
@@ -274,9 +275,10 @@ def register(reg: ToolRegistrar) -> None:
             fingerprint=editable(current),
             blockers=blockers,
         )
-        return await preview_or_apply(
+        return await fmc_preview(
             ctx,
             tool="fmc_delete_object",
+            owned=[current],
             args={"object": object, "type": type, "domain": domain},
             confirm=confirm,
             plan=plan,
@@ -312,7 +314,7 @@ def register(reg: ToolRegistrar) -> None:
         if await exists(app, name, [t.key], domain):
             blockers.append(f"A {t.key} named {name!r} already exists.")
         path = await app.config_path(t.path, domain)
-        return await preview_or_apply(
+        return await fmc_preview(
             ctx,
             tool="fmc_create_group",
             args={
@@ -399,9 +401,10 @@ def register(reg: ToolRegistrar) -> None:
             fingerprint={"current": editable(current), "desired": desired},
             blockers=blockers,
         )
-        return await preview_or_apply(
+        return await fmc_preview(
             ctx,
             tool="fmc_update_group",
+            owned=[current],
             args={
                 "group": group,
                 "kind": kind,
@@ -437,7 +440,7 @@ def register(reg: ToolRegistrar) -> None:
         if await exists(app, name, ["security_zone"], domain):
             blockers.append(f"A security zone named {name!r} already exists.")
         path = await app.config_path("object/securityzones", domain)
-        return await preview_or_apply(
+        return await fmc_preview(
             ctx,
             tool="fmc_create_security_zone",
             args={

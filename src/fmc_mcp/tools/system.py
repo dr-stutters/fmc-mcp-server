@@ -8,7 +8,14 @@ from typing import Annotated, Any
 from fastmcp import Context
 from fastmcp.tools import ToolResult
 from pydantic import Field
-from stutters_mcp_core import ResponseFormat, ToolRegistrar, get_client, list_result, object_result
+from stutters_mcp_core import (
+    ResponseFormat,
+    ToolRegistrar,
+    UpstreamError,
+    get_client,
+    list_result,
+    object_result,
+)
 from stutters_mcp_core.http import page_of
 
 from fmc_mcp.client import FmcApp
@@ -39,19 +46,37 @@ def register(reg: ToolRegistrar) -> None:
         offset: Annotated[int, Field(ge=0)] = 0,
         response_format: ResponseFormat = "markdown",
     ) -> ToolResult:
-        """List the FMC domains this API account can see (name like 'Global/Child' and UUID), marking
-        the default one. Pass a name or UUID from here as `domain` to other tools on multi-domain FMCs."""
+        """List the FMC domains this API account can see as a tree (name like 'Global/Child', UUID,
+        parent, leaf or not, and the devices each one holds), marking the default one. Devices live only
+        in leaf domains; objects and policies defined in a domain are inherited (read-only) by the domains
+        below it. Pass a name or UUID from here as `domain` to other tools on multi-domain FMCs."""
         app: FmcApp = get_client(ctx)
         default = await app.domain_uuid(None)
         data = await app.api.get("/api/fmc_platform/v1/info/domain", {"limit": 1000, "expanded": "true"})
+        items = [d for d in (data or {}).get("items", []) if d.get("uuid")]
+        parents = {d["uuid"]: d.get("parentUUID") for d in items if d.get("parentUUID") != d["uuid"]}
+        # Devices with their owning domain, read once from the top-most visible domain (ancestors
+        # see their descendants' devices).
+        top = min(items, key=lambda d: str(d.get("name", "")).count("/"), default=None)
+        per_domain: dict[str, list[str]] = {}
+        if top is not None:
+            try:
+                devs = await app.all(await app.config_path("devices/devicerecords", top["uuid"]))
+                for dev in devs.items:
+                    dom = ((dev.get("metadata") or {}).get("domain") or {}).get("id") or top["uuid"]
+                    per_domain.setdefault(str(dom), []).append(str(dev.get("name")))
+            except UpstreamError:
+                per_domain = {}
         rows = [
             {
                 "name": d.get("name"),
                 "uuid": d.get("uuid"),
                 "default": d.get("uuid") == default,
-                "parent_uuid": d.get("parentUUID") if d.get("parentUUID") != d.get("uuid") else None,
+                "parent_uuid": parents.get(d["uuid"]),
+                "leaf": d["uuid"] not in parents.values(),
+                "devices": sorted(per_domain.get(d["uuid"], [])) or None,
             }
-            for d in (data or {}).get("items", [])
+            for d in sorted(items, key=lambda d: str(d.get("name", "")).lower())
         ]
         if name:
             rows = [r for r in rows if name.lower() in str(r["name"]).lower()]
