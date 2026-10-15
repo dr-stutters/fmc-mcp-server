@@ -511,3 +511,45 @@ async def test_recent_activity(client: Client[Any]) -> None:
         {"since_minutes": 1440, "status": ["RED", "YELLOW", "RECOVERED"], "response_format": "json"},
     )
     assert "raw_alerts" in alerts
+
+
+PS_POLICY = "mcp-test-ps"
+SYSLOG_HOST = "10.99.1.30"
+
+
+@needs_ftd
+async def test_platform_settings_syslog(client: Client[Any]) -> None:
+    """F3: platform settings policy -> syslog server -> assign -> deploy -> verify on the device ->
+    remove -> deploy. The syslog host is a lab address nobody listens on (ADR-003: no receiving)."""
+    pols = await call(client, "fmc_list_policies", {"kind": "platform_settings", "response_format": "json"})
+    if not any(p["name"] == PS_POLICY for p in pols["results"]):
+        await apply(client, "fmc_create_platform_settings_policy", {"name": PS_POLICY})
+    await ensure(
+        client, "fmc_assign_policy", {"kind": "platform_settings", "policy": PS_POLICY, "devices": [DEVICE]}
+    )
+    current = await call(client, "fmc_get_platform_settings", {"policy": PS_POLICY})
+    if any(s["host"] == SYSLOG_HOST for s in current["syslog"]["servers"]):  # left over from a failed run
+        await apply(client, "fmc_configure_syslog", {"policy": PS_POLICY, "remove_servers": [SYSLOG_HOST]})
+    await apply(
+        client,
+        "fmc_configure_syslog",
+        {
+            "policy": PS_POLICY,
+            "add_servers": [SYSLOG_HOST],
+            "interfaces": [ZONE_IN],
+            "logging_enabled": True,
+            "server_level": "WARNING",
+            "timestamp_format": "RFC_5424",
+        },
+    )
+    summary = await call(client, "fmc_get_platform_settings", {"policy": PS_POLICY})
+    assert DEVICE in summary["assigned_to"]
+    assert any(s["host"] == SYSLOG_HOST and s["port"] == "514" for s in summary["syslog"]["servers"])
+    await deploy(client, "mcp live test: syslog server")
+    config = await show(client, "show running-config logging")
+    assert f"logging host inside {SYSLOG_HOST}" in config and "logging timestamp rfc5424" in config, config
+    assert "logging trap warnings" in config
+
+    await apply(client, "fmc_configure_syslog", {"policy": PS_POLICY, "remove_servers": [SYSLOG_HOST]})
+    await deploy(client, "mcp live test: remove syslog server")
+    assert SYSLOG_HOST not in await show(client, "show running-config logging")
