@@ -464,7 +464,7 @@ dev = [
 ]
 
 [package.metadata]
-requires-dist = [{ name = "stutters-mcp-core", git = "https://github.com/dr-stutters/stutters-mcp-core?tag=v0.6.0" }]
+requires-dist = [{ name = "stutters-mcp-core", git = "https://github.com/dr-stutters/stutters-mcp-core?tag=v0.9.0" }]
 
 [package.metadata.requires-dev]
 dev = [
@@ -1448,13 +1448,14 @@ wheels = [
 
 [[package]]
 name = "stutters-mcp-core"
-version = "0.6.0"
-source = { git = "https://github.com/dr-stutters/stutters-mcp-core?tag=v0.6.0#c2d6acddffb1d4d09eb9df8ce562278e25439087" }
+version = "0.9.0"
+source = { git = "https://github.com/dr-stutters/stutters-mcp-core?tag=v0.9.0#9a30839ff8767de012ae783c265d92bc08f2bbc5" }
 dependencies = [
     { name = "fastmcp" },
     { name = "httpx" },
     { name = "pydantic-settings" },
     { name = "tzdata" },
+    { name = "uvicorn" },
 ]
 
 [[package]]

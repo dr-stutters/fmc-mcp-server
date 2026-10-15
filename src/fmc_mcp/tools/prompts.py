@@ -4,8 +4,7 @@
 import ipaddress
 import json
 import re
-from collections.abc import Callable
-from typing import Annotated, Any, Literal
+from typing import Annotated, Literal
 
 from pydantic import Field
 from stutters_mcp_core import InvalidRequest, Tier, ToolRegistrar, tool_ref
@@ -244,20 +243,8 @@ around a failed registration or deployment.
 """
 
 
-def _prompt(reg: ToolRegistrar, **kw: Any) -> Callable[[Callable[..., str]], Callable[..., str]]:
-    # TODO(core): ToolRegistrar.prompt() doesn't pass `example` through to PromptRegistrar (core
-    # v0.6.0); call PromptRegistrar directly until it does (CORE-REQUESTS.md).
-    from stutters_mcp_core.prompts import PromptRegistrar
-
-    deco: Callable[[Callable[..., str]], Callable[..., str]] = PromptRegistrar(
-        reg.mcp, reg.settings, reg.prefix
-    ).prompt(**kw)
-    return deco
-
-
 def register(reg: ToolRegistrar) -> None:
-    @_prompt(
-        reg,
+    @reg.prompt(
         title="Why is this traffic blocked?",
         example={
             "source": "10.99.1.10",
@@ -297,8 +284,7 @@ def register(reg: ToolRegistrar) -> None:
         cause and a preview-first fix proposal."""
         return _why_blocked_text(source, destination, protocol, port, device, ingress_interface, policy)
 
-    @_prompt(
-        reg,
+    @reg.prompt(
         title="Onboard an FTD",
         uses=["fmc", "cml"],
         tier=Tier.DANGEROUS,

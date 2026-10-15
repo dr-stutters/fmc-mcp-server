@@ -1,5 +1,14 @@
 # Changelog
 
+## Unreleased
+
+### Changed
+- Core v0.6.0 -> v0.9.0: secrets (`FMC_PASSWORD_REF`), `/metrics`, OAuth, and several FMCs per server
+  (`FMC_INSTANCES`, an `instance` argument on every tool). The release workflow is back on core's
+  `python-release.yml@main` (fixed in core v0.8.1).
+- The local `PromptRegistrar` workaround for prompt examples is gone (`ToolRegistrar.prompt(example=)` works
+  since core v0.8.1).
+
 ## 0.4.0 (2026-10-15)
 
 Roadmap "Next" (F8-F11). Tools: 41 read -> 45, 30 write -> 35, 7 dangerous (87 with every tier on),
