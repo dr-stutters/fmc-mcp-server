@@ -30,6 +30,7 @@ from fmc_mcp.tools import (
     prefilter,
     prompts,
     routing,
+    security_intel,
     system,
     troubleshoot,
     vpn,
@@ -62,7 +63,8 @@ Workflows:
 - Block a host fast: map its IP into a dynamic object that a BLOCK rule references
   (fmc_map_dynamic_object); mapping changes need no deployment, only the rule does (once).
   fmc_contain_host / fmc_release_host do this for one host with the quarantine object (and propose
-  the block rules if they are missing).
+  the block rules if they are missing). Blocking IPs/URLs policy-wide with logging (needs a deploy):
+  fmc_si_block (Security Intelligence); fmc_get_security_intelligence shows the lists.
 - Tune intrusion prevention: fmc_find_intrusion_rules (gid:sid or text) -> fmc_get_intrusion_policy ->
   fmc_set_intrusion_rule_state in a custom policy (fmc_create_intrusion_policy on top of a system one;
   fmc_update_access_rule intrusion_policy=... puts it on an ALLOW rule) -> fmc_deploy. Custom Snort 3
@@ -149,6 +151,7 @@ def create_server(
             intrusion.register,
             admin.register,
             prefilter.register,
+            security_intel.register,
             prompts.register,
         ],
         status=FmcApp.status,

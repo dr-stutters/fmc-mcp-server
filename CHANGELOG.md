@@ -3,6 +3,10 @@
 ## Unreleased
 
 ### Added
+- **Security Intelligence (F21)**: `fmc_get_security_intelligence` (read), `fmc_si_block` (block/unblock IPs, networks,
+  URLs through the access policy's SI block list; each entry an `mcp-si-<value>` object). Live: blocking the
+  outside gateway made packet tracer drop TCP 443 from the inside host; unblocked and deployed again. FMC accepts
+  Host/Network/URL objects and SI lists in the SI block list, not network groups.
 - **Prefilter writes (F20)**: `fmc_create_prefilter_policy`, `fmc_set_prefilter_policy`, `fmc_create_prefilter_rule`,
   `fmc_update_prefilter_rule`, `fmc_delete_prefilter_rule`. Live: a bidirectional FASTPATH rule for the inside host
   in `mcp-test-pf` linked to mcp-test-ftd-acp, deployed, packet tracer shows the prefilter fastpath; removed and

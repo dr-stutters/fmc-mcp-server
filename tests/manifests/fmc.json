@@ -300,6 +300,10 @@
       "tier": "read",
       "title": "Get device routing"
     },
+    "fmc_get_security_intelligence": {
+      "tier": "read",
+      "title": "Security Intelligence settings"
+    },
     "fmc_get_task": {
       "tier": "read",
       "title": "Get FMC task status"
@@ -467,6 +471,10 @@
     "fmc_shadowed_rules": {
       "tier": "read",
       "title": "Find shadowed access rules"
+    },
+    "fmc_si_block": {
+      "tier": "write",
+      "title": "Security Intelligence block/unblock"
     },
     "fmc_status": {
       "tier": "read",
