@@ -1,5 +1,19 @@
 # Changelog
 
+## Unreleased
+
+### Added
+- `fmc_contain_host(ip, reason)` / `fmc_release_host(ip)` (F9, the FMC half of ise-mcp-server's
+  `ise_quarantine_host`): map a host into the quarantine dynamic object (`FMC_QUARANTINE_OBJECT`, default
+  `mcp-quarantine`). A missing object is created and missing BLOCK rules (`<object>-out` source,
+  `<object>-in` destination) are proposed at the top of the assigned access policy; only that one-time
+  setup needs a deployment, and the preview says so. Idempotent both ways. Live: ping from the CML
+  inside host blocked ~5 s after containment with nothing to deploy, packet tracer drops on
+  `mcp-quarantine-out`; restored after release.
+
+### Changed
+- Core pinned to v0.3.1 (`fmc_get_definition(examples=True)`).
+
 ## 0.3.0 (2026-10-15)
 
 Roadmap "Now" (F1-F6). Tools: 35 read -> 41, 20 write -> 30, 7 dangerous (78 with every tier on)
