@@ -94,6 +94,8 @@ SPEC = ServerSpec(
     product="Cisco Secure Firewall Management Center",
     env_prefix="FMC_",
     instructions=INSTRUCTIONS,
+    spec_search_example="access rule",
+    spec_path_example="/api/fmc_config/v1/domain/{domainUUID}/policy/accesspolicies/{objectId}/accessrules",
 )
 
 
