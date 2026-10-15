@@ -92,3 +92,19 @@ async def test_api_call_fills_domain(client: Client[Any]) -> None:
         {"method": "GET", "path": "/api/fmc_config/v1/domain/{domainUUID}/object/hosts"},
     )
     assert "items" in hosts
+
+
+async def test_audit_window_reaches_past_fmcs_100_record_cap(client: Client[Any]) -> None:
+    """F26: FMC returns only the newest 100 audit records per query; the tool slices the window."""
+    for _ in range(3):  # make sure the window holds more than 100 records (each call logs GETs)
+        await call(
+            client, "fmc_list_audit_records", {"since_minutes": 5, "limit": 1, "response_format": "json"}
+        )
+    data = await call(
+        client,
+        "fmc_list_audit_records",
+        {"since_minutes": 60, "changes_only": False, "limit": 1000, "response_format": "json"},
+    )
+    assert data["records_read"] > 100
+    times = [r["time"] for r in data["results"]]
+    assert times == sorted(times, reverse=True)

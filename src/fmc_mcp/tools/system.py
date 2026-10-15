@@ -18,6 +18,7 @@ from stutters_mcp_core import (
 )
 from stutters_mcp_core.http import page_of
 
+from fmc_mcp.audit import NOISE_SUBSYSTEMS, compact_message, coverage_note, fetch_audit, is_read
 from fmc_mcp.client import FmcApp
 from fmc_mcp.tools.common import Domain, slim
 
@@ -90,39 +91,57 @@ def register(reg: ToolRegistrar) -> None:
         ] = 1440,
         user: Annotated[str | None, Field(description="Filter: username contains")] = None,
         subsystem: Annotated[
-            str | None, Field(description="Filter: subsystem contains, e.g. 'API', 'Login', 'Access Control'")
+            str | None,
+            Field(
+                description="Filter: subsystem contains, e.g. 'Access Control', 'Object Management', 'Login'"
+            ),
         ] = None,
-        text: Annotated[str | None, Field(description="Filter: message contains (case-insensitive)")] = None,
+        text: Annotated[
+            str | None,
+            Field(description="Filter: message contains (case-insensitive), e.g. a rule or object name"),
+        ] = None,
+        changes_only: Annotated[
+            bool | None,
+            Field(
+                description="Skip reads: API GETs, page views, logins, logouts, session expiry. Default: on, "
+                "unless `subsystem` asks for them (e.g. 'Login')"
+            ),
+        ] = None,
         domain: Domain = None,
         limit: Annotated[int, Field(ge=1, le=1000)] = 50,
         offset: Annotated[int, Field(ge=0)] = 0,
         response_format: ResponseFormat = "markdown",
     ) -> ToolResult:
-        """List FMC audit-log records, newest first: who did what and when (logins, policy edits, API
-        calls, deployments). Use it to answer 'who changed this rule/object?' or 'what changed today?'.
-        Filters on user, subsystem and message text are applied after fetching the time window."""
+        """List FMC audit-log records, newest first: who changed what and when (policy and object edits,
+        API writes, deployments; logins and reads with changes_only=false). Use it to answer 'who changed
+        this object?' (text=<object name>) or 'what changed today?'. FMC logs an access or NAT rule edit
+        as 'Save Policy <policy>:<revision>' without the rule name, so search rules by their policy
+        name (fmc_pending_changes names the rules not yet deployed). FMC returns only 100 records per
+        request and logs every API read, so the window is read in slices (up to 2500 records); a note
+        says how far back it got when the window holds more. API URLs are shortened
+        ('PUT fmc_config/policy/...')."""
         app: FmcApp = get_client(ctx)
-        now = int(time.time())
-        # endtime in the future is rejected ("Invalid start or end time"), so send only starttime.
-        params = {"starttime": now - since_minutes * 60}
-        path = await app.platform_path("audit/auditrecords", domain)
-        filtering = any((user, subsystem, text))
-        if not filtering:
-            page = await app.page(path, params, limit=limit, offset=offset)
-            rows = [_audit_row(r) for r in page.items]
-            page.items = rows
-            return list_result(page, fmt=response_format)
-        everything = await app.all(path, params, cap=5000)
+        start = int(time.time()) - since_minutes * 60
+        if changes_only is None:
+            want = (subsystem or "").strip().lower()
+            changes_only = not (want and any(want in n for n in NOISE_SUBSYSTEMS))
+        scan = await fetch_audit(app, start, domain)
         rows = []
-        for r in everything.items:
+        for r in scan.items:
+            if changes_only and is_read(r):
+                continue
             if user and user.lower() not in str(r.get("username", "")).lower():
                 continue
             if subsystem and subsystem.lower() not in str(r.get("subSystem", "")).lower():
                 continue
-            if text and text.lower() not in str(r.get("message", "")).lower():
+            msg = str(r.get("message", ""))
+            if text and text.lower() not in f"{msg} {compact_message(msg)}".lower():
                 continue
             rows.append(_audit_row(r))
-        extra = None if everything.complete else {"note": "Scanned only the newest 5000 records."}
+        extra: dict[str, Any] = {"records_read": len(scan.items)}
+        note = coverage_note(scan)
+        if note:
+            extra["note"] = note
         return list_result(page_of(rows, limit=limit, offset=offset), fmt=response_format, extra=extra)
 
     @reg.read(title="Get FMC task status")
@@ -158,5 +177,5 @@ def _audit_row(r: dict[str, Any]) -> dict[str, Any]:
         "user": r.get("username"),
         "subsystem": r.get("subSystem"),
         "source": r.get("source"),
-        "message": r.get("message"),
+        "message": compact_message(r.get("message")),
     }
