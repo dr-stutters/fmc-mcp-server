@@ -3,6 +3,9 @@
 ## Unreleased
 
 ### Added
+- **Bulk object import (F25)**: `fmc_import_objects` (write): hosts, networks, ranges, FQDNs, ports and URLs,
+  validated and checked against existing names in the preview, posted with FMC's bulk API per type;
+  `skip_existing` resumes. Live: 30 mcp-test-bulk-* objects created, re-run is a no-op, deleted.
 - **Platform settings writes (F24)**: `fmc_configure_ntp`, `fmc_configure_snmp` (enable, community, location,
   contact, manager hosts; FMC masks communities on read, so they must be given again and are never echoed),
   `fmc_configure_ssh_access`. Live on mcp-ftd1: NTP server (seen in the policy; FTD NTP runs on the management
