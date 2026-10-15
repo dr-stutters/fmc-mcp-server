@@ -2,14 +2,16 @@
 
 from __future__ import annotations
 
+import asyncio
 import json
 import logging
 import re
 import time
+import weakref
 from typing import Any
 
 import httpx
-from stutters_mcp_core import AuthError, InvalidRequest
+from stutters_mcp_core import AuthError, InvalidRequest, NotFound
 from stutters_mcp_core.http import (
     ApiClient,
     LoginTokenAuth,
@@ -35,6 +37,17 @@ CACHE_TTL = 60.0  # seconds object catalogs are reused between analysis calls
 MAX_REFRESHES = 3  # FMC allows three refreshes per login, then a new login is required
 ACCESS_HEADER = "X-auth-access-token"
 REFRESH_HEADER = "X-auth-refresh-token"
+
+# Device-scoped config paths. FMC lets an ancestor domain read a device in a descendant (leaf) domain but
+# refuses changes there ("Object does not belong to current domain"), so these go to the device's domain.
+DEVICE_PATH_RE = re.compile(
+    r"^(devices/devicerecords|devicehapairs/ftddevicehapairs|deviceclusters/ftddevicecluster)/"
+    r"([0-9a-fA-F-]{36})(/|$)"
+)
+
+DEVICE_LIST_RE = re.compile(
+    r"/(devices/devicerecords|devicehapairs/ftddevicehapairs|deviceclusters/ftddevicecluster)/?$"
+)
 
 UUID_RE = re.compile(r"^[0-9a-fA-F]{8}-[0-9a-fA-F]{4}-[0-9a-fA-F]{4}-[0-9a-fA-F]{4}-[0-9a-fA-F]{12}$")
 
@@ -101,6 +114,11 @@ class FmcApp:
         self._version: str | None = None
         self._login_failure: tuple[float, AuthError] | None = None
         self._cache: dict[str, tuple[float, Any]] = {}
+        # device/HA/cluster UUID -> the (leaf) domain that owns it, and which of them a tool call used
+        self.device_domains: dict[str, str] = {}
+        self.rerouted: weakref.WeakKeyDictionary[asyncio.Task[Any], dict[str, float]] = (
+            weakref.WeakKeyDictionary()
+        )
         # FMC deploy warnings seen per (devices, pending version), for ignore_warning (fmc_mcp.rails)
         self.deploy_warnings: dict[str, tuple[float, list[str]]] = {}
 
@@ -219,8 +237,51 @@ class FmcApp:
         return uuid
 
     async def config_path(self, suffix: str, domain: str | None = None) -> str:
-        """`/api/fmc_config/v1/domain/<uuid>/<suffix>`."""
-        return f"/api/fmc_config/v1/domain/{await self.domain_uuid(domain)}/{suffix.lstrip('/')}"
+        """`/api/fmc_config/v1/domain/<uuid>/<suffix>`. Paths below one device, HA pair or cluster use
+        the domain that owns it when that is a descendant of the requested domain (multi-domain FMC)."""
+        suffix = suffix.lstrip("/")
+        uuid = await self.domain_uuid(domain)
+        m = DEVICE_PATH_RE.match(suffix)
+        if m:
+            uuid = await self.device_domain(m.group(1), m.group(2), uuid)
+        return f"/api/fmc_config/v1/domain/{uuid}/{suffix}"
+
+    async def device_domain(self, collection: str, device_id: str, domain_uuid: str) -> str:
+        """The domain that owns a device (or HA pair/cluster) when it lies below `domain_uuid`; else
+        `domain_uuid`. Looked up once per device (a GET in the requested domain shows `metadata.domain`)."""
+        key = device_id.lower()
+        if key not in self.device_domains and len(self.domains) > 1:
+            try:
+                data = await self.api.get(f"/api/fmc_config/v1/domain/{domain_uuid}/{collection}/{device_id}")
+            except (
+                NotFound,
+                AuthError,
+            ):  # not a device, or not visible here: FMC reports it on the real call
+                data = None
+            dom = (((data or {}).get("metadata") or {}).get("domain") or {}).get("id")
+            self.device_domains[key] = str(dom).lower() if dom else ""
+        owner = self.device_domains.get(key, "")
+        target = domain_uuid.lower()
+        if not owner or owner == target:
+            return domain_uuid
+        if not self._is_below(owner, target):
+            if owner not in {d["uuid"].lower() for d in self.domains}:
+                log.warning("Device %s is in domain %s, which this login doesn't list", device_id, owner)
+            return domain_uuid
+        task = asyncio.current_task()
+        if task is not None:
+            self.rerouted.setdefault(task, {})[owner] = time.monotonic()
+        return owner
+
+    def forget_devices(self) -> None:
+        """Drop the device -> domain map (after registering, deleting or re-pairing devices)."""
+        self.device_domains.clear()
+
+    def _is_below(self, child: str, ancestor: str) -> bool:
+        """Whether domain `child` is a descendant of `ancestor`, from the names ('Global/A/B')."""
+        names = {d["uuid"].lower(): d["name"] for d in self.domains}
+        c, a = names.get(child.lower()), names.get(ancestor.lower())
+        return bool(c and a and c.startswith(a + "/"))
 
     async def platform_path(self, suffix: str, domain: str | None = None) -> str:
         return f"/api/fmc_platform/v1/domain/{await self.domain_uuid(domain)}/{suffix.lstrip('/')}"
@@ -239,7 +300,9 @@ class FmcApp:
         query = dict(params or {})
         if expanded:
             query["expanded"] = "true"
-        return await self.pager.fetch_page(self.api, path, query, limit=limit, offset=offset)
+        page = await self.pager.fetch_page(self.api, path, query, limit=limit, offset=offset)
+        self._note_devices(path, page.items, expanded)
+        return page
 
     async def all(
         self, path: str, params: dict[str, Any] | None = None, *, expanded: bool = True, cap: int = 10_000
@@ -248,7 +311,19 @@ class FmcApp:
         query = dict(params or {})
         if expanded:
             query["expanded"] = "true"
-        return await fetch_all(self.pager, self.api, path, query, cap=cap)
+        page = await fetch_all(self.pager, self.api, path, query, cap=cap)
+        self._note_devices(path, page.items, expanded)
+        return page
+
+    def _note_devices(self, path: str, items: list[dict[str, Any]], expanded: bool) -> None:
+        """Remember which domain owns each listed device / HA pair / cluster (for config_path)."""
+        if not expanded or not DEVICE_LIST_RE.search(path):
+            return
+        for item in items:
+            if isinstance(item, dict) and item.get("id"):
+                dom = (((item.get("metadata") or {}).get("domain")) or {}).get("id")
+                # expanded rows carry metadata.domain; none means the requested domain owns it
+                self.device_domains[str(item["id"]).lower()] = str(dom).lower() if dom else ""
 
     # --- short-lived cache (object catalogs for the offline analysis tools) ------------------
 

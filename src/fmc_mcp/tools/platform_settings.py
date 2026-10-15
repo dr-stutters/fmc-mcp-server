@@ -19,11 +19,11 @@ from stutters_mcp_core import (
     UpstreamError,
     field_changes,
     get_client,
-    preview_or_apply,
 )
 from stutters_mcp_core.formatting import mask_secrets
 
 from fmc_mcp.client import FmcApp
+from fmc_mcp.preview import fmc_preview
 from fmc_mcp.refs import RefResolver
 from fmc_mcp.tools.common import Domain, ref_label, resolve_in
 from fmc_mcp.tools.object_writes import applied, editable
@@ -219,7 +219,7 @@ def register(reg: ToolRegistrar) -> None:
         except NotFound:
             pass
         path = await app.config_path(PS, domain)
-        return await preview_or_apply(
+        return await fmc_preview(
             ctx,
             tool="fmc_create_platform_settings_policy",
             args={"name": name, "description": description, "domain": domain},
@@ -428,9 +428,10 @@ def register(reg: ToolRegistrar) -> None:
                 app.invalidate_cache()
             return {"applied": done, "next": "fmc_deploy to the devices using this policy"}
 
-        return await preview_or_apply(
+        return await fmc_preview(
             ctx,
             tool="fmc_configure_syslog",
+            owned=[pol],
             args={
                 "policy": policy,
                 "add_servers": add_servers,
@@ -512,9 +513,10 @@ def register(reg: ToolRegistrar) -> None:
             )
         diff = field_changes(editable(cur), desired)
         path = await app.config_path(f"{ACCESS}/{acp['id']}/loggingsettings/{cur['id']}", domain)
-        return await preview_or_apply(
+        return await fmc_preview(
             ctx,
             tool="fmc_set_access_logging",
+            owned=[acp],
             args={
                 "policy": policy,
                 "use_platform_syslog": use_platform_syslog,

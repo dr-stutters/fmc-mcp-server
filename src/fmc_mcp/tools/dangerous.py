@@ -18,11 +18,11 @@ from stutters_mcp_core import (
     get_client,
     get_settings,
     poll_until,
-    preview_or_apply,
 )
 
 from fmc_mcp.client import FmcApp
 from fmc_mcp.config import Settings
+from fmc_mcp.preview import fmc_preview
 from fmc_mcp.rails import (
     check_deploy_window,
     deploy_window_blockers,
@@ -126,6 +126,7 @@ async def _deploy_target(
 
 async def finish(ctx: Context, app: FmcApp, resp: Any, wait: bool, domain: str | None, what: str) -> Any:
     app.invalidate_cache()
+    app.forget_devices()  # registrations, deletes and HA changes can change which domain owns a device
     tid = task_id_of(resp)
     if tid is None:
         return slim(resp) if isinstance(resp, dict) else resp
@@ -322,7 +323,7 @@ def register(reg: ToolRegistrar) -> None:
                 resp = await app.api.post(path, body)
             return await finish(ctx, app, resp, wait, domain, "deployment")
 
-        return await preview_or_apply(
+        return await fmc_preview(
             ctx,
             tool="fmc_deploy",
             args={
@@ -426,7 +427,7 @@ def register(reg: ToolRegistrar) -> None:
             resp = await app.api.post(path, body)
             return await finish(ctx, app, resp, wait, domain, "rollback")
 
-        return await preview_or_apply(
+        return await fmc_preview(
             ctx,
             tool="fmc_rollback_deployment",
             args={"device": device, "to_job": to_job, "wait": wait, "domain": domain},
@@ -539,7 +540,7 @@ def register(reg: ToolRegistrar) -> None:
 
         shown = slim(body)
         window, window_blockers = deploy_window_blockers(get_settings(ctx), "fmc_register_device")
-        return await preview_or_apply(
+        return await fmc_preview(
             ctx,
             tool="fmc_register_device",
             args={
@@ -580,7 +581,7 @@ def register(reg: ToolRegistrar) -> None:
         dev = await resolve_in(app, DEVICES, device, "device", domain)
         path = await app.config_path(f"{DEVICES}/{dev['id']}", domain)
         window, window_blockers = deploy_window_blockers(get_settings(ctx), "fmc_delete_device")
-        return await preview_or_apply(
+        return await fmc_preview(
             ctx,
             tool="fmc_delete_device",
             args={"device": device, "domain": domain},
@@ -664,7 +665,7 @@ def register(reg: ToolRegistrar) -> None:
             resp = await app.api.post(path, body)
             return await finish(ctx, app, resp, wait, domain, "HA formation")
 
-        return await preview_or_apply(
+        return await fmc_preview(
             ctx,
             tool="fmc_create_ha_pair",
             args={
@@ -746,7 +747,7 @@ def register(reg: ToolRegistrar) -> None:
                 resp = await app.api.put(path, body)
             return await finish(ctx, app, resp, wait, domain, f"HA {action}")
 
-        return await preview_or_apply(
+        return await fmc_preview(
             ctx,
             tool="fmc_ha_action",
             args={"ha_pair": ha_pair, "action": action, "force": force, "wait": wait, "domain": domain},
@@ -801,9 +802,10 @@ def register(reg: ToolRegistrar) -> None:
         if p.get("isSystemDefined"):
             blockers.append("System-defined policies can't be deleted.")
         path = await app.config_path(f"{POLICY_KINDS[kind]}/{p['id']}", domain)
-        return await preview_or_apply(
+        return await fmc_preview(
             ctx,
             tool="fmc_delete_policy",
+            owned=[p],
             args={"kind": kind, "policy": policy, "domain": domain},
             confirm=confirm,
             plan=Plan(

@@ -13,10 +13,10 @@ from stutters_mcp_core import (
     ToolRegistrar,
     field_changes,
     get_client,
-    preview_or_apply,
 )
 
 from fmc_mcp.client import FmcApp, is_uuid
+from fmc_mcp.preview import fmc_preview
 from fmc_mcp.refs import NETWORK_TYPES, PORT_TYPES, RefResolver, network_literal
 from fmc_mcp.rules import flatten_access_rule, flatten_nat_rule
 from fmc_mcp.tools.common import Domain, block_labels, resolve_in
@@ -121,7 +121,7 @@ def register(reg: ToolRegistrar) -> None:
         except NotFound:
             pass
         path = await app.config_path(ACCESS, domain)
-        return await preview_or_apply(
+        return await fmc_preview(
             ctx,
             tool="fmc_create_access_policy",
             args={
@@ -248,9 +248,10 @@ def register(reg: ToolRegistrar) -> None:
             blockers=blockers,
             side_effects=["Takes effect on devices after the next deployment."],
         )
-        return await preview_or_apply(
+        return await fmc_preview(
             ctx,
             tool="fmc_create_access_rule",
+            owned=[p],
             args={
                 "policy": policy,
                 "name": name,
@@ -382,9 +383,10 @@ def register(reg: ToolRegistrar) -> None:
                 return await app.api.put(base, [desired], params=params)
             return await app.api.put(f"{base}/{current['id']}", desired)
 
-        return await preview_or_apply(
+        return await fmc_preview(
             ctx,
             tool="fmc_update_access_rule",
+            owned=[p],
             args={
                 "policy": policy,
                 "rule": rule,
@@ -436,9 +438,10 @@ def register(reg: ToolRegistrar) -> None:
         p = await resolve_policy(app, "access", policy, domain)
         current = await find_access_rule(app, p, rule, domain)
         path = await app.config_path(f"{ACCESS}/{p['id']}/accessrules/{current['id']}", domain)
-        return await preview_or_apply(
+        return await fmc_preview(
             ctx,
             tool="fmc_delete_access_rule",
+            owned=[p],
             args={"policy": policy, "rule": rule, "domain": domain},
             confirm=confirm,
             plan=Plan(
@@ -473,7 +476,7 @@ def register(reg: ToolRegistrar) -> None:
         except NotFound:
             pass
         path = await app.config_path(NAT, domain)
-        return await preview_or_apply(
+        return await fmc_preview(
             ctx,
             tool="fmc_create_nat_policy",
             args={"name": name, "description": description, "domain": domain},
@@ -607,9 +610,10 @@ def register(reg: ToolRegistrar) -> None:
             if kind == "manual"
             else "auto NAT"
         )
-        return await preview_or_apply(
+        return await fmc_preview(
             ctx,
             tool="fmc_create_nat_rule",
+            owned=[p],
             args={
                 "policy": policy,
                 "kind": kind,
@@ -673,9 +677,10 @@ def register(reg: ToolRegistrar) -> None:
                 translated_source, NETWORK_TYPES, "translated_source"
             )
         changes = field_changes(editable(current), desired)
-        return await preview_or_apply(
+        return await fmc_preview(
             ctx,
             tool="fmc_update_nat_rule",
+            owned=[p],
             args={
                 "policy": policy,
                 "rule_id": rule_id,
@@ -707,9 +712,10 @@ def register(reg: ToolRegistrar) -> None:
         app: FmcApp = get_client(ctx)
         p = await resolve_policy(app, "nat", policy, domain)
         current, path = await _nat_rule(app, p, rule_id, domain)
-        return await preview_or_apply(
+        return await fmc_preview(
             ctx,
             tool="fmc_delete_nat_rule",
+            owned=[p],
             args={"policy": policy, "rule_id": rule_id, "domain": domain},
             confirm=confirm,
             plan=Plan(

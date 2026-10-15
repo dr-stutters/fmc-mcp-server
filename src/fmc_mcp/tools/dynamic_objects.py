@@ -22,11 +22,11 @@ from stutters_mcp_core import (
     UpstreamError,
     get_client,
     list_result,
-    preview_or_apply,
 )
 from stutters_mcp_core.http import page_of
 
 from fmc_mcp.client import FmcApp
+from fmc_mcp.preview import fmc_preview
 from fmc_mcp.tools.common import Domain, resolve_in
 from fmc_mcp.tools.object_writes import applied, editable
 from fmc_mcp.tools.policies import ACCESS, all_rules
@@ -202,7 +202,7 @@ def register(reg: ToolRegistrar) -> None:
                     ) from e
             return {**created, "mappings": ips}
 
-        return await preview_or_apply(
+        return await fmc_preview(
             ctx,
             tool="fmc_create_dynamic_object",
             args={"name": name, "description": description, "mappings": mappings, "domain": domain},
@@ -239,9 +239,10 @@ def register(reg: ToolRegistrar) -> None:
                 "check the rest (fmc_list_access_rules) and remove the object with fmc_api_call."
             )
         path = await app.config_path(f"{DYNAMIC}/{obj['id']}", domain)
-        return await preview_or_apply(
+        return await fmc_preview(
             ctx,
             tool="fmc_delete_dynamic_object",
+            owned=[obj],
             args={"object": object, "domain": domain},
             confirm=confirm,
             plan=Plan(
@@ -305,9 +306,10 @@ def register(reg: ToolRegistrar) -> None:
         if new_removes:
             body["remove"] = [{"mappings": new_removes, "dynamicObject": ref}]
         path = await app.config_path("object/dynamicobjectmappings", domain)
-        return await preview_or_apply(
+        return await fmc_preview(
             ctx,
             tool="fmc_map_dynamic_object",
+            owned=[obj],
             args={"object": object, "add": add, "remove": remove, "domain": domain},
             confirm=confirm,
             plan=Plan(

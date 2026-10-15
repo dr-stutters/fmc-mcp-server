@@ -3,6 +3,11 @@
 ## Unreleased
 
 ### Added
+- **Multi-domain (F19)**: `fmc_list_domains` shows the domain tree (parent, leaf, devices per domain); every
+  write preview names its domain; edits of objects or policies a descendant domain only inherits are blocked
+  with the owner domain to use; device-level calls made from an ancestor domain go to the device's leaf domain
+  (FMC refuses them in the ancestor), shown as `device_domain`. Live on a lab leaf domain `Global/mcp-test-leaf`
+  holding mcp-ftd1 (`scripts/seed_domain.py`, UI automation because FMC's API can't create domains).
 - **Deploy safety rails (F18)** on core's G7 rails: blast radius in physical devices (HA pair = 2, cluster =
   members) on deploy, rollback, register, delete device and HA tools; `FMC_DEPLOY_WINDOW` gates only the tools
   that change what runs on devices; `fmc_deploy(ignore_warning=true)` needs `FMC_ALLOW_IGNORE_WARNING=true` and

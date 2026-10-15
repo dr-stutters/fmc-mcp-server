@@ -25,3 +25,6 @@ tests/fixtures/raw/
 .vscode/
 .idea/
 .DS_Store
+
+# scripts/seed_domain.py failure screenshot
+seed_domain_failure.png

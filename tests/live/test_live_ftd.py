@@ -97,10 +97,19 @@ async def show(client: Client[Any], command: str, match: str | None = None) -> s
 
 
 async def deploy(client: Client[Any], note: str, ignore_warning: bool = False) -> None:
+    """Deploy DEVICE. With ignore_warning (F18): deploy normally first; if FMC refuses with warnings, the
+    ignore_warning preview lists them and the confirm ignores exactly those."""
     pending = await call(client, "fmc_list_deployable_devices", {"response_format": "json"})
     if any(r["device"] == DEVICE for r in pending["results"]):
-        args = {"devices": [DEVICE], "note": note, "ignore_warning": ignore_warning}
-        result = await apply(client, "fmc_deploy", args)
+        args = {"devices": [DEVICE], "note": note}
+        try:
+            result = await apply(client, "fmc_deploy", args)
+        except ToolError as e:
+            if not (ignore_warning and "warnings" in str(e)):
+                raise
+            preview = await call(client, "fmc_deploy", {**args, "ignore_warning": True})
+            assert preview["status"] == "preview" and preview["preview"]["warnings_ignored"], preview
+            result = await apply(client, "fmc_deploy", {**args, "ignore_warning": True})
         assert "Deployed" in str(result["task"]["status"]) or "SUCCE" in str(result["task"]), result
 
 

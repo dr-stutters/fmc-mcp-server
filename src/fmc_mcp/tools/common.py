@@ -200,9 +200,11 @@ def slim(obj: Any) -> Any:
 
 
 def is_system(obj: dict[str, Any]) -> bool:
-    """True for FMC's built-in read-only objects (any, RFC1918 groups, well-known ports, ...)."""
+    """True for FMC's built-in read-only objects (any, RFC1918 groups, well-known ports, ...). Objects
+    that are read-only only because an ancestor domain owns them (reason DOMAIN) are not system objects;
+    writes to them are blocked with the owner domain instead (fmc_mcp.preview)."""
     ro = (obj.get("metadata") or {}).get("readOnly")
-    return bool(isinstance(ro, dict) and ro.get("state"))
+    return bool(isinstance(ro, dict) and ro.get("state") and ro.get("reason") != "DOMAIN")
 
 
 def ref_of(obj: dict[str, Any]) -> dict[str, Any]:
@@ -234,6 +236,9 @@ def object_summary(obj: dict[str, Any]) -> dict[str, Any]:
         row["description"] = obj["description"]
     if is_system(obj):
         row["system"] = True
+    ro = (obj.get("metadata") or {}).get("readOnly") or {}
+    if isinstance(ro, dict) and ro.get("reason") == "DOMAIN":
+        row["inherited_from"] = ((obj.get("metadata") or {}).get("domain") or {}).get("name")
     row["id"] = obj.get("id")
     return row
 

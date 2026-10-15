@@ -19,11 +19,11 @@ from stutters_mcp_core import (
     get_client,
     list_result,
     object_result,
-    preview_or_apply,
 )
 from stutters_mcp_core.http import page_of
 
 from fmc_mcp.client import FmcApp
+from fmc_mcp.preview import fmc_preview
 from fmc_mcp.refs import NETWORK_TYPES
 from fmc_mcp.tools.common import Domain, pick_by_name, ref_label, ref_of, resolve_in, resolve_object, slim
 from fmc_mcp.tools.device_config import device_interfaces, pick_interface
@@ -497,7 +497,7 @@ def register(reg: ToolRegistrar) -> None:
                 "fmc_list_vpn_tunnels and fmc_run_show_command('show crypto ipsec sa').",
             }
 
-        return await preview_or_apply(
+        return await fmc_preview(
             ctx,
             tool="fmc_create_s2s_vpn",
             args={
@@ -551,9 +551,10 @@ def register(reg: ToolRegistrar) -> None:
         base = await app.config_path(f"{S2S}/{t['id']}", domain)
         endpoints = await app.all(f"{base}/endpoints", cap=2000)
         rows = [endpoint_row(e) for e in endpoints.items]
-        return await preview_or_apply(
+        return await fmc_preview(
             ctx,
             tool="fmc_delete_s2s_vpn",
+            owned=[t],
             args={"topology": topology, "domain": domain},
             confirm=confirm,
             plan=Plan(

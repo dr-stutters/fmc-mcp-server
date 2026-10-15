@@ -14,7 +14,9 @@ from fmc_mcp.server import create_server
 
 @pytest_asyncio.fixture(scope="session", loop_scope="session")
 async def client() -> AsyncIterator[Client[Any]]:
-    settings = live_settings(Settings, "FMC_", mcp_enable_writes=True, mcp_enable_dangerous=True)
+    settings = live_settings(
+        Settings, "FMC_", mcp_enable_writes=True, mcp_enable_dangerous=True, allow_ignore_warning=True
+    )
     server: FastMCP[Any] = create_server(settings)
     async with Client(server) as c:
         yield c
