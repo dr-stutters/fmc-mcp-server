@@ -27,9 +27,10 @@ from fmc_mcp.preview import fmc_preview
 from fmc_mcp.tools.common import Domain, ref_label, resolve_in, resolve_object, slim
 from fmc_mcp.tools.dangerous import Wait, finish
 from fmc_mcp.tools.devices import DEVICES, DeviceRef
-from fmc_mcp.tools.object_writes import applied, editable
+from fmc_mcp.tools.object_writes import applied, editable, value_fields
 
 HEALTH = "policy/healthpolicies"
+LOWER_IS_WORSE = {"hm_chm"}  # modules whose critical threshold sits below the warning one (FMC 10.0.1)
 BACKUP_FILES = "backup/files"
 UPGRADE_INFO = "/api/fmc_platform/v1/updates/deviceupgradeinfo"
 UPGRADE_PACKAGES = "/api/fmc_platform/v1/updates/upgradepackages"
@@ -95,7 +96,7 @@ async def _no_file_is_empty(app: FmcApp, path: str) -> list[dict[str, Any]]:
     try:
         page = await app.all(path, expanded=False, cap=1000)
     except ValidationFailed as e:
-        if "not found" in str(e).lower():
+        if "file not found" in str(e).lower():
             return []
         raise
     return page.items
@@ -114,6 +115,7 @@ def register(reg: ToolRegistrar) -> None:
         response_format: ResponseFormat = "markdown",
     ) -> ToolResult:
         """List the backups FMC holds (FMC itself and devices): file, date, location, size and version.
+        device='manager' lists only FMC's own backups.
         Answers "when was the last backup?". Empty means FMC has no backup files. Downloads and restores
         stay in the FMC UI."""
         app: FmcApp = get_client(ctx)
@@ -298,8 +300,8 @@ def register(reg: ToolRegistrar) -> None:
         confirm: Confirm = None,
     ) -> dict[str, Any]:
         """Turn one health module on or off or change its warning/critical thresholds. The preview shows
-        the old and new values and the devices using the policy. Device health policies reach the devices
-        when the policy is reapplied (FMC applies on deploy)."""
+        the old and new values and the devices using the policy. Omitted values stay as they are;
+        thresholds are in the module's unit (mostly percent)."""
         app: FmcApp = get_client(ctx)
         p = await resolve_in(app, HEALTH, policy, "health policy", domain)
         path = await app.config_path(f"{HEALTH}/{p['id']}", domain)
@@ -320,13 +322,18 @@ def register(reg: ToolRegistrar) -> None:
         if new == target:
             blockers.append("Nothing to change.")
         w, c = new.get("warningThreshold"), new.get("criticalThreshold")
-        if isinstance(w, int) and isinstance(c, int) and module not in ("hm_chm",) and w > c:
+        user_set = warning is not None or critical is not None
+        lower_is_worse = str(target.get("moduleId", "")).lower() in LOWER_IS_WORSE
+        if user_set and isinstance(w, int) and isinstance(c, int) and not lower_is_worse and w > c:
             blockers.append(
                 f"warning ({w}) is above critical ({c}); for this module critical should be higher."
             )
 
         async def apply() -> Any:
             now = await app.api.get(path)  # full-object PUT: start from the current policy
+            mods_now = now.get("healthModules") or []
+            if not any(str(m.get("moduleId", "")).lower() == module.lower() for m in mods_now):
+                raise NotFound(f"Module {module!r} is gone from {p.get('name')!r}; nothing was changed.", 404)
             body = editable(now)
             body["healthModules"] = [
                 _with_thresholds(m, new) if str(m.get("moduleId", "")).lower() == module.lower() else m
@@ -437,9 +444,9 @@ def register(reg: ToolRegistrar) -> None:
         domain: Domain = None,
         confirm: Confirm = None,
     ) -> dict[str, Any]:
-        """Give an object a different value on one device (an override), or remove that override. Makes
-        the object overridable first when needed. Every other device keeps the default value. Takes
-        effect on the next deploy to that device."""
+        """Give a value object (host, network, range, FQDN) a different value on one device (an override),
+        or remove that override. Makes the object overridable first when needed (a separate change).
+        Every other device keeps the default value. Takes effect on the next deploy to that device."""
         app: FmcApp = get_client(ctx)
         if remove == (value is not None):
             raise InvalidRequest("Pass either value (set an override) or remove=true.")
@@ -448,6 +455,8 @@ def register(reg: ToolRegistrar) -> None:
             raise InvalidRequest(
                 f"{obj.get('name')!r} is a {obj.get('type')}; overrides here support value objects only."
             )
+        fields = value_fields(t, value, None) if value is not None else {}  # validates and normalises
+        new_value = fields.get("value", value)
         dev = await resolve_in(app, DEVICES, device, "device", domain)
         base = await app.config_path(f"{t.path}/{obj['id']}", domain)
         existing = await app.all(f"{base}/overrides")
@@ -462,7 +471,7 @@ def register(reg: ToolRegistrar) -> None:
         blockers = []
         if remove and mine is None:
             blockers.append(f"{obj.get('name')!r} has no override for {dev.get('name')!r}.")
-        if not remove and mine is not None and mine.get("value") == value:
+        if not remove and mine is not None and mine.get("value") == new_value:
             blockers.append("Nothing to change.")
 
         async def apply() -> Any:
@@ -471,19 +480,27 @@ def register(reg: ToolRegistrar) -> None:
                     app, lambda: app.api.delete(base, params={"overrideTargetId": dev["id"]})
                 )
             cur = await app.api.get(base)
-            core = {k: cur[k] for k in ("id", "type", "name", "value") if k in cur}
+            core = {k: v for k, v in editable(cur).items() if k != "overrides"}  # full PUT: keep every field
             if not cur.get("overridable"):
                 await app.api.put(base, {**core, "overridable": True})
             body = {
                 **core,
-                "value": value,
+                **fields,
                 "overridable": True,
                 "overrides": {
                     "parent": {"id": cur["id"], "type": cur.get("type")},
                     "target": {"id": dev["id"], "type": "Device", "name": dev.get("name")},
                 },
             }
-            return await applied(app, lambda: app.api.put(base, body))
+            try:
+                return await applied(app, lambda: app.api.put(base, body))
+            except UpstreamError as e:
+                note = (
+                    " The object was made overridable first and stays so."
+                    if not cur.get("overridable")
+                    else ""
+                )
+                raise UpstreamError(f"Setting the override failed: {e}{note}", e.status_code) from e
 
         return await fmc_preview(
             ctx,
@@ -505,12 +522,17 @@ def register(reg: ToolRegistrar) -> None:
                 details={
                     "default_value": obj.get("value"),
                     "current_override": (mine or {}).get("value"),
-                    "new_override": None if remove else value,
+                    "new_override": None if remove else new_value,
                     "makes_overridable": not obj.get("overridable") and not remove,
                 },
                 fingerprint={"object": slim(editable(obj)), "override": (mine or {}).get("value")},
                 blockers=blockers,
-                side_effects=[f"Takes effect on {dev.get('name')} after the next deployment."],
+                side_effects=[f"Takes effect on {dev.get('name')} after the next deployment."]
+                + (
+                    [f"First marks {obj.get('name')!r} overridable (a separate change to the object)."]
+                    if not obj.get("overridable") and not remove
+                    else []
+                ),
             ),
             apply=apply,
         )
