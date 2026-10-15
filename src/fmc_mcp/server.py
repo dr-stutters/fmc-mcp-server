@@ -13,6 +13,7 @@ from fmc_mcp.config import Settings
 from fmc_mcp.tools import (
     activity,
     analysis,
+    containment,
     dangerous,
     deploy,
     device_config,
@@ -55,6 +56,8 @@ Workflows:
   fmc_configure_ospf / fmc_create_vrf -> fmc_deploy -> fmc_run_show_command('show route').
 - Block a host fast: map its IP into a dynamic object that a BLOCK rule references
   (fmc_map_dynamic_object); mapping changes need no deployment, only the rule does (once).
+  fmc_contain_host / fmc_release_host do this for one host with the quarantine object (and propose
+  the block rules if they are missing).
 - Health: fmc_list_devices, fmc_device_health, fmc_list_vpn_tunnels; "what changed or broke in the
   last hour?": fmc_recent_activity (health alerts + audit + deployments), fmc_list_health_alerts.
 Before changing or deleting an object, check fmc_where_used.
@@ -125,6 +128,7 @@ def create_server(
             dangerous.register,
             troubleshoot.register,
             dynamic_objects.register,
+            containment.register,
             activity.register,
             platform_settings.register,
             routing.register,

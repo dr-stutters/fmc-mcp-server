@@ -16,3 +16,7 @@ class Settings(BaseServerSettings):
         description="Default FMC domain (name like 'Global' or 'Global/Child', or UUID). "
         "Default: the login's own domain.",
     )
+    quarantine_object: str = Field(
+        default="mcp-quarantine",
+        description="Dynamic object fmc_contain_host / fmc_release_host map hosts into (created if missing).",
+    )

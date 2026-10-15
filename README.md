@@ -154,6 +154,7 @@ including nested groups, to ranges, then walk the rules in order. The results ar
 | `FMC_RATE_LIMIT` | `110` | Client-side requests per minute. FMC allows about 120 per source IP. |
 | `FMC_MAX_CONCURRENCY` | `8` | Concurrent requests. FMC allows 10 per source IP. |
 | `FMC_TIMEOUT`, `FMC_RETRIES` | `30`, `2` | Request timeout in seconds, and retries |
+| `FMC_QUARANTINE_OBJECT` | `mcp-quarantine` | Dynamic object that `fmc_contain_host` / `fmc_release_host` map hosts into |
 | `MCP_TRANSPORT` | `stdio` | `stdio` or `http` |
 | `MCP_HOST`, `MCP_PORT`, `MCP_PATH` | `0.0.0.0`, `8000`, `/mcp` | HTTP listener |
 | `MCP_AUTH_TOKENS` / `MCP_AUTH_TOKENS_FILE` | | Required for HTTP: `name:sha256:<hex>` entries |
