@@ -4,7 +4,8 @@
 import ipaddress
 import json
 import re
-from typing import Annotated, Literal
+from collections.abc import Callable
+from typing import Annotated, Any, Literal
 
 from pydantic import Field
 from stutters_mcp_core import InvalidRequest, Tier, ToolRegistrar, tool_ref
@@ -243,8 +244,31 @@ around a failed registration or deployment.
 """
 
 
+def _prompt(reg: ToolRegistrar, **kw: Any) -> Callable[[Callable[..., str]], Callable[..., str]]:
+    # TODO(core): ToolRegistrar.prompt() doesn't pass `example` through to PromptRegistrar (core
+    # v0.6.0); call PromptRegistrar directly until it does (CORE-REQUESTS.md).
+    from stutters_mcp_core.prompts import PromptRegistrar
+
+    deco: Callable[[Callable[..., str]], Callable[..., str]] = PromptRegistrar(
+        reg.mcp, reg.settings, reg.prefix
+    ).prompt(**kw)
+    return deco
+
+
 def register(reg: ToolRegistrar) -> None:
-    @reg.prompt(title="Why is this traffic blocked?")
+    @_prompt(
+        reg,
+        title="Why is this traffic blocked?",
+        example={
+            "source": "10.99.1.10",
+            "destination": "198.18.134.76",
+            "protocol": "tcp",
+            "port": "23",
+            "device": "mcp-ftd1",
+            "ingress_interface": "inside",
+            "policy": "mcp-test-ftd-acp",
+        },
+    )
     def fmc_why_blocked(
         source: Annotated[str, Field(description="Source IP address of the flow, e.g. 10.99.1.10")],
         destination: Annotated[str, Field(description="Destination IP address, e.g. 198.18.134.76")],
@@ -273,7 +297,26 @@ def register(reg: ToolRegistrar) -> None:
         cause and a preview-first fix proposal."""
         return _why_blocked_text(source, destination, protocol, port, device, ingress_interface, policy)
 
-    @reg.prompt(title="Onboard an FTD", uses=["fmc", "cml"], tier=Tier.DANGEROUS)
+    @_prompt(
+        reg,
+        title="Onboard an FTD",
+        uses=["fmc", "cml"],
+        tier=Tier.DANGEROUS,
+        example={
+            "name": "mcp-ftd2",
+            "access_policy": "mcp-test-ha-acp",
+            "outside_ip": "198.18.128.163/18",
+            "gateway": "198.18.128.1",
+            "inside_ip": "10.99.2.1/24",
+            "host": "198.18.128.161",
+            "test_destination": "198.18.128.1",
+            "recipe": "ftd-fmc",
+            "outside_interface": "Ethernet0/0",
+            "inside_interface": "Ethernet0/1",
+            "nat_policy": "mcp-test-ha-nat",
+            "platform_settings": "mcp-test-ps",
+        },
+    )
     def fmc_onboard_ftd(
         name: Annotated[str, Field(description="Display name for the FTD in FMC, e.g. mcp-ftd2")],
         access_policy: Annotated[str, Field(description="Access control policy to assign at registration")],
