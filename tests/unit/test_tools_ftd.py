@@ -592,10 +592,17 @@ async def test_deploy_validation_warning_hint(fmc: respx.MockRouter) -> None:
             },
         )
     )
-    async with Client(server()) as c:
+    async with Client(server(allow_ignore_warning=True)) as c:
         preview = await run(c, "fmc_deploy", {})
         with pytest.raises(ToolError, match="ignore_warning=true"):
             await run(c, "fmc_deploy", {"confirm": preview["confirm"]})
+        # F18: the warnings FMC gave are now listed verbatim when ignoring them
+        again = await run(c, "fmc_deploy", {"ignore_warning": True})
+        assert again["status"] == "preview", again
+        assert again["preview"]["warnings_ignored"] == [
+            "Errors or warnings present in Device committed policies:",
+            "The changes to Virtual Routers may cause traffic disruption.",
+        ]
 
 
 async def test_vpn_tunnels_down_first(ftd: respx.MockRouter) -> None:

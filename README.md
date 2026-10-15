@@ -166,6 +166,8 @@ including nested groups, to ranges, then walk the rules in order. The results ar
 | `FMC_MAX_CONCURRENCY` | `8` | Concurrent requests. FMC allows 10 per source IP. |
 | `FMC_TIMEOUT`, `FMC_RETRIES` | `30`, `2` | Request timeout in seconds, and retries |
 | `FMC_QUARANTINE_OBJECT` | `mcp-quarantine` | Dynamic object that `fmc_contain_host` / `fmc_release_host` map hosts into |
+| `FMC_DEPLOY_WINDOW` | off | Maintenance window for changes that reach devices (deploy, rollback, register, delete device, HA). Same syntax as `MCP_CHANGE_WINDOW`. See "Deploy safety rails". |
+| `FMC_ALLOW_IGNORE_WARNING` | `false` | Allow `fmc_deploy(ignore_warning=true)` (the preview must then list the FMC warnings being ignored) |
 | `MCP_TRANSPORT` | `stdio` | `stdio` or `http` |
 | `MCP_HOST`, `MCP_PORT`, `MCP_PATH` | `0.0.0.0`, `8000`, `/mcp` | HTTP listener |
 | `MCP_AUTH_TOKENS` / `MCP_AUTH_TOKENS_FILE` | | Required for HTTP: `name:sha256:<hex>` entries |
@@ -176,7 +178,7 @@ including nested groups, to ranges, then walk the rules in order. The results ar
 | `MCP_MAX_RESPONSE_CHARS` | `40000` | Maximum size of one tool response |
 | `MCP_AUDIT_LOG`, `LOG_LEVEL` | `stderr`, `INFO` | Where the audit log goes, and the log level |
 | `MCP_ROLES` / `MCP_ROLES_FILE`, `MCP_DEFAULT_ROLE` | off, `ro` | Per-caller roles (`ro`/`rw`/`admin`) on top of the tiers (core `docs/PRODUCTION.md`) |
-| `MCP_DRY_RUN`, `MCP_CHANGE_WINDOW`, `MCP_DENY_TOOLS`, `MCP_MAX_BLAST_RADIUS`, `MCP_TWO_PERSON_TOOLS` | off | Core safety rails (core `docs/PRODUCTION.md`). `fmc_deploy` reports its blast radius as the number of devices. |
+| `MCP_DRY_RUN`, `MCP_CHANGE_WINDOW`, `MCP_DENY_TOOLS`, `MCP_MAX_BLAST_RADIUS`, `MCP_BLAST_RADIUS_OVERRIDES`, `MCP_TWO_PERSON_TOOLS` | off | Core safety rails (core `docs/PRODUCTION.md`); see "Deploy safety rails" |
 
 ### Sessions and rate limits
 
@@ -191,6 +193,34 @@ end that user's other API sessions.** To avoid that, the server:
 Give the server its **own FMC user**.
 
 The client-side rate limiter keeps the server under FMC's per-source-IP limits.
+
+### Deploy safety rails (F18)
+
+All off by default. A production setup could be:
+
+```bash
+MCP_BLAST_RADIUS_OVERRIDES=fmc_deploy=1,fmc_rollback_deployment=1   # one device per deploy (an HA pair counts as 2)
+FMC_DEPLOY_WINDOW="Sat 22:00-04:00 Australia/Sydney"                # deploys only in the maintenance window
+FMC_ALLOW_IGNORE_WARNING=false                                     # the default: fix FMC's warnings instead
+MCP_TWO_PERSON_TOOLS=fmc_deploy,fmc_rollback_deployment,fmc_ha_action
+MCP_ENABLE_DANGEROUS=false   # or MCP_DENY_TOOLS=fmc_api_call: no raw non-GET calls
+```
+
+- **Device count:** `fmc_deploy`, `fmc_rollback_deployment`, `fmc_register_device`, `fmc_delete_device`,
+  `fmc_create_ha_pair` and `fmc_ha_action` report a blast radius in **physical devices**: an HA pair counts 2,
+  a cluster its members. Core's `MCP_MAX_BLAST_RADIUS` / `MCP_BLAST_RADIUS_OVERRIDES` block anything larger
+  (deploy per device or per pair instead).
+- **Deploy window:** `FMC_DEPLOY_WINDOW` blocks those six tools outside the window; object and policy edits
+  stay possible, because they reach devices only with a deploy. Core's `MCP_CHANGE_WINDOW` gates *every* write.
+  Containment (`fmc_contain_host`, dynamic-object mappings) is deliberately not gated: it is incident response.
+- **`ignore_warning`:** refused unless `FMC_ALLOW_IGNORE_WARNING=true`. Even then you can only ignore warnings
+  you have seen: deploy without it first (FMC refuses with its warnings, nothing is deployed), then the
+  `ignore_warning=true` preview lists each FMC warning verbatim, for the same devices and pending version.
+- **Rollback:** defaults to the deployment before the current one; with an older `to_job` the preview lists
+  every deployment it undoes.
+- **Previews** name the domain and the devices (with HA/cluster unit counts).
+- **Raw API calls:** `fmc_api_call` is GET-only unless the dangerous tier is on; keep it off in production or
+  deny the tool with `MCP_DENY_TOOLS=fmc_api_call`.
 
 ### Least-privilege FMC account
 

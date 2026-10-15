@@ -22,6 +22,14 @@ from stutters_mcp_core import (
 )
 
 from fmc_mcp.client import FmcApp
+from fmc_mcp.config import Settings
+from fmc_mcp.rails import (
+    deploy_window_blockers,
+    recorded_warnings,
+    remember_warnings,
+    split_warnings,
+    units_of,
+)
 from fmc_mcp.tools.common import Domain, ref_label, resolve_in, slim
 from fmc_mcp.tools.deploy import JOBS, deployable, deployable_row
 from fmc_mcp.tools.devices import DEVICES, HA_PAIRS, DeviceRef
@@ -225,19 +233,51 @@ def register(reg: ToolRegistrar) -> None:
                     f"{d.get('name')!r} can't be deployed right now (see fmc_list_deployable_devices)."
                 )
         version = str(max((_as_int(d.get("version")) for d in targets), default=0))
+        device_ids = [(d.get("device") or {}).get("id") for d in targets]
+        settings: Settings = get_settings(ctx)
+        units = [await units_of(app, d.get("device") or {}, domain) for d in targets]
+        window, window_blockers = deploy_window_blockers(settings, "fmc_deploy")
+        blockers += window_blockers
+        ignored: list[str] | None = None
+        if ignore_warning:
+            if not settings.allow_ignore_warning:
+                blockers.append(
+                    "ignore_warning is disabled on this server (FMC_ALLOW_IGNORE_WARNING=false): fix the "
+                    "warnings FMC reports, or ask the operator to allow ignoring them."
+                )
+            else:
+                ignored = recorded_warnings(app, device_ids, version)
+                if not ignored:
+                    blockers.append(
+                        "ignore_warning needs the warnings it ignores: deploy without ignore_warning first "
+                        "(FMC refuses with its warnings and nothing is deployed), then preview again "
+                        "with ignore_warning=true to see them listed here."
+                    )
         body: dict[str, Any] = {
             "type": "DeploymentRequest",
             "version": version,
             "forceDeploy": False,
             "ignoreWarning": ignore_warning,
-            "deviceList": [(d.get("device") or {}).get("id") for d in targets],
+            "deviceList": device_ids,
         }
         if note:
             body["deploymentNote"] = note
         rows = [deployable_row(d) for d in targets]
+        for r, n in zip(rows, units, strict=True):
+            if n > 1:
+                r["units"] = n
         interrupts = [
             r["device"] for r in rows if r.get("traffic_interruption") not in (None, False, "NO", "No")
         ]
+        details: dict[str, Any] = {
+            "domain": await app.domain_name(await app.domain_uuid(domain)),
+            "devices": rows,
+            "device_count": sum(units),
+        }
+        if window:
+            details["deploy_window"] = window
+        if ignored:
+            details["warnings_ignored"] = ignored
         path = await app.config_path("deployment/deploymentrequests", domain)
 
         async def apply() -> Any:
@@ -245,9 +285,15 @@ def register(reg: ToolRegistrar) -> None:
                 resp = await app.api.post(path, body)
             except ValidationFailed as e:
                 if "warning" in str(e).lower() and not ignore_warning:
+                    remember_warnings(app, device_ids, version, split_warnings(str(e)))
+                    hint = (
+                        "Review them; to deploy anyway, preview again with ignore_warning=true (the "
+                        "preview lists these warnings)."
+                        if settings.allow_ignore_warning
+                        else "Fix them and deploy again (ignoring warnings is disabled on this server)."
+                    )
                     raise ValidationFailed(
-                        f"{e} FMC's pre-deployment validation raised warnings; nothing was deployed. "
-                        "Review them and repeat with ignore_warning=true to deploy anyway.",
+                        f"{e} FMC's pre-deployment validation raised warnings; nothing was deployed. {hint}",
                         e.status_code,
                     ) from e
                 raise
@@ -265,11 +311,11 @@ def register(reg: ToolRegistrar) -> None:
             },
             confirm=confirm,
             plan=Plan(
-                f"Deploy to {len(targets)} device(s)",
-                details={"devices": rows},
-                fingerprint=[(r["device_id"], r["version"]) for r in rows],
+                f"Deploy to {sum(units)} device(s)",
+                details=details,
+                fingerprint={"targets": [(r["device_id"], r["version"]) for r in rows], "ignored": ignored},
                 blockers=blockers,
-                blast_radius=len(targets),
+                blast_radius=sum(units),
                 side_effects=(
                     [f"Traffic interruption expected on: {', '.join(map(str, interrupts))}"]
                     if interrupts
@@ -333,6 +379,9 @@ def register(reg: ToolRegistrar) -> None:
             blockers.append("No earlier successful deployment to roll back to.")
         if target is not None and history and target is history[0]:
             blockers.append(f"{target.get('name')} is already the latest deployment on this device.")
+        window, window_blockers = deploy_window_blockers(get_settings(ctx), "fmc_rollback_deployment")
+        blockers += window_blockers
+        undone = [j.get("name") for j in ok[: ok.index(target)]] if target in ok else []
 
         def row(j: dict[str, Any]) -> dict[str, Any]:
             return {
@@ -361,19 +410,31 @@ def register(reg: ToolRegistrar) -> None:
             plan=Plan(
                 f"Roll {dev.get('name')} back to {(target or {}).get('name') or '?'}",
                 details={
+                    "domain": await app.domain_name(await app.domain_uuid(domain)),
                     "device_runs": ok[0].get("name") if ok else None,
                     "roll_back_to": row(target) if target else None,
+                    "undoes_deployments": undone,
                     "recent_deployments": [row(j) for j in history[:5]],
+                    **({"deploy_window": window} if window else {}),
                 },
                 fingerprint={
                     "target": (target or {}).get("id"),
                     "recent": [j.get("id") for j in history[:5]],
                 },
                 blockers=blockers,
+                blast_radius=1,
                 side_effects=[
                     "Redeploys the earlier configuration snapshot to the device (traffic may be affected).",
                     "Changes made after that deployment remain in FMC and show as pending again.",
-                ],
+                ]
+                + (
+                    [
+                        f"Undoes {len(undone)} successful deployments, not only the latest: "
+                        + ", ".join(map(str, undone))
+                    ]
+                    if len(undone) > 1
+                    else []
+                ),
             ),
             apply=apply,
         )
@@ -452,6 +513,7 @@ def register(reg: ToolRegistrar) -> None:
             return result
 
         shown = slim(body)
+        window, window_blockers = deploy_window_blockers(get_settings(ctx), "fmc_register_device")
         return await preview_or_apply(
             ctx,
             tool="fmc_register_device",
@@ -469,9 +531,15 @@ def register(reg: ToolRegistrar) -> None:
             confirm=confirm,
             plan=Plan(
                 f"Register device {name!r} ({host})",
-                details={"body": shown, "access_policy": acp.get("name")},
+                details={
+                    "domain": await app.domain_name(await app.domain_uuid(domain)),
+                    "body": shown,
+                    "access_policy": acp.get("name"),
+                    **({"deploy_window": window} if window else {}),
+                },
                 fingerprint=acp["id"],
-                blockers=blockers,
+                blockers=blockers + window_blockers,
+                blast_radius=1,
                 side_effects=["Consumes licenses; FMC deploys the assigned policy as part of registration."],
             ),
             apply=apply,
@@ -486,6 +554,7 @@ def register(reg: ToolRegistrar) -> None:
         app: FmcApp = get_client(ctx)
         dev = await resolve_in(app, DEVICES, device, "device", domain)
         path = await app.config_path(f"{DEVICES}/{dev['id']}", domain)
+        window, window_blockers = deploy_window_blockers(get_settings(ctx), "fmc_delete_device")
         return await preview_or_apply(
             ctx,
             tool="fmc_delete_device",
@@ -494,9 +563,13 @@ def register(reg: ToolRegistrar) -> None:
             plan=Plan(
                 f"Unregister device {dev.get('name')!r}",
                 details={
-                    "device": {k: dev.get(k) for k in ("name", "hostName", "model", "sw_version", "id")}
+                    "domain": await app.domain_name(await app.domain_uuid(domain)),
+                    "device": {k: dev.get(k) for k in ("name", "hostName", "model", "sw_version", "id")},
+                    **({"deploy_window": window} if window else {}),
                 },
                 fingerprint=dev.get("id"),
+                blockers=window_blockers,
+                blast_radius=1,
                 side_effects=[
                     "The device stops being managed by FMC; its events stop arriving.",
                     "The FTD forgets this manager ('show managers' -> none): registering it again needs "
@@ -557,6 +630,7 @@ def register(reg: ToolRegistrar) -> None:
             },
         }
         path = await app.config_path(HA_PAIRS, domain)
+        window, window_blockers = deploy_window_blockers(get_settings(ctx), "fmc_create_ha_pair")
 
         async def apply() -> Any:
             resp = await app.api.post(path, body)
@@ -580,8 +654,14 @@ def register(reg: ToolRegistrar) -> None:
             confirm=confirm,
             plan=Plan(
                 f"Form HA pair {name!r}: {p.get('name')} (primary) + {s.get('name')} (secondary)",
-                details={"body": body},
+                details={
+                    "domain": await app.domain_name(await app.domain_uuid(domain)),
+                    "body": body,
+                    **({"deploy_window": window} if window else {}),
+                },
                 fingerprint=[p["id"], s["id"], iface["id"]],
+                blockers=window_blockers,
+                blast_radius=2,
                 side_effects=[
                     "The secondary's configuration is overwritten; both devices sync and may reload."
                 ],
@@ -617,6 +697,7 @@ def register(reg: ToolRegistrar) -> None:
             "secondary_status": (meta.get("secondaryStatus") or {}).get("currentStatus"),
         }
         path = await app.config_path(f"{HA_PAIRS}/{ha['id']}", domain)
+        window, window_blockers = deploy_window_blockers(get_settings(ctx), "fmc_ha_action")
         effects = {
             "break": "Both units become standalone; the standby's interfaces are shut until reconfigured.",
             "switch": "The standby becomes active; connections without stateful failover drop.",
@@ -644,11 +725,15 @@ def register(reg: ToolRegistrar) -> None:
             plan=Plan(
                 f"HA {action} on {ha.get('name')!r}",
                 details={
+                    "domain": await app.domain_name(await app.domain_uuid(domain)),
                     "primary": ref_label(ha.get("primary") or {}),
                     "secondary": ref_label(ha.get("secondary") or {}),
                     **{k: v for k, v in state.items() if v},
+                    **({"deploy_window": window} if window else {}),
                 },
                 fingerprint={"id": ha.get("id"), **state},
+                blockers=window_blockers,
+                blast_radius=2,
                 side_effects=[effects[action]],
             ),
             apply=apply,

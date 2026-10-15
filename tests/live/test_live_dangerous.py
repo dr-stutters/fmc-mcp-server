@@ -44,3 +44,24 @@ async def test_delete_policy(client: Client[Any]) -> None:
         client, "fmc_list_policies", {"kind": "access", "name": name, "response_format": "json"}
     )
     assert found["results"] == []
+
+
+async def test_deploy_refused_outside_deploy_window() -> None:
+    """F18: with FMC_DEPLOY_WINDOW closed, a deploy preview is blocked and says when it next opens.
+    A second server as the same user: its login ends the shared client's session, which recovers."""
+    from datetime import UTC, datetime, timedelta
+
+    from stutters_mcp_core.testing import live_settings
+
+    from fmc_mcp.config import Settings
+    from fmc_mcp.server import create_server
+
+    start = datetime.now(UTC) + timedelta(hours=12)  # a one-minute window 12 hours away: closed now
+    window = f"daily {start:%H:%M}-{start + timedelta(minutes=1):%H:%M} UTC"
+    settings = live_settings(
+        Settings, "FMC_", deploy_window=window, mcp_enable_writes=True, mcp_enable_dangerous=True
+    )
+    async with Client(create_server(settings)) as c:
+        out = await call(c, "fmc_deploy", {})
+    assert out["status"] == "blocked", out
+    assert "FMC_DEPLOY_WINDOW" in json.dumps(out) and "next opens" in json.dumps(out), out
