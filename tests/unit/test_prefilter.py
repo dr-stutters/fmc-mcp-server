@@ -80,3 +80,40 @@ async def test_link_prefilter_policy_sends_policy_fields_only(fmc: respx.MockRou
         await run(c, "fmc_set_prefilter_policy", {**args, "confirm": preview["confirm"]})
     body = json.loads(put.calls.last.request.content)
     assert "rules" not in body and body["prefilterPolicySetting"]["id"] == PF["id"]
+
+
+async def test_update_rule_to_block_drops_bidirectional_and_fixes_logging(fmc: respx.MockRouter) -> None:
+    rule = {
+        "id": "r1",
+        "name": "fp",
+        "type": "PrefilterRule",
+        "ruleType": "PREFILTER",
+        "action": "FASTPATH",
+        "bidirectional": True,
+        "logEnd": True,
+        "sendEventsToFMC": True,
+        "sourceNetworks": {"literals": [{"type": "Host", "value": "10.0.0.5"}]},
+        "metadata": {"ruleIndex": 1},
+    }
+    fmc.get(f"{CFG}/policy/prefilterpolicies").mock(return_value=items([PF]))
+    fmc.get(RULES).mock(return_value=items([rule]))
+    put = fmc.put(f"{RULES}/r1").mock(
+        side_effect=lambda req: httpx.Response(200, json=json.loads(req.content))
+    )
+    args = {"policy": "mcp-test-pf", "rule": "fp", "action": "BLOCK", "source_networks": []}
+    async with Client(server()) as c:
+        preview = await run(c, "fmc_update_prefilter_rule", args)
+        assert preview["status"] == "preview", preview
+        # the rule changes before confirm -> refused
+        fmc.get(RULES).mock(return_value=items([{**rule, "name": "fp", "enabled": False}]))
+        r = await c.call_tool(
+            "fmc_update_prefilter_rule", {**args, "confirm": preview["confirm"]}, raise_on_error=False
+        )
+        assert r.is_error and not put.called
+        fmc.get(RULES).mock(return_value=items([rule]))
+        preview = await run(c, "fmc_update_prefilter_rule", args)
+        await run(c, "fmc_update_prefilter_rule", {**args, "confirm": preview["confirm"]})
+    body = json.loads(put.calls.last.request.content)
+    assert body["id"] == "r1" and body["type"] == "PrefilterRule" and body["action"] == "BLOCK"
+    assert body["bidirectional"] is False and "sourceNetworks" not in body
+    assert body["logBegin"] is True and body["logEnd"] is False

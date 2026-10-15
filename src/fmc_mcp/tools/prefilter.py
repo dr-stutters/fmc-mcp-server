@@ -66,6 +66,7 @@ def _logging(log: bool | None, action: str) -> dict[str, Any]:
 async def find_prefilter_rule(
     app: FmcApp, policy: dict[str, Any], rule: str, domain: str | None
 ) -> dict[str, Any]:
+    """One prefilter rule by UUID, name (case-insensitive) or 1-based index."""
     base = await app.config_path(f"{PREFILTER}/{policy['id']}/prefilterrules", domain)
     rules = await all_rules(app, base)
     ref = rule.strip()
@@ -234,7 +235,7 @@ def register(reg: ToolRegistrar) -> None:
         blockers = []
         if any(str(r.get("name", "")).lower() == name.lower() for r in existing.items):
             blockers.append(f"{p.get('name')!r} already has a rule named {name!r}.")
-        if insert_before and insert_before > len(existing.items):
+        if insert_before and insert_before > len(existing.items) + 1:
             blockers.append(
                 f"Position {insert_before} is beyond the last rule ({len(existing.items)} rules)."
             )
@@ -326,8 +327,24 @@ def register(reg: ToolRegistrar) -> None:
                 desired[field] = block
             elif desired.pop(field, None):  # [] = any; FMC's PUT replaces the rule, so omit the field
                 cleared[field] = "any"
-        desired.update(_logging(log, str(desired.get("action"))))
+        act = str(desired.get("action"))
+        if log is None and action and (current.get("logBegin") or current.get("logEnd")):
+            log = True  # keep logging on, at the right point for the new action
+        desired.update(_logging(log, act))
+        blockers: list[str] = []
+        if desired.get("bidirectional") and (
+            act != "FASTPATH" or desired.get("sourcePorts") or desired.get("destinationPorts")
+        ):
+            desired["bidirectional"] = False  # FMC allows bidirectional only for FASTPATH without ports
+        if new_name and new_name.lower() != str(current.get("name", "")).lower():
+            base = await app.config_path(f"{PREFILTER}/{p['id']}/prefilterrules", domain)
+            if any(
+                str(r.get("name", "")).lower() == new_name.lower() for r in (await all_rules(app, base)).items
+            ):
+                blockers.append(f"{p.get('name')!r} already has a rule named {new_name!r}.")
         changes = {**field_changes(editable(current), desired), **cleared}
+        if not changes:
+            blockers.append("Nothing to change.")
         path = await app.config_path(f"{PREFILTER}/{p['id']}/prefilterrules/{current['id']}", domain)
         return await fmc_preview(
             ctx,
@@ -353,7 +370,7 @@ def register(reg: ToolRegistrar) -> None:
                 f"Update prefilter rule {current.get('name')!r} in {p.get('name')!r}",
                 details={"changes": changes},
                 fingerprint=editable(current),
-                blockers=[] if changes else ["Nothing to change."],
+                blockers=blockers,
                 side_effects=["Takes effect on devices after the next deployment."],
             ),
             apply=lambda: applied(app, lambda: app.api.put(path, desired)),
