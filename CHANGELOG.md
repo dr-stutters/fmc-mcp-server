@@ -1,5 +1,17 @@
 # Changelog
 
+## Unreleased
+
+Operator-eyes quality pass (F26-F33): 12 operator tasks run through the tools against the live FMC 10.0.1 + FTDv.
+
+### Fixed
+- **Audit lookups (F26)**: FMC returns only the newest 100 audit records per request and logs every API read, so
+  `fmc_list_audit_records` and `fmc_recent_activity` saw only the last few minutes ("who changed it?" -> no
+  results). The window is now read newest first in `endtime` slices (up to 2500 records, a note says how far back
+  it got), reads and operational requests (hit-count refresh, packet tracer, show commands) are skipped by default
+  (`changes_only`), API URLs are shortened, and the timeline drops API rows that repeat a worded row and the
+  deployment request/task rows its deploy rows already show.
+
 ## 0.8.0 (2026-10-15)
 
 F13 third slice (DNS policy and domain blocking). Tools: 56 read, 61 write, 9 dangerous (126).

@@ -14,6 +14,7 @@ from pydantic import Field
 from stutters_mcp_core import ResponseFormat, ToolRegistrar, UpstreamError, get_client, list_result
 from stutters_mcp_core.http import page_of
 
+from fmc_mcp.audit import compact_message, coverage_note, fetch_audit, is_read
 from fmc_mcp.client import FmcApp
 from fmc_mcp.tools.common import Domain, resolve_in
 from fmc_mcp.tools.deploy import JOBS
@@ -22,13 +23,12 @@ from fmc_mcp.tools.system import iso
 
 ALERTS = "health/alerts"
 ALERT_FETCH = 1000  # newest raw alerts read per call (FMC re-reports each module every few minutes)
-AUDIT_FETCH = 500
+ACTIVITY_AUDIT_PAGES = 20  # up to 2000 audit records per timeline
 DEPLOY_FETCH = 100
 FMC_DEVICE = "0"  # health alerts about the FMC itself use deviceUUID "0"
 Status = Literal["RED", "YELLOW", "GREEN", "RECOVERED"]
 # Levels for the activity timeline: problems and FMC's explicit recovery rows (GREEN repeats are noise).
 ACTIVITY_STATUSES = ["RED", "YELLOW", "RECOVERED"]
-AUDIT_NOISE = re.compile(r"^(GET|Page View|Login|Logout|Session Expiration)\b", re.I)
 _TAGS = re.compile(r"<[^>]+>")
 
 
@@ -135,6 +135,37 @@ def _window(since_minutes: int) -> tuple[int, int]:
     return now - since_minutes * 60, now + 60
 
 
+_DEPLOY_ECHO = re.compile(r"deployment/deploymentrequests|Policy Deployment to |Pre-deploy ", re.I)
+
+
+def condense_audit(recs: list[dict[str, Any]], *, deploy_ok: bool) -> list[dict[str, Any]]:
+    """Drop audit rows that only repeat another row: the API record of a change that FMC also logs
+    in words (same user, within a second, e.g. 'API: PUT .../accesspolicies/...' next to 'Save Policy
+    x'), and the deployment request/task rows when the deployment itself is in the timeline."""
+    worded: dict[str, list[int]] = {}
+    for r in recs:
+        if str(r.get("subSystem")) != "API":
+            worded.setdefault(str(r.get("username")), []).append(_ts_audit(r))
+    out = []
+    for r in recs:
+        msg = str(r.get("message") or "")
+        if deploy_ok and _DEPLOY_ECHO.search(msg):
+            continue
+        if str(r.get("subSystem")) == "API":
+            t = _ts_audit(r)
+            if any(abs(t - w) <= 1 for w in worded.get(str(r.get("username")), [])):
+                continue
+        out.append(r)
+    return out
+
+
+def _ts_audit(r: dict[str, Any]) -> int:
+    try:
+        return int(float(r.get("time") or 0))
+    except (TypeError, ValueError):
+        return 0
+
+
 SinceMinutes = Annotated[int, Field(ge=1, le=43_200, description="Look back this many minutes")]
 DeviceFilter = Annotated[str | None, Field(description="Only this device (name or UUID)")]
 
@@ -234,28 +265,19 @@ def register(reg: ToolRegistrar) -> None:
         except UpstreamError as e:
             errors["health"] = str(e)
 
+        audit_rows: list[dict[str, Any]] = []
         try:
-            path = await app.platform_path("audit/auditrecords", domain)
-            page = await app.page(path, {"starttime": start}, limit=AUDIT_FETCH)
-            for a in page.items:
+            scan = await fetch_audit(app, start, domain, max_pages=ACTIVITY_AUDIT_PAGES)
+            for a in scan.items:
                 msg = str(a.get("message") or "")
-                sub = str(a.get("subSystem") or "")
-                if not include_audit_reads and (AUDIT_NOISE.match(msg) or AUDIT_NOISE.match(sub)):
+                if not include_audit_reads and is_read(a):
                     continue
                 if dev_name and dev_id and dev_name.lower() not in msg.lower() and dev_id not in msg:
                     continue
-                rows.append(
-                    {
-                        "time": iso(a.get("time")),
-                        "source": "audit",
-                        "device": None,
-                        "summary": f"{a.get('subSystem')}: {msg}"[:300],
-                        "user": a.get("username"),
-                        "status": None,
-                    }
-                )
-            if not page.complete:
-                notes["audit"] = f"partial: newest {AUDIT_FETCH} records only"
+                audit_rows.append(a)
+            note = coverage_note(scan)
+            if note:
+                notes["audit"] = note
         except UpstreamError as e:
             errors["audit"] = str(e)
 
@@ -284,6 +306,17 @@ def register(reg: ToolRegistrar) -> None:
         except UpstreamError as e:
             errors["deploy"] = str(e)
 
+        for a in condense_audit(audit_rows, deploy_ok="deploy" not in errors):
+            rows.append(
+                {
+                    "time": iso(a.get("time")),
+                    "source": "audit",
+                    "device": None,
+                    "summary": f"{a.get('subSystem')}: {compact_message(a.get('message'))}"[:300],
+                    "user": a.get("username"),
+                    "status": None,
+                }
+            )
         rows.sort(key=lambda r: str(r["time"] or ""), reverse=True)
         extra: dict[str, Any] = {"window": f"{iso(start)} .. now"}
         if dev_name:
