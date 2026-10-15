@@ -3,6 +3,12 @@
 ## Unreleased
 
 ### Added
+- **Admin operations (F14)**: `fmc_upgrade_status`, `fmc_list_backups`, `fmc_get_health_policy`, `fmc_list_users`,
+  `fmc_list_object_overrides` (read); `fmc_update_health_policy` (module on/off and thresholds; per-alert
+  thresholds follow), `fmc_set_object_override` (write); `fmc_backup_devices` (dangerous). Live: versions, health
+  threshold change + revert, an override on mcp-ftd1 set/listed/removed; device backup is refused by FMC for FTDv
+  (the tool explains it) so it is mock-tested. FMC 10.0.1 has no `backup/backuprecords` GET (405); backups come
+  from `backup/files`. Change-management tickets are left for later.
 - **Intrusion policy tuning (F13, first slice)**: `fmc_get_intrusion_policy`, `fmc_find_intrusion_rules` (read);
   `fmc_set_intrusion_rule_state`, `fmc_create_intrusion_policy`, `fmc_create_intrusion_rule`,
   `fmc_delete_intrusion_rule` (write); `fmc_update_access_rule` gains `intrusion_policy` ('' removes it).

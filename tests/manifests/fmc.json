@@ -92,6 +92,10 @@
       "tier": "write",
       "title": "Assign policy to devices"
     },
+    "fmc_backup_devices": {
+      "tier": "dangerous",
+      "title": "Back up devices"
+    },
     "fmc_configure_bgp": {
       "tier": "write",
       "title": "Configure BGP"
@@ -256,6 +260,10 @@
       "tier": "read",
       "title": "Get HA pair status"
     },
+    "fmc_get_health_policy": {
+      "tier": "read",
+      "title": "Health policies"
+    },
     "fmc_get_hit_counts": {
       "tier": "read",
       "title": "Rule hit counts"
@@ -304,6 +312,10 @@
       "tier": "read",
       "title": "FMC audit records"
     },
+    "fmc_list_backups": {
+      "tier": "read",
+      "title": "List backups"
+    },
     "fmc_list_clusters": {
       "tier": "read",
       "title": "List clusters"
@@ -344,6 +356,10 @@
       "tier": "read",
       "title": "List NAT rules"
     },
+    "fmc_list_object_overrides": {
+      "tier": "read",
+      "title": "Object overrides"
+    },
     "fmc_list_objects": {
       "tier": "read",
       "title": "List objects"
@@ -363,6 +379,10 @@
     "fmc_list_routes": {
       "tier": "read",
       "title": "List device routes"
+    },
+    "fmc_list_users": {
+      "tier": "read",
+      "title": "FMC users"
     },
     "fmc_list_vpn_topologies": {
       "tier": "read",
@@ -424,6 +444,10 @@
       "tier": "write",
       "title": "Set intrusion rule state"
     },
+    "fmc_set_object_override": {
+      "tier": "write",
+      "title": "Set object override"
+    },
     "fmc_shadowed_rules": {
       "tier": "read",
       "title": "Find shadowed access rules"
@@ -444,6 +468,10 @@
       "tier": "write",
       "title": "Update object group"
     },
+    "fmc_update_health_policy": {
+      "tier": "write",
+      "title": "Update health policy module"
+    },
     "fmc_update_interface": {
       "tier": "write",
       "title": "Configure interface"
@@ -455,6 +483,10 @@
     "fmc_update_object": {
       "tier": "write",
       "title": "Update object"
+    },
+    "fmc_upgrade_status": {
+      "tier": "read",
+      "title": "Version and upgrade status"
     },
     "fmc_where_used": {
       "tier": "read",

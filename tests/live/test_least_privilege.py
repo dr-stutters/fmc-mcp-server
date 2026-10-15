@@ -52,6 +52,9 @@ SAMPLES: dict[str, dict[str, Any]] = {
     "fmc_get_routing": {"device": DEVICE},
     "fmc_search_spec": {"query": "access rules"},
     "fmc_get_definition": {"name": "AccessRule"},
+    "fmc_get_intrusion_policy": {"policy": "mcp-test-ips"},
+    "fmc_find_intrusion_rules": {"query": "2000:1000001", "policy": "mcp-test-ips"},
+    "fmc_list_object_overrides": {"object": "mcp-test-unused", "type": "host"},
 }
 
 # Need objects the lab doesn't always have (an HA pair, a VPN topology, a task id).
@@ -60,7 +63,14 @@ SKIP = {"fmc_api_call", "fmc_get_ha_status", "fmc_get_vpn_topology", "fmc_get_ta
 
 # FMC ties reading deployments and pending changes to the "Deploy Configuration to Devices" permission,
 # which mcp-ro deliberately lacks (it would also allow deploying). docs/least-privilege.md.
-EXPECTED_DENIED = {"fmc_list_deployable_devices", "fmc_list_deployments", "fmc_pending_changes"}
+# fmc_list_backups needs Backup Management (mcp-rw only); fmc_list_users needs User Management (neither role).
+EXPECTED_DENIED = {
+    "fmc_list_deployable_devices",
+    "fmc_list_deployments",
+    "fmc_pending_changes",
+    "fmc_list_backups",
+    "fmc_list_users",
+}
 
 
 async def test_read_tier_as_readonly_user() -> None:
@@ -69,7 +79,7 @@ async def test_read_tier_as_readonly_user() -> None:
     print(report.summary())
     assert set(report.denied) == EXPECTED_DENIED, report.summary()
     assert all("403" in v for v in report.denied.values()), report.summary()
-    assert len(report.ok) >= 38, report.summary()
+    assert len(report.ok) >= 43, report.summary()
 
 
 async def test_ro_user_cannot_write() -> None:
