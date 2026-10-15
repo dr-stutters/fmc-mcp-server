@@ -216,6 +216,8 @@ MCP_ENABLE_DANGEROUS=false   # or MCP_DENY_TOOLS=fmc_api_call: no raw non-GET ca
 - **`ignore_warning`:** refused unless `FMC_ALLOW_IGNORE_WARNING=true`. Even then you can only ignore warnings
   you have seen: deploy without it first (FMC refuses with its warnings, nothing is deployed), then the
   `ignore_warning=true` preview lists each FMC warning verbatim, for the same devices and pending version.
+  At confirm the server tries once more without ignoring: if FMC's warnings differ from the previewed ones,
+  nothing is deployed. The deploy window is also re-checked at confirm.
 - **Rollback:** defaults to the deployment before the current one; with an older `to_job` the preview lists
   every deployment it undoes.
 - **Previews** name the domain and the devices (with HA/cluster unit counts).

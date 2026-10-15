@@ -24,6 +24,7 @@ from stutters_mcp_core import (
 from fmc_mcp.client import FmcApp
 from fmc_mcp.config import Settings
 from fmc_mcp.rails import (
+    check_deploy_window,
     deploy_window_blockers,
     recorded_warnings,
     remember_warnings,
@@ -196,6 +197,15 @@ async def _wait_initial_deploy(
     return out
 
 
+async def _windowed(ctx: Context, tool: str, work: Any) -> Any:
+    try:
+        check_deploy_window(get_settings(ctx), tool)
+    except InvalidRequest:
+        work.close()  # the coroutine never runs
+        raise
+    return await work
+
+
 def register(reg: ToolRegistrar) -> None:
     @reg.dangerous(title="Deploy configuration")
     async def fmc_deploy(
@@ -233,7 +243,7 @@ def register(reg: ToolRegistrar) -> None:
                     f"{d.get('name')!r} can't be deployed right now (see fmc_list_deployable_devices)."
                 )
         version = str(max((_as_int(d.get("version")) for d in targets), default=0))
-        device_ids = [(d.get("device") or {}).get("id") for d in targets]
+        device_ids = [i for d in targets if (i := (d.get("device") or {}).get("id"))]
         settings: Settings = get_settings(ctx)
         units = [await units_of(app, d.get("device") or {}, domain) for d in targets]
         window, window_blockers = deploy_window_blockers(settings, "fmc_deploy")
@@ -281,11 +291,16 @@ def register(reg: ToolRegistrar) -> None:
         path = await app.config_path("deployment/deploymentrequests", domain)
 
         async def apply() -> Any:
+            check_deploy_window(settings, "fmc_deploy")
+            # Always try without ignoring warnings first: when FMC has none, that is the deploy.
             try:
-                resp = await app.api.post(path, body)
+                resp = await app.api.post(path, {**body, "ignoreWarning": False})
             except ValidationFailed as e:
-                if "warning" in str(e).lower() and not ignore_warning:
-                    remember_warnings(app, device_ids, version, split_warnings(str(e)))
+                if "warning" not in str(e).lower():
+                    raise
+                seen = split_warnings(str(e))
+                remember_warnings(app, device_ids, version, seen)
+                if not ignore_warning:
                     hint = (
                         "Review them; to deploy anyway, preview again with ignore_warning=true (the "
                         "preview lists these warnings)."
@@ -296,7 +311,15 @@ def register(reg: ToolRegistrar) -> None:
                         f"{e} FMC's pre-deployment validation raised warnings; nothing was deployed. {hint}",
                         e.status_code,
                     ) from e
-                raise
+                if seen != ignored:
+                    # Only warnings the user saw in the preview may be ignored.
+                    raise ValidationFailed(
+                        "FMC's warnings changed since the preview, so nothing was deployed. Now: "
+                        + " | ".join(seen)
+                        + ". Preview again with ignore_warning=true to review them.",
+                        e.status_code,
+                    ) from e
+                resp = await app.api.post(path, body)
             return await finish(ctx, app, resp, wait, domain, "deployment")
 
         return await preview_or_apply(
@@ -399,6 +422,7 @@ def register(reg: ToolRegistrar) -> None:
         path = await app.config_path("deployment/rollbackrequests", domain)
 
         async def apply() -> Any:
+            check_deploy_window(get_settings(ctx), "fmc_rollback_deployment")
             resp = await app.api.post(path, body)
             return await finish(ctx, app, resp, wait, domain, "rollback")
 
@@ -492,6 +516,7 @@ def register(reg: ToolRegistrar) -> None:
         path = await app.config_path(DEVICES, domain)
 
         async def apply() -> Any:
+            check_deploy_window(get_settings(ctx), "fmc_register_device")
             started = int(time.time())
             resp = await app.api.post(path, body)
             try:
@@ -576,7 +601,9 @@ def register(reg: ToolRegistrar) -> None:
                     "`configure manager add <fmc> <reg_key>` on the device CLI first.",
                 ],
             ),
-            apply=lambda: _delete_and_finish(ctx, app, path, domain, "device removal"),
+            apply=lambda: _windowed(
+                ctx, "fmc_delete_device", _delete_and_finish(ctx, app, path, domain, "device removal")
+            ),
         )
 
     @reg.dangerous(title="Form HA pair")
@@ -633,6 +660,7 @@ def register(reg: ToolRegistrar) -> None:
         window, window_blockers = deploy_window_blockers(get_settings(ctx), "fmc_create_ha_pair")
 
         async def apply() -> Any:
+            check_deploy_window(get_settings(ctx), "fmc_create_ha_pair")
             resp = await app.api.post(path, body)
             return await finish(ctx, app, resp, wait, domain, "HA formation")
 
@@ -705,6 +733,7 @@ def register(reg: ToolRegistrar) -> None:
         }
 
         async def apply() -> Any:
+            check_deploy_window(get_settings(ctx), "fmc_ha_action")
             if action == "delete":
                 resp = await app.api.delete(path)
             else:

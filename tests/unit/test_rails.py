@@ -117,7 +117,34 @@ async def test_ignore_warning_needs_seen_warnings_for_same_version(fmc: respx.Mo
             "Errors or warnings present in Device committed policies:",
             "Rule 'x' has a duplicate object",
         ]
-        post.mock(return_value=httpx.Response(202, json={"metadata": {"task": {"id": "t9"}}}))
+        warnings = {"now": WARN}
+
+        def fmc_reply(req: httpx.Request) -> httpx.Response:
+            if json.loads(req.content)["ignoreWarning"]:
+                return httpx.Response(202, json={"metadata": {"task": {"id": "t9"}}})
+            return httpx.Response(400, json=warnings["now"])
+
+        post.mock(side_effect=fmc_reply)
+        # FMC's warnings changed after the preview: refused, nothing ignored
+        warnings["now"] = {"error": {"messages": [{"description": "A brand-new warning"}]}}
+        r = await c.call_tool(
+            "fmc_deploy",
+            {"ignore_warning": True, "wait": False, "confirm": seen["confirm"]},
+            raise_on_error=False,
+        )
+        assert r.is_error and "changed since the preview" in r.content[0].text  # type: ignore[union-attr]
+        assert json.loads(post.calls.last.request.content)["ignoreWarning"] is False
+        # back to the reviewed warnings: the re-check matches and the deploy ignores them
+        warnings["now"] = WARN
+        seen = await run(c, "fmc_deploy", {"ignore_warning": True, "wait": False})
+        assert seen["preview"]["warnings_ignored"] == ["A brand-new warning"]  # the latest attempt's set
+        r = await c.call_tool(
+            "fmc_deploy",
+            {"ignore_warning": True, "wait": False, "confirm": seen["confirm"]},
+            raise_on_error=False,
+        )
+        assert r.is_error  # WARN differs from "A brand-new warning" again
+        seen = await run(c, "fmc_deploy", {"ignore_warning": True, "wait": False})
         done = await run(c, "fmc_deploy", {"ignore_warning": True, "wait": False, "confirm": seen["confirm"]})
         assert done["status"] == "applied"
         assert json.loads(post.calls.last.request.content)["ignoreWarning"] is True
@@ -143,3 +170,17 @@ async def test_rollback_lists_undone_deployments(fmc: respx.MockRouter) -> None:
         deep = await run(c, "fmc_rollback_deployment", {"device": "ftd1", "to_job": "Deploy_Job_1"})
     assert deep["preview"]["undoes_deployments"] == ["Deploy_Job_4", "Deploy_Job_3", "Deploy_Job_2"]
     assert any("Undoes 3 successful deployments" in s for s in deep["side_effects"])
+
+
+async def test_window_rechecked_at_confirm(fmc: respx.MockRouter, monkeypatch: pytest.MonkeyPatch) -> None:
+    fmc.get(f"{CFG}/deployment/deployabledevices").mock(return_value=items([PENDING]))
+    post = fmc.post(f"{CFG}/deployment/deploymentrequests")
+    now = {"t": datetime(2026, 10, 17, 23, 0, tzinfo=UTC)}  # Saturday 23:00, inside
+    monkeypatch.setattr(stutters_mcp_core.policy, "_now", lambda: now["t"])
+    async with Client(server(deploy_window="Sat 22:00-04:00 UTC")) as c:
+        out = await run(c, "fmc_deploy", {})
+        assert out["status"] == "preview"
+        now["t"] = datetime(2026, 10, 18, 5, 0, tzinfo=UTC)  # the window closed meanwhile
+        r = await c.call_tool("fmc_deploy", {"confirm": out["confirm"]}, raise_on_error=False)
+    assert r.is_error and "deploy window" in r.content[0].text  # type: ignore[union-attr]
+    assert not post.called

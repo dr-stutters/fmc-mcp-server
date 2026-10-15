@@ -12,6 +12,7 @@ import re
 import time
 from typing import Any
 
+from stutters_mcp_core import InvalidRequest, UpstreamError
 from stutters_mcp_core.policy import ChangeWindow
 
 from fmc_mcp.client import FmcApp
@@ -35,6 +36,13 @@ def deploy_window_blockers(settings: Settings, tool: str) -> tuple[dict[str, Any
     ]
 
 
+def check_deploy_window(settings: Settings, tool: str) -> None:
+    """Re-checked when a confirmed change runs: the window may have closed since the preview."""
+    _, blockers = deploy_window_blockers(settings, tool)
+    if blockers:
+        raise InvalidRequest(f"Nothing was changed: {blockers[0]}")
+
+
 async def units_of(app: FmcApp, device: dict[str, Any], domain: str | None) -> int:
     """How many physical devices a deployable/target reference stands for."""
     kind = str(device.get("type") or "")
@@ -43,8 +51,11 @@ async def units_of(app: FmcApp, device: dict[str, Any], domain: str | None) -> i
     if "Cluster" in kind and device.get("id"):
         try:
             c = await app.api.get(await app.config_path(f"{CLUSTERS}/{device['id']}", domain))
-        except Exception:  # noqa: BLE001 - counting must not break the preview; assume the minimum
-            return 2
+        except UpstreamError as e:  # fail closed: a safety rail must not under-count
+            raise UpstreamError(
+                f"Could not count the members of cluster {device.get('name')!r} for the blast radius: {e}",
+                e.status_code,
+            ) from e
         data = (c or {}).get("dataDevices") or (c or {}).get("slaveDevices") or []
         return 1 + len(data)
     return 1
