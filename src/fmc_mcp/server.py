@@ -12,6 +12,7 @@ from fmc_mcp.client import SPEC_PATH, FmcApp
 from fmc_mcp.config import Settings
 from fmc_mcp.tools import (
     activity,
+    admin,
     analysis,
     containment,
     dangerous,
@@ -67,6 +68,9 @@ Workflows:
   rules: fmc_create_intrusion_rule.
 - Health: fmc_list_devices, fmc_device_health, fmc_list_vpn_tunnels; "what changed or broke in the
   last hour?": fmc_recent_activity (health alerts + audit + deployments), fmc_list_health_alerts.
+- Day-2 admin: fmc_upgrade_status (versions), fmc_list_backups / fmc_backup_devices,
+  fmc_get_health_policy / fmc_update_health_policy, fmc_list_users, fmc_list_object_overrides /
+  fmc_set_object_override (per-device values).
 Before changing or deleting an object, check fmc_where_used.
 
 Gotchas: FMC allows about 120 API requests per minute, so prefer the aggregate tools over many small
@@ -142,6 +146,7 @@ def create_server(
             platform_settings.register,
             routing.register,
             intrusion.register,
+            admin.register,
             prompts.register,
         ],
         status=FmcApp.status,
