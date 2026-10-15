@@ -26,15 +26,15 @@ FMC 10.0 user roles are menu-based. Permission names as the FMC role editor show
 |---|---|---|---|
 | Insights & Reports | Dashboard | `overview`, `dashboards` | (UI only; harmless) |
 | Events & Logs > Analysis | Audit | `analysis`, `container_analysis`, `audit_log` | `fmc_list_audit_records`, `fmc_recent_activity` |
-| Policies > Security policies | Access Control, Intrusion, Rule Editor, Identity, Decryption, Prefilter, Malware & File, DNS, Umbrella DNS Policy (view) | `policy_response`, `firewall_policy`, `firewall`, `intrusion_policy`, `rules`, `identity`, `ssl`, `prefilter_policy`, `file_policy`, `dns_policy`, `umbrella_dns_policy` | `fmc_list_policies`, `fmc_get_access_policy`, `fmc_list_access_rules`, `fmc_get_access_rule`, `fmc_list_prefilter_rules`, `fmc_rule_lookup`, `fmc_shadowed_rules`, `fmc_get_hit_counts` |
+| Policies > Security policies | Access Control, Intrusion, Rule Editor, Identity, Decryption, Prefilter, Malware & File, DNS, Umbrella DNS Policy (view) | `policy_response`, `firewall_policy`, `firewall`, `intrusion_policy`, `rules`, `identity`, `ssl`, `prefilter_policy`, `file_policy`, `dns_policy`, `umbrella_dns_policy` | `fmc_list_policies`, `fmc_get_access_policy`, `fmc_list_access_rules`, `fmc_get_access_rule`, `fmc_list_prefilter_rules`, `fmc_rule_lookup`, `fmc_shadowed_rules`, `fmc_get_hit_counts`, `fmc_get_intrusion_policy`, `fmc_find_intrusion_rules` |
 | Policies > Network policies | NAT, QoS (view) | `network_policies`, `nat_policy`, `nat`, `qos` | `fmc_list_nat_rules` |
-| Objects | Objects (view) | `object_manager` | `fmc_list_objects`, `fmc_get_object`, `fmc_find_object`, `fmc_where_used`, `fmc_unused_objects`, `fmc_list_dynamic_objects` |
+| Objects | Objects (view) | `object_manager` | `fmc_list_objects`, `fmc_get_object`, `fmc_find_object`, `fmc_where_used`, `fmc_unused_objects`, `fmc_list_dynamic_objects`, `fmc_list_object_overrides` |
 | Devices | Device Management, Platform Settings, Flexconfig, Certificates (view) | `devices_container`, `devices`, `platform_settings`, `flexconfig_policy`, `certificates` | `fmc_list_devices`, `fmc_get_device`, `fmc_list_device_interfaces`, `fmc_list_ha_pairs`, `fmc_get_ha_status`, `fmc_list_clusters`, `fmc_list_routes`, `fmc_get_routing`, `fmc_list_policy_assignments`, `fmc_get_platform_settings` |
 | Secure Connections + VPN dashboards | Secure Connections, SD-WAN Summary, Site-to-Site VPN, Remote Access VPN (view) | `vpn`, `vpn_dashboards`, `sd_wan_dashboard`, `s2s_vpn_dashboard`, `ravpn_dashboard` | `fmc_list_vpn_topologies`, `fmc_get_vpn_topology`, `fmc_get_ravpn`, `fmc_list_vpn_tunnels` |
 | Integrations | Realms (view) | `registration`, `identity_realms` | identity policy realm lookups |
-| Troubleshooting | Health, Health Policy, Health Events | `advanced_troubleshooting`, `health`, `health_policy`, `health_alarm_syslog` | `fmc_device_health`, `fmc_list_health_alerts`, `fmc_recent_activity` |
+| Troubleshooting | Health, Health Policy, Health Events | `advanced_troubleshooting`, `health`, `health_policy`, `health_alarm_syslog` | `fmc_device_health`, `fmc_list_health_alerts`, `fmc_recent_activity`, `fmc_get_health_policy` |
 | Troubleshooting > Tools | Packet Tracer **+ Modify Packet Tracer**, Threat Defense CLI | `troubleshooting_tools`, `packet_tracer`, `packet_tracer.modify`, `threat_defense_cli` | `fmc_packet_tracer` (running a trace needs *Modify Packet Tracer*; it simulates a packet and changes no configuration), `fmc_run_show_command` |
-| Administration | Product Upgrades, Content Updates, Smart Licenses (view) | `system`, `upgrade_updates`, `device_upgrade`, `update`, `license`, `smart_license` | `fmc_license_status`, version/upgrade reads |
+| Administration | Product Upgrades, Content Updates, Smart Licenses (view) | `system`, `upgrade_updates`, `device_upgrade`, `update`, `license`, `smart_license` | `fmc_license_status`, `fmc_upgrade_status` |
 
 `fmc_status`, `fmc_list_domains`, `fmc_get_task`, `fmc_search_spec`, `fmc_get_definition` and GET
 `fmc_api_call` need no specific permission beyond a valid login.
@@ -45,7 +45,9 @@ FMC 10.0 user roles are menu-based. Permission names as the FMC role editor show
 |---|---|
 | `fmc_list_deployable_devices`, `fmc_pending_changes`, `fmc_list_deployments` | FMC ties *reading* deployments and pending changes to **Deploy Configuration to Devices**, which would also let the account deploy. Use the `mcp-rw` account if a read-only operator needs these. |
 | every write | no *Modify* permission (verified: a confirmed `fmc_create_object` as `mcp-api-ro` gets 403 from FMC) |
-| users, user roles, external auth, domains, backups, system configuration | no Administration permissions |
+| `fmc_list_backups` | needs **Backup Management** (in `mcp-rw`, which can also run backups) |
+| `fmc_list_users` | needs **User Management**, which neither role has: use an administrator account for user audits |
+| user roles, external auth, domains, system configuration | no Administration permissions |
 
 ## 2. Write role `mcp-rw`
 
@@ -58,8 +60,8 @@ Everything in `mcp-ro`, plus:
 | Devices | Modify Devices, Modify Platform Settings, Modify Certificates | `devices.modify`, `platform_settings.modify`, `certificates.modify` | interfaces, routes, BGP/OSPF/VRF, HA, register/delete device, syslog |
 | Secure Connections | Modify Secure Connections | `vpn.modify` | `fmc_create_s2s_vpn`, VPN deletes |
 | (top level) | Deploy Configuration to Devices | `deploy` (FMC adds `task_status`, `task_status.all_users`) | `fmc_deploy`, `fmc_rollback_deployment`, deployment reads |
-| Troubleshooting | Modify Health, Modify Health Policy, Apply Health Policy, Modify Threat Defense CLI | `health.modify`, `health_policy.modify`, `health_policy.apply`, `threat_defense_cli.modify` | health policy changes (F14) |
-| Administration > Advanced | Backup Management | `tools`, `backup_management` | device backups (F14); not *Restore Backup* |
+| Troubleshooting | Modify Health, Modify Health Policy, Apply Health Policy, Modify Threat Defense CLI | `health.modify`, `health_policy.modify`, `health_policy.apply`, `threat_defense_cli.modify` | `fmc_update_health_policy` (F14) |
+| Administration > Advanced | Backup Management | `tools`, `backup_management` | `fmc_list_backups`, `fmc_backup_devices` (F14); not *Restore Backup* |
 
 Still denied: users and roles, external authentication, domains, FMC system configuration, restore, smart
 licence registration, FMC upgrades.
@@ -105,8 +107,8 @@ as `mcp-api-ro`:
 
 | Result | Count | Tools |
 |---|---|---|
-| ok | 38 | every read tool with a sample, including packet tracer, show commands, hit counts, health and routing on the real FTD |
-| denied (expected, see §1) | 3 | `fmc_list_deployable_devices`, `fmc_list_deployments`, `fmc_pending_changes` |
+| ok | 43 | every read tool with a sample, including packet tracer, show commands, hit counts, health, routing, intrusion policy and overrides on the real FTD |
+| denied (expected, see §1) | 5 | `fmc_list_deployable_devices`, `fmc_list_deployments`, `fmc_pending_changes`, `fmc_list_backups`, `fmc_list_users` |
 | skipped | 4 | `fmc_api_call` (dangerous tier), `fmc_get_ha_status`, `fmc_get_vpn_topology`, `fmc_get_task` (need an HA pair / topology / task id) |
 
 `test_ro_user_cannot_write` confirms a `fmc_create_object` as `mcp-api-ro`: FMC answers 403.
