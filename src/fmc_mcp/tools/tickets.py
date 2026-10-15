@@ -11,6 +11,7 @@ from pydantic import Field
 from stutters_mcp_core import (
     AuthError,
     Confirm,
+    InvalidRequest,
     NotFound,
     Plan,
     ResponseFormat,
@@ -41,12 +42,21 @@ def ticket_row(t: dict[str, Any]) -> dict[str, Any]:
     return {k: v for k, v in row.items() if v is not None}
 
 
+ACTIVE = ("NEW", "IN_PROGRESS", "ON_HOLD")
+
+
 async def find_ticket(app: FmcApp, ref: str, domain: str | None) -> dict[str, Any]:
+    """A ticket by id, or by name preferring the one still being worked on (names can repeat)."""
     page = await app.all(await app.config_path(TICKETS, domain))
     hits = [t for t in page.items if t.get("id") == ref or str(t.get("name", "")).lower() == ref.lower()]
     if not hits:
         raise NotFound(f"No change-management ticket {ref!r} for this user (fmc_change_tickets).", 404)
-    return dict(hits[0])
+    active = [t for t in hits if t.get("status") in ACTIVE]
+    if len(active) > 1:
+        raise InvalidRequest(
+            f"Several open tickets are named {ref!r}; use the ticket id (fmc_change_tickets)."
+        )
+    return dict(active[0] if active else hits[0])
 
 
 def register(reg: ToolRegistrar) -> None:
@@ -104,72 +114,126 @@ def register(reg: ToolRegistrar) -> None:
         action: Annotated[
             Literal["open", "submit", "discard", "release"],
             Field(
-                description="open: create (or reopen) a ticket and send it with every change from now on; "
-                "submit: send it for approval; discard: drop it and its changes; release: stop sending it"
+                description="open: create (or reopen) a ticket and send it with every change from now on, "
+                "for every caller of this server; submit: send it for approval; discard: drop it and revert "
+                "its changes; release: stop sending the current ticket (no FMC change)"
             ),
         ],
         name: Annotated[
-            str, Field(min_length=1, max_length=64, description="Ticket name (or id for an existing one)")
-        ],
+            str | None,
+            Field(min_length=1, max_length=64, description="Ticket name or id (not needed for release)"),
+        ] = None,
         description: Annotated[str | None, Field(description="Ticket description / submit comment")] = None,
         domain: Domain = None,
         confirm: Confirm = None,
     ) -> dict[str, Any]:
         """Work with FMC change-management tickets: open a ticket (every later change from this server
-        carries it), submit it for approval, discard it, or release it from this server. The ticket is
-        shared by every caller of this server instance."""
+        carries it as ticket-id, for all callers), submit it for approval, discard it, or release it from
+        this server. Approval happens in the FMC UI."""
         app: FmcApp = get_client(ctx)
         path = await app.config_path(TICKETS, domain)
+        if action == "release":
+            rel_blockers: list[str] = [] if app.ticket_id else ["No ticket is being sent."]
+            if name and app.ticket_id and name != app.ticket_id:
+                try:
+                    if (await find_ticket(app, name, domain))["id"] != app.ticket_id:
+                        rel_blockers.append(
+                            f"{name!r} is not the ticket this server sends ({app.ticket_id})."
+                        )
+                except UpstreamError:
+                    pass  # FMC can't tell (ticket gone, change management off): release anyway
+
+            def release() -> Any:
+                app.ticket_id = None
+                return {"current_ticket": None}
+
+            async def do_release() -> Any:
+                return release()
+
+            return await fmc_preview(
+                ctx,
+                tool="fmc_ticket",
+                args={"action": action, "name": name, "description": description, "domain": domain},
+                confirm=confirm,
+                plan=Plan(
+                    f"Stop sending ticket {app.ticket_id}",
+                    details={"current_ticket": app.ticket_id},
+                    fingerprint=app.ticket_id,
+                    blockers=rel_blockers,
+                    side_effects=[
+                        "Later changes carry no ticket (FMC refuses them while change management is on)."
+                    ],
+                ),
+                apply=do_release,
+            )
+        if not name:
+            raise InvalidRequest(f"name is required to {action} a ticket.")
         try:
-            current = await find_ticket(app, name, domain)
+            current: dict[str, Any] | None = await find_ticket(app, name, domain)
         except NotFound:
             current = None
+        status = (current or {}).get("status")
         blockers: list[str] = []
         if action != "open" and current is None:
             blockers.append(f"No ticket {name!r}.")
-        if (
-            action == "open"
-            and current is not None
-            and current.get("status") not in ("NEW", "IN_PROGRESS", "ON_HOLD")
-        ):
-            blockers.append(f"Ticket {name!r} is {current.get('status')}; open a new one.")
+        if action == "open" and current is not None and status not in ACTIVE:
+            blockers.append(f"Ticket {name!r} is {status}; open a new one with another name.")
+        if action == "submit" and current is not None and status not in ACTIVE:
+            blockers.append(f"Ticket {name!r} is {status}; only open tickets can be submitted.")
+        if action == "discard" and current is not None and status in ("DISCARD", "APPROVED"):
+            blockers.append(f"Ticket {name!r} is already {status}.")
+        effects = {
+            "open": ["Every later change made through this server, by any caller, carries this ticket."],
+            "submit": ["The ticket goes to the approvers; its changes can be deployed once approved."],
+            "discard": ["The ticket's changes are reverted (FMC does it in the background)."],
+        }[action]
+        if action == "open" and app.ticket_id and app.ticket_id != (current or {}).get("id"):
+            effects.append(f"Switches this server from ticket {app.ticket_id} to {name!r}.")
 
         async def apply() -> Any:
             nonlocal current
-            if action == "release":
-                app.ticket_id = None
-                return {"current_ticket": None}
-            if action == "open":
+            sending, app.ticket_id = app.ticket_id, None  # ticket calls themselves carry no ticket-id
+            try:
+                if action == "open":
+                    if current is None:
+                        current = await app.api.post(
+                            path,
+                            {
+                                "name": name,
+                                "description": description or name,
+                                "status": "NEW",
+                                "type": "Ticket",
+                            },
+                        )
+                    if current is None:
+                        raise InvalidRequest("FMC returned no ticket.")
+                    if current.get("status") != "IN_PROGRESS":
+                        current = await app.api.put(
+                            f"{path}/{current['id']}",
+                            {
+                                "id": current["id"],
+                                "name": current["name"],
+                                "type": "Ticket",
+                                "status": "IN_PROGRESS",
+                            },
+                        )
+                    sending = current["id"]
+                    return {"ticket": ticket_row(current), "current_ticket": sending}
                 if current is None:
-                    current = await app.api.post(
-                        path,
-                        {"name": name, "description": description or name, "status": "NEW", "type": "Ticket"},
-                    )
-                assert current is not None
-                if current.get("status") != "IN_PROGRESS":
-                    current = await app.api.put(
-                        f"{path}/{current['id']}",
-                        {
-                            "id": current["id"],
-                            "name": current["name"],
-                            "type": "Ticket",
-                            "status": "IN_PROGRESS",
-                        },
-                    )
-                app.ticket_id = current["id"]
-                return {"ticket": ticket_row(current), "current_ticket": app.ticket_id}
-            assert current is not None
-            status = "PENDING_APPROVAL" if action == "submit" else "DISCARD"
-            body = {"id": current["id"], "name": current["name"], "type": "Ticket", "status": status}
-            if description:
-                body["stateChangeDescription"] = description
-            res = await app.api.put(f"{path}/{current['id']}", body)
-            if app.ticket_id == current["id"]:
-                app.ticket_id = None
-            return {
-                "ticket": ticket_row(res if isinstance(res, dict) else body),
-                "current_ticket": app.ticket_id,
-            }
+                    raise InvalidRequest(f"No ticket {name!r}.")
+                new_status = "PENDING_APPROVAL" if action == "submit" else "DISCARD"
+                body = {"id": current["id"], "name": current["name"], "type": "Ticket", "status": new_status}
+                if description:
+                    body["stateChangeDescription"] = description
+                res = await app.api.put(f"{path}/{current['id']}", body)
+                if sending == current["id"]:
+                    sending = None
+                return {
+                    "ticket": ticket_row(res if isinstance(res, dict) else body),
+                    "current_ticket": sending,
+                }
+            finally:
+                app.ticket_id = sending
 
         return await fmc_preview(
             ctx,
@@ -179,16 +243,9 @@ def register(reg: ToolRegistrar) -> None:
             plan=Plan(
                 f"Ticket {name!r}: {action}",
                 details={"ticket": ticket_row(current) if current else None, "current_ticket": app.ticket_id},
-                fingerprint=(current or {}).get("status"),
+                fingerprint={"status": status, "sending": app.ticket_id},
                 blockers=blockers,
-                side_effects={
-                    "open": ["Every later change made through this server carries this ticket (ticket-id)."],
-                    "submit": [
-                        "The ticket goes to the approvers; its changes can be deployed once approved."
-                    ],
-                    "discard": ["The ticket's changes are reverted (FMC does it in the background)."],
-                    "release": ["Changes are no longer tied to this ticket."],
-                }[action],
+                side_effects=effects,
             ),
             apply=apply,
         )

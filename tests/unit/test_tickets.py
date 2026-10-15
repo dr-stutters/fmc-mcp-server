@@ -47,3 +47,13 @@ async def test_open_ticket_is_sent_with_later_changes(fmc: respx.MockRouter) -> 
         p = await run(c, "fmc_ticket", sub)
         out = await run(c, "fmc_ticket", {**sub, "confirm": p["confirm"]})
     assert out["result"]["ticket"]["status"] == "PENDING_APPROVAL" and out["result"]["current_ticket"] is None
+
+
+async def test_release_works_without_fmc_and_submit_needs_open_ticket(fmc: respx.MockRouter) -> None:
+    fmc.get(TICKETS).mock(return_value=items([{**T, "status": "APPROVED"}]))
+    async with Client(create_server(make_settings(mcp_enable_writes=True, ticket="gone-1"))) as c:
+        out = await run(c, "fmc_ticket", {"action": "submit", "name": "CHG001"})
+        assert out["status"] == "blocked" and "only open tickets" in out["blockers"][0]
+        p = await run(c, "fmc_ticket", {"action": "release"})
+        done = await run(c, "fmc_ticket", {"action": "release", "confirm": p["confirm"]})
+        assert done["result"]["current_ticket"] is None

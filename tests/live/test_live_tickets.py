@@ -20,6 +20,17 @@ TICKET = "mcp-test-ticket"
 
 
 def set_change_management(on: bool) -> None:
+    """Switch change management, retrying and checking the result (it must never stay on by accident)."""
+    for attempt in range(3):
+        try:
+            _set_change_management(on)
+            return
+        except httpx.HTTPError:
+            if attempt == 2:
+                raise
+
+
+def _set_change_management(on: bool) -> None:
     env = {**dotenv_values(ROOT / ".env"), **dotenv_values(ROOT / ".env.admin")}
     if not env.get("FMC_ADMIN_USERNAME"):
         pytest.skip("FMC_ADMIN_* not configured (.env.admin)")
@@ -34,6 +45,9 @@ def set_change_management(on: bool) -> None:
         if on:
             body["noOfApprover"] = 1
         http.put(f"{CM}/{cfg['id']}", headers=h, json=body).raise_for_status()
+        now = http.get(CM, headers=h).json()["items"][0]
+        if bool(now.get("changeMgmtWorkflowEnabled")) != on:
+            raise httpx.HTTPError(f"change management is still {now.get('changeMgmtWorkflowEnabled')}")
 
 
 async def call(client: Client[Any], name: str, args: dict[str, Any]) -> Any:
@@ -53,6 +67,10 @@ async def test_ticket_flow(client: Client[Any]) -> None:
     assert off["change_management"] == "off"
     set_change_management(True)
     try:
+        # a leftover ticket from an interrupted run
+        old = await call(client, "fmc_change_tickets", {"response_format": "json"})
+        if any(t["name"] == TICKET and t["status"] in ("NEW", "IN_PROGRESS") for t in old.get("tickets") or []):
+            await apply(client, "fmc_ticket", {"action": "discard", "name": TICKET})
         opened = await apply(client, "fmc_ticket", {"action": "open", "name": TICKET})
         assert opened["current_ticket"]
         await apply(
@@ -65,6 +83,9 @@ async def test_ticket_flow(client: Client[Any]) -> None:
         assert out["current_ticket"] is None and out["ticket"]["status"] == "DISCARD"
     finally:
         set_change_management(False)
+        cur = await call(client, "fmc_change_tickets", {"response_format": "json"})
+        if cur.get("current_ticket"):
+            await apply(client, "fmc_ticket", {"action": "release"})
     # FMC reverts a discarded ticket's changes in the background
     for _ in range(12):
         gone = await call(client, "fmc_find_object", {"value": "10.255.9.9", "response_format": "json"})
