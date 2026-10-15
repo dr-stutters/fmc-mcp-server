@@ -22,7 +22,7 @@ from fmc_mcp.refs import RefResolver
 from fmc_mcp.rules import flatten_prefilter_rule
 from fmc_mcp.tools.common import Domain, ref_label, resolve_in
 from fmc_mcp.tools.object_writes import applied, editable
-from fmc_mcp.tools.policies import ACCESS, PREFILTER, all_rules
+from fmc_mcp.tools.policies import ACCESS, PREFILTER, acp_settings_body, all_rules
 from fmc_mcp.tools.policy_writes import NetsParam, PortsParam, ZonesParam
 
 PrefilterAction = Literal["FASTPATH", "ANALYZE", "BLOCK"]
@@ -148,9 +148,7 @@ def register(reg: ToolRegistrar) -> None:
 
         async def apply() -> Any:
             fresh = await app.api.get(path)
-            # Only the policy's own fields: a body with the rules/categories blocks reads as a bulk PUT.
-            keep = ("id", "type", "name", "description", "defaultAction")
-            body = {k: fresh[k] for k in keep if k in fresh}
+            body = acp_settings_body(fresh)
             body["prefilterPolicySetting"] = {
                 "id": pf["id"],
                 "type": "PrefilterPolicy",

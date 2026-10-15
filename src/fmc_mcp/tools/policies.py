@@ -110,6 +110,23 @@ async def all_rules(app: FmcApp, path: str) -> Page:
     return await app.all(path, cap=RULE_CAP)
 
 
+def acp_settings_body(acp: dict[str, Any], **overrides: Any) -> dict[str, Any]:
+    """An access policy as FMC accepts it back in a settings PUT: every setting it has (default action,
+    prefilter / decryption / identity links, logging, EVE, ...) but not the rule or category collections
+    or link-only blocks, which make FMC treat the PUT as a bulk rule update (422)."""
+    body: dict[str, Any] = {}
+    for key, value in acp.items():
+        if key in ("metadata", "links", "rules", "categories"):
+            continue
+        if isinstance(value, dict) and ("refType" in value or set(value) <= {"links"}):
+            continue
+        if isinstance(value, dict):
+            value = {k: v for k, v in value.items() if k != "links"}
+        body[key] = value
+    body.update(overrides)
+    return body
+
+
 async def resolve_policy(app: FmcApp, kind: str, ref: str, domain: str | None) -> dict[str, Any]:
     return await resolve_in(app, POLICY_KINDS[kind], ref, f"{kind} policy", domain)
 
@@ -193,6 +210,12 @@ def register(reg: ToolRegistrar) -> None:
             else None,
             "prefilter_policy": ref_label(p["prefilterPolicySetting"])
             if p.get("prefilterPolicySetting")
+            else None,
+            "decryption_policy": ref_label(p["decryptionPolicySetting"])
+            if p.get("decryptionPolicySetting")
+            else None,
+            "identity_policy": ref_label(p["identityPolicySetting"])
+            if p.get("identityPolicySetting")
             else None,
             "rules": {
                 "total": len(flat),
