@@ -2,6 +2,16 @@
 
 ## Unreleased
 
+### Added
+- **Least-privilege FMC roles and API users (F16)**: `docs/least-privilege.md` defines the custom roles `mcp-ro`
+  (read tier) and `mcp-rw` (write + deploy tiers) permission by permission, with the 403 matrix measured on FMC
+  10.0.1; `scripts/seed_access.py` creates the roles and the users `mcp-api-ro` / `mcp-api-rw` / `mcp-api-svc`
+  (FMC's REST API can't, so it drives the FMC UI endpoints as the administrator) and sets evaluation licensing;
+  `tests/live/test_least_privilege.py` runs every read tool as `mcp-api-ro` (core `read_tier_report`) and checks
+  FMC refuses a write from it. The whole live suite runs as `mcp-api-rw`.
+- `docker-compose.yml` takes the container's own FMC user from `FMC_SVC_USERNAME` / `FMC_SVC_PASSWORD` (falls
+  back to `FMC_USERNAME`), so the hosted server never shares a session with the CLI or the tests.
+
 ### Changed
 - Core v0.6.0 -> v0.9.0: secrets (`FMC_PASSWORD_REF`), `/metrics`, OAuth, and several FMCs per server
   (`FMC_INSTANCES`, an `instance` argument on every tool). The release workflow is back on core's
