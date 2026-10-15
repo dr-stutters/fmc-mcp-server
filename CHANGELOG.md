@@ -30,6 +30,12 @@
   platform-settings syslog). Live: added a server, assigned, deployed and checked
   `show running-config logging` on the FTD, then removed it. The server never receives syslog (ADR-003).
 
+- Routing depth (F6): `fmc_get_routing` (BGP per address family with neighbors and networks, OSPFv2
+  processes and areas, OSPF interfaces, ECMP zones, PBR, BFD, VRFs), `fmc_configure_bgp` (set up BGP,
+  add/change/remove neighbors, advertise/withdraw networks, remove BGP), `fmc_configure_ospf` (area
+  networks, create/delete a process), `fmc_create_vrf` and `fmc_delete_vrf`. Live: eBGP and OSPF area 0
+  to an IOL peer in CML came up after deploy (B and O routes on the FTD), then were removed.
+
 ### Changed
 - Core pinned to stutters-mcp-core v0.3.0 (pull-only; `list_result` keeps `Page.more`; prompts via
   `reg.prompt`).

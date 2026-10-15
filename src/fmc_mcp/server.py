@@ -24,6 +24,7 @@ from fmc_mcp.tools import (
     policies,
     policy_writes,
     prompts,
+    routing,
     system,
     troubleshoot,
 )
@@ -50,6 +51,8 @@ Workflows:
 - Send FTD logs to the customer's syslog/SIEM: fmc_get_platform_settings -> fmc_configure_syslog
   (servers, level, facility, RFC 5424) -> fmc_assign_policy(kind='platform_settings') -> fmc_deploy;
   fmc_set_access_logging sends connection/intrusion events there too.
+- Dynamic routing: fmc_get_routing (BGP, OSPF, ECMP, PBR, VRFs) -> fmc_configure_bgp /
+  fmc_configure_ospf / fmc_create_vrf -> fmc_deploy -> fmc_run_show_command('show route').
 - Block a host fast: map its IP into a dynamic object that a BLOCK rule references
   (fmc_map_dynamic_object); mapping changes need no deployment, only the rule does (once).
 - Health: fmc_list_devices, fmc_device_health, fmc_list_vpn_tunnels; "what changed or broke in the
@@ -124,6 +127,7 @@ def create_server(
             dynamic_objects.register,
             activity.register,
             platform_settings.register,
+            routing.register,
             prompts.register,
         ],
         status=FmcApp.status,

@@ -14,6 +14,7 @@ Lab addressing (CML ftd-fmc recipe): outside Ethernet0/0 198.18.128.155/18 (gate
 inside Ethernet0/1 10.99.1.1/24.
 """
 
+import asyncio
 import json
 import os
 import time
@@ -553,3 +554,73 @@ async def test_platform_settings_syslog(client: Client[Any]) -> None:
     await apply(client, "fmc_configure_syslog", {"policy": PS_POLICY, "remove_servers": [SYSLOG_HOST]})
     await deploy(client, "mcp live test: remove syslog server")
     assert SYSLOG_HOST not in await show(client, "show running-config logging")
+
+
+PEER = (
+    "10.99.1.2"  # peer1 (iol-xe) on inside-sw: AS 65001, Lo0 172.31.1.1 in BGP, Lo1 172.31.2.1 in OSPF area 0
+)
+needs_peer = pytest.mark.skipif(
+    os.environ.get("FMC_LIVE_NO_PEER") == "1", reason="peer1 router not in the lab"
+)
+
+
+async def _wait_route(client: Client[Any], prefix: str, present: bool, tries: int = 12) -> str:
+    out = ""
+    for _ in range(tries):
+        out = await show(client, "show route")
+        if (prefix in out) == present:
+            return out
+        await asyncio.sleep(10)
+    raise AssertionError(f"{prefix} {'missing from' if present else 'still in'} the routing table:\n{out}")
+
+
+@needs_ftd
+@needs_peer
+async def test_routing_bgp_ospf_vrf(client: Client[Any]) -> None:
+    """F6: eBGP to peer1 and OSPF area 0 on the inside network, deployed and verified in the FTD's
+    routing table (B 172.31.1.1, O 172.31.2.1), a VRF created and deleted, then everything removed."""
+    current = await call(client, "fmc_get_routing", {"device": DEVICE})
+    if "bgp" in current:
+        await apply(client, "fmc_configure_bgp", {"device": DEVICE, "remove_bgp": True})
+    if current.get("ospfv2"):
+        await apply(client, "fmc_configure_ospf", {"device": DEVICE, "remove_process": True})
+    await apply(
+        client,
+        "fmc_configure_bgp",
+        {
+            "device": DEVICE,
+            "neighbor": PEER,
+            "remote_as": "65001",
+            "local_as": "65000",
+            "advertise": [INSIDE_NET],
+        },
+    )
+    await apply(
+        client, "fmc_configure_ospf", {"device": DEVICE, "area": "0", "add_networks": ["10.99.1.0/24"]}
+    )
+    view = await call(client, "fmc_get_routing", {"device": DEVICE})
+    assert view["bgp"]["as"] == "65000" and view["bgp"]["ipv4"]["neighbors"][0]["address"] == PEER
+    assert view["ospfv2"][0]["areas"][0]["networks"] == [INSIDE_NET]
+    # a read-modify-PUT of the existing BGP object (FMC rejects echoed maximumPaths; the tool drops it)
+    await apply(
+        client, "fmc_configure_bgp", {"device": DEVICE, "neighbor": PEER, "neighbor_description": "peer1"}
+    )
+    dup = await call(client, "fmc_configure_bgp", {"device": DEVICE, "neighbor": PEER, "remote_as": "65001"})
+    assert dup["status"] == "blocked", dup
+    await deploy(client, "mcp live test: bgp + ospf", ignore_warning=True)
+    table = await _wait_route(client, "172.31.1.1", True)
+    assert f"via {PEER}" in table
+    await _wait_route(client, "172.31.2.1", True)
+
+    await apply(client, "fmc_create_vrf", {"device": DEVICE, "name": "mcp-test-vrf"})
+    assert any(
+        v["name"] == "mcp-test-vrf"
+        for v in (await call(client, "fmc_get_routing", {"device": DEVICE}))["vrfs"]
+    )
+    await apply(client, "fmc_delete_vrf", {"device": DEVICE, "name": "mcp-test-vrf"})
+
+    await apply(client, "fmc_configure_bgp", {"device": DEVICE, "remove_bgp": True})
+    await apply(client, "fmc_configure_ospf", {"device": DEVICE, "remove_process": True})
+    await deploy(client, "mcp live test: remove bgp + ospf", ignore_warning=True)
+    await _wait_route(client, "172.31.1.1", False)
+    await _wait_route(client, "172.31.2.1", False)
