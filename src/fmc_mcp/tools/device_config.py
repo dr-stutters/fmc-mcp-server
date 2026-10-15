@@ -20,11 +20,11 @@ from stutters_mcp_core import (
     UpstreamError,
     get_client,
     list_result,
-    preview_or_apply,
 )
 from stutters_mcp_core.http import page_of
 
 from fmc_mcp.client import FmcApp, is_uuid
+from fmc_mcp.preview import fmc_preview
 from fmc_mcp.refs import RefResolver
 from fmc_mcp.tools.common import Domain, ref_label, ref_of, resolve_in, resolve_object
 from fmc_mcp.tools.devices import (
@@ -343,7 +343,7 @@ def register(reg: ToolRegistrar) -> None:
                 "Management interfaces are configured on the device (configure network), not here."
             )
         path = await app.config_path(f"{DEVICES}/{dev['id']}/{INTERFACE_KINDS[kind]}/{current['id']}", domain)
-        return await preview_or_apply(
+        return await fmc_preview(
             ctx,
             tool="fmc_update_interface",
             args={
@@ -429,7 +429,7 @@ def register(reg: ToolRegistrar) -> None:
         else:
             side = []
         path = await app.config_path(f"{DEVICES}/{dev['id']}/subinterfaces", domain)
-        return await preview_or_apply(
+        return await fmc_preview(
             ctx,
             tool="fmc_create_subinterface",
             args={
@@ -491,7 +491,7 @@ def register(reg: ToolRegistrar) -> None:
         if users:
             blockers.append(f"Still used by: {'; '.join(users)}. Delete those routes first.")
         path = await app.config_path(f"{DEVICES}/{dev['id']}/{INTERFACE_KINDS[kind]}/{current['id']}", domain)
-        return await preview_or_apply(
+        return await fmc_preview(
             ctx,
             tool="fmc_delete_interface",
             args={"device": device, "interface": interface, "domain": domain},
@@ -600,7 +600,7 @@ def register(reg: ToolRegistrar) -> None:
                     f"{dev.get('name')} already has this route ({vr_name or 'global table'}, id "
                     f"{dup.get('id')}, metric {dup.get('metricValue')}); delete it first or change it."
                 )
-        return await preview_or_apply(
+        return await fmc_preview(
             ctx,
             tool="fmc_create_static_route",
             args={
@@ -653,7 +653,7 @@ def register(reg: ToolRegistrar) -> None:
         if not current:
             raise NotFound(f"No static route {route_id!r} on {dev.get('name')} ({vr_name or 'global'}).", 404)
         path = await app.config_path(f"{base}/{sub}/{current['id']}", domain)
-        return await preview_or_apply(
+        return await fmc_preview(
             ctx,
             tool="fmc_delete_static_route",
             args={"device": device, "route_id": route_id, "virtual_router": virtual_router, "domain": domain},
@@ -726,7 +726,7 @@ def register(reg: ToolRegistrar) -> None:
                 return await applied(app, lambda: app.api.put(path, body))
             return await applied(app, lambda: app.api.post(path, body))
 
-        return await preview_or_apply(
+        return await fmc_preview(
             ctx,
             tool="fmc_assign_policy",
             args={"kind": kind, "policy": policy, "devices": devices, "domain": domain},

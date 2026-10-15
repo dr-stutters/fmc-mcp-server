@@ -16,10 +16,10 @@ from stutters_mcp_core import (
     UpstreamError,
     get_client,
     object_result,
-    preview_or_apply,
 )
 
 from fmc_mcp.client import FmcApp
+from fmc_mcp.preview import fmc_preview
 from fmc_mcp.tools.common import Domain, ref_label, resolve_in, slim
 from fmc_mcp.tools.devices import HA_PAIRS
 from fmc_mcp.tools.object_writes import applied, editable
@@ -264,7 +264,7 @@ def register(reg: ToolRegistrar) -> None:
             out["next"] = "Deploy the pair (fmc_deploy) and check fmc_run_show_command('show failover')."
             return out
 
-        return await preview_or_apply(
+        return await fmc_preview(
             ctx,
             tool="fmc_configure_ha_monitoring",
             args={

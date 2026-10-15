@@ -20,10 +20,10 @@ from stutters_mcp_core import (
     ToolRegistrar,
     UpstreamError,
     get_client,
-    preview_or_apply,
 )
 
 from fmc_mcp.client import FmcApp
+from fmc_mcp.preview import fmc_preview
 from fmc_mcp.refs import NETWORK_TYPES, RefResolver
 from fmc_mcp.tools.common import Domain, ref_label, ref_of
 from fmc_mcp.tools.device_config import (
@@ -465,7 +465,7 @@ def register(reg: ToolRegistrar) -> None:
                 app.invalidate_cache()
             return {"applied": done, "next": "fmc_deploy, then check 'show route' on the device"}
 
-        return await preview_or_apply(
+        return await fmc_preview(
             ctx,
             tool="fmc_configure_bgp",
             args={
@@ -588,7 +588,7 @@ def register(reg: ToolRegistrar) -> None:
                 return await applied(app, lambda: app.api.post(target, body))
             return await applied(app, lambda: app.api.put(target, body))
 
-        return await preview_or_apply(
+        return await fmc_preview(
             ctx,
             tool="fmc_configure_ospf",
             args={
@@ -658,7 +658,7 @@ def register(reg: ToolRegistrar) -> None:
         if description:
             body["description"] = description
         path = await app.config_path(f"{root}/virtualrouters", domain)
-        return await preview_or_apply(
+        return await fmc_preview(
             ctx,
             tool="fmc_create_vrf",
             args={
@@ -712,7 +712,7 @@ def register(reg: ToolRegistrar) -> None:
             ["The global table can't be deleted."] if str(vr.get("name", "")).lower() == "global" else []
         )
         path = await app.config_path(f"{root}/virtualrouters/{vr['id']}", domain)
-        return await preview_or_apply(
+        return await fmc_preview(
             ctx,
             tool="fmc_delete_vrf",
             args={"device": device, "name": name, "domain": domain},

@@ -2,10 +2,12 @@
 
 from __future__ import annotations
 
+import asyncio
 import json
 import logging
 import re
 import time
+import weakref
 from typing import Any
 
 import httpx
@@ -35,6 +37,13 @@ CACHE_TTL = 60.0  # seconds object catalogs are reused between analysis calls
 MAX_REFRESHES = 3  # FMC allows three refreshes per login, then a new login is required
 ACCESS_HEADER = "X-auth-access-token"
 REFRESH_HEADER = "X-auth-refresh-token"
+
+# Device-scoped config paths. FMC lets an ancestor domain read a device in a descendant (leaf) domain but
+# refuses changes there ("Object does not belong to current domain"), so these go to the device's domain.
+DEVICE_PATH_RE = re.compile(
+    r"^(devices/devicerecords|devicehapairs/ftddevicehapairs|deviceclusters/ftddevicecluster)/"
+    r"([0-9a-fA-F-]{36})(/|$)"
+)
 
 UUID_RE = re.compile(r"^[0-9a-fA-F]{8}-[0-9a-fA-F]{4}-[0-9a-fA-F]{4}-[0-9a-fA-F]{4}-[0-9a-fA-F]{12}$")
 
@@ -101,6 +110,9 @@ class FmcApp:
         self._version: str | None = None
         self._login_failure: tuple[float, AuthError] | None = None
         self._cache: dict[str, tuple[float, Any]] = {}
+        # device/HA/cluster UUID -> the (leaf) domain that owns it, and which of them a tool call used
+        self.device_domains: dict[str, str] = {}
+        self.rerouted: weakref.WeakKeyDictionary[asyncio.Task[Any], set[str]] = weakref.WeakKeyDictionary()
         # FMC deploy warnings seen per (devices, pending version), for ignore_warning (fmc_mcp.rails)
         self.deploy_warnings: dict[str, tuple[float, list[str]]] = {}
 
@@ -219,8 +231,40 @@ class FmcApp:
         return uuid
 
     async def config_path(self, suffix: str, domain: str | None = None) -> str:
-        """`/api/fmc_config/v1/domain/<uuid>/<suffix>`."""
-        return f"/api/fmc_config/v1/domain/{await self.domain_uuid(domain)}/{suffix.lstrip('/')}"
+        """`/api/fmc_config/v1/domain/<uuid>/<suffix>`. Paths below one device, HA pair or cluster use
+        the domain that owns it when that is a descendant of the requested domain (multi-domain FMC)."""
+        suffix = suffix.lstrip("/")
+        uuid = await self.domain_uuid(domain)
+        m = DEVICE_PATH_RE.match(suffix)
+        if m:
+            uuid = await self.device_domain(m.group(1), m.group(2), uuid)
+        return f"/api/fmc_config/v1/domain/{uuid}/{suffix}"
+
+    async def device_domain(self, collection: str, device_id: str, domain_uuid: str) -> str:
+        """The domain that owns a device (or HA pair/cluster) when it lies below `domain_uuid`; else
+        `domain_uuid`. Looked up once per device (a GET in the requested domain shows `metadata.domain`)."""
+        key = device_id.lower()
+        owner = self.device_domains.get(key)
+        if owner is None and len(self.domains) > 1:
+            try:
+                data = await self.api.get(f"/api/fmc_config/v1/domain/{domain_uuid}/{collection}/{device_id}")
+                owner = str(((data or {}).get("metadata") or {}).get("domain", {}).get("id") or "") or None
+            except Exception:  # noqa: BLE001 - best effort: fall back to the requested domain
+                owner = None
+            if owner:
+                self.device_domains[key] = owner.lower()
+        if not owner or owner.lower() == domain_uuid.lower() or not self._is_below(owner, domain_uuid):
+            return domain_uuid
+        task = asyncio.current_task()
+        if task is not None:
+            self.rerouted.setdefault(task, set()).add(owner.lower())
+        return owner.lower()
+
+    def _is_below(self, child: str, ancestor: str) -> bool:
+        """Whether domain `child` is a descendant of `ancestor`, from the names ('Global/A/B')."""
+        names = {d["uuid"].lower(): d["name"] for d in self.domains}
+        c, a = names.get(child.lower()), names.get(ancestor.lower())
+        return bool(c and a and c.startswith(a + "/"))
 
     async def platform_path(self, suffix: str, domain: str | None = None) -> str:
         return f"/api/fmc_platform/v1/domain/{await self.domain_uuid(domain)}/{suffix.lstrip('/')}"

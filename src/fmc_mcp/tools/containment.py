@@ -24,10 +24,10 @@ from stutters_mcp_core import (
     ToolRegistrar,
     UpstreamError,
     get_client,
-    preview_or_apply,
 )
 
 from fmc_mcp.client import FmcApp
+from fmc_mcp.preview import fmc_preview
 from fmc_mcp.tools.common import Domain, ref_label
 from fmc_mcp.tools.deploy import deployable
 from fmc_mcp.tools.dynamic_objects import (
@@ -384,7 +384,7 @@ def register(reg: ToolRegistrar) -> None:
             )
             return out
 
-        return await preview_or_apply(
+        return await fmc_preview(
             ctx,
             tool="fmc_contain_host",
             args={"ip": ip, "reason": reason, "object": object, "policy": policy, "domain": domain},
@@ -443,7 +443,7 @@ def register(reg: ToolRegistrar) -> None:
             return {"ip": addr, "object": name, "released": contained, "was_contained": contained}
 
         why = "no such dynamic object" if obj is None else "not mapped"
-        return await preview_or_apply(
+        return await fmc_preview(
             ctx,
             tool="fmc_release_host",
             args={"ip": ip, "object": object, "domain": domain},

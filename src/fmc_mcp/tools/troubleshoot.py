@@ -367,7 +367,8 @@ def register(reg: ToolRegistrar) -> None:
             if destination_port is None:
                 raise InvalidRequest("destination_port is required for tcp and udp.")
             body.update(sourcePort=str(source_port), destinationPort=str(destination_port))
-        path = f"/api/fmc_troubleshoot/v1/domain/{await app.domain_uuid(domain)}/packettracer/traces"
+        where = await app.device_domain("devices/devicerecords", dev["id"], await app.domain_uuid(domain))
+        path = f"/api/fmc_troubleshoot/v1/domain/{where}/packettracer/traces"
         resp = await app.api.post(path, body, timeout=180)
         traces = summarize_trace(resp if isinstance(resp, dict) else {}, verbose)
         await name_snort_rules(app, traces, domain)
