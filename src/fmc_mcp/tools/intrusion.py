@@ -15,6 +15,7 @@ from stutters_mcp_core import (
     Plan,
     ResponseFormat,
     ToolRegistrar,
+    UpstreamError,
     get_client,
     list_result,
     object_result,
@@ -30,6 +31,7 @@ IPS = "policy/intrusionpolicies"
 RULES = "object/intrusionrules"
 GROUPS = "object/intrusionrulegroups"
 MAX_OVERRIDES = 500
+MIN_CUSTOM_SID = 1_000_000  # lower SIDs are Talos rules
 
 RuleState = Literal["ALERT", "BLOCK", "DROP", "REJECT", "PASS", "DISABLE", "DEFAULT"]
 PolicyRef = Annotated[
@@ -47,13 +49,21 @@ def rule_filter(ref: str) -> str | None:
     return f"gid:{gid};sid:{sid}" if gid else f"sid:{sid}"
 
 
+def matches(rule: dict[str, Any], ref: str) -> bool:
+    m = RULE_RE.match(ref)
+    if not m:
+        return False
+    gid, sid = m.groups()
+    return str(rule.get("sid")) == sid and (gid is None or str(rule.get("gid")) == gid)
+
+
 def rule_row(r: dict[str, Any], *, text: bool = False) -> dict[str, Any]:
     row: dict[str, Any] = {
         "rule": r.get("name") or f"{r.get('gid')}:{r.get('sid')}",
         "msg": r.get("msg"),
         "default_state": r.get("defaultState"),
         "override_state": r.get("overrideState"),
-        "custom": r.get("isSystemDefined") is False or None,
+        "custom": True if r.get("isSystemDefined") is False else None,
         "groups": [g.get("name") for g in (r.get("ruleGroups") or [])][:4] or None,
         "id": r.get("id"),
     }
@@ -141,7 +151,9 @@ def register(reg: ToolRegistrar) -> None:
         rules: Annotated[
             list[str],
             Field(
-                min_length=1, max_length=50, description="Rules as 'gid:sid' (or a SID unique across gids)"
+                min_length=1,
+                max_length=25,
+                description="Rules as 'gid:sid' (or a SID unique across gids); at most 25 per call",
             ),
         ],
         state: Annotated[
@@ -171,11 +183,12 @@ def register(reg: ToolRegistrar) -> None:
             if rule_filter(ref) is None:
                 raise InvalidRequest(f"{ref!r} is not a rule id; use 'gid:sid' (fmc_find_intrusion_rules).")
             hits, _ = await find_rules(app, ref, domain, p["id"], limit=5)
+            hits = [h for h in hits if matches(h, ref)]  # the filter can match loosely; insist on gid/sid
             if not hits:
                 raise NotFound(f"No intrusion rule {ref!r} (fmc_find_intrusion_rules).", 404)
             if len(hits) > 1:
                 names = ", ".join(str(h.get("name")) for h in hits)
-                raise InvalidRequest(f"SID {ref!r} exists under several gids ({names}); use 'gid:sid'.")
+                raise InvalidRequest(f"{ref!r} matches several rules ({names}); use 'gid:sid'.")
             found.append(hits[0])
         new = None if state == "DEFAULT" else state
         changes = [
@@ -185,20 +198,34 @@ def register(reg: ToolRegistrar) -> None:
             }
             for r in found
         ]
-        if all(r.get("overrideState") == new for r in found):
+        todo = [r for r in found if r.get("overrideState") != new]
+        if not todo:
             blockers.append("Nothing to change: every rule already has that state.")
         base = await app.config_path(f"{IPS}/{p['id']}/intrusionrules", domain)
         usage = (p.get("metadata") or {}).get("usage") or {}
 
         async def apply() -> Any:
-            done = []
-            for r in found:
-                body = {k: v for k, v in editable(r).items() if k != "overrideState"}
-                if new is not None:
-                    body["overrideState"] = new
-                res = await app.api.put(f"{base}/{r['id']}", body)
-                done.append(rule_row(res if isinstance(res, dict) else r))
-            app.invalidate_cache()
+            done: list[dict[str, Any]] = []
+            try:
+                for i, r in enumerate(todo):
+                    try:
+                        # re-read: FMC's PUT replaces the whole rule, so never send a preview-time copy
+                        cur = await app.api.get(f"{base}/{r['id']}")
+                        body = {k: v for k, v in editable(cur).items() if k != "overrideState"}
+                        if new is not None:
+                            body["overrideState"] = new
+                        res = await app.api.put(f"{base}/{r['id']}", body)
+                        done.append(rule_row(res if isinstance(res, dict) else cur))
+                    except UpstreamError as e:
+                        left = [str(x.get("name")) for x in todo[i:]]
+                        changed = [str(d.get("rule")) for d in done] or "none"
+                        raise UpstreamError(
+                            f"Partially applied: changed {changed}; not changed {left}. Cause: {e} "
+                            "Preview again to finish (rules already changed show as unchanged).",
+                            e.status_code,
+                        ) from e
+            finally:
+                app.invalidate_cache()
             return {"policy": p.get("name"), "rules": done, "next": "fmc_deploy to the devices using it"}
 
         return await fmc_preview(
@@ -210,7 +237,10 @@ def register(reg: ToolRegistrar) -> None:
             plan=Plan(
                 f"Set {len(found)} rule(s) to {state} in intrusion policy {p.get('name')!r}",
                 details={"rules": changes, "used_by": usage or None},
-                fingerprint=[(r.get("id"), r.get("defaultState"), r.get("overrideState")) for r in found],
+                fingerprint={
+                    "policy": p["id"],
+                    "rules": [(r.get("id"), r.get("defaultState"), r.get("overrideState")) for r in found],
+                },
                 blockers=blockers,
                 side_effects=["Takes effect on devices after the next deployment."],
             ),
@@ -296,7 +326,7 @@ def register(reg: ToolRegistrar) -> None:
         sid = re.search(r"\bsid\s*:\s*(\d+)", text)
         if not sid or not re.search(r"\(.*\)\s*$", text, re.S):
             raise InvalidRequest("rule_text must be a full Snort 3 rule with options in (...) and a sid:N.")
-        if int(sid.group(1)) < 1_000_000:
+        if int(sid.group(1)) < MIN_CUSTOM_SID:
             raise InvalidRequest("Custom rules need a SID of 1000000 or more (lower SIDs belong to Talos).")
         groups = await app.all(await app.config_path(GROUPS, domain), {"filter": "isSystemDefined:false"})
         grp = next((g for g in groups.items if str(g.get("name", "")).lower() == group.lower()), None)
@@ -334,7 +364,12 @@ def register(reg: ToolRegistrar) -> None:
                 details={"rule_text": text, "group": group, "group_exists": grp is not None},
                 fingerprint={"group": (grp or {}).get("id"), "clash": [r.get("id") for r in clash]},
                 blockers=blockers,
-                side_effects=["The rule is disabled in every policy until its state is set there."],
+                side_effects=["The rule is disabled in every policy until its state is set there."]
+                + (
+                    []
+                    if grp
+                    else ["If FMC rejects the rule, the new (empty) group stays; delete it in the UI."]
+                ),
             ),
             apply=apply,
         )

@@ -86,6 +86,7 @@ async def test_find_by_text_uses_full_text_search(fmc: respx.MockRouter) -> None
 async def test_set_state_drop_then_default(fmc: respx.MockRouter) -> None:
     fmc.get(f"{CFG}/policy/intrusionpolicies").mock(return_value=items([IPS]))
     fmc.get(RULES).mock(return_value=items([RULE]))
+    one = fmc.get(f"{RULES}/{RULE['id']}").mock(return_value=httpx.Response(200, json=RULE))
     put = fmc.put(f"{RULES}/{RULE['id']}").mock(
         side_effect=lambda req: httpx.Response(200, json=json.loads(req.content))
     )
@@ -100,6 +101,7 @@ async def test_set_state_drop_then_default(fmc: respx.MockRouter) -> None:
         assert done["result"]["rules"][0]["override_state"] == "DROP"
         # DEFAULT removes the override (FMC: omit overrideState in the full-object PUT)
         fmc.get(RULES).mock(return_value=items([{**RULE, "overrideState": "DROP"}]))
+        one.mock(return_value=httpx.Response(200, json={**RULE, "overrideState": "DROP"}))
         args = {**args, "state": "DEFAULT"}
         preview = await run(c, "fmc_set_intrusion_rule_state", args)
         assert preview["preview"]["rules"][0]["to"] == "default (DISABLE)"

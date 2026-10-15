@@ -300,7 +300,10 @@ def register(reg: ToolRegistrar) -> None:
         log: Annotated[LogMode | None, Field(description="Connection logging to FMC")] = None,
         intrusion_policy: Annotated[
             str | None,
-            Field(description="Intrusion policy for an ALLOW rule (name or UUID); '' removes it"),
+            Field(
+                description="Intrusion policy for an ALLOW rule (name or UUID); '' removes it. The devices "
+                "need the IPS licence (fmc_set_device_licenses)."
+            ),
         ] = None,
         move_to: Annotated[
             int | None, Field(ge=1, description="Move the rule so it sits at this 1-based index")
