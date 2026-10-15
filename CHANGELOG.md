@@ -3,6 +3,12 @@
 ## Unreleased
 
 ### Added
+- **Decryption policy (F13, second slice)**: `fmc_get_decryption_policy` (read), `fmc_create_decryption_policy`,
+  `fmc_create_decryption_rule` (do-not-decrypt / block / monitor), `fmc_delete_decryption_rule`,
+  `fmc_set_decryption_policy` (write). `fmc_get_access_policy` now shows the decryption and identity policies.
+  Live: a do-not-decrypt rule for a TLS destination in `mcp-test-dec`, linked to mcp-test-ftd-acp and deployed,
+  then removed and deployed again. FMC's API can't unlink a decryption policy from an access policy (null refused,
+  omitted keeps it): the tool explains instead of pretending.
 - **Change-management tickets (F22)**: `fmc_change_tickets` (read: on/off, tickets, a ticket's changes and
   validation) and `fmc_ticket` (write: open / submit / discard / release). An open ticket, or `FMC_TICKET`, is sent
   as `ticket-id` with every request. Roles gain view_tickets / modify_tickets. Live: change management switched on
