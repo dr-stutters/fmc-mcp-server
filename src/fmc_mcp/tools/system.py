@@ -18,7 +18,7 @@ from stutters_mcp_core import (
 )
 from stutters_mcp_core.http import page_of
 
-from fmc_mcp.audit import AUDIT_NOISE, compact_message, coverage_note, fetch_audit, is_read
+from fmc_mcp.audit import NOISE_SUBSYSTEMS, compact_message, coverage_note, fetch_audit, is_read
 from fmc_mcp.client import FmcApp
 from fmc_mcp.tools.common import Domain, slim
 
@@ -123,7 +123,8 @@ def register(reg: ToolRegistrar) -> None:
         app: FmcApp = get_client(ctx)
         start = int(time.time()) - since_minutes * 60
         if changes_only is None:
-            changes_only = not (subsystem and AUDIT_NOISE.match(subsystem.strip()))
+            want = (subsystem or "").strip().lower()
+            changes_only = not (want and any(want in n for n in NOISE_SUBSYSTEMS))
         scan = await fetch_audit(app, start, domain)
         rows = []
         for r in scan.items:
@@ -133,7 +134,8 @@ def register(reg: ToolRegistrar) -> None:
                 continue
             if subsystem and subsystem.lower() not in str(r.get("subSystem", "")).lower():
                 continue
-            if text and text.lower() not in str(r.get("message", "")).lower():
+            msg = str(r.get("message", ""))
+            if text and text.lower() not in f"{msg} {compact_message(msg)}".lower():
                 continue
             rows.append(_audit_row(r))
         extra: dict[str, Any] = {"records_read": len(scan.items)}

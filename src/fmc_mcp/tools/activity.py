@@ -14,7 +14,7 @@ from pydantic import Field
 from stutters_mcp_core import ResponseFormat, ToolRegistrar, UpstreamError, get_client, list_result
 from stutters_mcp_core.http import page_of
 
-from fmc_mcp.audit import compact_message, coverage_note, fetch_audit, is_read
+from fmc_mcp.audit import audit_time, compact_message, coverage_note, fetch_audit, is_read
 from fmc_mcp.client import FmcApp
 from fmc_mcp.tools.common import Domain, resolve_in
 from fmc_mcp.tools.deploy import JOBS
@@ -135,35 +135,37 @@ def _window(since_minutes: int) -> tuple[int, int]:
     return now - since_minutes * 60, now + 60
 
 
-_DEPLOY_ECHO = re.compile(r"deployment/deploymentrequests|Policy Deployment to |Pre-deploy ", re.I)
+# Audit rows that a deployment row already shows: the accepted request and the successful task.
+_DEPLOY_ECHO = re.compile(
+    r"deployment/deploymentrequests\S* Accepted \(202\)|^Policy Deployment to .* - SUCCESS$|"
+    r"^Successful task completion : Pre-deploy ",
+    re.I,
+)
+# Worded change rows FMC writes next to the API record of the same edit.
+_WORDED = re.compile(r"^(Policies|Objects|Devices) >")
+_API_WRITE_OK = re.compile(r"^(POST|PUT|DELETE) \S+ \S.*\(2\d\d\)")
 
 
 def condense_audit(recs: list[dict[str, Any]], *, deploy_ok: bool) -> list[dict[str, Any]]:
-    """Drop audit rows that only repeat another row: the API record of a change that FMC also logs
-    in words (same user, within a second, e.g. 'API: PUT .../accesspolicies/...' next to 'Save Policy
-    x'), and the deployment request/task rows when the deployment itself is in the timeline."""
+    """Drop audit rows that only repeat another row: the successful API record of a policy, object
+    or device edit that FMC also logs in words (same user, within a second, e.g. 'API: PUT
+    .../accesspolicies/...' next to 'Save Policy x'), and the accepted deployment request and its
+    successful task rows when deployments are in the timeline. Failures are always kept."""
     worded: dict[str, list[int]] = {}
     for r in recs:
-        if str(r.get("subSystem")) != "API":
-            worded.setdefault(str(r.get("username")), []).append(_ts_audit(r))
+        if _WORDED.match(str(r.get("subSystem") or "")):
+            worded.setdefault(str(r.get("username")), []).append(audit_time(r))
     out = []
     for r in recs:
         msg = str(r.get("message") or "")
         if deploy_ok and _DEPLOY_ECHO.search(msg):
             continue
-        if str(r.get("subSystem")) == "API":
-            t = _ts_audit(r)
+        if str(r.get("subSystem")) == "API" and _API_WRITE_OK.match(msg):
+            t = audit_time(r)
             if any(abs(t - w) <= 1 for w in worded.get(str(r.get("username")), [])):
                 continue
         out.append(r)
     return out
-
-
-def _ts_audit(r: dict[str, Any]) -> int:
-    try:
-        return int(float(r.get("time") or 0))
-    except (TypeError, ValueError):
-        return 0
 
 
 SinceMinutes = Annotated[int, Field(ge=1, le=43_200, description="Look back this many minutes")]

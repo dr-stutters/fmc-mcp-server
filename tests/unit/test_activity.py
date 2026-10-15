@@ -194,4 +194,21 @@ def test_condense_audit_drops_echo_rows() -> None:
     ]
     kept = [r["auditId"] for r in condense_audit(recs, deploy_ok=True)]
     assert kept == ["a1", "a3"]
-    assert [r["auditId"] for r in condense_audit(recs, deploy_ok=False)] == ["a1", "a3", "a5"]
+    assert [r["auditId"] for r in condense_audit(recs, deploy_ok=False)] == ["a1", "a3", "a4", "a5"]
+
+
+def test_condense_audit_keeps_unrelated_and_failed_writes() -> None:
+    from fmc_mcp.tools.activity import condense_audit
+
+    recs = [
+        _rec(1, 100, "Login Success", "Login"),
+        _rec(2, 100, "POST https://f/api/fmc_config/v1/domain/d-1/object/hosts Created (201)"),
+        _rec(3, 50, "Save Policy acp:3", "Policies > Access Control > Policy Editor"),
+        _rec(4, 50, "PUT https://f/api/fmc_config/v1/domain/d-1/policy/accesspolicies/1 Bad Request (400)"),
+        _rec(
+            5,
+            40,
+            "POST https://f/api/fmc_config/v1/domain/d-1/deployment/deploymentrequests Bad Request (422)",
+        ),
+    ]
+    assert [r["auditId"] for r in condense_audit(recs, deploy_ok=True)] == ["a1", "a2", "a3", "a4", "a5"]

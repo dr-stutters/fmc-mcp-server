@@ -18,7 +18,8 @@ AUDIT_PAGE = 100  # FMC's per-query maximum
 AUDIT_MAX_PAGES = 25  # 2500 records, ~25 requests (FMC allows ~120/min)
 
 # Reads and session housekeeping: not changes.
-AUDIT_NOISE = re.compile(r"^(GET|Page View|Login|Logout|Session Expiration)\b", re.I)
+_READ_MESSAGE = re.compile(r"^GET\b")
+NOISE_SUBSYSTEMS = ("page view", "login", "logout", "session expiration")
 _API_URL = re.compile(r"https?://[^/\s]+/api/(fmc_\w+)/v\d+/domain/[0-9a-fA-F-]+/")
 _API_URL_NODOMAIN = re.compile(r"https?://[^/\s]+/api/")
 _STATUS_TAIL = re.compile(r"(\(\d{3}\))\s+-\s.*$")
@@ -40,7 +41,9 @@ def is_read(rec: dict[str, Any]) -> bool:
     (hit-count refresh, packet tracer, show command)."""
     msg = str(rec.get("message") or "")
     sub = str(rec.get("subSystem") or "")
-    return bool(AUDIT_NOISE.match(msg) or AUDIT_NOISE.match(sub) or _OPERATIONAL.match(msg))
+    return bool(
+        _READ_MESSAGE.match(msg) or sub.strip().lower() in NOISE_SUBSYSTEMS or _OPERATIONAL.match(msg)
+    )
 
 
 def compact_message(msg: Any) -> str:
@@ -51,7 +54,7 @@ def compact_message(msg: Any) -> str:
     return _STATUS_TAIL.sub(r"\1", m).strip()
 
 
-def _time(rec: dict[str, Any]) -> int:
+def audit_time(rec: dict[str, Any]) -> int:
     try:
         t = int(float(rec.get("time") or 0))
     except (TypeError, ValueError):
@@ -78,7 +81,7 @@ async def fetch_audit(
         if scan.pages >= max_pages:
             scan.complete = False
             scan.reached = end
-            return scan
+            break
         params: dict[str, Any] = {"starttime": start, "limit": AUDIT_PAGE, "expanded": "true"}
         if end is not None:
             params["endtime"] = end
@@ -96,7 +99,7 @@ async def fetch_audit(
         scan.items.extend(new)
         if len(items) < AUDIT_PAGE:
             break  # FMC had fewer than a full slice left: the window is read
-        times = [_time(r) for r in items]
+        times = [audit_time(r) for r in items]
         oldest = min(times)
         if not new or oldest == max(times):
             # A full slice within one second (or nothing new): step past that second.
@@ -105,7 +108,7 @@ async def fetch_audit(
         end = oldest
         if end < start:
             break
-    scan.items.sort(key=_time, reverse=True)
+    scan.items.sort(key=audit_time, reverse=True)
     return scan
 
 
