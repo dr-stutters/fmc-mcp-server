@@ -194,18 +194,12 @@ The client-side rate limiter keeps the server under FMC's per-source-IP limits.
 
 ### Least-privilege FMC account
 
-Create a user for the server under **System > Users**, with a custom role:
+Give the server its own FMC user with a custom role; never `admin`. [docs/least-privilege.md](docs/least-privilege.md)
+has the tested role definitions (`mcp-ro` for the read tier, `mcp-rw` for writes and deploys), the 403
+matrix, and `scripts/seed_access.py`, which creates the roles and users (FMC's REST API can't). Use one
+user per running copy (container, CLI, tests, people): a login ends the same user's other sessions.
 
-- **Read only:** base the role on *Security Analyst (Read Only)*. It needs view access to devices,
-  access control, intrusion, NAT and prefilter policies, the object manager and the audit log.
-- **Writes:** add modify rights for *Object Manager*, *Access Control Policy* and *NAT Policy*.
-- **Device configuration:** add modify rights for *Devices* (interfaces, routing) and policy
-  assignment.
-- **Troubleshooting:** packet tracer, show commands, hit counts and health need the role's device
-  troubleshooting and health-monitoring permissions.
-- **Dangerous tier:** also add *Deploy Configuration to Devices* and *Device Management*.
-
-The REST API must be enabled under **System > Configuration > REST API Preferences**.
+The REST API must be enabled under **Administration > Configuration > REST API Preferences**.
 
 ## Running
 
