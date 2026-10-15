@@ -107,3 +107,108 @@ async def test_recent_activity_merges_and_survives_a_failing_source(fmc: respx.M
     assert [x["source"] for x in out["results"]] == ["audit", "health"]
     assert out["results"][1]["device"] == "FMC"
     assert "deploy" in out["errors"]
+
+
+def _audit_route(fmc: respx.MockRouter, recs: list[dict[str, Any]]) -> respx.Route:
+    """FMC 10.0.1 behaviour: the newest 100 records in [starttime, endtime], nothing past offset 100."""
+
+    def handler(request: httpx.Request) -> httpx.Response:
+        p = request.url.params
+        lo = int(p["starttime"])
+        hi = int(p.get("endtime", 10**12))
+        sel = sorted((r for r in recs if lo <= r["time"] <= hi), key=lambda r: -r["time"])[:100]
+        if int(p.get("offset", 0)) >= 100:
+            sel = []
+        return httpx.Response(200, json={"items": sel, "paging": {"count": len(sel)}})
+
+    return fmc.get(PLATFORM_AUDIT).mock(side_effect=handler)
+
+
+def _rec(i: int, t: int, msg: str, sub: str = "API", user: str = "mcp") -> dict[str, Any]:
+    return {"auditId": f"a{i}", "time": t, "subSystem": sub, "message": msg, "username": user}
+
+
+async def test_audit_records_read_the_whole_window_past_fmcs_100_cap(fmc: respx.MockRouter) -> None:
+    import time as _t
+
+    now = int(_t.time())
+    recs = [
+        _rec(0, now - 3000, "Save Policy mcp-test-acp:12", "Policies > Access Control > Policy Editor", "bob")
+    ]
+    recs += [
+        _rec(i, now - 2900 + i, "GET https://f/api/fmc_config/v1/domain/x-1/object/hosts OK (200)")
+        for i in range(1, 350)
+    ]
+    route = _audit_route(fmc, recs)
+    async with Client(create_server(make_settings())) as c:
+        r = await c.call_tool(
+            "fmc_list_audit_records", {"text": "mcp-test-acp", "since_minutes": 60, "response_format": "json"}
+        )
+    out = r.structured_content or json.loads(r.content[0].text)  # type: ignore[union-attr]
+    assert [x["user"] for x in out["results"]] == ["bob"]
+    assert out["records_read"] == 350 and "note" not in out
+    assert any("endtime" in call.request.url.params for call in route.calls)
+
+
+async def test_audit_records_cap_reports_coverage(fmc: respx.MockRouter) -> None:
+    import time as _t
+
+    from fmc_mcp import audit
+
+    now = int(_t.time())
+    _audit_route(fmc, [_rec(i, now - 5000 + i, "GET x") for i in range(5000)])
+    audit_pages, audit.AUDIT_MAX_PAGES = audit.AUDIT_MAX_PAGES, 3
+    try:
+        scan = None
+        async with Client(create_server(make_settings())) as c:
+            r = await c.call_tool("fmc_list_audit_records", {"since_minutes": 120, "response_format": "json"})
+            scan = r.structured_content or json.loads(r.content[0].text)  # type: ignore[union-attr]
+    finally:
+        audit.AUDIT_MAX_PAGES = audit_pages
+    assert scan["results"] == []  # all reads, skipped by default
+    assert "read back to" in scan["note"] and scan["records_read"] >= 290
+
+
+async def test_audit_logins_are_listed_when_asked_for(fmc: respx.MockRouter) -> None:
+    import time as _t
+
+    now = int(_t.time())
+    _audit_route(fmc, [_rec(1, now - 10, "Login Success", "Login", "alice"), _rec(2, now - 5, "GET x")])
+    async with Client(create_server(make_settings())) as c:
+        r = await c.call_tool("fmc_list_audit_records", {"subsystem": "Login", "response_format": "json"})
+    out = r.structured_content or json.loads(r.content[0].text)  # type: ignore[union-attr]
+    assert [x["user"] for x in out["results"]] == ["alice"]
+
+
+def test_condense_audit_drops_echo_rows() -> None:
+    from fmc_mcp.tools.activity import condense_audit
+
+    recs = [
+        _rec(1, 100, "Save Policy acp:3", "Policies > Access Control > Policy Editor"),
+        _rec(2, 100, "PUT https://f/api/fmc_config/v1/domain/d-1/policy/accesspolicies/1 OK (200)"),
+        _rec(3, 90, "DELETE https://f/api/fmc_config/v1/domain/d-1/policy/dnspolicies/1/dnsrules/2 OK (200)"),
+        _rec(
+            4, 80, "POST https://f/api/fmc_config/v1/domain/d-1/deployment/deploymentrequests Accepted (202)"
+        ),
+        _rec(5, 81, "Policy Deployment to ftd1 - SUCCESS", "Task Queue"),
+    ]
+    kept = [r["auditId"] for r in condense_audit(recs, deploy_ok=True)]
+    assert kept == ["a1", "a3"]
+    assert [r["auditId"] for r in condense_audit(recs, deploy_ok=False)] == ["a1", "a3", "a4", "a5"]
+
+
+def test_condense_audit_keeps_unrelated_and_failed_writes() -> None:
+    from fmc_mcp.tools.activity import condense_audit
+
+    recs = [
+        _rec(1, 100, "Login Success", "Login"),
+        _rec(2, 100, "POST https://f/api/fmc_config/v1/domain/d-1/object/hosts Created (201)"),
+        _rec(3, 50, "Save Policy acp:3", "Policies > Access Control > Policy Editor"),
+        _rec(4, 50, "PUT https://f/api/fmc_config/v1/domain/d-1/policy/accesspolicies/1 Bad Request (400)"),
+        _rec(
+            5,
+            40,
+            "POST https://f/api/fmc_config/v1/domain/d-1/deployment/deploymentrequests Bad Request (422)",
+        ),
+    ]
+    assert [r["auditId"] for r in condense_audit(recs, deploy_ok=True)] == ["a1", "a2", "a3", "a4", "a5"]
