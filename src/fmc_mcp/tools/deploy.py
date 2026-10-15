@@ -1,6 +1,7 @@
 """Deployment tools: what is pending, what changed, deployment history (deploy itself is dangerous)."""
 
 # No `from __future__ import annotations`: FastMCP inspects signatures at runtime.
+import re
 import time
 from typing import Annotated, Any
 
@@ -37,9 +38,15 @@ def deployable_row(d: dict[str, Any]) -> dict[str, Any]:
     }
 
 
+SECRET_FIELD = re.compile(r"password|secret|key|community|psk", re.I)
+
+
 def _change_text(v: dict[str, Any], verb: str) -> str:
     field = v.get("fieldName") or "?"
     old, new = v.get("oldValue"), v.get("newValue")
+    if SECRET_FIELD.search(str(field)):  # FMC shows encrypted secrets here (e.g. BGP neighbor passwords)
+        old = "********" if old not in (None, "") else old
+        new = "********" if new not in (None, "") else new
     if verb == "deleted":
         return f"-{field}: {old if old is not None else new}"
     if old is not None and new is not None:
