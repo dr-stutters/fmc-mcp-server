@@ -171,6 +171,7 @@ async def test_deploy_accepts_ha_pair_and_unit_names(fmc: respx.MockRouter) -> N
         for ref in ("mcp-test-ha", "mcp-ftd2"):
             out = await run(c, "fmc_deploy", {"devices": [ref]})
             assert out["status"] == "preview", out
+            assert out.get("blast_radius", 1) == 1
 
 
 async def test_existing_mac_is_updated_not_duplicated(fmc: respx.MockRouter) -> None:

@@ -1,9 +1,12 @@
 import json
+from importlib.metadata import version
 from pathlib import Path
 from typing import Any
 
 import pytest
 import respx
+from fastmcp import FastMCP
+from stutters_mcp_core.manifest import build_manifest
 from stutters_mcp_core.testing import (
     assert_inbound_references,
     assert_prompt_contract,
@@ -57,22 +60,26 @@ def _external() -> dict[str, list[str]]:
     return tools
 
 
-def _server() -> object:
+def _server() -> FastMCP[Any]:
     return create_server(make_settings(mcp_enable_writes=True, mcp_enable_dangerous=True))
 
 
 async def test_inbound_references(fmc: respx.MockRouter) -> None:
-    await assert_inbound_references(_server(), "fmc", HERE / "manifests")  # type: ignore[arg-type]
+    await assert_inbound_references(_server(), "fmc", HERE / "manifests")
 
 
 async def test_prompt_snapshots(fmc: respx.MockRouter) -> None:
-    await assert_prompt_snapshots(_server(), HERE / "snapshots" / "prompts")  # type: ignore[arg-type]
+    await assert_prompt_snapshots(_server(), HERE / "snapshots" / "prompts")
 
 
-def test_manifest_is_current() -> None:
-    manifest = json.loads((HERE / "manifests" / "fmc.json").read_text())
-    from importlib.metadata import version
-
-    assert manifest["version"] == version("fmc-mcp-server"), (
-        "regenerate: uv run fmc-mcp-server tools --json --out tests/manifests/fmc.json"
+async def test_manifest_is_current(fmc: respx.MockRouter) -> None:
+    """Other servers check their prompts against tests/manifests/fmc.json: it must match the code."""
+    committed = json.loads((HERE / "manifests" / "fmc.json").read_text())
+    fresh = await build_manifest(
+        _server(), server="fmc-mcp-server", prefix="fmc", version=version("fmc-mcp-server")
     )
+    for key in ("version", "tools", "prompts"):
+        assert committed[key] == fresh[key], (
+            f"tests/manifests/fmc.json is stale ({key}); regenerate: "
+            "uv run fmc-mcp-server tools --json --out tests/manifests/fmc.json"
+        )

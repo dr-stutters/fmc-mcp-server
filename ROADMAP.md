@@ -1,10 +1,10 @@
 # fmc-mcp-server roadmap
-_Last updated 2026-10-15: logs and events are pull-only ([ADR-003](https://github.com/dr-stutters/stutters-mcp-core/blob/main/docs/adr/003-no-event-ingestion.md)); F7 (FTD syslog) and F12 (eStreamer) dropped, F5 reframed as on-demand activity lookups. Current release **v0.3.0** (Now milestone delivered). Suite roadmap: [stutters-mcp-core ROADMAP.md](https://github.com/dr-stutters/stutters-mcp-core/blob/main/ROADMAP.md). Gap analysis: [docs/GAP-ANALYSIS.md](docs/GAP-ANALYSIS.md)._
+_Last updated 2026-10-15: logs and events are pull-only ([ADR-003](https://github.com/dr-stutters/stutters-mcp-core/blob/main/docs/adr/003-no-event-ingestion.md)); F7 (FTD syslog) and F12 (eStreamer) dropped, F5 reframed as on-demand activity lookups. Current release **v0.4.0** (Now and Next milestones delivered). Suite roadmap: [stutters-mcp-core ROADMAP.md](https://github.com/dr-stutters/stutters-mcp-core/blob/main/ROADMAP.md). Gap analysis: [docs/GAP-ANALYSIS.md](docs/GAP-ANALYSIS.md)._
 
 ## Summary
-- v0.3.0 has 41 read, 30 write and 7 dangerous tools plus the `fmc_why_blocked` prompt (v0.2.0: 35/20/7). The day-to-day firewall workflows are curated and were live-tested against FMC 10.0.1 with an FTDv 10.0 in CML: onboard, change → preview → deploy → verify → roll back, "why is this blocked?" and device health. 17 % of the 1446 API operations are behind curated tools; most of the rest go through `fmc_api_call`.
+- v0.4.0 has 45 read, 35 write and 7 dangerous tools plus the `fmc_why_blocked` and `fmc_onboard_ftd` prompts (v0.3.0: 41/30/7; v0.2.0: 35/20/7). The day-to-day firewall workflows are curated and were live-tested against FMC 10.0.1 with an FTDv 10.0 in CML: onboard, change → preview → deploy → verify → roll back, "why is this blocked?" and device health. 17 % of the 1446 API operations are behind curated tools; most of the rest go through `fmc_api_call`.
 - The biggest gaps are routing beyond static routes, VPN build, platform settings (syslog, NTP, SNMP), editing the intrusion, decryption, DNS and identity policies, and a merged view of recent health alerts, audit and deployments. The FMC REST API has **no connection or intrusion events and no packet capture**; under ADR-003 the server doesn't receive FTD syslog or eStreamer, so traffic events stay in the FMC UI or the customer's SIEM.
-- HA, clustering and VPN tunnel status are tested only against mocks. The lab only covers FMC 10.0.1, with one domain and the shared `admin` user.
+- HA (form, monitoring, switch, break, delete) and a policy-based site-to-site VPN were tested live on three FTDv in v0.4.0; clustering, route-based VPN, SD-WAN and RA VPN are tested only against mocks. The lab only covers FMC 10.0.1, with one domain and the shared `admin` user.
 - **Now** ✅ delivered in v0.3.0 (core pinned to v0.3.0):
   - the `fmc_why_blocked` prompt;
   - platform-settings tools (syslog read/write; NTP, SNMP and access settings read);
@@ -12,7 +12,7 @@ _Last updated 2026-10-15: logs and events are pull-only ([ADR-003](https://githu
   - on-demand lookups of health alerts, audit records and deployments (`fmc_list_health_alerts`, `fmc_recent_activity`);
   - BGP, OSPF and VRF tools (`fmc_get_routing`, `fmc_configure_bgp`, `fmc_configure_ospf`, `fmc_create_vrf`/`fmc_delete_vrf`), live against an IOL peer;
   - the duplicate static-route blocker.
-- **Next** adds live HA with two FTDv, VPN build, and the `fmc_onboard_ftd` and `ise_quarantine_host` workflows. **Later** covers editing the security policies, admin operations and cdFMC. FTD syslog (F7) and eStreamer (F12) were dropped: the servers never receive pushed data.
+- **Next** ✅ delivered in v0.4.0 (core v0.6.0): live HA with two FTDv, VPN build and read, `fmc_onboard_ftd`, and `fmc_contain_host`/`fmc_release_host` for ise-mcp-server's `ise_quarantine_host`. **Later** covers editing the security policies, admin operations and cdFMC. FTD syslog (F7) and eStreamer (F12) were dropped: the servers never receive pushed data.
 
 ## Now
 | # | Item | Why (operator value) | External needs | Test plan | Size | Issue |
