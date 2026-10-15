@@ -213,7 +213,7 @@ def register(reg: ToolRegistrar) -> None:
             desired.update(fields)
         if description is not None:
             desired["description"] = description
-        changes = field_changes(editable(current), desired)
+        changes = field_changes(editable(current), desired, replace=True)
         usage = await _usage(app, current, t, domain)
         blockers = [] if changes else ["Nothing to change: the object already has these values."]
         if new_name and new_name != current.get("name") and await exists(app, new_name, [t.key], domain):

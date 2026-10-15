@@ -287,3 +287,45 @@ async def test_insert_before_and_after_rejected(lab: respx.MockRouter) -> None:
                     "insert_after": 2,
                 },
             )
+
+
+async def test_update_object_preview_shows_removed_field(fmc: respx.MockRouter) -> None:
+    """Core 0.12.4 replace=True: the PUT drops 'port' (all ports), so the preview must say so."""
+    port = {
+        "id": "00000000-0000-0000-0000-0000000000p1",
+        "name": "p1",
+        "type": "ProtocolPortObject",
+        "protocol": "TCP",
+        "port": "22",
+    }
+    fmc.get(f"{CFG}/object/protocolportobjects").mock(return_value=items([port]))
+    fmc.get(f"{CFG}/object/operational/usage").mock(return_value=empty())
+    put = fmc.put(f"{CFG}/object/protocolportobjects/{port['id']}").mock(
+        return_value=httpx.Response(200, json=port)
+    )
+    args = {"object": "p1", "type": "port", "value": "0-65535"}
+    preview, _ = await preview_apply("fmc_update_object", args)
+    assert preview["preview"]["changes"]["port"] == {"from": "22", "to": None, "removed": True}
+    assert "port" not in json.loads(put.calls.last.request.content)
+
+
+async def test_rule_action_change_preview_shows_dropped_policies(lab: respx.MockRouter) -> None:
+    """ALLOW -> BLOCK drops ipsPolicy/filePolicy from the PUT body; the preview lists both."""
+    data = fixture("accessrules")
+    rule = next(r for r in data["items"] if r["name"] == "mcp-test-ssh-admin")
+    rule["ipsPolicy"] = {"id": "ips1", "type": "IntrusionPolicy", "name": "Balanced"}
+    rule["filePolicy"] = {"id": "fp1", "type": "FilePolicy", "name": "Block Malware"}
+    lab.get(f"{CFG}/policy/accesspolicies/{ACP_ID}/accessrules").mock(
+        return_value=httpx.Response(200, json=data)
+    )
+    put = lab.put(f"{CFG}/policy/accesspolicies/{ACP_ID}/accessrules/{rule['id']}").mock(
+        return_value=httpx.Response(200, json=rule)
+    )
+    preview, _ = await preview_apply(
+        "fmc_update_access_rule", {"policy": "mcp-test-acp", "rule": "mcp-test-ssh-admin", "action": "BLOCK"}
+    )
+    changes = preview["preview"]["changes"]
+    assert changes["ipsPolicy"]["removed"] is True and changes["filePolicy"]["removed"] is True
+    assert "commentHistoryList" not in changes
+    body = json.loads(put.calls.last.request.content)
+    assert "ipsPolicy" not in body and "filePolicy" not in body
