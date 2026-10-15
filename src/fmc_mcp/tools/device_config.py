@@ -207,8 +207,12 @@ def route_row(kind: str, r: dict[str, Any]) -> dict[str, Any]:
     }
 
 
+ROUTE_TABLE_CAP = 5000
+
+
 def route_key(r: dict[str, Any]) -> tuple[str, frozenset[str], str]:
-    """What makes two static routes in one table the same route: interface, destinations, gateway."""
+    """What makes two static routes in one table the same route: interface, destinations, gateway.
+    A gateway given as a host object and the same IP as a literal count as different (FMC decides)."""
     gw = r.get("gateway") or {}
     if isinstance(gw.get("literal"), dict):
         gateway = "ip:" + str(gw["literal"].get("value", "")).lower()
@@ -586,7 +590,9 @@ def register(reg: ToolRegistrar) -> None:
         sub = "ipv4staticroutes" if version == 4 else "ipv6staticroutes"
         path = await app.config_path(f"{base}/{sub}", domain)
         if selected and not blockers:
-            existing = await app.all(path, cap=5000)
+            # One table rarely holds more than a few hundred routes; past the cap the check is skipped
+            # for the rest and FMC's own refusal still applies.
+            existing = await app.all(path, cap=ROUTE_TABLE_CAP)
             want = route_key(body)
             dup = next((r for r in existing.items if route_key(r) == want), None)
             if dup is not None:
