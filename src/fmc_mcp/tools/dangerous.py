@@ -269,6 +269,7 @@ def register(reg: ToolRegistrar) -> None:
                 details={"devices": rows},
                 fingerprint=[(r["device_id"], r["version"]) for r in rows],
                 blockers=blockers,
+                blast_radius=len(targets),
                 side_effects=(
                     [f"Traffic interruption expected on: {', '.join(map(str, interrupts))}"]
                     if interrupts

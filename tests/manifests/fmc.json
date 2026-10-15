@@ -1,0 +1,437 @@
+{
+  "core_version": "0.6.0",
+  "manifest": 1,
+  "prefix": "fmc",
+  "prompts": {
+    "fmc_onboard_ftd": {
+      "arguments": [
+        "name",
+        "access_policy",
+        "outside_ip",
+        "gateway",
+        "inside_ip",
+        "host",
+        "recipe",
+        "outside_interface",
+        "inside_interface",
+        "nat_policy",
+        "platform_settings",
+        "test_destination"
+      ],
+      "references": [
+        "fmc_status",
+        "fmc_license_status",
+        "fmc_list_devices",
+        "fmc_delete_device",
+        "fmc_list_policies",
+        "cml_build_recipe",
+        "cml_wait_for_converged",
+        "cml_verify_recipe",
+        "fmc_register_device",
+        "fmc_get_device",
+        "fmc_list_device_interfaces",
+        "fmc_list_objects",
+        "fmc_create_security_zone",
+        "fmc_update_interface",
+        "fmc_create_static_route",
+        "fmc_assign_policy",
+        "fmc_update_access_rule",
+        "fmc_pending_changes",
+        "fmc_deploy",
+        "fmc_list_deployments",
+        "fmc_run_show_command",
+        "fmc_packet_tracer",
+        "cml_run_commands"
+      ],
+      "rendered": true,
+      "tier": "dangerous",
+      "uses": [
+        "fmc",
+        "cml"
+      ]
+    },
+    "fmc_why_blocked": {
+      "arguments": [
+        "source",
+        "destination",
+        "protocol",
+        "port",
+        "device",
+        "ingress_interface",
+        "policy"
+      ],
+      "references": [
+        "fmc_rule_lookup",
+        "fmc_list_device_interfaces",
+        "fmc_list_routes",
+        "fmc_packet_tracer",
+        "fmc_get_hit_counts",
+        "fmc_pending_changes",
+        "fmc_list_deployments",
+        "fmc_list_audit_records",
+        "fmc_create_access_rule",
+        "fmc_update_access_rule",
+        "fmc_map_dynamic_object",
+        "fmc_list_dynamic_objects",
+        "fmc_deploy"
+      ],
+      "rendered": true,
+      "tier": "read",
+      "uses": [
+        "fmc"
+      ]
+    }
+  },
+  "server": "fmc-mcp-server",
+  "tools": {
+    "fmc_api_call": {
+      "tier": "dangerous",
+      "title": "Raw Cisco Secure Firewall Management Center API call"
+    },
+    "fmc_assign_policy": {
+      "tier": "write",
+      "title": "Assign policy to devices"
+    },
+    "fmc_configure_bgp": {
+      "tier": "write",
+      "title": "Configure BGP"
+    },
+    "fmc_configure_ha_monitoring": {
+      "tier": "write",
+      "title": "Configure HA monitored interface"
+    },
+    "fmc_configure_ospf": {
+      "tier": "write",
+      "title": "Configure OSPF"
+    },
+    "fmc_configure_syslog": {
+      "tier": "write",
+      "title": "Configure syslog (platform settings)"
+    },
+    "fmc_contain_host": {
+      "tier": "write",
+      "title": "Contain a host (quarantine)"
+    },
+    "fmc_create_access_policy": {
+      "tier": "write",
+      "title": "Create access control policy"
+    },
+    "fmc_create_access_rule": {
+      "tier": "write",
+      "title": "Create access rule"
+    },
+    "fmc_create_dynamic_object": {
+      "tier": "write",
+      "title": "Create dynamic object"
+    },
+    "fmc_create_group": {
+      "tier": "write",
+      "title": "Create object group"
+    },
+    "fmc_create_ha_pair": {
+      "tier": "dangerous",
+      "title": "Form HA pair"
+    },
+    "fmc_create_nat_policy": {
+      "tier": "write",
+      "title": "Create NAT policy"
+    },
+    "fmc_create_nat_rule": {
+      "tier": "write",
+      "title": "Create NAT rule"
+    },
+    "fmc_create_object": {
+      "tier": "write",
+      "title": "Create object"
+    },
+    "fmc_create_platform_settings_policy": {
+      "tier": "write",
+      "title": "Create platform settings policy"
+    },
+    "fmc_create_s2s_vpn": {
+      "tier": "write",
+      "title": "Create site-to-site VPN"
+    },
+    "fmc_create_security_zone": {
+      "tier": "write",
+      "title": "Create security zone"
+    },
+    "fmc_create_static_route": {
+      "tier": "write",
+      "title": "Create static route"
+    },
+    "fmc_create_subinterface": {
+      "tier": "write",
+      "title": "Create subinterface"
+    },
+    "fmc_create_vrf": {
+      "tier": "write",
+      "title": "Create VRF"
+    },
+    "fmc_delete_access_rule": {
+      "tier": "write",
+      "title": "Delete access rule"
+    },
+    "fmc_delete_device": {
+      "tier": "dangerous",
+      "title": "Delete (unregister) device"
+    },
+    "fmc_delete_dynamic_object": {
+      "tier": "write",
+      "title": "Delete dynamic object"
+    },
+    "fmc_delete_interface": {
+      "tier": "write",
+      "title": "Delete interface"
+    },
+    "fmc_delete_nat_rule": {
+      "tier": "write",
+      "title": "Delete NAT rule"
+    },
+    "fmc_delete_object": {
+      "tier": "write",
+      "title": "Delete object"
+    },
+    "fmc_delete_policy": {
+      "tier": "dangerous",
+      "title": "Delete policy"
+    },
+    "fmc_delete_s2s_vpn": {
+      "tier": "write",
+      "title": "Delete site-to-site VPN"
+    },
+    "fmc_delete_static_route": {
+      "tier": "write",
+      "title": "Delete static route"
+    },
+    "fmc_delete_vrf": {
+      "tier": "write",
+      "title": "Delete VRF"
+    },
+    "fmc_deploy": {
+      "tier": "dangerous",
+      "title": "Deploy configuration"
+    },
+    "fmc_device_health": {
+      "tier": "read",
+      "title": "Device health"
+    },
+    "fmc_find_object": {
+      "tier": "read",
+      "title": "Find objects by value"
+    },
+    "fmc_get_access_policy": {
+      "tier": "read",
+      "title": "Get access control policy"
+    },
+    "fmc_get_access_rule": {
+      "tier": "read",
+      "title": "Get access rule"
+    },
+    "fmc_get_definition": {
+      "tier": "read",
+      "title": "Describe a Cisco Secure Firewall Management Center API path or schema"
+    },
+    "fmc_get_device": {
+      "tier": "read",
+      "title": "Get device"
+    },
+    "fmc_get_ha_status": {
+      "tier": "read",
+      "title": "Get HA pair status"
+    },
+    "fmc_get_hit_counts": {
+      "tier": "read",
+      "title": "Rule hit counts"
+    },
+    "fmc_get_object": {
+      "tier": "read",
+      "title": "Get object"
+    },
+    "fmc_get_platform_settings": {
+      "tier": "read",
+      "title": "Get platform settings"
+    },
+    "fmc_get_ravpn": {
+      "tier": "read",
+      "title": "Get remote-access VPN"
+    },
+    "fmc_get_routing": {
+      "tier": "read",
+      "title": "Get device routing"
+    },
+    "fmc_get_task": {
+      "tier": "read",
+      "title": "Get FMC task status"
+    },
+    "fmc_get_vpn_topology": {
+      "tier": "read",
+      "title": "Get VPN topology"
+    },
+    "fmc_ha_action": {
+      "tier": "dangerous",
+      "title": "Break, switch or delete HA pair"
+    },
+    "fmc_license_status": {
+      "tier": "read",
+      "title": "FMC licensing status"
+    },
+    "fmc_list_access_rules": {
+      "tier": "read",
+      "title": "List access rules"
+    },
+    "fmc_list_audit_records": {
+      "tier": "read",
+      "title": "FMC audit records"
+    },
+    "fmc_list_clusters": {
+      "tier": "read",
+      "title": "List clusters"
+    },
+    "fmc_list_deployable_devices": {
+      "tier": "read",
+      "title": "List devices with undeployed changes"
+    },
+    "fmc_list_deployments": {
+      "tier": "read",
+      "title": "Deployment history"
+    },
+    "fmc_list_device_interfaces": {
+      "tier": "read",
+      "title": "List device interfaces"
+    },
+    "fmc_list_devices": {
+      "tier": "read",
+      "title": "List managed devices"
+    },
+    "fmc_list_domains": {
+      "tier": "read",
+      "title": "List FMC domains"
+    },
+    "fmc_list_dynamic_objects": {
+      "tier": "read",
+      "title": "List dynamic objects"
+    },
+    "fmc_list_ha_pairs": {
+      "tier": "read",
+      "title": "List HA pairs"
+    },
+    "fmc_list_health_alerts": {
+      "tier": "read",
+      "title": "List health alerts"
+    },
+    "fmc_list_nat_rules": {
+      "tier": "read",
+      "title": "List NAT rules"
+    },
+    "fmc_list_objects": {
+      "tier": "read",
+      "title": "List objects"
+    },
+    "fmc_list_policies": {
+      "tier": "read",
+      "title": "List policies"
+    },
+    "fmc_list_policy_assignments": {
+      "tier": "read",
+      "title": "List policy assignments"
+    },
+    "fmc_list_prefilter_rules": {
+      "tier": "read",
+      "title": "List prefilter rules"
+    },
+    "fmc_list_routes": {
+      "tier": "read",
+      "title": "List device routes"
+    },
+    "fmc_list_vpn_topologies": {
+      "tier": "read",
+      "title": "List VPN topologies"
+    },
+    "fmc_list_vpn_tunnels": {
+      "tier": "read",
+      "title": "Site-to-site VPN tunnel status"
+    },
+    "fmc_map_dynamic_object": {
+      "tier": "write",
+      "title": "Map IPs to a dynamic object"
+    },
+    "fmc_packet_tracer": {
+      "tier": "read",
+      "title": "Packet tracer"
+    },
+    "fmc_pending_changes": {
+      "tier": "read",
+      "title": "Pending changes for a device"
+    },
+    "fmc_recent_activity": {
+      "tier": "read",
+      "title": "Recent activity (health, audit, deployments)"
+    },
+    "fmc_register_device": {
+      "tier": "dangerous",
+      "title": "Register device"
+    },
+    "fmc_release_host": {
+      "tier": "write",
+      "title": "Release a contained host"
+    },
+    "fmc_rollback_deployment": {
+      "tier": "dangerous",
+      "title": "Roll back a deployment"
+    },
+    "fmc_rule_lookup": {
+      "tier": "read",
+      "title": "Which access rule matches a flow"
+    },
+    "fmc_run_show_command": {
+      "tier": "read",
+      "title": "Run a show command on a device"
+    },
+    "fmc_search_spec": {
+      "tier": "read",
+      "title": "Search the Cisco Secure Firewall Management Center API spec"
+    },
+    "fmc_set_access_logging": {
+      "tier": "write",
+      "title": "Set access policy logging (syslog)"
+    },
+    "fmc_shadowed_rules": {
+      "tier": "read",
+      "title": "Find shadowed access rules"
+    },
+    "fmc_status": {
+      "tier": "read",
+      "title": "Cisco Secure Firewall Management Center status"
+    },
+    "fmc_unused_objects": {
+      "tier": "read",
+      "title": "Find unused objects"
+    },
+    "fmc_update_access_rule": {
+      "tier": "write",
+      "title": "Update access rule"
+    },
+    "fmc_update_group": {
+      "tier": "write",
+      "title": "Update object group"
+    },
+    "fmc_update_interface": {
+      "tier": "write",
+      "title": "Configure interface"
+    },
+    "fmc_update_nat_rule": {
+      "tier": "write",
+      "title": "Update NAT rule"
+    },
+    "fmc_update_object": {
+      "tier": "write",
+      "title": "Update object"
+    },
+    "fmc_where_used": {
+      "tier": "read",
+      "title": "Where is an object used"
+    }
+  },
+  "version": "0.4.0"
+}

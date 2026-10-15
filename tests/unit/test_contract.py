@@ -1,8 +1,16 @@
+import json
+from pathlib import Path
 from typing import Any
 
 import pytest
 import respx
-from stutters_mcp_core.testing import assert_prompt_contract, assert_tool_contract
+from stutters_mcp_core.testing import (
+    assert_inbound_references,
+    assert_prompt_contract,
+    assert_prompt_snapshots,
+    assert_tool_contract,
+    load_tool_manifests,
+)
 
 from fmc_mcp.server import create_server
 
@@ -34,4 +42,37 @@ async def test_prompt_contract(fmc: respx.MockRouter) -> None:
             },
         },
         known_prefixes={"cml", "ise", "fmc", "catc"},
+        external_tools=_external(),
+    )
+
+
+HERE = Path(__file__).resolve().parent.parent
+
+
+def _external() -> dict[str, list[str]]:
+    """Other servers' tool names: their committed manifests, plus hand-kept lists until they publish one."""
+    tools = {k: list(v) for k, v in load_tool_manifests(HERE / "manifests").items()}
+    cml = json.loads((HERE / "external" / "cml-tools.json").read_text())["cml"]
+    tools.setdefault("cml", cml)
+    return tools
+
+
+def _server() -> object:
+    return create_server(make_settings(mcp_enable_writes=True, mcp_enable_dangerous=True))
+
+
+async def test_inbound_references(fmc: respx.MockRouter) -> None:
+    await assert_inbound_references(_server(), "fmc", HERE / "manifests")  # type: ignore[arg-type]
+
+
+async def test_prompt_snapshots(fmc: respx.MockRouter) -> None:
+    await assert_prompt_snapshots(_server(), HERE / "snapshots" / "prompts")  # type: ignore[arg-type]
+
+
+def test_manifest_is_current() -> None:
+    manifest = json.loads((HERE / "manifests" / "fmc.json").read_text())
+    from importlib.metadata import version
+
+    assert manifest["version"] == version("fmc-mcp-server"), (
+        "regenerate: uv run fmc-mcp-server tools --json --out tests/manifests/fmc.json"
     )

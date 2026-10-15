@@ -39,15 +39,16 @@ Changes made in FMC reach the firewalls only after a **deployment** (`fmc_deploy
 
 ## Tools
 
-There are 78 tools when every tier is enabled: 41 read (40 when the dangerous tier turns `fmc_api_call` into a raw call), 30 write and 7 dangerous plus `fmc_api_call`, and one workflow prompt (`fmc_why_blocked`).
+There are 87 tools when every tier is enabled: 45 read (44 when the dangerous tier turns `fmc_api_call` into a raw call), 35 write and 7 dangerous plus `fmc_api_call`, and two workflow prompts (`fmc_why_blocked`; `fmc_onboard_ftd`, dangerous tier).
 
-**Read (41)**
+**Read (45)**
 
 | Area | Tools |
 |---|---|
 | System | `fmc_status`, `fmc_list_domains`, `fmc_list_audit_records`, `fmc_get_task`, `fmc_license_status` |
 | Activity (on demand) | `fmc_list_health_alerts`, `fmc_recent_activity` |
-| Devices | `fmc_list_devices`, `fmc_get_device`, `fmc_list_device_interfaces`, `fmc_list_routes`, `fmc_get_routing`, `fmc_get_platform_settings`, `fmc_list_ha_pairs`, `fmc_list_clusters` |
+| Devices | `fmc_list_devices`, `fmc_get_device`, `fmc_list_device_interfaces`, `fmc_list_routes`, `fmc_get_routing`, `fmc_get_platform_settings`, `fmc_list_ha_pairs`, `fmc_get_ha_status`, `fmc_list_clusters` |
+| VPN | `fmc_list_vpn_topologies` (incl. SD-WAN), `fmc_get_vpn_topology`, `fmc_get_ravpn` |
 | Troubleshooting | `fmc_packet_tracer`, `fmc_run_show_command`, `fmc_get_hit_counts`, `fmc_device_health`, `fmc_list_vpn_tunnels` |
 | Policies | `fmc_list_policies`, `fmc_get_access_policy`, `fmc_list_access_rules`, `fmc_get_access_rule`, `fmc_list_nat_rules`, `fmc_list_prefilter_rules`, `fmc_list_policy_assignments` |
 | Objects | `fmc_list_objects`, `fmc_get_object`, `fmc_find_object`, `fmc_where_used`, `fmc_unused_objects`, `fmc_list_dynamic_objects` |
@@ -72,7 +73,7 @@ Notes on some read tools:
   and deployments. The server never receives syslog or eStreamer; traffic events stay in the FMC UI or
   the customer's SIEM.
 
-**Write (30)**
+**Write (35)**
 
 | Area | Tools |
 |---|---|
@@ -83,6 +84,9 @@ Notes on some read tools:
 | Routing | `fmc_configure_bgp`, `fmc_configure_ospf`, `fmc_create_vrf`, `fmc_delete_vrf` |
 | Platform settings / logging | `fmc_create_platform_settings_policy`, `fmc_configure_syslog`, `fmc_set_access_logging` |
 | Dynamic objects | `fmc_create_dynamic_object`, `fmc_delete_dynamic_object`, `fmc_map_dynamic_object` |
+| Containment | `fmc_contain_host`, `fmc_release_host` |
+| HA | `fmc_configure_ha_monitoring` (monitored interfaces, standby IPs, failover MACs) |
+| VPN | `fmc_create_s2s_vpn` (point-to-point IKEv2 PSK; policy- or route-based), `fmc_delete_s2s_vpn` |
 
 `fmc_create_access_rule` takes a position (`insert_before` or `insert_after`), a section and a
 category. `fmc_update_access_rule` can move a rule with `move_to`. `fmc_update_interface` sets the
@@ -115,7 +119,14 @@ MD5 password, because FMC returns it masked and a PUT would replace it, unless y
 - **Why is this traffic blocked?** The `fmc_why_blocked` prompt runs `fmc_rule_lookup` ->
   `fmc_packet_tracer` -> `fmc_get_hit_counts` -> `fmc_pending_changes` / `fmc_list_deployments` ->
   `fmc_list_audit_records`, then proposes a preview-first fix.
-- **Block a host now:** map it into a dynamic object used by a BLOCK rule (`fmc_map_dynamic_object`).
+- **Block a host now:** `fmc_contain_host(ip, reason)` maps it into the quarantine dynamic object
+  (`FMC_QUARANTINE_OBJECT`); the first call proposes the BLOCK rules and one deploy, later calls need no
+  deployment. `fmc_release_host(ip)` undoes it. ise-mcp-server's `ise_quarantine_host` calls these.
+- **Onboard an FTD, guided:** the `fmc_onboard_ftd` prompt (optionally builds the FTDv in CML first).
+- **HA:** `fmc_create_ha_pair` -> `fmc_configure_ha_monitoring` (standby IPs) -> `fmc_deploy` (the pair's
+  name) -> `fmc_get_ha_status` / `show failover`; `fmc_ha_action` switch, break or delete.
+- **Site-to-site VPN:** `fmc_create_s2s_vpn` -> `fmc_deploy` both peers -> `fmc_list_vpn_tunnels`. In FMC
+  evaluation mode only DES crypto deploys; the tool picks it and says so.
 - **What changed or broke in the last hour?** `fmc_recent_activity`.
 - **Send FTD logs to a SIEM:** `fmc_configure_syslog` -> `fmc_assign_policy(kind='platform_settings')`
   -> `fmc_deploy` -> `fmc_run_show_command('show running-config logging')`.
@@ -164,6 +175,8 @@ including nested groups, to ranges, then walk the rules in order. The results ar
 | `MCP_CACHE_DIR` | `~/.cache/fmc-mcp-server` | Cache for the indexed API spec. Set it to `""` to disable the cache. |
 | `MCP_MAX_RESPONSE_CHARS` | `40000` | Maximum size of one tool response |
 | `MCP_AUDIT_LOG`, `LOG_LEVEL` | `stderr`, `INFO` | Where the audit log goes, and the log level |
+| `MCP_ROLES` / `MCP_ROLES_FILE`, `MCP_DEFAULT_ROLE` | off, `ro` | Per-caller roles (`ro`/`rw`/`admin`) on top of the tiers (core `docs/PRODUCTION.md`) |
+| `MCP_DRY_RUN`, `MCP_CHANGE_WINDOW`, `MCP_DENY_TOOLS`, `MCP_MAX_BLAST_RADIUS`, `MCP_TWO_PERSON_TOOLS` | off | Core safety rails (core `docs/PRODUCTION.md`). `fmc_deploy` reports its blast radius as the number of devices. |
 
 ### Sessions and rate limits
 

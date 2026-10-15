@@ -1,6 +1,9 @@
 # Changelog
 
-## Unreleased
+## 0.4.0 (2026-10-15)
+
+Roadmap "Next" (F8-F11). Tools: 41 read -> 45, 30 write -> 35, 7 dangerous (87 with every tier on),
+prompts 1 -> 2. Core v0.6.0. Pull-only (ADR-003).
 
 ### Added
 - `fmc_contain_host(ip, reason)` / `fmc_release_host(ip)` (F9, the FMC half of ise-mcp-server's
@@ -33,7 +36,10 @@
   without export-controlled licensing) and blocks explicit strong choices with an explanation.
 
 ### Changed
-- Core pinned to v0.3.1 (`fmc_get_definition(examples=True)`); the VPN builder's payloads were checked
+- Core pinned to v0.6.0 (0.3.1 `fmc_get_definition(examples=True)`, 0.4.0 prompt test kit, 0.5.0 safety rails,
+  0.6.0 roles; no code changes needed). `fmc_deploy` reports `blast_radius` (devices). The prompt kit is wired
+  in: `tests/manifests/fmc.json` (regenerate with `uv run fmc-mcp-server tools --json --out tests/manifests/fmc.json`),
+  cross-server reference and inbound checks, prompt snapshots. The VPN builder's payloads were checked
   against the spec examples. The remaining hand-coded defaults (OSPF process configuration) are still
   required by FMC 10.0.1, so they stay.
 - `fmc_deploy` accepts HA pair names, and a unit's name deploys its pair (FMC lists the pair as one
