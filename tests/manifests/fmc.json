@@ -356,6 +356,10 @@
       "tier": "write",
       "title": "Import access rules"
     },
+    "fmc_import_objects": {
+      "tier": "write",
+      "title": "Import objects"
+    },
     "fmc_license_status": {
       "tier": "read",
       "title": "FMC licensing status"
