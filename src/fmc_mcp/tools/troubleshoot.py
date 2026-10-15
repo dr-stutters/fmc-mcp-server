@@ -10,6 +10,7 @@ import ipaddress
 import json
 import re
 import time
+from datetime import UTC, datetime
 from typing import Annotated, Any, Literal
 
 from fastmcp import Context
@@ -26,7 +27,9 @@ from stutters_mcp_core import (
 )
 from stutters_mcp_core.http import page_of
 
+from fmc_mcp.catalog import Catalog
 from fmc_mcp.client import FmcApp, fmc_error_detail
+from fmc_mcp.flow import device_context
 from fmc_mcp.tools.common import Domain
 from fmc_mcp.tools.dangerous import task_id_of, wait_task
 from fmc_mcp.tools.device_config import device_interfaces, pick_interface, resolve_device
@@ -253,6 +256,40 @@ def _ts(value: Any) -> str | None:
     return v or None
 
 
+def _parse_local(value: Any) -> datetime | None:
+    """FMC hit-count times look like ISO UTC ('2026-10-15T15:14:51Z') but are FMC local time."""
+    v = str(value or "").strip()
+    if not v:
+        return None
+    try:
+        return datetime.strptime(v.rstrip("Z")[:19], "%Y-%m-%dT%H:%M:%S").replace(tzinfo=UTC)
+    except ValueError:
+        return None
+
+
+def learn_local_offset(fetched: Any, now: float) -> int | None:
+    """FMC's local-time offset from UTC in seconds, from the counters' fetch time right after a
+    refresh (rounded to 15 minutes; None if it doesn't look like a fresh fetch)."""
+    t = _parse_local(fetched)
+    if t is None:
+        return None
+    delta = t.timestamp() - now
+    offset = int(round(delta / 900) * 900)
+    if abs(offset) > 14 * 3600 or abs(delta - offset) > 300:
+        return None
+    return offset
+
+
+def to_utc(value: Any, offset: int | None) -> str | None:
+    """A hit-count time in real UTC when the offset is known; else FMC's value without the 'Z'."""
+    t = _parse_local(value)
+    if t is None:
+        return _ts(value)
+    if offset is None:
+        return t.strftime("%Y-%m-%dT%H:%M:%S") + " (FMC local time)"
+    return datetime.fromtimestamp(t.timestamp() - offset, UTC).strftime("%Y-%m-%dT%H:%M:%SZ")
+
+
 def _json(resp: Any) -> Any:
     try:
         return resp.json()
@@ -330,12 +367,16 @@ def register(reg: ToolRegistrar) -> None:
     async def fmc_packet_tracer(
         ctx: Context,
         device: DeviceRef,
-        input_interface: Annotated[
-            str, Field(description="Ingress interface: logical name (inside), hardware name or UUID")
-        ],
         protocol: Annotated[Literal["tcp", "udp", "icmp"], Field(description="IP protocol")],
         source_ip: Annotated[str, Field(description="Source IPv4/IPv6 address")],
         destination_ip: Annotated[str, Field(description="Destination IPv4/IPv6 address")],
+        input_interface: Annotated[
+            str | None,
+            Field(
+                description="Ingress interface: logical name (inside), hardware name or UUID. Default: the "
+                "interface whose subnet (or static route) holds the source IP"
+            ),
+        ] = None,
         destination_port: Annotated[
             int | None, Field(ge=1, le=65535, description="TCP/UDP destination port")
         ] = None,
@@ -353,12 +394,24 @@ def register(reg: ToolRegistrar) -> None:
         explain the verdict: allow/drop, the drop reason, the phase that dropped it and the access or
         prefilter rule that matched (name, policy and device rule id), plus route lookup and NAT
         phases. The live answer to "why is this traffic blocked?"; combine with fmc_rule_lookup
-        (offline policy walk) and fmc_get_hit_counts. The interface must have a logical name."""
+        (offline policy walk) and fmc_get_hit_counts. The ingress interface (it must have a logical
+        name) is picked from the source IP unless given."""
         app: FmcApp = get_client(ctx)
         dev = await resolve_device(app, device, domain)
-        _, iface = pick_interface(
-            await device_interfaces(app, dev["id"], domain), input_interface, dev["name"]
-        )
+        ifaces = await device_interfaces(app, dev["id"], domain)
+        found_by = None
+        if not input_interface:
+            try:
+                src_ip = ipaddress.ip_address(source_ip.strip())
+            except ValueError as e:
+                raise InvalidRequest(f"Invalid address: {e}") from None
+            leg = (await device_context(app, dev, Catalog(app, domain), domain)).leg(src_ip)
+            if leg is None:
+                raise InvalidRequest(
+                    f"No interface or static route on {dev['name']} covers {src_ip}; pass input_interface."
+                )
+            input_interface, found_by = leg.interface, leg.how
+        _, iface = pick_interface(ifaces, input_interface, dev["name"])
         if not iface.get("ifname"):
             raise InvalidRequest(
                 f"{iface.get('name')} has no logical name; packet tracer needs a named interface."
@@ -393,7 +446,11 @@ def register(reg: ToolRegistrar) -> None:
         await name_snort_rules(app, traces, domain)
         flow = f"{protocol} {src}" + (f":{source_port}" if protocol != "icmp" else "")
         flow += f" -> {dst}" + (f":{destination_port}" if protocol != "icmp" else f" type {icmp_type}")
-        return {"flow": flow, "input_interface": iface.get("ifname"), "results": traces}
+        out: dict[str, Any] = {"flow": flow, "input_interface": iface.get("ifname")}
+        if found_by:
+            out["input_interface_found_by"] = found_by
+        out["results"] = traces
+        return out
 
     @reg.read(title="Rule hit counts")
     async def fmc_get_hit_counts(
@@ -420,8 +477,8 @@ def register(reg: ToolRegistrar) -> None:
         hits, first and last hit, and the device rule id (the 'rule-id' that packet tracer and syslog
         show). Includes the default action. Use it to confirm which rule traffic is hitting, or with
         only_zero to find rules nothing has used. With refresh (default) FMC first pulls the counters
-        from the device (an operational task; no configuration changes). Timestamps are as FMC
-        reports them."""
+        from the device (an operational task; no configuration changes). Times are UTC (FMC reports
+        its local time; the offset is learned from the refresh). Packet-tracer runs count as hits."""
         app: FmcApp = get_client(ctx)
         p = await resolve_policy(app, kind, policy, domain)
         dev = await resolve_device(app, device, domain)
@@ -429,12 +486,14 @@ def register(reg: ToolRegistrar) -> None:
         sub = "accessrules" if kind == "access" else "prefilterrules"
         hc_path = await app.config_path(f"{coll}/{p['id']}/operational/hitcounts", domain)
         notes: list[str] = []
+        refreshed_at: float | None = None
         if refresh:
             try:
                 resp = await app.api.put(hc_path, None, params={"filter": f"deviceId:{dev['id']}"})
                 tid = task_id_of(resp)
                 if tid:
                     await wait_task(ctx, app, tid, domain, "hit count refresh", limit_s=120)
+                refreshed_at = time.time()
             except UpstreamError as e:
                 notes.append(f"Refresh failed ({e}); showing the last counters FMC has.")
         rules = (await all_rules(app, await app.config_path(f"{coll}/{p['id']}/{sub}", domain))).items
@@ -454,6 +513,12 @@ def register(reg: ToolRegistrar) -> None:
             page = await app.all(hc_path, {"filter": f"deviceId:{dev['id']};fetchZeroHitCount:true"}, cap=50)
             for h in page.items:
                 hits.setdefault(str((h.get("rule") or {}).get("id")), h)
+        last = next((h.get("lastFetchTimeStamp") for h in hits.values() if h.get("lastFetchTimeStamp")), None)
+        if refreshed_at is not None:
+            learned = learn_local_offset(last, refreshed_at)
+            if learned is not None:
+                app.local_offset = learned
+        tz_offset = app.local_offset
         rows = []
         for rid, h in hits.items():
             r = h.get("rule") or {}
@@ -469,14 +534,21 @@ def register(reg: ToolRegistrar) -> None:
                     "index": order.get(rid) or meta.get("ruleIndex") or "default",
                     "rule": name,
                     "hits": count,
-                    "first_hit": _ts(h.get("firstHitTimeStamp")),
-                    "last_hit": _ts(h.get("lastHitTimeStamp")),
+                    "first_hit": to_utc(h.get("firstHitTimeStamp"), tz_offset),
+                    "last_hit": to_utc(h.get("lastHitTimeStamp"), tz_offset),
                     "device_rule_id": meta.get("deviceRuleId"),
                 }
             )
         rows.sort(key=lambda x: x["index"] if isinstance(x["index"], int) else 10**9)
-        last = next((h.get("lastFetchTimeStamp") for h in hits.values() if h.get("lastFetchTimeStamp")), None)
-        extra: dict[str, Any] = {"policy": p.get("name"), "device": dev.get("name"), "counters_fetched": last}
+        extra: dict[str, Any] = {
+            "policy": p.get("name"),
+            "device": dev.get("name"),
+            "counters_fetched": to_utc(last, tz_offset),
+        }
+        if offset is None:
+            notes.append(
+                "FMC reports these times in its local time zone; refresh once to convert them to UTC."
+            )
         if notes:
             extra["note"] = " ".join(notes)
         return list_result(page_of(rows, limit=limit, offset=offset), fmt=response_format, extra=extra)

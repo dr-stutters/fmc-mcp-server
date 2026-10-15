@@ -6,12 +6,15 @@ from typing import Annotated, Any
 
 from fastmcp import Context
 from pydantic import Field
-from stutters_mcp_core import InvalidRequest, ToolRegistrar, get_client
+from stutters_mcp_core import InvalidRequest, ToolRegistrar, UpstreamError, get_client
 
-from fmc_mcp.catalog import Catalog, IpInterval, ip_contains, port_contains
+from fmc_mcp.catalog import Catalog, IpInterval, ip_contains, parse_ip_value, port_contains
 from fmc_mcp.client import FmcApp
+from fmc_mcp.flow import access_policy_of, device_context
 from fmc_mcp.rules import OPAQUE_CONDITIONS, flatten_access_rule, has_value
 from fmc_mcp.tools.common import PROTO_NUMBERS, Domain, block_labels
+from fmc_mcp.tools.device_config import resolve_device
+from fmc_mcp.tools.dynamic_objects import mappings_of
 from fmc_mcp.tools.policies import ACCESS, all_rules, resolve_policy
 
 PolicyRef = Annotated[str, Field(description="Access control policy name or UUID")]
@@ -19,10 +22,52 @@ PolicyRef = Annotated[str, Field(description="Access control policy name or UUID
 LIMITS = (
     "Offline, best-effort evaluation of the access control policy only: prefilter rules, NAT, "
     "security intelligence, decryption and inherited parent-policy rules are not evaluated. "
-    "Applications, URLs, users, SGTs, VLAN tags, dynamic objects and time ranges can't be known "
-    "from addresses and ports, so rules using them are reported as 'conditional' (they may match). "
-    "FQDN objects can't be resolved offline. Zones are only checked when you pass them."
+    "Applications, URLs, users, SGTs, VLAN tags and time ranges can't be known from addresses and "
+    "ports, so rules using them are reported as 'conditional' (they may match). Dynamic objects are "
+    "checked against their current IP mappings. FQDN objects can't be resolved offline. Zones are "
+    "only checked when you pass them or a device (then they come from its interfaces and routes)."
 )
+DYNAMIC_FIELDS = ("sourceDynamicObjects", "destinationDynamicObjects")
+DYNAMIC_CAP = 25  # dynamic objects whose mappings are read per lookup
+
+
+async def dynamic_sets(
+    app: FmcApp, rules: list[dict[str, Any]], domain: str | None
+) -> dict[str, list[IpInterval] | None]:
+    """Current IP mappings of the dynamic objects the rules reference (None: unknown)."""
+    ids: list[str] = []
+    for r in rules:
+        for f in DYNAMIC_FIELDS:
+            for o in (r.get(f) or {}).get("objects") or []:
+                if o.get("id") and o["id"] not in ids:
+                    ids.append(str(o["id"]))
+    out: dict[str, list[IpInterval] | None] = {}
+    for oid in ids[:DYNAMIC_CAP]:
+        try:
+            maps, complete = await mappings_of(app, oid, domain)
+        except UpstreamError:
+            out[oid] = None
+            continue
+        nets: list[IpInterval] = []
+        for m in maps:
+            got = parse_ip_value(m)
+            if got:
+                nets += got
+        out[oid] = nets if complete else None
+    return out
+
+
+def _dyn_match(block: Any, ip: IpInterval, sets: dict[str, list[IpInterval] | None]) -> bool | None:
+    objs = (block or {}).get("objects") or [] if isinstance(block, dict) else []
+    if not objs:
+        return True
+    hit = False
+    for o in objs:
+        nets = sets.get(str(o.get("id")))
+        if nets is None:
+            return None
+        hit = hit or ip_contains(nets, [ip])
+    return hit
 
 
 def _ip(value: str, what: str) -> IpInterval:
@@ -33,8 +78,8 @@ def _ip(value: str, what: str) -> IpInterval:
     return (a.version, int(a), int(a))
 
 
-def _opaque(rule: dict[str, Any]) -> list[str]:
-    return [c for c in OPAQUE_CONDITIONS if has_value(rule.get(c))]
+def _opaque(rule: dict[str, Any], skip: tuple[str, ...] = ()) -> list[str]:
+    return [c for c in OPAQUE_CONDITIONS if c not in skip and has_value(rule.get(c))]
 
 
 def _zone_match(rule_block: Any, zone: str | None) -> bool | None:
@@ -78,7 +123,6 @@ def register(reg: ToolRegistrar) -> None:
     @reg.read(title="Which access rule matches a flow")
     async def fmc_rule_lookup(
         ctx: Context,
-        policy: PolicyRef,
         source: Annotated[str, Field(description="Source IP address, e.g. 10.1.1.10")],
         destination: Annotated[str, Field(description="Destination IP address, e.g. 192.0.2.80")],
         port: Annotated[
@@ -95,15 +139,38 @@ def register(reg: ToolRegistrar) -> None:
             str | None, Field(description="Egress security zone / interface group name")
         ] = None,
         include_disabled: Annotated[bool, Field(description="Also evaluate disabled rules")] = False,
+        policy: Annotated[
+            str | None, Field(description="Access control policy name or UUID; default: the device's")
+        ] = None,
+        device: Annotated[
+            str | None,
+            Field(
+                description="FTD the flow crosses (name or UUID): gives its access policy and, when zones "
+                "are omitted, the ingress/egress zones from its interface subnets and static routes"
+            ),
+        ] = None,
         domain: Domain = None,
     ) -> dict[str, Any]:
         """Work out offline which access control rule would handle a flow (source, destination,
-        protocol/port, optional zones): returns the first rule that definitely matches, any earlier
-        'conditional' rules that might match first (they also need an application, URL, user, etc.),
-        or the policy's default action. Objects and nested groups are resolved to addresses and
-        ports. Best-effort: see `limits` in the output (no prefilter, NAT or parent policy)."""
+        protocol/port): returns the first rule that definitely matches, any earlier 'conditional'
+        rules that might match first (they also need an application, URL, user, etc.), or the
+        policy's default action. Give `device` and it finds the policy and the zones itself (shown
+        under `device`); else pass `policy` and the zones. Objects and nested groups are resolved to
+        addresses and ports, dynamic objects to their current mappings (a host contained with
+        fmc_contain_host matches the quarantine rules). Best-effort: see `limits` in the output (no
+        prefilter, NAT or parent policy)."""
         app: FmcApp = get_client(ctx)
         src, dst = _ip(source, "source"), _ip(destination, "destination")
+        dev = await resolve_device(app, device, domain) if device else None
+        if not policy:
+            if dev is None:
+                raise InvalidRequest(
+                    "Give the access policy (policy=...) or the device the flow crosses (device=...)."
+                )
+            acp = await access_policy_of(app, dev, domain)
+            if acp is None:
+                raise InvalidRequest(f"{dev.get('name')} has no access control policy assigned.")
+            policy = str(acp["id"])
         proto = PROTO_NUMBERS.get(protocol.strip().upper(), protocol.strip())
         if not proto.isdigit():
             raise InvalidRequest(f"Unknown protocol {protocol!r}: use tcp, udp, icmp or a number.")
@@ -113,6 +180,23 @@ def register(reg: ToolRegistrar) -> None:
         cat = Catalog(app, domain)
         await cat.load_networks()
         await cat.load_ports()
+        dev_info: dict[str, Any] | None = None
+        if dev is not None and (source_zone is None or destination_zone is None):
+            dc = await device_context(app, dev, cat, domain)
+            src_leg = dc.leg(ipaddress.ip_address(source.strip()))
+            dst_leg = dc.leg(ipaddress.ip_address(destination.strip()))
+            if source_zone is None and src_leg and src_leg.zone:
+                source_zone = src_leg.zone
+            if destination_zone is None and dst_leg and dst_leg.zone:
+                destination_zone = dst_leg.zone
+            dev_info = {
+                "name": dev.get("name"),
+                "ingress": src_leg.as_dict() if src_leg else None,
+                "egress": dst_leg.as_dict() if dst_leg else None,
+            }
+        dyn = await dynamic_sets(
+            app, [r for r in rules.items if r.get("enabled", True) or include_disabled], domain
+        )
 
         conditional: list[dict[str, Any]] = []
         monitored: list[dict[str, Any]] = []
@@ -129,10 +213,12 @@ def register(reg: ToolRegistrar) -> None:
                 "destination": _net_match(cat, r.get("destinationNetworks"), dst),
                 "destination_port": _port_match(cat, r.get("destinationPorts"), proto, port),
                 "source_port": _port_match(cat, r.get("sourcePorts"), proto, source_port),
+                "source_dynamic_object": _dyn_match(r.get("sourceDynamicObjects"), src, dyn),
+                "destination_dynamic_object": _dyn_match(r.get("destinationDynamicObjects"), dst, dyn),
             }
             if any(v is False for v in checks.values()):
                 continue
-            unknown = [k for k, v in checks.items() if v is None] + _opaque(r)
+            unknown = [k for k, v in checks.items() if v is None] + _opaque(r, DYNAMIC_FIELDS)
             row = flatten_access_rule(r)
             if unknown:
                 conditional.append({**row, "depends_on": unknown})
@@ -155,6 +241,8 @@ def register(reg: ToolRegistrar) -> None:
             },
             "rules_evaluated": evaluated,
         }
+        if dev_info:
+            out["device"] = dev_info
         if match is not None:
             out["verdict"] = f"Rule {match.get('index')} '{match.get('name')}' → {match.get('action')}"
             out["matched_rule"] = match

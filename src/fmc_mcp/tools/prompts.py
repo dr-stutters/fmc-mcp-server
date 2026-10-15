@@ -44,42 +44,35 @@ def _why_blocked_text(
     dev = _q(device, "device") if device else "<the device>"
     iface = _q(ingress_interface, "ingress_interface") if ingress_interface else "<the ingress interface>"
     pol = _q(policy, "policy") if policy else "<the device's access control policy>"
+    pol_ref = pol if policy else "<the policy rule_lookup reports>"
     find_device = (
         f"The device is {dev}."
         if device
-        else f"Find the FTD that carries this flow: {tool_ref('fmc_list_devices')}, then "
-        f"{tool_ref('fmc_list_device_interfaces')} on each candidate and pick the one with an interface "
-        f"subnet containing {source}."
+        else f"Find the FTD that carries this flow with {tool_ref('fmc_list_devices')}. With several, "
+        f"{tool_ref('fmc_rule_lookup')} with device=<candidate> shows under `device.ingress` whether its "
+        f"interfaces or routes covers {source}."
     )
-    find_iface = (
-        f"The ingress interface is {iface}."
+    policy_arg = f", policy={pol}" if policy else ""
+    iface_arg = f", input_interface={iface}" if ingress_interface else ""
+    zone_note = (
+        f"The ingress interface is {iface}: pass its zone as source_zone."
         if ingress_interface
-        else f"The ingress interface is the named interface whose subnet contains {source} (from "
-        f"{tool_ref('fmc_list_device_interfaces')}); if none contains it, the one the route to {source} "
-        "points out of."
-    )
-    find_policy = (
-        f"Use access control policy {pol}."
-        if policy
-        else f"Find the device's access control policy with {tool_ref('fmc_list_policy_assignments')} "
-        f"(device={dev})."
+        else "It finds the device's access policy and the ingress/egress zones from the interface subnets "
+        "and static routes itself (reported under `device`)."
     )
     return f"""Explain why this traffic is blocked (or confirm it is allowed): {flow}.
 Work through the steps in order, keep notes of what each step shows, and stop early only when a step
 gives a definite answer that the later steps cannot change. All steps before step 7 are read-only.
 
-0. Context. {find_device} {find_iface} {find_policy}
+0. Context. {find_device}
 
-1. Offline policy walk: {tool_ref("fmc_rule_lookup")} with policy={pol}, source={src},
-   destination={dst}, protocol="{proto}"{port_arg}, source_zone=<the ingress interface's
-   zone> and destination_zone=<the zone of the interface the route to {destination} leaves by> (both
-   from {tool_ref("fmc_list_device_interfaces")}; {tool_ref("fmc_list_routes")} for the egress). Without
-   the zones, rules with zone conditions show up only under `may_match_first`. Note the first definite
-   match, any earlier 'conditional' rules (application, URL or user conditions) and the default
-   action. This is what FMC's configuration says.
+1. Offline policy walk: {tool_ref("fmc_rule_lookup")} with device={dev}{policy_arg}, source={src},
+   destination={dst}, protocol="{proto}"{port_arg}. {zone_note} If `device.egress` is null, no route
+   covers {destination}. Note the first definite match, any earlier 'conditional' rules (application,
+   URL or user conditions) and the default action. This is what FMC's configuration says.
 
-2. Live verdict: {tool_ref("fmc_packet_tracer")} with device={dev}, input_interface={iface},
-   protocol="{proto}", source_ip={src}, destination_ip={dst}{tracer_port}.
+2. Live verdict: {tool_ref("fmc_packet_tracer")} with device={dev}{iface_arg}, protocol="{proto}",
+   source_ip={src}, destination_ip={dst}{tracer_port} (it picks the ingress interface from the source).
    Read `action`, `drop_reason`, the phase that dropped it and `matched_rules`:
    - acl-drop with a matched rule: the access (or prefilter) rule named there blocks it;
    - no-v4-adjacency / no-adjacency: the policy allows it but the FTD has no ARP entry for the
@@ -93,7 +86,7 @@ gives a definite answer that the later steps cannot change. All steps before ste
    If packet tracer and the offline walk disagree, the device runs a different configuration than
    FMC holds: go to step 4.
 
-3. Is the rule actually hit? {tool_ref("fmc_get_hit_counts")} with policy={pol}, device={dev} and
+3. Is the rule actually hit? {tool_ref("fmc_get_hit_counts")} with policy={pol_ref}, device={dev} and
    rule=<the matched rule name>. A rule with zero hits while users report blocks means real traffic
    takes another path or matches a different rule. Note the device rule id; it matches packet
    tracer's rule id.

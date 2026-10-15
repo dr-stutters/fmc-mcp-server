@@ -11,6 +11,19 @@ Operator-eyes quality pass (F26-F33): 12 operator tasks run through the tools ag
   it got), reads and operational requests (hit-count refresh, packet tracer, show commands) are skipped by default
   (`changes_only`), API URLs are shortened, and the timeline drops API rows that repeat a worded row and the
   deployment request/task rows its deploy rows already show.
+- **Hit-count times (F27)**: FMC reports them in its local time zone with a `Z`; they were up to hours off. The
+  offset is learned from the refresh and the times are converted to UTC (else labelled FMC local time).
+- **Dynamic objects in rule views (F28)**: `fmc_list_access_rules` hid the src/dst dynamic-object conditions (the
+  quarantine rules looked like block any-any); columns no rule uses are left out. `fmc_rule_lookup` checks dynamic
+  objects against their current mappings: an empty quarantine no longer shows as 'may match', a contained host
+  matches the block rule.
+- **NAT lookup by IP (F30)**: `fmc_list_nat_rules(address=..., device=...)` keeps rules whose original or translated
+  addresses contain the IP through objects or groups (text search found nothing) and shows object values.
+
+### Changed
+- **Flow context (F31)**: `fmc_rule_lookup` takes `device` (policy and ingress/egress zones from its interface
+  subnets and static routes, reported under `device`; `policy` is now optional); `fmc_packet_tracer`'s
+  `input_interface` is optional (picked from the source IP). The `fmc_why_blocked` prompt drops its discovery steps.
 
 ## 0.8.0 (2026-10-15)
 

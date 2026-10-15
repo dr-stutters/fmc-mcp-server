@@ -1,6 +1,7 @@
 """Policy tools: access control (flattened rules), NAT, prefilter, other policy lists, assignments."""
 
 # No `from __future__ import annotations`: FastMCP inspects signatures at runtime.
+import ipaddress
 from collections import Counter
 from typing import Annotated, Any, Literal
 
@@ -10,6 +11,7 @@ from pydantic import Field
 from stutters_mcp_core import InvalidRequest, ResponseFormat, ToolRegistrar, get_client, list_result
 from stutters_mcp_core.http import Page, page_of
 
+from fmc_mcp.catalog import Catalog, ip_contains
 from fmc_mcp.client import FmcApp, is_uuid
 from fmc_mcp.rules import flatten_access_rule, flatten_nat_rule, flatten_prefilter_rule
 from fmc_mcp.tools.common import Domain, pick_by_name, ref_label, resolve_in, slim
@@ -52,9 +54,11 @@ PolicyKind = Literal[
     "site_to_site_vpn",
 ]
 
+# Access-rule table columns in display order; empty ones are left out (see rule_columns).
 RULE_COLUMNS = [
     "index",
     "section",
+    "category",
     "name",
     "action",
     "enabled",
@@ -62,11 +66,28 @@ RULE_COLUMNS = [
     "dst_zones",
     "src_networks",
     "dst_networks",
+    "src_dynamic",
+    "dst_dynamic",
+    "src_ports",
     "dst_ports",
     "applications",
     "urls",
     "users",
+    "vlan_tags",
+    "src_sgts",
+    "dst_sgts",
+    "time_ranges",
+    "intrusion_policy",
+    "file_policy",
 ]
+_ALWAYS = ("index", "name", "action", "enabled")
+
+
+def rule_columns(rows: list[dict[str, Any]], order: list[str] = RULE_COLUMNS) -> list[str]:
+    """The columns that carry a value in at least one row (a missing condition means 'any')."""
+    return [c for c in order if c in _ALWAYS or any(r.get(c) not in (None, "", []) for r in rows)]
+
+
 NAT_COLUMNS = [
     "section",
     "index",
@@ -84,6 +105,27 @@ NAT_COLUMNS = [
 ]
 
 PolicyRef = Annotated[str, Field(description="Policy name or UUID (from the matching list tool)")]
+# NAT rule address fields (auto and manual) -> flattened row key.
+NAT_ADDRESS_FIELDS = {
+    "originalNetwork": "original_source",
+    "translatedNetwork": "translated_source",
+    "originalSource": "original_source",
+    "translatedSource": "translated_source",
+    "originalDestination": "original_destination",
+    "translatedDestination": "translated_destination",
+}
+
+
+async def nat_policy_of(app: FmcApp, device_id: str, domain: str | None) -> str | None:
+    """Id of the NAT policy assigned to a device (policy assignments)."""
+    page = await app.all(await app.config_path("assignment/policyassignments", domain), cap=2000)
+    for a in page.items:
+        pol = a.get("policy") or {}
+        if pol.get("type") != "FTDNatPolicy":
+            continue
+        if any(t.get("id") == device_id for t in a.get("targets") or []):
+            return str(pol.get("id"))
+    return None
 
 
 def policy_row(p: dict[str, Any]) -> dict[str, Any]:
@@ -258,9 +300,10 @@ def register(reg: ToolRegistrar) -> None:
         response_format: ResponseFormat = "markdown",
     ) -> ToolResult:
         """List an access control policy's rules in evaluation order, one row per rule: index,
-        section, category, name, action, enabled, source/destination zones, networks and ports,
-        applications, URLs, users, intrusion/file policy and logging, with objects shown by name.
-        Full detail for one rule: fmc_get_access_rule."""
+        section, category, name, action, enabled, source/destination zones, networks, dynamic objects
+        and ports, applications, URLs, users, intrusion/file policy, with objects shown by name. An
+        empty condition means 'any'; columns no rule uses are left out. Full detail for one rule:
+        fmc_get_access_rule."""
         app: FmcApp = get_client(ctx)
         p = await resolve_policy(app, "access", policy, domain)
         path = await app.config_path(f"{ACCESS}/{p['id']}/accessrules", domain)
@@ -268,7 +311,7 @@ def register(reg: ToolRegistrar) -> None:
         if not any((text, action, enabled is not None, section)):
             page = await app.page(path, limit=limit, offset=offset)
             page.items = [flatten_access_rule(r) for r in page.items]
-            return list_result(page, fmt=response_format, extra=extra, columns=RULE_COLUMNS)
+            return list_result(page, fmt=response_format, extra=extra, columns=rule_columns(page.items))
         rules = await all_rules(app, path)
         rows = _rule_filter(
             [flatten_access_rule(r) for r in rules.items],
@@ -279,9 +322,8 @@ def register(reg: ToolRegistrar) -> None:
         )
         if not rules.complete:
             extra["note"] = f"Searched only the first {RULE_CAP} rules."
-        return list_result(
-            page_of(rows, limit=limit, offset=offset), fmt=response_format, extra=extra, columns=RULE_COLUMNS
-        )
+        shown = page_of(rows, limit=limit, offset=offset)
+        return list_result(shown, fmt=response_format, extra=extra, columns=rule_columns(shown.items))
 
     @reg.read(title="Get access rule")
     async def fmc_get_access_rule(
@@ -300,7 +342,17 @@ def register(reg: ToolRegistrar) -> None:
     @reg.read(title="List NAT rules")
     async def fmc_list_nat_rules(
         ctx: Context,
-        policy: PolicyRef,
+        policy: Annotated[
+            str | None, Field(description="NAT policy name or UUID; default: the one assigned to `device`")
+        ] = None,
+        device: Annotated[str | None, Field(description="Device name or UUID: list its NAT policy")] = None,
+        address: Annotated[
+            str | None,
+            Field(
+                description="Only rules whose original or translated source/destination contains this IP "
+                "(objects and groups are resolved), e.g. 10.99.1.10"
+            ),
+        ] = None,
         text: Annotated[str | None, Field(description="Filter: any field contains this text")] = None,
         domain: Domain = None,
         limit: Annotated[int, Field(ge=1, le=1000)] = 100,
@@ -309,20 +361,54 @@ def register(reg: ToolRegistrar) -> None:
     ) -> ToolResult:
         """List a Threat Defense NAT policy's rules in order (manual 'before auto', auto NAT, manual
         'after auto'): kind, static/dynamic, interfaces, original and translated source, destination
-        and ports, options. NAT policies come from fmc_list_policies(kind='nat')."""
+        and ports, options. 'What NAT applies to 10.99.1.10?': device=<ftd>, address=10.99.1.10
+        (a rule for a subnet or group containing the host matches; values are shown next to object
+        names). NAT policies come from fmc_list_policies(kind='nat')."""
         app: FmcApp = get_client(ctx)
+        if not policy:
+            if not device:
+                raise InvalidRequest("Give the NAT policy (policy=...) or the device (device=...).")
+            dev = await resolve_in(app, "devices/devicerecords", device, "device", domain)
+            assigned = await nat_policy_of(app, str(dev["id"]), domain)
+            if assigned is None:
+                raise InvalidRequest(f"{dev.get('name')} has no NAT policy assigned.")
+            policy = assigned
         p = await resolve_policy(app, "nat", policy, domain)
         page = await all_rules(app, await app.config_path(f"{NAT}/{p['id']}/natrules", domain))
         order = {"BEFORE_AUTO": 0, "AUTO": 1, "AFTER_AUTO": 2}
-        rows = [flatten_nat_rule(r) for r in page.items]
+        raw = list(page.items)
+        if address:
+            try:
+                ip = ipaddress.ip_address(address.strip())
+            except ValueError:
+                raise InvalidRequest(f"address must be one IP address, got {address!r}") from None
+            cat = Catalog(app, domain)
+            await cat.load_networks()
+            want: list[tuple[int, int, int]] = [(ip.version, int(ip), int(ip))]
+            kept = []
+            for r in raw:
+                for f in NAT_ADDRESS_FIELDS:
+                    nets = cat.networks(r[f]) if r.get(f) else None
+                    if nets and ip_contains(nets, want):
+                        kept.append(r)
+                        break
+            raw = kept
+        rows = [flatten_nat_rule(r) for r in raw]
+        if address:
+            for r, row in zip(raw, rows, strict=True):
+                for f, key in NAT_ADDRESS_FIELDS.items():
+                    if r.get(f) and row.get(key) and row[key] != "interface":
+                        value = (cat.objects.get(str(r[f].get("id"))) or r[f]).get("value")
+                        if value:
+                            row[key] = f"{row[key]} ({value})"
         rows.sort(key=lambda r: (order.get(str(r.get("section", "")).upper(), 1), r.get("index") or 0))
         if text:
             rows = [r for r in rows if text.lower() in str(r).lower()]
+        extra: dict[str, Any] = {"policy": p.get("name")}
+        if address:
+            extra["address"] = address
         return list_result(
-            page_of(rows, limit=limit, offset=offset),
-            fmt=response_format,
-            extra={"policy": p.get("name")},
-            columns=NAT_COLUMNS,
+            page_of(rows, limit=limit, offset=offset), fmt=response_format, extra=extra, columns=NAT_COLUMNS
         )
 
     @reg.read(title="List prefilter rules")

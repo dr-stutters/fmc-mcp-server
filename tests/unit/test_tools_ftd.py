@@ -686,3 +686,151 @@ async def test_rollback_preview_states_current_and_target(ftd: respx.MockRouter)
     out = await preview_of("fmc_rollback_deployment", {"device": "mcp-ftd1", "to_job": ordered[3]["name"]})
     assert out["preview"]["device_runs"] == ordered[0]["name"]
     assert out["preview"]["roll_back_to"]["job"] == ordered[3]["name"]
+
+
+def test_hit_count_times_are_converted_from_fmc_local_time() -> None:
+    from datetime import UTC, datetime
+
+    from fmc_mcp.tools.troubleshoot import learn_local_offset, to_utc
+
+    now = datetime(2026, 10, 15, 19, 14, 55, tzinfo=UTC).timestamp()
+    off = learn_local_offset("2026-10-15T15:14:51Z", now)  # FMC in UTC-4 labels local time 'Z'
+    assert off == -4 * 3600
+    assert to_utc("2026-10-15T15:14:30Z", off) == "2026-10-15T19:14:30Z"
+    assert to_utc("2026-10-15T15:14:30Z", None) == "2026-10-15T15:14:30 (FMC local time)"
+    assert learn_local_offset("2026-10-15T19:14:50Z", now) == 0
+    assert learn_local_offset("2026-10-14T01:00:00Z", now) is None  # stale counters: don't guess
+
+
+# --- flow context, dynamic objects, NAT by address (F28, F30, F31) ---------------------------------
+
+INSIDE_NET = {
+    "id": "net-inside",
+    "name": "mcp-test-ftd-inside-net",
+    "type": "Network",
+    "value": "10.99.1.0/24",
+}
+QUAR = {"id": "dyn-q", "name": "mcp-quarantine", "type": "DynamicObject"}
+
+
+def _catalog(fmc: respx.MockRouter) -> None:
+    fmc.get(f"{CFG}/object/networkaddresses").mock(return_value=items([ANY4, INSIDE_NET]))
+    for p in (
+        "ranges",
+        "networkgroups",
+        "protocolportobjects",
+        "icmpv4objects",
+        "icmpv6objects",
+        "portobjectgroups",
+    ):
+        fmc.get(f"{CFG}/object/{p}").mock(return_value=empty())
+
+
+def _flow_rules(fmc: respx.MockRouter, mapped: list[str]) -> None:
+    zin, zout = ({"objects": [{"id": z["id"], "name": z["name"], "type": "SecurityZone"}]} for z in ZONES[:2])
+    rules = [
+        {
+            "id": "r1",
+            "name": "mcp-quarantine-out",
+            "action": "BLOCK",
+            "enabled": True,
+            "metadata": {"ruleIndex": 1, "section": "Default"},
+            "sourceDynamicObjects": {"objects": [QUAR]},
+        },
+        {
+            "id": "r2",
+            "name": "allow-out",
+            "action": "ALLOW",
+            "enabled": True,
+            "metadata": {"ruleIndex": 2, "section": "Default"},
+            "sourceZones": zin,
+            "destinationZones": zout,
+        },
+    ]
+    fmc.get(f"{CFG}/policy/accesspolicies/{ACP['id']}/accessrules").mock(return_value=items(rules))
+    fmc.get(f"{CFG}/policy/accesspolicies/{ACP['id']}").mock(
+        return_value=httpx.Response(200, json={**ACP, "defaultAction": {"action": "BLOCK"}})
+    )
+    fmc.get(f"{CFG}/object/dynamicobjects/{QUAR['id']}/mappings").mock(
+        return_value=items([{"mapping": m} for m in mapped])
+    )
+
+
+async def test_rule_lookup_from_device_derives_policy_zones_and_dynamic_mappings(
+    ftd: respx.MockRouter,
+) -> None:
+    _catalog(ftd)
+    _flow_rules(ftd, mapped=[])
+    args = {"device": "mcp-ftd1", "source": "10.99.1.10", "destination": "8.8.8.8", "port": 443}
+    async with Client(server()) as c:
+        out = await run(c, "fmc_rule_lookup", args)
+    assert out["policy"] == "mcp-test-ftd-acp"
+    assert (
+        out["device"]["ingress"]["interface"] == "inside"
+        and out["device"]["egress"]["interface"] == "outside"
+    )
+    assert (
+        out["flow"]["source_zone"] == "mcp-test-ftd-in"
+        and out["flow"]["destination_zone"] == "mcp-test-ftd-out"
+    )
+    assert "route 0.0.0.0/0" in out["device"]["egress"]["found_by"]
+    assert out["matched_rule"]["name"] == "allow-out" and "may_match_first" not in out  # empty quarantine
+
+
+async def test_rule_lookup_contained_host_matches_the_quarantine_rule(ftd: respx.MockRouter) -> None:
+    _catalog(ftd)
+    _flow_rules(ftd, mapped=["10.99.1.10"])
+    args = {"device": "mcp-ftd1", "source": "10.99.1.10", "destination": "8.8.8.8", "port": 443}
+    async with Client(server()) as c:
+        out = await run(c, "fmc_rule_lookup", args)
+    assert out["matched_rule"]["name"] == "mcp-quarantine-out" and out["verdict"].endswith("BLOCK")
+
+
+async def test_packet_tracer_picks_the_ingress_interface_from_the_source(ftd: respx.MockRouter) -> None:
+    _catalog(ftd)
+    post = ftd.post(f"/api/fmc_troubleshoot/v1/domain/{DOMAIN}/packettracer/traces").mock(
+        return_value=httpx.Response(200, json=fixture("ftd_packettracer_drop"))
+    )
+    args = {"device": "mcp-ftd1", "protocol": "tcp", "source_ip": "10.99.1.10", "destination_ip": "8.8.8.8"}
+    async with Client(server()) as c:
+        out = await run(c, "fmc_packet_tracer", {**args, "destination_port": 23})
+    assert json.loads(post.calls.last.request.content)["interface"]["id"] == INSIDE["id"]
+    assert out["input_interface"] == "inside" and out["input_interface_found_by"].startswith("connected")
+
+
+async def test_nat_rules_by_address_resolve_objects(ftd: respx.MockRouter) -> None:
+    _catalog(ftd)
+    rule = {
+        "id": "n1",
+        "type": "FTDAutoNatRule",
+        "natType": "DYNAMIC",
+        "originalNetwork": {"id": INSIDE_NET["id"], "name": INSIDE_NET["name"], "type": "Network"},
+        "interfaceInTranslatedNetwork": True,
+        "metadata": {"section": "AUTO"},
+    }
+    ftd.get(f"{CFG}/policy/ftdnatpolicies/{NATP['id']}/natrules").mock(return_value=items([rule]))
+    ftd.get(f"{CFG}/policy/ftdnatpolicies/{NATP['id']}").mock(return_value=httpx.Response(200, json=NATP))
+    ftd.get(f"{CFG}/assignment/policyassignments").mock(
+        return_value=items([{"policy": NATP, "targets": [{"id": DEV_ID, "type": "Device"}]}])
+    )
+    async with Client(server()) as c:
+        hit = await run(
+            c,
+            "fmc_list_nat_rules",
+            {"device": "mcp-ftd1", "address": "10.99.1.10", "response_format": "json"},
+        )
+        miss = await run(
+            c,
+            "fmc_list_nat_rules",
+            {"device": "mcp-ftd1", "address": "10.99.2.10", "response_format": "json"},
+        )
+    assert hit["policy"] == "mcp-test-ftd-nat"
+    assert hit["results"][0]["original_source"] == "mcp-test-ftd-inside-net (10.99.1.0/24)"
+    assert miss["results"] == []
+
+
+def test_rule_columns_show_dynamic_objects_and_drop_empty_ones() -> None:
+    from fmc_mcp.tools.policies import rule_columns
+
+    rows = [{"index": 1, "name": "q", "action": "BLOCK", "enabled": True, "src_dynamic": ["mcp-quarantine"]}]
+    assert rule_columns(rows) == ["index", "name", "action", "enabled", "src_dynamic"]
