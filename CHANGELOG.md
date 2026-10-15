@@ -1,6 +1,9 @@
 # Changelog
 
-## Unreleased
+## 0.6.0 (2026-10-15)
+
+New roadmap items found overnight (F20-F23) and the second F13 slice. Tools: 51 read -> 55, 42 write -> 54,
+9 dangerous (118 with every tier on).
 
 ### Added
 - **Decryption policy (F13, second slice)**: `fmc_get_decryption_policy` (read), `fmc_create_decryption_policy`,
