@@ -1,5 +1,14 @@
 # Changelog
 
+## Unreleased
+
+### Added
+- **DNS policy (F13, third slice)**: `fmc_get_dns_policy` (read), `fmc_create_dns_policy`, `fmc_set_dns_policy`
+  (an access policy's SI DNS policy), `fmc_dns_block` (write: each domain becomes a one-entry custom SI DNS list,
+  uploaded as a multipart file, in rule `mcp-dns-block`; NXDOMAIN or DROP). Live: blocked a domain in
+  `mcp-test-dns` linked to mcp-test-ftd-acp, deployed, unblocked, default DNS policy linked again, deployed.
+  FMC's DNS rule actions are ALLOW / NXDOMAIN / DROP / SINKHOLE / MONITOR; `insertBefore` isn't accepted.
+
 ## 0.7.0 (2026-10-15)
 
 F24 platform settings writes and F25 bulk object import. Tools: 55 read, 54 write -> 58, 9 dangerous (122).
