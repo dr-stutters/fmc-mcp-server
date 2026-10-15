@@ -94,6 +94,8 @@ async def _deploy_target(
     """The deployable entry for a device, HA pair or cluster name/UUID. FMC lists an HA pair as
     one deployable container, so a unit's name maps to its pair."""
     low = ref.strip().lower()
+    if not low:
+        raise InvalidRequest("Empty device name.")
     for d in pending:
         dev = d.get("device") or {}
         if low in {

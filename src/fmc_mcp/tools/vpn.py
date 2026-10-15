@@ -25,7 +25,7 @@ from stutters_mcp_core.http import page_of
 
 from fmc_mcp.client import FmcApp
 from fmc_mcp.refs import NETWORK_TYPES
-from fmc_mcp.tools.common import Domain, pick_by_name, ref_label, ref_of, resolve_in, resolve_object
+from fmc_mcp.tools.common import Domain, pick_by_name, ref_label, ref_of, resolve_in, resolve_object, slim
 from fmc_mcp.tools.device_config import device_interfaces, pick_interface
 from fmc_mcp.tools.devices import DEVICES, HA_PAIRS
 from fmc_mcp.tools.troubleshoot import tunnel_row
@@ -252,7 +252,7 @@ def register(reg: ToolRegistrar) -> None:
             except (NotFound, UpstreamError) as e:
                 out[key] = {"error": str(e)}
         if t.get("autoVpnSettings"):
-            out["sdwan"] = t["autoVpnSettings"]
+            out["sdwan"] = slim(t["autoVpnSettings"])
         tunnels = await app.all(
             await app.config_path("health/tunnelstatuses", domain),
             {"filter": f"vpnTopologyId:{t['id']}"},
@@ -325,6 +325,14 @@ def register(reg: ToolRegistrar) -> None:
             raise InvalidRequest("Give device_b (managed peer) or extranet_ip (unmanaged peer), not both.")
         if device_b and not interface_b:
             raise InvalidRequest("interface_b is required with device_b.")
+        if route_based and extranet_ip:
+            raise InvalidRequest(
+                "Route-based (VTI) VPNs need two managed devices; use policy-based for extranet."
+            )
+        if route_based and (networks_a or networks_b or nat_exempt_zone_a or nat_exempt_zone_b):
+            raise InvalidRequest(
+                "Route-based VPNs route over the VTIs: don't give networks or NAT-exempt zones."
+            )
         if not route_based and (not networks_a or not networks_b):
             raise InvalidRequest("Policy-based VPNs need networks_a and networks_b (protected networks).")
         if extranet_ip:
@@ -468,12 +476,20 @@ def register(reg: ToolRegistrar) -> None:
                 for ep in (ep_a, ep_b):
                     made.append(await app.api.post(f"{base}/endpoints", ep))
                     done.append(f"endpoint {ep['name']}")
-            except UpstreamError as e:
+            except Exception as e:  # roll back the half-built topology, whatever failed
+                try:
+                    await app.api.delete(base)
+                    cleanup = "The partial topology was deleted again; fix the cause and retry."
+                except Exception:
+                    cleanup = (
+                        f"Removing the partial topology failed: delete {name!r} with fmc_delete_s2s_vpn."
+                    )
+                app.invalidate_cache()
+                msg = str(e).replace(pre_shared_key, MASK)
                 raise UpstreamError(
-                    f"Building VPN {name!r} failed: {e}. Created so far: {', '.join(done)}. Delete it with "
-                    "fmc_delete_s2s_vpn and retry.",
-                    e.status_code,
-                ) from e
+                    f"Building VPN {name!r} failed after {', '.join(done)}: {msg}. {cleanup}",
+                    getattr(e, "status_code", None),
+                ) from None
             return {
                 "topology": topology_row(topo),
                 "endpoints": [endpoint_row(m) for m in made],
@@ -543,7 +559,7 @@ def register(reg: ToolRegistrar) -> None:
             plan=Plan(
                 f"Delete VPN topology {t.get('name')!r} ({len(rows)} endpoint(s))",
                 details={"topology": topology_row(t), "endpoints": rows},
-                fingerprint={"id": t["id"], "endpoints": [e.get("id") for e in endpoints.items]},
+                fingerprint={"topology": topology_row(t), "endpoints": rows},
                 side_effects=["The tunnels go down when the devices are next deployed."],
             ),
             apply=lambda: _delete(app, base, t),

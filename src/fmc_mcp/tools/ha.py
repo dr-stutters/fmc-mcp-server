@@ -13,6 +13,7 @@ from stutters_mcp_core import (
     InvalidRequest,
     Plan,
     ToolRegistrar,
+    UpstreamError,
     get_client,
     object_result,
     preview_or_apply,
@@ -185,12 +186,12 @@ def register(reg: ToolRegistrar) -> None:
                     blockers.append(
                         f"Interface {interface!r} has no IPv4 address; set one first (fmc_update_interface)."
                     )
+                elif str(addr) == active:
+                    blockers.append(f"{addr} is the active unit's address.")
                 elif mask:
                     net = ipaddress.IPv4Network(f"{active}/{mask}", strict=False)
                     if addr not in net:
                         blockers.append(f"{addr} is not in the interface network {net}.")
-                    elif str(addr) == active:
-                        blockers.append(f"{addr} is the active unit's address.")
                 want = str(addr)
             if want != v4.get("standbyIPv4Address"):
                 if want is None:
@@ -201,14 +202,11 @@ def register(reg: ToolRegistrar) -> None:
                 was = (mon.get("ipv4Configuration") or {}).get("standbyIPv4Address")
                 changes["standby_ip"] = {"from": was, "to": want}
         macs = await app.all(f"{base}/failoverinterfacemacaddressconfigs")
+        # MAC configs reference the physical interface ({id, type, name=Ethernet0/1}), not the
+        # logical name, so resolve it and match on its id.
+        phys = await _physical(app, ha, str(mon.get("name") or interface), domain)
         mac_cfg = next(
-            (
-                m
-                for m in macs.items
-                if str((m.get("physicalInterface") or {}).get("name", "")).lower()
-                in {interface.lower(), str(mon.get("name", "")).lower()}
-                or str((m.get("physicalInterface") or {}).get("ifname", "")).lower() == interface.lower()
-            ),
+            (m for m in macs.items if phys and (m.get("physicalInterface") or {}).get("id") == phys["id"]),
             None,
         )
         mac_body: dict[str, Any] | None = None
@@ -218,7 +216,6 @@ def register(reg: ToolRegistrar) -> None:
             if have != (amac, smac):
                 if amac == smac:
                     blockers.append("active_mac and standby_mac must differ.")
-                phys = await _physical(app, ha, interface, domain)
                 if phys is None:
                     blockers.append(f"Couldn't find the physical interface behind {interface!r}.")
                 mac_body = {
@@ -244,6 +241,13 @@ def register(reg: ToolRegistrar) -> None:
 
         async def apply() -> Any:
             out: dict[str, Any] = {}
+            try:
+                return await _apply(out)
+            except UpstreamError as e:
+                done = ", ".join(k for k in out if k != "next") or "nothing"
+                raise UpstreamError(f"{e} Already applied: {done}.", e.status_code) from e
+
+        async def _apply(out: dict[str, Any]) -> Any:
             if "monitored" in changes or "standby_ip" in changes:
                 out["monitored_interface"] = _monitored_row(
                     await applied(app, lambda: app.api.put(mon_path, new_mon))

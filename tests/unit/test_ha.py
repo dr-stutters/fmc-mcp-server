@@ -44,6 +44,7 @@ INSIDE = {
 }
 MGMT = {"id": "mon-m", "name": "management", "type": "FTDHAMonitoredInterfaces", "monitorForFailures": True}
 PHYS = {"id": "eth1", "name": "Ethernet0/1", "ifname": "inside", "type": "PhysicalInterface"}
+PHYS_REF = {"id": "eth1", "name": "Ethernet0/1", "type": "PhysicalInterface"}  # as FMC references it
 
 
 def server() -> Any:
@@ -170,3 +171,33 @@ async def test_deploy_accepts_ha_pair_and_unit_names(fmc: respx.MockRouter) -> N
         for ref in ("mcp-test-ha", "mcp-ftd2"):
             out = await run(c, "fmc_deploy", {"devices": [ref]})
             assert out["status"] == "preview", out
+
+
+async def test_existing_mac_is_updated_not_duplicated(fmc: respx.MockRouter) -> None:
+    mac = {
+        "id": "mac-1",
+        "physicalInterface": PHYS_REF,
+        "failoverActiveMac": "0050.56aa.0001",
+        "failoverStandbyMac": "0050.56aa.0002",
+    }
+    mock(fmc, [mac])
+    put = fmc.put(f"{BASE}/failoverinterfacemacaddressconfigs/mac-1").mock(
+        side_effect=lambda req: httpx.Response(200, json=json.loads(req.content))
+    )
+    args = {
+        "ha_pair": HA["name"],
+        "interface": "inside",
+        "active_mac": "0050.56aa.0011",
+        "standby_mac": "0050.56aa.0012",
+    }
+    async with Client(server()) as c:
+        preview = await run(c, "fmc_configure_ha_monitoring", args)
+        assert preview["preview"]["changes"]["mac"]["from"]["active_mac"] == "0050.56aa.0001"
+        await run(c, "fmc_configure_ha_monitoring", {**args, "confirm": preview["confirm"]})
+        same = await run(
+            c,
+            "fmc_configure_ha_monitoring",
+            {**args, "active_mac": "0050.56aa.0001", "standby_mac": "0050.56aa.0002"},
+        )
+    assert json.loads(put.calls.last.request.content)["failoverActiveMac"] == "0050.56aa.0011"
+    assert same["status"] == "blocked"

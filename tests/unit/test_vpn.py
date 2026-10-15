@@ -245,15 +245,19 @@ async def test_registered_fmc_defaults_to_aes(fmc: respx.MockRouter) -> None:
 async def test_partial_failure_is_reported(fmc: respx.MockRouter) -> None:
     r = build_mocks(fmc, evaluation=True)
     r["ep"].mock(
-        return_value=httpx.Response(400, json={"error": {"messages": [{"description": "bad endpoint"}]}})
+        return_value=httpx.Response(
+            400, json={"error": {"messages": [{"description": "bad super-secret-key"}]}}
+        )
     )
+    rollback = fmc.delete(f"{S2S}/topo-1").mock(return_value=httpx.Response(200, json={}))
     async with Client(server()) as c:
         preview = await run(c, "fmc_create_s2s_vpn", ARGS)
         res = await c.call_tool(
             "fmc_create_s2s_vpn", {**ARGS, "confirm": preview["confirm"]}, raise_on_error=False
         )
     text = res.content[0].text  # type: ignore[union-attr]
-    assert res.is_error and "IPsec settings" in text and "fmc_delete_s2s_vpn" in text
+    assert res.is_error and "IPsec settings" in text and "deleted again" in text
+    assert "super-secret-key" not in text and rollback.called
 
 
 @pytest.mark.parametrize(
