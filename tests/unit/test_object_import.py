@@ -22,6 +22,8 @@ async def test_bulk_import_per_type(fmc: respx.MockRouter) -> None:
         return_value=items([{"id": "h0", "name": "old", "type": "Host", "value": "10.0.0.9"}])
     )
     fmc.get(f"{CFG}/object/protocolportobjects").mock(return_value=items([]))
+    for coll in ("networks", "ranges", "fqdns"):
+        fmc.get(f"{CFG}/object/{coll}").mock(return_value=items([]))
     hosts = fmc.post(f"{CFG}/object/hosts").mock(return_value=httpx.Response(201, json={"items": []}))
     ports = fmc.post(f"{CFG}/object/protocolportobjects").mock(
         return_value=httpx.Response(201, json={"items": []})
@@ -45,3 +47,13 @@ async def test_bulk_import_per_type(fmc: respx.MockRouter) -> None:
     assert hosts.calls.last.request.url.params["bulk"] == "true"
     assert [b["name"] for b in json.loads(hosts.calls.last.request.content)] == ["h1"]
     assert json.loads(ports.calls.last.request.content)[0]["port"] == "8443"
+
+
+def test_canon_compares_values_not_formats() -> None:
+    from fmc_mcp.tools.object_import import canon
+
+    assert canon("port", {"protocol": "tcp", "port": 443}) == canon(
+        "port", {"protocol": "TCP", "port": "443"}
+    )
+    assert canon("host", {"value": "10.0.0.1/32"}) == canon("host", {"value": "10.0.0.1"})
+    assert canon("fqdn", {"value": "WWW.Example.com."}) == canon("fqdn", {"value": "www.example.com"})

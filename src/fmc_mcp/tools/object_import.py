@@ -2,6 +2,7 @@
 bulk API per type in chunks."""
 
 # No `from __future__ import annotations`: FastMCP inspects signatures at runtime.
+import ipaddress
 from typing import Annotated, Any, Literal
 
 from fastmcp import Context
@@ -14,6 +15,26 @@ from fmc_mcp.tools.common import Domain, obj_type
 from fmc_mcp.tools.object_writes import value_fields
 
 CHUNK = 200
+FAMILY = {"host": "network", "network": "network", "range": "network", "fqdn": "network"}
+FAMILY_TYPES = {"network": ["host", "network", "range", "fqdn"]}
+
+
+def canon(kind: str, obj: dict[str, Any]) -> tuple[str, ...]:
+    """A comparable form of an object's value (FMC and our normalised fields differ in case and format)."""
+    if kind == "port":
+        return (str(obj.get("protocol", "")).upper(), str(obj.get("port") or "").strip())
+    if kind == "url":
+        return (str(obj.get("url", "")).strip().lower().rstrip("/"),)
+    v = str(obj.get("value", "")).strip().lower().rstrip(".")
+    try:
+        if kind in ("host", "network"):
+            net = ipaddress.ip_network(v, strict=False)
+            return (str(net.network_address) if net.num_addresses == 1 else str(net),)
+    except ValueError:
+        pass
+    return (v,)
+
+
 MAX_ROWS = 1000
 ImportType = Literal["host", "network", "range", "fqdn", "port", "url"]
 
@@ -53,24 +74,43 @@ def register(reg: ToolRegistrar) -> None:
         bodies: dict[str, list[dict[str, Any]]] = {}
         existing: dict[str, dict[str, dict[str, Any]]] = {}
         seen: set[tuple[str, str]] = set()
+        touched: dict[str, str | None] = {}
         for n, row in enumerate(objects, 1):
             t = obj_type(row.type)
+            fam = FAMILY.get(t.key, t.key)
             where = f"row {n} ({row.name!r})"
-            if (t.key, row.name.lower()) in seen:
-                problems.append(f"{where}: the name appears twice for {t.key}.")
+            if (fam, row.name.lower()) in seen:
+                problems.append(f"{where}: the name appears twice ({fam} objects share names).")
                 continue
-            seen.add((t.key, row.name.lower()))
+            seen.add((fam, row.name.lower()))
             try:
                 fields = value_fields(t, row.value, None)
             except InvalidRequest as e:
                 problems.append(f"{where}: {e}")
                 continue
-            if t.key not in existing:
-                page = await app.all(await app.config_path(t.path, domain), cap=50_000)
-                existing[t.key] = {str(o.get("name", "")).lower(): o for o in page.items}
-            have = existing[t.key].get(row.name.lower())
+            for key in FAMILY_TYPES.get(fam, [t.key]):
+                if key not in existing:
+                    page = await app.all(await app.config_path(obj_type(key).path, domain), cap=50_000)
+                    if not page.complete:
+                        problems.append(
+                            f"FMC has more {key} objects than can be checked; import fewer types at a time."
+                        )
+                    existing[key] = {str(o.get("name", "")).lower(): o for o in page.items}
+            clash = next(
+                (
+                    (key, existing[key][row.name.lower()])
+                    for key in FAMILY_TYPES.get(fam, [t.key])
+                    if row.name.lower() in existing[key]
+                ),
+                None,
+            )
+            touched[f"{t.key}:{row.name.lower()}"] = clash[1].get("id") if clash else None
+            if clash is not None and clash[0] != t.key:
+                problems.append(f"{where}: a {clash[0]} object already has that name.")
+                continue
+            have = clash[1] if clash else None
             if have is not None:
-                same = all(str(have.get(k)) == str(v) for k, v in fields.items() if not isinstance(v, dict))
+                same = canon(t.key, have) == canon(t.key, fields)
                 if same and skip_existing:
                     skipped.append(row.name)
                     continue
@@ -93,9 +133,15 @@ def register(reg: ToolRegistrar) -> None:
                         chunk = items[i : i + CHUNK]
                         try:
                             await app.api.post(path, chunk, params={"bulk": "true"})
-                        except Exception as e:
+                        except UpstreamError as e:
+                            later = [
+                                k
+                                for k in bodies
+                                if k != key and not any(n in created for n in [b["name"] for b in bodies[k]])
+                            ]
                             raise UpstreamError(
-                                f"Import stopped after {len(created)} objects; the {key} chunk starting at "
+                                f"Import stopped after {len(created)} objects (types not attempted: "
+                                f"{', '.join(later) or 'none'}); the {key} chunk starting at "
                                 f"{chunk[0]['name']!r} failed: {e}. "
                                 "Repeat with skip_existing=true to resume.",
                                 getattr(e, "status_code", None),
@@ -121,9 +167,10 @@ def register(reg: ToolRegistrar) -> None:
                     "by_type": {k: len(v) for k, v in bodies.items()},
                     "first": [b["name"] for v in bodies.values() for b in v][:10],
                     "skipped_existing": skipped[:50] or None,
+                    "skipped_count": len(skipped) or None,
                     "problems": problems[:50] or None,
                 },
-                fingerprint={k: sorted(v) for k, v in existing.items()},
+                fingerprint=touched,  # only the names this import touches
                 blockers=problems[:20]
                 + (["...and more problems"] if len(problems) > 20 else [])
                 + (["Nothing to create."] if not total and not problems else []),
