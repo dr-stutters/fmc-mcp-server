@@ -3,6 +3,7 @@ networks and URLs through them (SI drops before access rules and Snort, and logs
 
 # No `from __future__ import annotations`: FastMCP inspects signatures at runtime.
 import contextlib
+import hashlib
 import ipaddress
 import re
 from typing import Annotated, Any, Literal
@@ -31,29 +32,38 @@ PREFIX = "mcp-si-"
 PolicyRef = Annotated[str, Field(description="Access control policy name or UUID")]
 
 
+MARKER = "Security Intelligence block (fmc_si_block)"
+
+
 def _entry_name(value: str) -> str:
-    return PREFIX + re.sub(r"[^A-Za-z0-9._-]+", "_", value)[:56]
+    """mcp-si-<value>; when the value had to be shortened or changed to fit an FMC name, a short hash of
+    it keeps names unique."""
+    clean = re.sub(r"[^A-Za-z0-9._-]+", "_", value)
+    if clean == value and len(clean) <= 56:
+        return PREFIX + clean
+    return f"{PREFIX}{clean[:47]}-{hashlib.sha1(value.encode()).hexdigest()[:8]}"
 
 
 def classify(value: str) -> tuple[str, str]:
-    """('host'|'network'|'url', normalised value) for an IP, CIDR or URL/domain."""
+    """('host'|'network'|'url', normalised value) for an IPv4/IPv6 address, CIDR or URL/domain."""
     v = value.strip()
     try:
-        if (
-            "/" in v
-            and not v.lower().startswith(("http://", "https://"))
-            and not re.search(r"[a-z]", v, re.I)
-        ):
-            net = ipaddress.ip_network(v, strict=False)
-            return (
-                ("host", str(net.network_address))
-                if net.prefixlen == net.max_prefixlen
-                else ("network", str(net))
+        net = ipaddress.ip_network(v, strict=True)
+    except ValueError as e:
+        if "has host bits set" in str(e):
+            raise InvalidRequest(
+                f"{value!r} has host bits set; give the network ({ipaddress.ip_network(v, strict=False)})."
+            ) from None
+        net = None
+    if net is not None:
+        if net.prefixlen == 0 or net.is_loopback or net.is_multicast or net.is_unspecified:
+            raise InvalidRequest(
+                f"Refusing to Security-Intelligence-block {value!r} (default route, loopback or multicast)."
             )
-        return "host", str(ipaddress.ip_address(v))
-    except ValueError:
-        pass
-    if re.match(r"^(https?://)?[A-Za-z0-9.-]+\.[A-Za-z]{2,}(/.*)?$", v):
+        if net.prefixlen == net.max_prefixlen:
+            return "host", str(net.network_address)
+        return "network", str(net)
+    if re.match(r"^(https?://)?[A-Za-z0-9.-]+\.[A-Za-z]{2,}(/\S*)?$", v):
         return "url", v
     raise InvalidRequest(f"{value!r} is not an IP address, CIDR or URL/domain.")
 
@@ -116,22 +126,38 @@ def register(reg: ToolRegistrar) -> None:
     ) -> dict[str, Any]:
         """Block (or unblock) IPs, networks or URLs with the access policy's Security Intelligence block
         list: SI drops matching traffic before any access rule and logs it as a Security Intelligence event.
-        Each entry becomes an object named mcp-si-<value> in the block list (removed again on unblock).
+        Each entry becomes an object named mcp-si-<value> in the block list (deleted on unblock unless used
+        elsewhere). Host bits, /0, loopback and multicast are refused.
         Needs a deployment. For an instant, no-deploy block of a single host use fmc_contain_host."""
         app: FmcApp = get_client(ctx)
         acp = await resolve_in(app, ACCESS, policy, "access policy", domain)
         path, si = await _si_policy(app, acp, domain)
-        wanted = [(e, *classify(e)) for e in dict.fromkeys(entries)]
-        listed = {
-            str((x.get("network") or {}).get("name"))
-            for x in (si.get("networks") or {}).get("blocklist") or []
-        } | {str((x.get("url") or {}).get("name")) for x in (si.get("urls") or {}).get("blocklist") or []}
-        todo = [(e, kind, v) for e, kind, v in wanted if (_entry_name(v) in listed) == (action == "unblock")]
-        skipped = [e for e, _, v in wanted if (e, _, v) not in todo]
+        wanted: dict[tuple[str, str], str] = {}
+        for e in entries:
+            wanted.setdefault(classify(e), e)  # '1.2.3.4' and '1.2.3.4/32' are one entry
+
+        def names_in(si_obj: dict[str, Any]) -> set[str]:
+            nets = (si_obj.get("networks") or {}).get("blocklist") or []
+            urls = (si_obj.get("urls") or {}).get("blocklist") or []
+            return {str((x.get("network") or {}).get("name")) for x in nets} | {
+                str((x.get("url") or {}).get("name")) for x in urls
+            }
+
+        listed = names_in(si)
+        todo = [
+            (e, kind, v)
+            for (kind, v), e in wanted.items()
+            if (_entry_name(v) in listed) == (action == "unblock")
+        ]
+        done_names = {_entry_name(v) for _, _, v in todo}
+        skipped = [e for (_, v), e in wanted.items() if _entry_name(v) not in done_names]
         blockers = (
             []
             if todo
-            else [f"Nothing to change: already {'blocked' if action == 'block' else 'not blocked'}."]
+            else [
+                "Nothing to change: "
+                + ("already blocked." if action == "block" else "none of these is blocked by fmc_si_block.")
+            ]
         )
         paths = {
             "host": await app.config_path("object/hosts", domain),
@@ -139,44 +165,61 @@ def register(reg: ToolRegistrar) -> None:
             "url": await app.config_path("object/urls", domain),
         }
 
-        async def ensure_object(kind: str, value: str) -> dict[str, Any]:
+        created: list[tuple[str, str]] = []
+
+        async def ensure_object(kind: str, value: str, entry: str) -> dict[str, Any]:
             name = _entry_name(value)
-            found = await app.api.get(paths[kind], {"filter": f"nameOrValue:{name}"})
+            found = await app.api.get(paths[kind], {"filter": f"nameOrValue:{name}", "expanded": "true"})
             for o in (found or {}).get("items", []):
                 if o.get("name") == name:
+                    have = o.get("url") if kind == "url" else o.get("value")
+                    if str(have) != value:
+                        raise InvalidRequest(
+                            f"An object {name!r} exists with value {have!r}, not {value!r}; rename it."
+                        )
                     return {"id": o["id"], "type": o["type"], "name": name}
-            body: dict[str, Any] = {"name": name, "description": "Security Intelligence block (fmc_si_block)"}
+            body: dict[str, Any] = {"name": name, "description": f"{MARKER}: {entry}"}
             if kind == "url":
                 body.update(type="Url", url=value)
             else:
                 body.update(type="Host" if kind == "host" else "Network", value=value)
             o = await app.api.post(paths[kind], body)
+            created.append((kind, o["id"]))
             return {"id": o["id"], "type": o["type"], "name": name}
+
+        def kind_of(ref: dict[str, Any]) -> str:
+            return {"Url": "url", "Host": "host"}.get(str(ref.get("type")), "network")
 
         async def apply() -> Any:
             fresh = await app.api.get(path)
             body = editable(fresh)
-            nets = body.setdefault("networks", {}).setdefault("blocklist", [])
-            urls = body.setdefault("urls", {}).setdefault("blocklist", [])
+            now = names_in(fresh)
             removed: list[dict[str, Any]] = []
-            for _, kind, value in todo:
+            for entry, kind, value in todo:
                 name = _entry_name(value)
-                lst, key = (urls, "url") if kind == "url" else (nets, "network")
+                key, section = ("url", "urls") if kind == "url" else ("network", "networks")
+                block = body.get(section) or {}
+                body[section] = block
+                lst = block.get("blocklist") or []
+                block["blocklist"] = lst
                 if action == "block":
-                    lst.append({key: await ensure_object(kind, value)})
+                    if name not in now:  # someone may have added it since the preview
+                        lst.append({key: await ensure_object(kind, value, entry)})
                 else:
-                    keep = [x for x in lst if (x.get(key) or {}).get("name") != name]
                     removed += [x[key] for x in lst if (x.get(key) or {}).get("name") == name]
-                    lst[:] = keep
-            result = await applied(app, lambda: app.api.put(path, body))
-            for ref in removed:  # our helper objects; ignore ones still used elsewhere
-                kind = (
-                    "url"
-                    if ref.get("type") == "Url"
-                    else ("host" if ref.get("type") == "Host" else "network")
-                )
-                with contextlib.suppress(UpstreamError):  # an object still used elsewhere stays
-                    await app.api.delete(f"{paths[kind]}/{ref['id']}")
+                    lst[:] = [x for x in lst if (x.get(key) or {}).get("name") != name]
+            try:
+                result = await applied(app, lambda: app.api.put(path, body))
+            except UpstreamError:
+                for kind, oid in created:  # don't leave the objects we just made behind
+                    with contextlib.suppress(UpstreamError):
+                        await app.api.delete(f"{paths[kind]}/{oid}")
+                raise
+            for ref in removed:  # delete our helper objects (marker in the description), if unused elsewhere
+                with contextlib.suppress(UpstreamError):
+                    obj = await app.api.get(f"{paths[kind_of(ref)]}/{ref['id']}")
+                    if str(obj.get("description", "")).startswith(MARKER):
+                        await app.api.delete(f"{paths[kind_of(ref)]}/{ref['id']}")
             return {
                 "policy": acp.get("name"),
                 "si": _si_rows(result if isinstance(result, dict) else body),
@@ -192,7 +235,9 @@ def register(reg: ToolRegistrar) -> None:
             plan=Plan(
                 f"Security Intelligence {action}: {len(todo)} entries in {acp.get('name')!r}",
                 details={
-                    "entries": [{"entry": e, "kind": k, "object": _entry_name(v)} for e, k, v in todo],
+                    "entries": [
+                        {"entry": e, "kind": k, "value": v, "object": _entry_name(v)} for e, k, v in todo
+                    ],
                     "unchanged": skipped or None,
                     "deploy_needed": True,
                 },

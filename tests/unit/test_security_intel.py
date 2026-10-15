@@ -9,7 +9,7 @@ from fastmcp import Client
 from stutters_mcp_core import InvalidRequest
 
 from fmc_mcp.server import create_server
-from fmc_mcp.tools.security_intel import classify
+from fmc_mcp.tools.security_intel import _entry_name, classify
 
 from .conftest import CFG, items, make_settings
 
@@ -27,7 +27,11 @@ SI = {
 
 def test_classify() -> None:
     assert classify("10.1.1.1") == ("host", "10.1.1.1")
-    assert classify("10.1.1.7/24") == ("network", "10.1.1.0/24")
+    assert classify("10.1.1.0/24") == ("network", "10.1.1.0/24")
+    assert classify("2001:db8::/32") == ("network", "2001:db8::/32")
+    for bad in ("10.1.1.7/24", "0.0.0.0/0", "127.0.0.1", "224.0.0.5"):
+        with pytest.raises(InvalidRequest):
+            classify(bad)
     assert classify("10.1.1.7/32") == ("host", "10.1.1.7")
     assert classify("bad.example.com") == ("url", "bad.example.com")
     with pytest.raises(InvalidRequest):
@@ -55,3 +59,9 @@ async def test_block_adds_object_to_si_list(fmc: respx.MockRouter) -> None:
         x["network"]["name"] for x in json.loads(put.calls.last.request.content)["networks"]["blocklist"]
     ]
     assert names == ["Global Block List", "mcp-si-203.0.113.7"]
+
+
+def test_entry_names_stay_unique() -> None:
+    assert _entry_name("203.0.113.7") == "mcp-si-203.0.113.7"
+    a, b = _entry_name("x.com/a?b"), _entry_name("x.com/a_b")
+    assert a != b and len(a) <= 64
