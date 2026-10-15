@@ -11,6 +11,7 @@ from stutters_mcp_core.spec import SpecSource
 from fmc_mcp.client import SPEC_PATH, FmcApp
 from fmc_mcp.config import Settings
 from fmc_mcp.tools import (
+    activity,
     analysis,
     dangerous,
     deploy,
@@ -47,7 +48,8 @@ Workflows:
   The fmc_why_blocked prompt walks these steps in order.
 - Block a host fast: map its IP into a dynamic object that a BLOCK rule references
   (fmc_map_dynamic_object); mapping changes need no deployment, only the rule does (once).
-- Health: fmc_list_devices, fmc_device_health, fmc_list_vpn_tunnels.
+- Health: fmc_list_devices, fmc_device_health, fmc_list_vpn_tunnels; "what changed or broke in the
+  last hour?": fmc_recent_activity (health alerts + audit + deployments), fmc_list_health_alerts.
 Before changing or deleting an object, check fmc_where_used.
 
 Gotchas: FMC allows about 120 API requests per minute, so prefer the aggregate tools over many small
@@ -116,6 +118,7 @@ def create_server(
             dangerous.register,
             troubleshoot.register,
             dynamic_objects.register,
+            activity.register,
             prompts.register,
         ],
         status=FmcApp.status,

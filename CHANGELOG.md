@@ -17,6 +17,12 @@
 - `fmc_packet_tracer` names the rule Snort decided on (`verdict_rule`); with a Snort-evaluated rule
   (dynamic objects, applications, URLs) the ACCESS-LIST phase only shows a "send to Snort" permit.
 
+- On-demand activity (F5, pull-only): `fmc_list_health_alerts` (alerts over a window across devices
+  and the FMC itself, repeats collapsed with first/last seen and status changes) and
+  `fmc_recent_activity` (health alerts, audit records and deployments merged by time; a failing
+  source is reported, not fatal). Live: pulling the FTD management link raised APPLIANCE_HEARTBEAT
+  YELLOW then RED within ~2 minutes, shown next to the rule edit (audit) and deploy rows.
+
 ### Changed
 - Core pinned to stutters-mcp-core v0.3.0 (pull-only; `list_result` keeps `Page.more`; prompts via
   `reg.prompt`).
