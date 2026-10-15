@@ -1,6 +1,6 @@
 [project]
 name = "fmc-mcp-server"
-version = "0.8.0"
+version = "0.9.0"
 description = "MCP server for Cisco Secure Firewall Management Center (FMC)"
 readme = "README.md"
 license = "MIT"
@@ -11,7 +11,7 @@ dependencies = ["stutters-mcp-core"]
 fmc-mcp-server = "fmc_mcp:main"
 
 [tool.uv.sources]
-stutters-mcp-core = { git = "https://github.com/dr-stutters/stutters-mcp-core", tag = "v0.9.0" }
+stutters-mcp-core = { git = "https://github.com/dr-stutters/stutters-mcp-core", tag = "v0.12.2" }
 
 [build-system]
 requires = ["uv_build>=0.10.9,<0.11.0"]
