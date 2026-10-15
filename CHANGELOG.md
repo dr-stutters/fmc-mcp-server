@@ -1,6 +1,9 @@
 # Changelog
 
-## Unreleased
+## 0.3.0 (2026-10-15)
+
+Roadmap "Now" (F1-F6). Tools: 35 read -> 41, 20 write -> 30, 7 dangerous (78 with every tier on)
+plus the first workflow prompt. Pull-only (ADR-003).
 
 ### Added
 - Prompt `fmc_why_blocked` (source, destination, protocol, port; optional device, ingress interface,
@@ -39,6 +42,7 @@
 ### Changed
 - Core pinned to stutters-mcp-core v0.3.0 (pull-only; `list_result` keeps `Page.more`; prompts via
   `reg.prompt`).
+- `fmc_pending_changes` masks secret-looking fields (FMC shows encrypted passwords there).
 
 ### Fixed
 - `fmc_create_static_route` refuses an exact duplicate (same table, interface, destinations and

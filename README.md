@@ -39,17 +39,18 @@ Changes made in FMC reach the firewalls only after a **deployment** (`fmc_deploy
 
 ## Tools
 
-There are 62 tools when every tier is enabled: 35 read (34 when the dangerous tier turns `fmc_api_call` into a raw call), 20 write and 7 dangerous plus `fmc_api_call`.
+There are 78 tools when every tier is enabled: 41 read (40 when the dangerous tier turns `fmc_api_call` into a raw call), 30 write and 7 dangerous plus `fmc_api_call`, and one workflow prompt (`fmc_why_blocked`).
 
-**Read (35)**
+**Read (41)**
 
 | Area | Tools |
 |---|---|
 | System | `fmc_status`, `fmc_list_domains`, `fmc_list_audit_records`, `fmc_get_task`, `fmc_license_status` |
-| Devices | `fmc_list_devices`, `fmc_get_device`, `fmc_list_device_interfaces`, `fmc_list_routes`, `fmc_list_ha_pairs`, `fmc_list_clusters` |
+| Activity (on demand) | `fmc_list_health_alerts`, `fmc_recent_activity` |
+| Devices | `fmc_list_devices`, `fmc_get_device`, `fmc_list_device_interfaces`, `fmc_list_routes`, `fmc_get_routing`, `fmc_get_platform_settings`, `fmc_list_ha_pairs`, `fmc_list_clusters` |
 | Troubleshooting | `fmc_packet_tracer`, `fmc_run_show_command`, `fmc_get_hit_counts`, `fmc_device_health`, `fmc_list_vpn_tunnels` |
 | Policies | `fmc_list_policies`, `fmc_get_access_policy`, `fmc_list_access_rules`, `fmc_get_access_rule`, `fmc_list_nat_rules`, `fmc_list_prefilter_rules`, `fmc_list_policy_assignments` |
-| Objects | `fmc_list_objects`, `fmc_get_object`, `fmc_find_object`, `fmc_where_used`, `fmc_unused_objects` |
+| Objects | `fmc_list_objects`, `fmc_get_object`, `fmc_find_object`, `fmc_where_used`, `fmc_unused_objects`, `fmc_list_dynamic_objects` |
 | Analysis | `fmc_rule_lookup`, `fmc_shadowed_rules` |
 | Deployment | `fmc_list_deployable_devices`, `fmc_pending_changes`, `fmc_list_deployments` |
 | API spec | `fmc_search_spec`, `fmc_get_definition`, `fmc_api_call` (GET only) |
@@ -66,8 +67,12 @@ Notes on some read tools:
   `show route`, `show interface ip brief`, `show running-config nat`); FMC refuses stateful ones
   such as `show conn`.
 - `fmc_get_hit_counts` refreshes the counters from the device first (packet-tracer packets count too).
+- `fmc_list_health_alerts` and `fmc_recent_activity` query FMC when called (no background collection):
+  health alerts over a window with repeats collapsed, and one timeline of health alerts, audit records
+  and deployments. The server never receives syslog or eStreamer; traffic events stay in the FMC UI or
+  the customer's SIEM.
 
-**Write (20)**
+**Write (30)**
 
 | Area | Tools |
 |---|---|
@@ -75,10 +80,17 @@ Notes on some read tools:
 | Access control | `fmc_create_access_policy`, `fmc_create_access_rule`, `fmc_update_access_rule`, `fmc_delete_access_rule` |
 | NAT | `fmc_create_nat_policy`, `fmc_create_nat_rule`, `fmc_update_nat_rule`, `fmc_delete_nat_rule` |
 | Device configuration | `fmc_update_interface`, `fmc_create_subinterface`, `fmc_delete_interface`, `fmc_create_static_route`, `fmc_delete_static_route`, `fmc_assign_policy` |
+| Routing | `fmc_configure_bgp`, `fmc_configure_ospf`, `fmc_create_vrf`, `fmc_delete_vrf` |
+| Platform settings / logging | `fmc_create_platform_settings_policy`, `fmc_configure_syslog`, `fmc_set_access_logging` |
+| Dynamic objects | `fmc_create_dynamic_object`, `fmc_delete_dynamic_object`, `fmc_map_dynamic_object` |
 
 `fmc_create_access_rule` takes a position (`insert_before` or `insert_after`), a section and a
 category. `fmc_update_access_rule` can move a rule with `move_to`. `fmc_update_interface` sets the
 logical name, zone, IPv4 (static or DHCP), MTU and admin state of any existing interface.
+`fmc_map_dynamic_object` changes take effect on the devices **without a deployment** (only the rule
+that references the object needs one). `fmc_configure_bgp` refuses to edit BGP while a neighbor has an
+MD5 password, because FMC returns it masked and a PUT would replace it, unless you re-enter it with
+`neighbor_password`.
 
 **Dangerous (7, plus raw `fmc_api_call`)**
 
@@ -100,7 +112,13 @@ logical name, zone, IPv4 (static or DHCP), MTU and admin state of any existing i
   evaluation mode before it accepts devices.
 - **Change safely:** change -> `fmc_pending_changes` -> `fmc_deploy` -> verify ->
   `fmc_rollback_deployment` if needed.
-- **Why is this traffic blocked?** `fmc_packet_tracer` + `fmc_rule_lookup` + `fmc_get_hit_counts`.
+- **Why is this traffic blocked?** The `fmc_why_blocked` prompt runs `fmc_rule_lookup` ->
+  `fmc_packet_tracer` -> `fmc_get_hit_counts` -> `fmc_pending_changes` / `fmc_list_deployments` ->
+  `fmc_list_audit_records`, then proposes a preview-first fix.
+- **Block a host now:** map it into a dynamic object used by a BLOCK rule (`fmc_map_dynamic_object`).
+- **What changed or broke in the last hour?** `fmc_recent_activity`.
+- **Send FTD logs to a SIEM:** `fmc_configure_syslog` -> `fmc_assign_policy(kind='platform_settings')`
+  -> `fmc_deploy` -> `fmc_run_show_command('show running-config logging')`.
 
 Tools accept **names or UUIDs**. Rule conditions accept object names or literal values:
 
