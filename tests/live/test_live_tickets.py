@@ -69,7 +69,8 @@ async def test_ticket_flow(client: Client[Any]) -> None:
     try:
         # a leftover ticket from an interrupted run
         old = await call(client, "fmc_change_tickets", {"response_format": "json"})
-        if any(t["name"] == TICKET and t["status"] in ("NEW", "IN_PROGRESS") for t in old.get("tickets") or []):
+        leftovers = [t for t in old.get("tickets") or [] if t["name"] == TICKET]
+        if any(t["status"] in ("NEW", "IN_PROGRESS") for t in leftovers):
             await apply(client, "fmc_ticket", {"action": "discard", "name": TICKET})
         opened = await apply(client, "fmc_ticket", {"action": "open", "name": TICKET})
         assert opened["current_ticket"]
