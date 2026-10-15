@@ -1,6 +1,8 @@
 # Changelog
 
-## Unreleased
+## 0.8.0 (2026-10-15)
+
+F13 third slice (DNS policy and domain blocking). Tools: 56 read, 61 write, 9 dangerous (126).
 
 ### Added
 - **DNS policy (F13, third slice)**: `fmc_get_dns_policy` (read), `fmc_create_dns_policy`, `fmc_set_dns_policy`
