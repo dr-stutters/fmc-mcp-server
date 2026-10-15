@@ -27,6 +27,11 @@ class Settings(BaseServerSettings):
         "delete device, HA actions), same syntax as MCP_CHANGE_WINDOW; outside it they are blocked. "
         "Object and policy edits stay possible (they only reach devices with a deploy).",
     )
+    ticket: str | None = Field(
+        default=None,
+        description="Change-management ticket id to send with every request (FMC 7.6+ change management); "
+        "fmc_ticket(action='open') sets it at run time.",
+    )
     allow_ignore_warning: bool = Field(
         default=False,
         description="Allow fmc_deploy(ignore_warning=true). Even then the preview must list the FMC "

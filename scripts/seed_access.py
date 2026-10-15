@@ -91,6 +91,8 @@ RO_PERMISSIONS = [
     "update",
     "license",
     "smart_license",
+    # change-management tickets (FMC 7.6+; only used when change management is on)
+    "view_tickets",
 ]
 
 RW_EXTRA = [
@@ -126,6 +128,7 @@ RW_EXTRA = [
     # Administration > Advanced > Backup Management (device backups; no restore)
     "tools",
     "backup_management",
+    "modify_tickets",
 ]
 
 ROLES: dict[str, dict[str, Any]] = {

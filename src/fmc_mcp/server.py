@@ -33,6 +33,7 @@ from fmc_mcp.tools import (
     rule_io,
     security_intel,
     system,
+    tickets,
     troubleshoot,
     vpn,
 )
@@ -154,6 +155,7 @@ def create_server(
             prefilter.register,
             security_intel.register,
             rule_io.register,
+            tickets.register,
             prompts.register,
         ],
         status=FmcApp.status,
