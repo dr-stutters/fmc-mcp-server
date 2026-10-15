@@ -11,6 +11,12 @@
   inside host blocked ~5 s after containment with nothing to deploy, packet tracer drops on
   `mcp-quarantine-out`; restored after release.
 
+- Prompt `fmc_onboard_ftd` (F8; dangerous tier, uses fmc + cml): preconditions (licence, already
+  registered, the `configure manager add` step for re-registration), optional CML recipe build, register,
+  interfaces and zones, default route and NAT, policies, deploy, then verify with show commands, packet
+  tracer and real traffic. Live: a fresh FTDv (`mcp-ftd2`, CML lab `mcp-fmc-ha`) onboarded end to end
+  by following the prompt; the inside host reached the dCloud gateway through PAT.
+
 ### Changed
 - Core pinned to v0.3.1 (`fmc_get_definition(examples=True)`).
 

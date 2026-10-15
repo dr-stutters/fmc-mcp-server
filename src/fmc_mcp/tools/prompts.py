@@ -6,7 +6,7 @@ import re
 from typing import Annotated, Literal
 
 from pydantic import Field
-from stutters_mcp_core import InvalidRequest, ToolRegistrar, tool_ref
+from stutters_mcp_core import InvalidRequest, Tier, ToolRegistrar, tool_ref
 
 # Prompt arguments end up inside instructions: keep them to one line of plain characters.
 _SAFE = re.compile(r"^[\w.:/@ ()+,-]{1,200}$")
@@ -120,6 +120,119 @@ gives a definite answer that the later steps cannot change. All steps before ste
 """
 
 
+def _onboard_text(
+    name: str,
+    host: str | None,
+    recipe: str | None,
+    access_policy: str,
+    outside_interface: str,
+    outside_ip: str,
+    gateway: str,
+    inside_interface: str,
+    inside_ip: str,
+    nat_policy: str | None,
+    platform_settings: str | None,
+    test_destination: str | None,
+) -> str:
+    """The fmc_onboard_ftd instructions."""
+    if not host and not recipe:
+        raise InvalidRequest("Give the FTD's management `host`, or a CML `recipe` to build it from.")
+    dev = _q(name, "name")
+    acp = _q(access_policy, "access_policy")
+    out_if, in_if = _q(outside_interface, "outside_interface"), _q(inside_interface, "inside_interface")
+    out_ip, in_ip = _q(outside_ip, "outside_ip"), _q(inside_ip, "inside_ip")
+    gw = _q(gateway, "gateway")
+    host_q = _q(host, "host") if host else "<the management IP from the recipe's address_plan>"
+    natp = _q(nat_policy, "nat_policy") if nat_policy else None
+    psp = _q(platform_settings, "platform_settings") if platform_settings else None
+    dest = _q(test_destination, "test_destination") if test_destination else gw
+    inside_net = f"<the network of {json.loads(in_ip)}>"
+    if recipe:
+        build = (
+            f"1. Build the FTD in CML: {tool_ref('cml_build_recipe')} with recipe={_q(recipe, 'recipe')} "
+            "(preview first; the FTDv boots in 15-30 minutes, so build with wait=false and then "
+            f"{tool_ref('cml_wait_for_converged')}). Then {tool_ref('cml_verify_recipe')} for the same "
+            "recipe: "
+            "the 'show managers' probe must show the FMC as pending. The recipe's fmc_side and "
+            "credentials sections give the management IP and registration key."
+        )
+    else:
+        build = (
+            f"1. The FTD exists at {host_q}. It must point at this FMC: on its CLI, `show managers` lists "
+            "the FMC (status Pending). If not, run `configure manager add <fmc-ip> <reg-key>` on the FTD "
+            f"(in CML: {tool_ref('cml_configure_node')} with mode='exec')."
+        )
+    nat_step = (
+        f"Use NAT policy {natp}: {tool_ref('fmc_assign_policy')} kind='nat', policy={natp}, devices=[{dev}]."
+        if natp
+        else f"Create NAT policy {json.dumps(json.loads(dev) + '-nat')} with "
+        f"{tool_ref('fmc_create_nat_policy')}, then {tool_ref('fmc_create_nat_rule')} kind='auto', "
+        f"original_source={inside_net} (a network object; "
+        f"create it with {tool_ref('fmc_create_object')} if needed), translated_source='interface', "
+        f"nat_type='DYNAMIC', source_interface=<the inside zone>, destination_interface=<the outside zone>; "
+        f"then {tool_ref('fmc_assign_policy')} kind='nat', devices=[{dev}]."
+    )
+    ps_step = (
+        f" Assign platform settings {psp}: {tool_ref('fmc_assign_policy')} kind='platform_settings', "
+        f"policy={psp}, devices=[{dev}]."
+        if psp
+        else ""
+    )
+    return f"""Onboard the FTD {dev} into this FMC and bring it to a working, verified deployment.
+Every write below is preview-first: show each preview and wait for the user's approval before
+confirming. Keep notes of what each step returned. Stop and report if a step fails; don't improvise
+around a failed registration or deployment.
+
+0. Preconditions. {tool_ref("fmc_status")} (FMC reachable, API user). {tool_ref("fmc_license_status")}:
+   FMC must be registered with Smart Licensing or be in evaluation mode, otherwise registration fails
+   ("license" errors). {tool_ref("fmc_list_devices")}: if {dev} is already registered, stop and say so (to
+   re-register, first {tool_ref("fmc_delete_device")}, wait 1-2 minutes until the FTD's `show managers`
+   no longer says "in the process of Unregistration", then run `configure manager add <fmc-ip>
+   <reg-key>` on the FTD again). Check {acp} exists ({tool_ref("fmc_list_policies")} kind='access').
+
+{build}
+
+2. Register: {tool_ref("fmc_register_device")} with name={dev}, host={host_q}, reg_key=<the registration
+   key>, access_policy={acp}, wait=true. This waits for the registration task and FMC's initial
+   deployment (5-10 minutes). Then {tool_ref("fmc_get_device")} name={dev}: it must be connected, with
+   its model and version. A failure saying the device is unreachable or the key is wrong means the
+   FTD's `configure manager add` does not match: fix it (step 1) and retry.
+
+3. Interfaces and zones: {tool_ref("fmc_list_device_interfaces")} device={dev} (FTDv names them
+   Ethernet0/0, Ethernet0/1, ...). Create zones if they don't exist
+   ({tool_ref("fmc_list_objects")} type='security_zone', {tool_ref("fmc_create_security_zone")};
+   e.g. <name>-outside and <name>-inside, interface_mode='ROUTED').
+   Then {tool_ref("fmc_update_interface")} device={dev}:
+   - interface={out_if}, logical_name='outside', enabled=true, security_zone=<outside zone>, ipv4={out_ip};
+   - interface={in_if}, logical_name='inside', enabled=true, security_zone=<inside zone>, ipv4={in_ip}.
+
+4. Routing and NAT: {tool_ref("fmc_create_static_route")} device={dev}, interface='outside',
+   networks=['any-ipv4'], gateway={gw}. {nat_step}
+
+5. Policies: {acp} was assigned at registration; make sure it allows the traffic you will test (its
+   rules reference zones, so add the new zones to an allow rule with {tool_ref("fmc_update_access_rule")}
+   if needed).{ps_step}
+
+6. Deploy: {tool_ref("fmc_pending_changes")} device={dev} (expect the interface, route, NAT and policy
+   changes), then {tool_ref("fmc_deploy")} devices=[{dev}] with wait=true. Check
+   {tool_ref("fmc_list_deployments")} device={dev}: the job must have succeeded.
+
+7. Verify:
+   - {tool_ref("fmc_run_show_command")} device={dev}, command='show interface ip brief' (both data
+     interfaces up with their addresses) and 'show route' (default route via {gw});
+   - {tool_ref("fmc_packet_tracer")} device={dev}, input_interface='inside', protocol='icmp',
+     source_ip=<an inside host address>, destination_ip={dest}: expect allow with the NAT translation
+     (a drop with no-v4-adjacency right after the deploy only means the FTD has no ARP entry for the
+     next hop yet: send real traffic first, then trace again);
+   - with a CML lab, real traffic first: {tool_ref("cml_run_commands")} on an inside host,
+     'ping -c 3 {json.loads(dest)}'.
+
+8. Report: device, version, interfaces and zones, route, NAT, assigned policies, deployment result
+   and the verification evidence. Mention that re-registration needs `configure manager add` on the
+   FTD after a delete (step 0).
+"""
+
+
 def register(reg: ToolRegistrar) -> None:
     @reg.prompt(title="Why is this traffic blocked?")
     def fmc_why_blocked(
@@ -149,3 +262,47 @@ def register(reg: ToolRegistrar) -> None:
         matching rule, pending changes and recent deployments, and who changed the rule. Ends with the
         cause and a preview-first fix proposal."""
         return _why_blocked_text(source, destination, protocol, port, device, ingress_interface, policy)
+
+    @reg.prompt(title="Onboard an FTD", uses=["fmc", "cml"], tier=Tier.DANGEROUS)
+    def fmc_onboard_ftd(
+        name: Annotated[str, Field(description="Display name for the FTD in FMC, e.g. mcp-ftd2")],
+        access_policy: Annotated[str, Field(description="Access control policy to assign at registration")],
+        outside_ip: Annotated[str, Field(description="Outside interface address, e.g. 198.18.128.163/18")],
+        gateway: Annotated[str, Field(description="Default gateway on the outside, e.g. 198.18.128.1")],
+        inside_ip: Annotated[str, Field(description="Inside interface address, e.g. 10.99.2.1/24")],
+        host: Annotated[
+            str | None, Field(description="FTD management IP (omit when building from a CML recipe)")
+        ] = None,
+        recipe: Annotated[
+            str | None, Field(description="CML recipe to build the FTD from first, e.g. ftd-fmc")
+        ] = None,
+        outside_interface: Annotated[str, Field(description="Outside physical interface")] = "Ethernet0/0",
+        inside_interface: Annotated[str, Field(description="Inside physical interface")] = "Ethernet0/1",
+        nat_policy: Annotated[
+            str | None, Field(description="Existing NAT policy to assign; omit to create <name>-nat with PAT")
+        ] = None,
+        platform_settings: Annotated[
+            str | None, Field(description="Platform settings policy to assign (optional)")
+        ] = None,
+        test_destination: Annotated[
+            str | None, Field(description="Address to test from the inside (default: the gateway)")
+        ] = None,
+    ) -> str:
+        """Onboard an FTD end to end: optionally build it in CML from a recipe, check licensing,
+        register it with FMC, set outside/inside interfaces and zones, default route and NAT, assign
+        policies, deploy, and verify with show commands, packet tracer and real traffic. Explains the
+        `configure manager add` step for re-registration."""
+        return _onboard_text(
+            name,
+            host,
+            recipe,
+            access_policy,
+            outside_interface,
+            outside_ip,
+            gateway,
+            inside_interface,
+            inside_ip,
+            nat_policy,
+            platform_settings,
+            test_destination,
+        )
