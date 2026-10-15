@@ -116,7 +116,8 @@ async def test_ha_break(fmc: respx.MockRouter) -> None:
         return_value=httpx.Response(202, json={"metadata": {"task": {"id": "t4"}}})
     )
     preview, _ = await confirm("fmc_ha_action", {"ha_pair": "ha1", "action": "break", "wait": False})
-    assert preview["preview"] == {"primary": "ftd1", "secondary": "ftd2"}
+    assert preview["preview"] == {"domain": "Global", "primary": "ftd1", "secondary": "ftd2"}
+    assert preview["blast_radius"] == 2
     assert json.loads(put.calls.last.request.content) == {
         "id": ha["id"],
         "action": "HABREAK",

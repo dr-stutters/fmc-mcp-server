@@ -101,6 +101,8 @@ class FmcApp:
         self._version: str | None = None
         self._login_failure: tuple[float, AuthError] | None = None
         self._cache: dict[str, tuple[float, Any]] = {}
+        # FMC deploy warnings seen per (devices, pending version), for ignore_warning (fmc_mcp.rails)
+        self.deploy_warnings: dict[str, tuple[float, list[str]]] = {}
 
     async def aclose(self) -> None:
         await self.api.aclose()
