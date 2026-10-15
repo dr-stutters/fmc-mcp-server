@@ -3,6 +3,10 @@
 ## Unreleased
 
 ### Added
+- **Access rule export/import (F23)**: `fmc_export_access_rules` (rows or CSV with object names and literals like
+  tcp/443, icmp/8) and `fmc_import_access_rules` (write; validates and resolves every row in the preview, refuses
+  applications/users/VLAN/SGT conditions and duplicate names, posts with FMC's bulk API in chunks of 100). Live:
+  mcp-test-acp exported, imported into a scratch policy and exported again identically.
 - **Security Intelligence (F21)**: `fmc_get_security_intelligence` (read), `fmc_si_block` (block/unblock IPs, networks,
   URLs through the access policy's SI block list; each entry an `mcp-si-<value>` object). Live: blocking the
   outside gateway made packet tracer drop TCP 443 from the inside host; unblocked and deployed again. FMC accepts

@@ -244,6 +244,10 @@
       "tier": "read",
       "title": "Device health"
     },
+    "fmc_export_access_rules": {
+      "tier": "read",
+      "title": "Export access rules"
+    },
     "fmc_find_intrusion_rules": {
       "tier": "read",
       "title": "Find intrusion rules"
@@ -315,6 +319,10 @@
     "fmc_ha_action": {
       "tier": "dangerous",
       "title": "Break, switch or delete HA pair"
+    },
+    "fmc_import_access_rules": {
+      "tier": "write",
+      "title": "Import access rules"
     },
     "fmc_license_status": {
       "tier": "read",
