@@ -1,18 +1,21 @@
-"""F24 on the real FTD (platform settings mcp-test-ps, assigned to mcp-ftd1): NTP server, SNMP v2c manager and
-SSH access from the inside network; deploy; check the running config; revert and deploy again."""
+"""F24 on the real FTD (platform settings mcp-test-ps, assigned to FMC_LIVE_DEVICE): NTP server
+(FMC_LIVE_NTP_SERVER, default FMC_LIVE_FTD_GATEWAY), SNMP v2c manager and SSH access from the inside network;
+deploy; check the running config; revert and deploy again."""
 
 from typing import Any
 
 import pytest
 from fastmcp import Client
 
-from .test_live_ftd import DEVICE, apply, call, deploy, needs_ftd, show
+from .live_env import live_env
+from .test_live_ftd import DEVICE, GATEWAY, apply, call, deploy, needs_ftd, show
 
 pytestmark = pytest.mark.live
 
 PS = "mcp-test-ps"
 ZONE = "mcp-test-ftd-in"
 COMMUNITY = "mcpLiveComm24"
+NTP = live_env("FMC_LIVE_NTP_SERVER", GATEWAY)
 
 
 async def ensure(client: Client[Any], name: str, args: dict[str, Any]) -> None:
@@ -27,7 +30,7 @@ async def test_ntp_snmp_ssh(client: Client[Any]) -> None:
     assigned = await call(client, "fmc_get_platform_settings", {"policy": PS})
     assert DEVICE in str(assigned), "mcp-test-ps must be assigned to the FTD"
     try:
-        await apply(client, "fmc_configure_ntp", {"policy": PS, "servers": ["198.18.128.1"]})
+        await apply(client, "fmc_configure_ntp", {"policy": PS, "servers": [NTP]})
         await apply(
             client,
             "fmc_configure_snmp",
@@ -47,7 +50,7 @@ async def test_ntp_snmp_ssh(client: Client[Any]) -> None:
         )
         await deploy(client, "mcp live test: ntp snmp ssh", ignore_warning=True)
         ntp = await call(client, "fmc_get_platform_settings", {"policy": PS})
-        assert "198.18.128.1" in str(ntp["ntp"]), ntp  # FTD NTP runs on the management side, not in LINA
+        assert NTP in str(ntp["ntp"]), ntp  # FTD NTP runs on the management side, not in LINA
         snmp = await show(client, "show running-config snmp-server")
         assert "10.99.1.10" in snmp and "mcp-lab" in snmp and COMMUNITY not in snmp, snmp
         assert "10.99.1.0" in await show(client, "show running-config ssh")

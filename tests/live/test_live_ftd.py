@@ -1,7 +1,9 @@
 """End-to-end operator workflows against a real FTD (the FTDv from cml-mcp-server's ftd-fmc recipe).
 
-Runs only when FMC_LIVE_FTD_HOST and FMC_LIVE_FTD_REG_KEY are set (in the environment or .env). The
-FTD must already point at this FMC (`configure manager add`). The tests run in order and share state:
+Runs only when the FTD variables in docs/live-tests.md are set (FMC_LIVE_DEVICE, FMC_LIVE_FTD_HOST,
+FMC_LIVE_FTD_REG_KEY, FMC_LIVE_FTD_OUTSIDE_IP, FMC_LIVE_FTD_GATEWAY, FMC_LIVE_TRACE_TARGET; in the
+environment or .env). The FTD must already point at this FMC (`configure manager add`). The tests run in
+order and share state:
 
 1. onboarding: delete the device if FMC already manages it, register it again (waits for the
    initial deployment), configure interfaces, zones, a default route and NAT, deploy, and verify on
@@ -10,46 +12,45 @@ FTD must already point at this FMC (`configure manager add`). The tests run in o
 3. change -> preview -> deploy -> verify -> rollback with a subinterface, then clean up.
 
 The device is left registered and configured (interfaces, route, NAT, mcp-test-ftd-acp rules).
-Lab addressing (CML ftd-fmc recipe): outside Ethernet0/0 198.18.128.155/18 (gateway .128.1),
-inside Ethernet0/1 10.99.1.1/24.
+Addressing: outside Ethernet0/0 FMC_LIVE_FTD_OUTSIDE_IP with the default route via FMC_LIVE_FTD_GATEWAY;
+inside Ethernet0/1 10.99.1.1/24 with the host 10.99.1.10 and the router peer1 at 10.99.1.2, as in the CML
+recipe ftd-fmc (cml-mcp-server). Packet tracer flows go from the inside host to FMC_LIVE_TRACE_TARGET.
 """
 
 import asyncio
 import json
-import os
 import time
-from pathlib import Path
 from typing import Any
 
 import pytest
 from fastmcp import Client
 from fastmcp.exceptions import ToolError
 
+from .live_env import live_env, needs
+
 pytestmark = pytest.mark.live
 
-DEVICE = "mcp-ftd1"
+DEVICE = live_env("FMC_LIVE_DEVICE")
 ACP = "mcp-test-ftd-acp"
 NAT = "mcp-test-ftd-nat"
 ZONE_IN, ZONE_OUT, ZONE_DMZ = "mcp-test-ftd-in", "mcp-test-ftd-out", "mcp-test-ftd-dmz"
 INSIDE_NET = "mcp-test-ftd-inside-net"
-FMC_HOST = "198.18.134.76"
+TRACE_TARGET = live_env("FMC_LIVE_TRACE_TARGET")
+OUTSIDE_IP = live_env("FMC_LIVE_FTD_OUTSIDE_IP")  # with prefix length, e.g. 192.0.2.155/24
+OUTSIDE_ADDR = OUTSIDE_IP.partition("/")[0]
+GATEWAY = live_env("FMC_LIVE_FTD_GATEWAY")
+NO_ARP_IP = live_env("FMC_LIVE_FTD_NO_ARP_IP")  # optional: an unused address on the outside subnet
 
-
-def _env(name: str) -> str | None:
-    if os.environ.get(name):
-        return os.environ[name]
-    env = Path(__file__).resolve().parents[2] / ".env"
-    if env.exists():
-        for line in env.read_text().splitlines():
-            key, _, value = line.partition("=")
-            if key.strip() == name and value.strip():
-                return value.strip()
-    return None
-
-
-FTD_HOST = _env("FMC_LIVE_FTD_HOST")
-REG_KEY = _env("FMC_LIVE_FTD_REG_KEY")
-needs_ftd = pytest.mark.skipif(not (FTD_HOST and REG_KEY), reason="FMC_LIVE_FTD_HOST/REG_KEY not set")
+FTD_HOST = live_env("FMC_LIVE_FTD_HOST")
+REG_KEY = live_env("FMC_LIVE_FTD_REG_KEY")
+needs_ftd = needs(
+    "FMC_LIVE_DEVICE",
+    "FMC_LIVE_FTD_HOST",
+    "FMC_LIVE_FTD_REG_KEY",
+    "FMC_LIVE_FTD_OUTSIDE_IP",
+    "FMC_LIVE_FTD_GATEWAY",
+    "FMC_LIVE_TRACE_TARGET",
+)
 
 
 _port = [40000 + int(time.time()) % 20000]
@@ -116,7 +117,7 @@ async def deploy(client: Client[Any], note: str, ignore_warning: bool = False) -
 @needs_ftd
 async def test_onboard_configure_deploy(client: Client[Any]) -> None:
     devices = await call(client, "fmc_list_devices", {"name": DEVICE, "response_format": "json"})
-    if devices["results"] and os.environ.get("FMC_LIVE_FTD_REREGISTER") == "1":
+    if devices["results"] and live_env("FMC_LIVE_FTD_REREGISTER") == "1":
         # Deleting the device makes the FTD forget its manager; the operator must run
         # `configure manager add <fmc> <key>` on the FTD before registration can succeed again.
         await apply(client, "fmc_delete_device", {"device": DEVICE})
@@ -166,7 +167,7 @@ async def configure_and_deploy(client: Client[Any]) -> None:
             "logical_name": "outside",
             "enabled": True,
             "security_zone": ZONE_OUT,
-            "ipv4": "198.18.128.155/18",
+            "ipv4": OUTSIDE_IP,
         },
     )
     await ensure(
@@ -183,7 +184,7 @@ async def configure_and_deploy(client: Client[Any]) -> None:
     )
     ifaces = await call(client, "fmc_list_device_interfaces", {"device": DEVICE, "response_format": "json"})
     named = {r["logical_name"]: r for r in ifaces["results"]}
-    assert named["inside"]["zone"] == ZONE_IN and named["outside"]["ipv4"] == "198.18.128.155/18"
+    assert named["inside"]["zone"] == ZONE_IN and named["outside"]["ipv4"] == OUTSIDE_IP
 
     routes = await call(client, "fmc_list_routes", {"device": DEVICE, "response_format": "json"})
     for r in routes["results"]:  # start clean: also exercises fmc_delete_static_route
@@ -191,12 +192,12 @@ async def configure_and_deploy(client: Client[Any]) -> None:
     await apply(
         client,
         "fmc_create_static_route",
-        {"device": DEVICE, "interface": "outside", "networks": ["0.0.0.0/0"], "gateway": "198.18.128.1"},
+        {"device": DEVICE, "interface": "outside", "networks": ["0.0.0.0/0"], "gateway": GATEWAY},
     )
     dup = await call(
         client,
         "fmc_create_static_route",
-        {"device": DEVICE, "interface": "outside", "networks": ["0.0.0.0/0"], "gateway": "198.18.128.1"},
+        {"device": DEVICE, "interface": "outside", "networks": ["0.0.0.0/0"], "gateway": GATEWAY},
     )
     assert dup["status"] == "blocked" and any("already has this route" in b for b in dup["blockers"]), dup
     routes = await call(client, "fmc_list_routes", {"device": DEVICE, "response_format": "json"})
@@ -254,8 +255,8 @@ async def configure_and_deploy(client: Client[Any]) -> None:
     assert changes["results"], "the route was recreated, so something must be pending"
     await deploy(client, "mcp live test: onboarding")
 
-    assert "198.18.128.155" in await show(client, "show interface ip brief", "Ethernet0/0")
-    assert "via 198.18.128.1, outside" in await show(client, "show route", "0.0.0.0")
+    assert OUTSIDE_ADDR in await show(client, "show interface ip brief", "Ethernet0/0")
+    assert f"via {GATEWAY}, outside" in await show(client, "show route", "0.0.0.0")
     assert "dynamic interface" in await show(client, "show running-config nat")
     history = await call(client, "fmc_list_deployments", {"device": DEVICE, "response_format": "json"})
     assert history["results"][0]["status"] == "DEPLOYED"
@@ -272,7 +273,7 @@ async def test_why_is_this_blocked(client: Client[Any]) -> None:
             "protocol": "tcp",
             "source_port": fresh_port(),
             "source_ip": "10.99.1.10",
-            "destination_ip": FMC_HOST,
+            "destination_ip": TRACE_TARGET,
             "destination_port": 23,
         },
     )
@@ -291,7 +292,7 @@ async def test_why_is_this_blocked(client: Client[Any]) -> None:
             "protocol": "tcp",
             "source_port": fresh_port(),
             "source_ip": "10.99.1.10",
-            "destination_ip": FMC_HOST,
+            "destination_ip": TRACE_TARGET,
             "destination_port": 443,
         },
     )
@@ -314,7 +315,7 @@ async def test_why_is_this_blocked(client: Client[Any]) -> None:
     lookup = await call(
         client,
         "fmc_rule_lookup",
-        {"policy": ACP, "source": "10.99.1.10", "destination": FMC_HOST, "protocol": "tcp", "port": 23},
+        {"policy": ACP, "source": "10.99.1.10", "destination": TRACE_TARGET, "protocol": "tcp", "port": 23},
     )
     assert "mcp-test-block-telnet" in json.dumps(lookup)
 
@@ -375,10 +376,11 @@ async def test_change_deploy_rollback(client: Client[Any]) -> None:
 
 @needs_ftd
 async def test_why_blocked_prompt_steps(client: Client[Any]) -> None:
-    """Render fmc_why_blocked and run its steps for the three lab cases: TCP 23 blocked by
-    mcp-test-block-telnet, TCP 443 allowed, and a no-ARP drop to an unused outside address."""
+    """Render fmc_why_blocked and run its steps for TCP 23 blocked by mcp-test-block-telnet, TCP 443
+    allowed, and (with FMC_LIVE_FTD_NO_ARP_IP) a no-ARP drop to an unused outside address."""
     prompt = await client.get_prompt(
-        "fmc_why_blocked", {"source": "10.99.1.10", "destination": FMC_HOST, "port": "23", "device": DEVICE}
+        "fmc_why_blocked",
+        {"source": "10.99.1.10", "destination": TRACE_TARGET, "port": "23", "device": DEVICE},
     )
     body = prompt.messages[0].content.text  # type: ignore[union-attr]
     tools = {t.name for t in await client.list_tools()}
@@ -393,10 +395,11 @@ async def test_why_blocked_prompt_steps(client: Client[Any]) -> None:
     assert all(f"`{s}`" in body and s in tools for s in steps)
     zones = {"source_zone": ZONE_IN, "destination_zone": ZONE_OUT}
     cases = [
-        (FMC_HOST, 23, "BLOCK", "drop", None),
-        (FMC_HOST, 443, "ALLOW", "allow", None),
-        ("198.18.128.199", 443, "ALLOW", "drop", "adjacency"),
+        (TRACE_TARGET, 23, "BLOCK", "drop", None),
+        (TRACE_TARGET, 443, "ALLOW", "allow", None),
     ]
+    if NO_ARP_IP:
+        cases.append((NO_ARP_IP, 443, "ALLOW", "drop", "adjacency"))
     for dst, port, verdict, action, reason in cases:
         lookup = await call(
             client,
@@ -480,7 +483,7 @@ async def test_dynamic_object_blocks_without_deploy(client: Client[Any]) -> None
         "input_interface": "inside",
         "protocol": "tcp",
         "source_ip": "10.99.1.10",
-        "destination_ip": FMC_HOST,
+        "destination_ip": TRACE_TARGET,
         "destination_port": 443,
     }
     try:
@@ -530,7 +533,7 @@ SYSLOG_HOST = "10.99.1.30"
 @needs_ftd
 async def test_platform_settings_syslog(client: Client[Any]) -> None:
     """F3: platform settings policy -> syslog server -> assign -> deploy -> verify on the device ->
-    remove -> deploy. The syslog host is a lab address nobody listens on (ADR-003: no receiving)."""
+    remove -> deploy. The syslog host is an inside address nobody listens on (ADR-003: no receiving)."""
     pols = await call(client, "fmc_list_policies", {"kind": "platform_settings", "response_format": "json"})
     if not any(p["name"] == PS_POLICY for p in pols["results"]):
         await apply(client, "fmc_create_platform_settings_policy", {"name": PS_POLICY})
@@ -568,9 +571,7 @@ async def test_platform_settings_syslog(client: Client[Any]) -> None:
 PEER = (
     "10.99.1.2"  # peer1 (iol-xe) on inside-sw: AS 65001, Lo0 172.31.1.1 in BGP, Lo1 172.31.2.1 in OSPF area 0
 )
-needs_peer = pytest.mark.skipif(
-    os.environ.get("FMC_LIVE_NO_PEER") == "1", reason="peer1 router not in the lab"
-)
+needs_peer = pytest.mark.skipif(live_env("FMC_LIVE_NO_PEER") == "1", reason="FMC_LIVE_NO_PEER=1 (no peer1)")
 
 
 async def _wait_route(client: Client[Any], prefix: str, present: bool, tries: int = 12) -> str:
