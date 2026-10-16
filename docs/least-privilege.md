@@ -59,6 +59,7 @@ Everything in `mcp-ro`, plus:
 | Policies | Modify Access Control (+ Modify Threat Configuration, Modify Other Policy Configuration), Modify Intrusion, Modify Rule Editor, Modify Identity, Modify Decryption, Modify Prefilter, Modify Malware & File, Modify DNS, Modify Umbrella DNS Policy, Modify NAT Policy, Modify QoS Policy | `firewall.modify`, `ac_rule_inspection.modify`, `ac_rule.modify`, `intrusion_policy.modify`, `rules.modify`, `identity.modify`, `ssl.modify`, `prefilter_policy.modify`, `file_policy.modify`, `dns_policy.modify`, `umbrella_dns_policy.modify`, `nat.modify`, `qos.modify` | policy and rule writes, `fmc_contain_host` rule setup, `fmc_assign_policy`, policy deletes |
 | Objects | Modify Objects | `object_manager.modify` | object writes, `fmc_map_dynamic_object`, `fmc_contain_host` / `fmc_release_host` |
 | Devices | Modify Devices, Modify Platform Settings, Modify Certificates | `devices.modify`, `platform_settings.modify`, `certificates.modify` | interfaces, routes, BGP/OSPF/VRF, HA, register/delete device, syslog |
+| Integrations | Modify Realms | `identity_realms.modify` | the UI user's `fmc_test_realm` / `fmc_download_realm` (`pjb.cgi` refuses without it; REST realm create/delete worked without it on 10.0.1) |
 | Secure Connections | Modify Secure Connections | `vpn.modify` | `fmc_create_s2s_vpn`, VPN deletes |
 | (top level) | Deploy Configuration to Devices | `deploy` (FMC adds `task_status`, `task_status.all_users`) | `fmc_deploy`, `fmc_rollback_deployment`, deployment reads |
 | Troubleshooting | Modify Health, Modify Health Policy, Apply Health Policy, Modify Threat Defense CLI | `health.modify`, `health_policy.modify`, `health_policy.apply`, `threat_defense_cli.modify` | `fmc_update_health_policy` (F14) |
@@ -75,7 +76,10 @@ differs, `--delete` removes users and roles, `--reset-passwords` re-applies the 
 
 - `.env.admin` (git-ignored, mode 600): `FMC_ADMIN_USERNAME` / `FMC_ADMIN_PASSWORD`, an FMC administrator.
 - `.env`: `FMC_USERNAME` / `FMC_PASSWORD` (`mcp-api-rw`), `FMC_RO_USERNAME` / `FMC_RO_PASSWORD`
-  (`mcp-api-ro`), `FMC_SVC_USERNAME` / `FMC_SVC_PASSWORD` (`mcp-api-svc`, the container).
+  (`mcp-api-ro`), `FMC_SVC_USERNAME` / `FMC_SVC_PASSWORD` (`mcp-api-svc`, the container),
+  `FMC_UI_USERNAME` / `FMC_UI_PASSWORD` (`mcp-ui-svc`, role `mcp-rw`: the web-UI login that `fmc_test_realm`
+  and `fmc_download_realm` use, because FMC's REST API can't test or download an AD/LDAP realm; a UI login
+  ends the same user's REST session, so it is a separate user).
 
 FMC 10.0's REST API **cannot** create roles or users (`users/authroles` answers 405 "Update only
 resource", `users/users` 405). The script therefore uses the endpoints of the FMC web UI, logged in as the

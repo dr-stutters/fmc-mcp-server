@@ -14,7 +14,9 @@ Credentials (never printed):
 - `.env.admin`: FMC_ADMIN_USERNAME / FMC_ADMIN_PASSWORD, an FMC administrator (the seed login).
 - `.env`: FMC_USERNAME / FMC_PASSWORD (live tests, role mcp-rw), FMC_RO_USERNAME / FMC_RO_PASSWORD
   (read-only live tests, role mcp-ro) and FMC_SVC_USERNAME / FMC_SVC_PASSWORD (the hosted container,
-  role mcp-rw). A user whose variables are unset is skipped. Existing users keep their password unless
+  role mcp-rw) and FMC_UI_USERNAME / FMC_UI_PASSWORD (the web-UI login fmc_test_realm and
+  fmc_download_realm use, role mcp-rw; a UI login ends the same user's REST session, so it is its own
+  user). A user whose variables are unset is skipped. Existing users keep their password unless
   --reset-passwords is given.
 """
 
@@ -103,6 +105,8 @@ RW_EXTRA = [
     "intrusion_policy.modify",
     "rules.modify",
     "identity.modify",
+    # Integrations > Realms: create/edit realms (fmc_create_realm); test + user/group download (UI user)
+    "identity_realms.modify",
     "ssl.modify",
     "prefilter_policy.modify",
     "file_policy.modify",
@@ -143,7 +147,7 @@ ROLES: dict[str, dict[str, Any]] = {
 }
 
 # (env prefix for username/password, role)
-USERS = [("FMC_RO_", "mcp-ro"), ("FMC_", "mcp-rw"), ("FMC_SVC_", "mcp-rw")]
+USERS = [("FMC_RO_", "mcp-ro"), ("FMC_", "mcp-rw"), ("FMC_SVC_", "mcp-rw"), ("FMC_UI_", "mcp-rw")]
 
 
 def load_env() -> dict[str, str]:

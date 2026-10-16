@@ -1,6 +1,6 @@
 """Settings: FMC_* connection variables plus the shared MCP_* server variables."""
 
-from pydantic import Field, field_validator
+from pydantic import Field, SecretStr, field_validator
 from stutters_mcp_core import BaseServerSettings, server_config
 from stutters_mcp_core.policy import ChangeWindow
 
@@ -32,6 +32,13 @@ class Settings(BaseServerSettings):
         description="Change-management ticket id to send with every request (FMC 7.6+ change management); "
         "fmc_ticket(action='open') sets it at run time.",
     )
+    ui_username: str | None = Field(
+        default=None,
+        description="FMC web-UI user for realm test / user-group download (fmc_test_realm, "
+        "fmc_download_realm), which FMC's REST API can't do. Must not be FMC_USERNAME: a UI login ends "
+        "the same user's REST session.",
+    )
+    ui_password: SecretStr | None = Field(default=None, description="Password of FMC_UI_USERNAME.")
     allow_ignore_warning: bool = Field(
         default=False,
         description="Allow fmc_deploy(ignore_warning=true). Even then the preview must list the FMC "

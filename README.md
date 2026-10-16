@@ -39,9 +39,9 @@ Changes made in FMC reach the firewalls only after a **deployment** (`fmc_deploy
 
 ## Tools
 
-There are 87 tools when every tier is enabled: 45 read (44 when the dangerous tier turns `fmc_api_call` into a raw call), 35 write and 7 dangerous plus `fmc_api_call`, and two workflow prompts (`fmc_why_blocked`; `fmc_onboard_ftd`, dangerous tier).
+There are 136 tools when every tier is enabled (59 read, 68 write, 9 dangerous; the dangerous tier turns `fmc_api_call` into a raw call), and two workflow prompts (`fmc_why_blocked`; `fmc_onboard_ftd`, dangerous tier).
 
-**Read (45)**
+**Read**
 
 | Area | Tools |
 |---|---|
@@ -54,6 +54,7 @@ There are 87 tools when every tier is enabled: 45 read (44 when the dangerous ti
 | Objects | `fmc_list_objects`, `fmc_get_object`, `fmc_find_object`, `fmc_where_used`, `fmc_unused_objects`, `fmc_list_dynamic_objects` |
 | Security Intelligence | `fmc_get_security_intelligence` |
 | Decryption / DNS | `fmc_get_decryption_policy`, `fmc_get_dns_policy` |
+| Identity (AD/LDAP) | `fmc_get_realm` (directories, downloaded users and groups), `fmc_test_realm` (bind test from FMC; needs `FMC_UI_USERNAME`), `fmc_get_identity_policy` (rules, access policies using it) |
 | Intrusion (Snort 3) | `fmc_get_intrusion_policy` (base, mode, usage, overridden rules), `fmc_find_intrusion_rules` (gid:sid, SID or text; per-policy state) |
 | Change management | `fmc_change_tickets` (status, tickets, a ticket's changes and validation) |
 | Admin | `fmc_upgrade_status` (versions, upgrade history, packages), `fmc_list_backups`, `fmc_get_health_policy`, `fmc_list_users`, `fmc_list_object_overrides` |
@@ -78,7 +79,7 @@ Notes on some read tools:
   and deployments. The server never receives syslog or eStreamer; traffic events stay in the FMC UI or
   the customer's SIEM.
 
-**Write (35)**
+**Write**
 
 | Area | Tools |
 |---|---|
@@ -93,6 +94,7 @@ Notes on some read tools:
 | Intrusion tuning | `fmc_set_intrusion_rule_state` (ALERT/BLOCK/DROP/REJECT/PASS/DISABLE/DEFAULT per policy), `fmc_create_intrusion_policy`, `fmc_create_intrusion_rule` / `fmc_delete_intrusion_rule` (custom Snort 3 rules); `fmc_update_access_rule(intrusion_policy=...)` |
 | Change management | `fmc_ticket` (open / submit / discard / release; an open ticket is sent as `ticket-id` with every change) |
 | Decryption | `fmc_create_decryption_policy`, `fmc_create_decryption_rule` (DO_NOT_DECRYPT, BLOCK, MONITOR), `fmc_delete_decryption_rule`, `fmc_set_decryption_policy` |
+| Identity (AD/LDAP) | `fmc_create_trusted_ca` (CA for LDAPS), `fmc_create_realm` (bind password write-only), `fmc_download_realm` (users and groups now; needs `FMC_UI_USERNAME`), `fmc_delete_realm`, `fmc_create_identity_policy`, `fmc_create_identity_rule` (PASSIVE / ACTIVE / NO), `fmc_delete_identity_rule`; access rules on users and groups: `fmc_create_access_rule` / `fmc_update_access_rule` `users=[...]` |
 | DNS | `fmc_create_dns_policy`, `fmc_set_dns_policy`, `fmc_dns_block` (block/unblock domains via custom SI DNS lists; NXDOMAIN or drop) |
 | Licences | `fmc_set_device_licenses` (IPS, MALWARE_DEFENSE, URL, ...) |
 | Admin | `fmc_update_health_policy` (module on/off, thresholds), `fmc_set_object_override` (per-device object values) |
@@ -108,7 +110,7 @@ that references the object needs one). `fmc_configure_bgp` refuses to edit BGP w
 MD5 password, because FMC returns it masked and a PUT would replace it, unless you re-enter it with
 `neighbor_password`.
 
-**Dangerous (7, plus raw `fmc_api_call`)**
+**Dangerous (plus raw `fmc_api_call`)**
 
 | Tool | What it does |
 |---|---|
@@ -141,6 +143,13 @@ MD5 password, because FMC returns it masked and a PUT would replace it, unless y
 - **Site-to-site VPN:** `fmc_create_s2s_vpn` -> `fmc_deploy` both peers -> `fmc_list_vpn_tunnels`. In FMC
   evaluation mode only DES crypto deploys; the tool picks it and says so.
 - **What changed or broke in the last hour?** `fmc_recent_activity`.
+- **Rules on AD users and groups:** `fmc_create_trusted_ca` (for LDAPS) -> `fmc_create_realm` ->
+  `fmc_test_realm` -> `fmc_download_realm` -> `fmc_create_identity_policy` + `fmc_create_identity_rule`
+  (PASSIVE: user-IP mappings from ISE/pxGrid or an identity agent) -> select the identity policy in the
+  access policy editor's Identity step (FMC 10.0's REST API silently ignores `identityPolicySetting`) ->
+  `fmc_create_access_rule(users=['group'])` -> `fmc_deploy`. `fmc_rule_lookup(identities=[user, groups])`
+  evaluates user/group rules offline. FMC's REST API has no AD/LDAP realm test or download, so those two
+  tools log in to FMC's web UI as `FMC_UI_USERNAME` (its own user, not the API user).
 - **Send FTD logs to a SIEM:** `fmc_configure_syslog` -> `fmc_assign_policy(kind='platform_settings')`
   -> `fmc_deploy` -> `fmc_run_show_command('show running-config logging')`.
 
@@ -197,6 +206,7 @@ including nested groups, to ranges, then walk the rules in order. The results ar
 | `FMC_QUARANTINE_OBJECT` | `mcp-quarantine` | Dynamic object that `fmc_contain_host` / `fmc_release_host` map hosts into |
 | `FMC_DEPLOY_WINDOW` | off | Maintenance window for changes that reach devices (deploy, rollback, register, delete device, HA). Same syntax as `MCP_CHANGE_WINDOW`. See "Deploy safety rails". |
 | `FMC_TICKET` | | Change-management ticket id sent with every request (FMC 7.6+ change management; `fmc_ticket` sets it at run time) |
+| `FMC_UI_USERNAME`, `FMC_UI_PASSWORD` | | Optional FMC web-UI user for `fmc_test_realm` / `fmc_download_realm` (role with Integrations > Realms modify). Must differ from `FMC_USERNAME`: a UI login ends the same user's REST session. |
 | `FMC_ALLOW_IGNORE_WARNING` | `false` | Allow `fmc_deploy(ignore_warning=true)` (the preview must then list the FMC warnings being ignored) |
 | `MCP_TRANSPORT` | `stdio` | `stdio` or `http` |
 | `MCP_HOST`, `MCP_PORT`, `MCP_PATH` | `0.0.0.0`, `8000`, `/mcp` | HTTP listener |
