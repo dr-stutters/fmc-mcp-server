@@ -39,6 +39,7 @@ CONDITION_PARAMS = {
     "urls": ("urls", "url"),
     "source_dynamic_objects": ("sourceDynamicObjects", "dynamic"),
     "destination_dynamic_objects": ("destinationDynamicObjects", "dynamic"),
+    "users": ("users", "user"),
 }
 
 ZonesParam = Annotated[list[str] | None, Field(description="Security zone / interface group names")]
@@ -57,6 +58,48 @@ DynamicParam = Annotated[
     list[str] | None,
     Field(description="Dynamic object names (fmc_list_dynamic_objects); mappings change without a deploy"),
 ]
+UsersParam = Annotated[
+    list[str] | None,
+    Field(
+        description="AD/LDAP users or groups downloaded from a realm (fmc_get_realm), e.g. 'mcp-contractors' "
+        "or 'realm\\name'. The access policy needs an identity policy with a rule for that realm "
+        "(fmc_get_identity_policy), and the device needs a user-IP mapping source (ISE/pxGrid, passive "
+        "agent, captive portal) for the rule to match traffic"
+    ),
+]
+
+
+async def identity_blockers(
+    app: FmcApp, acp: dict[str, Any], users: dict[str, Any] | None, domain: str | None
+) -> list[str]:
+    """FMC refuses a user/group condition unless the access policy's identity policy has a rule for each
+    realm involved ("At least one user ... belongs to a realm that is not assigned ...")."""
+    refs = (users or {}).get("objects") or []
+    realms = {str((r.get("realm") or {}).get("id")): (r.get("realm") or {}).get("name") for r in refs}
+    realms.pop("None", None)
+    if not realms:
+        return []
+    full = await app.api.get(await app.config_path(f"{ACCESS}/{acp['id']}", domain))
+    idp = full.get("identityPolicySetting") or {}
+    if not idp.get("id"):
+        return [
+            f"Access policy {acp.get('name')!r} has no identity policy, so FMC refuses user/group "
+            "conditions. Create one (fmc_create_identity_policy + fmc_create_identity_rule for the "
+            "realm) and select it "
+            "in the access policy editor (Identity step); FMC's REST API can't set that link."
+        ]
+    rules = await all_rules(
+        app, await app.config_path(f"policy/identitypolicies/{idp['id']}/identityrules", domain)
+    )
+    covered = {str((r.get("realm") or {}).get("id")) for r in rules.items}
+    missing = [name or rid for rid, name in realms.items() if rid not in covered]
+    if missing:
+        return [
+            f"Identity policy {idp.get('name')!r} has no rule for realm(s) "
+            f"{', '.join(map(str, missing))}; add one with fmc_create_identity_rule first "
+            "(FMC refuses the condition otherwise)."
+        ]
+    return []
 
 
 BLOCKING = {"BLOCK", "BLOCK_RESET", "BLOCK_INTERACTIVE", "BLOCK_RESET_INTERACTIVE"}
@@ -165,6 +208,7 @@ def register(reg: ToolRegistrar) -> None:
         urls: UrlsParam = None,
         source_dynamic_objects: DynamicParam = None,
         destination_dynamic_objects: DynamicParam = None,
+        users: UsersParam = None,
         enabled: Annotated[bool, Field(description="Create the rule enabled")] = True,
         log: Annotated[
             LogMode,
@@ -215,6 +259,7 @@ def register(reg: ToolRegistrar) -> None:
                     "urls": urls,
                     "source_dynamic_objects": source_dynamic_objects,
                     "destination_dynamic_objects": destination_dynamic_objects,
+                    "users": users,
                 },
             )
         )
@@ -240,7 +285,7 @@ def register(reg: ToolRegistrar) -> None:
             params["insertAfter"] = insert_after
         rules_path = await app.config_path(f"{ACCESS}/{p['id']}/accessrules", domain)
         existing = await all_rules(app, rules_path)
-        blockers = []
+        blockers = await identity_blockers(app, p, body.get("users"), domain)
         if any(str(r.get("name", "")).lower() == name.lower() for r in existing.items):
             blockers.append(f"Policy {p.get('name')!r} already has a rule named {name!r}.")
         count = len(existing.items)
@@ -278,6 +323,7 @@ def register(reg: ToolRegistrar) -> None:
                 "urls": urls,
                 "source_dynamic_objects": source_dynamic_objects,
                 "destination_dynamic_objects": destination_dynamic_objects,
+                "users": users,
                 "enabled": enabled,
                 "log": log,
                 "intrusion_policy": intrusion_policy,
@@ -310,6 +356,7 @@ def register(reg: ToolRegistrar) -> None:
         urls: UrlsParam = None,
         source_dynamic_objects: DynamicParam = None,
         destination_dynamic_objects: DynamicParam = None,
+        users: UsersParam = None,
         log: Annotated[LogMode | None, Field(description="Connection logging to FMC")] = None,
         intrusion_policy: Annotated[
             str | None,
@@ -361,6 +408,7 @@ def register(reg: ToolRegistrar) -> None:
                 "urls": urls,
                 "source_dynamic_objects": source_dynamic_objects,
                 "destination_dynamic_objects": destination_dynamic_objects,
+                "users": users,
             },
         )
         cleared: dict[str, Any] = {}
@@ -381,7 +429,7 @@ def register(reg: ToolRegistrar) -> None:
         changes = {**rule_changes(editable(current), desired), **cleared}
         changes.pop("commentHistoryList", None)
         details: dict[str, Any] = {"rule": current.get("name"), "index": old_index, "changes": changes}
-        blockers = []
+        blockers = await identity_blockers(app, p, new_conditions.get("users"), domain)
         order = await all_rules(app, base)
         if move_to:
             total = len(order.items)
@@ -432,6 +480,7 @@ def register(reg: ToolRegistrar) -> None:
                 "urls": urls,
                 "source_dynamic_objects": source_dynamic_objects,
                 "destination_dynamic_objects": destination_dynamic_objects,
+                "users": users,
                 "log": log,
                 "intrusion_policy": intrusion_policy,
                 "move_to": move_to,

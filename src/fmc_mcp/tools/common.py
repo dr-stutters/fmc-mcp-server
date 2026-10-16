@@ -351,6 +351,7 @@ RULE_CONDITION_FIELDS = (
     "destinationDynamicObjects",
     "vlanTags",
     "urls",
+    "users",
 )
 
 

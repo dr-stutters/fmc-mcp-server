@@ -22,8 +22,9 @@ PolicyRef = Annotated[str, Field(description="Access control policy name or UUID
 LIMITS = (
     "Offline, best-effort evaluation of the access control policy only: prefilter rules, NAT, "
     "security intelligence, decryption and inherited parent-policy rules are not evaluated. "
-    "Applications, URLs, users, SGTs, VLAN tags and time ranges can't be known from addresses and "
-    "ports, so rules using them are reported as 'conditional' (they may match). Dynamic objects are "
+    "Applications, URLs, SGTs, VLAN tags and time ranges can't be known from addresses and ports, so "
+    "rules using them are reported as 'conditional' (they may match); users too, unless you pass "
+    "`identities` (the flow's user and its groups). Dynamic objects are "
     "checked against their current IP mappings. FQDN objects can't be resolved offline. Zones are "
     "only checked when you pass them or a device (then they come from its interfaces and routes)."
 )
@@ -84,6 +85,29 @@ def _opaque(rule: dict[str, Any], skip: tuple[str, ...] = ()) -> list[str]:
     return [c for c in OPAQUE_CONDITIONS if c not in skip and has_value(rule.get(c))]
 
 
+def _user_match(block: Any, identities: list[str] | None) -> bool | None:
+    """A rule's realm user/group condition against the flow's user and groups: True/False, or None when
+    the rule has users but the caller gave no identities. Names compare case-insensitively, with or
+    without the 'realm\\' prefix."""
+    refs = (block or {}).get("objects") if isinstance(block, dict) else None
+    if not refs:
+        return True
+    if identities is None:
+        return None
+    given: list[tuple[str | None, str]] = []
+    for i in identities:
+        t = i.strip().lower()
+        if t:
+            realm, _, name = t.rpartition("\\")
+            given.append((realm or None, name))
+    for r in refs:
+        name = str(r.get("name", "")).lower()
+        rrealm = str((r.get("realm") or {}).get("name", "")).lower() or None
+        if any(n == name and (gr is None or rrealm is None or gr == rrealm) for gr, n in given):
+            return True
+    return False
+
+
 def _zone_match(rule_block: Any, zone: str | None) -> bool | None:
     """True/False, or None when the rule has zones but the caller gave none."""
     names = [n.lower() for n in block_labels(rule_block)]
@@ -141,6 +165,13 @@ def register(reg: ToolRegistrar) -> None:
             str | None, Field(description="Egress security zone / interface group name")
         ] = None,
         include_disabled: Annotated[bool, Field(description="Also evaluate disabled rules")] = False,
+        identities: Annotated[
+            list[str] | None,
+            Field(
+                description="The flow's AD/LDAP user and its groups (e.g. ['mcp-bob', 'mcp-contractors']) to "
+                "evaluate user/group rules; [] = no identified user; omit and such rules stay conditional"
+            ),
+        ] = None,
         policy: Annotated[
             str | None, Field(description="Access control policy name or UUID; default: the device's")
         ] = None,
@@ -160,7 +191,9 @@ def register(reg: ToolRegistrar) -> None:
         under `device`); else pass `policy` and the zones. Objects and nested groups are resolved to
         addresses and ports, dynamic objects to their current mappings (a host contained with
         fmc_contain_host matches the quarantine rules). Best-effort: see `limits` in the output (no
-        prefilter, NAT or parent policy)."""
+        prefilter, NAT or parent policy). Rules on AD/LDAP users or groups are evaluated when you pass
+        `identities` (the user and its groups, e.g. from ISE or AD); FMC itself has no REST view of
+        which user is on an IP."""
         app: FmcApp = get_client(ctx)
         src, dst = _ip(source, "source"), _ip(destination, "destination")
         dev = await resolve_device(app, device, domain) if device else None
@@ -217,10 +250,11 @@ def register(reg: ToolRegistrar) -> None:
                 "source_port": _port_match(cat, r.get("sourcePorts"), proto, source_port),
                 "source_dynamic_object": _dyn_match(r.get("sourceDynamicObjects"), src, dyn),
                 "destination_dynamic_object": _dyn_match(r.get("destinationDynamicObjects"), dst, dyn),
+                "users": _user_match(r.get("users"), identities),
             }
             if any(v is False for v in checks.values()):
                 continue
-            unknown = [k for k, v in checks.items() if v is None] + _opaque(r, DYNAMIC_FIELDS)
+            unknown = [k for k, v in checks.items() if v is None] + _opaque(r, DYNAMIC_FIELDS + ("users",))
             row = flatten_access_rule(r)
             if unknown:
                 conditional.append({**row, "depends_on": unknown})
@@ -240,6 +274,7 @@ def register(reg: ToolRegistrar) -> None:
                 "port": port,
                 "source_zone": source_zone,
                 "destination_zone": destination_zone,
+                **({"identities": identities} if identities is not None else {}),
             },
             "rules_evaluated": evaluated,
         }
