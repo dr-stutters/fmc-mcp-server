@@ -12,9 +12,8 @@ import re
 import time
 from typing import Any
 
-from stutters_mcp_core import InvalidRequest, UpstreamError
-from stutters_mcp_core.policy import ChangeWindow
-
+from fmc_mcp._core import InvalidRequest, UpstreamError
+from fmc_mcp._core.policy import ChangeWindow
 from fmc_mcp.client import FmcApp
 from fmc_mcp.config import Settings
 

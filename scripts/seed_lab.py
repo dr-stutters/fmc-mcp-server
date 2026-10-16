@@ -12,8 +12,7 @@ import argparse
 import asyncio
 from typing import Any
 
-from stutters_mcp_core import NotFound
-
+from fmc_mcp._core import NotFound
 from fmc_mcp.client import FmcApp
 from fmc_mcp.config import Settings
 

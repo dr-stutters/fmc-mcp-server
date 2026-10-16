@@ -5,9 +5,9 @@ from dataclasses import dataclass
 from typing import Annotated, Any, Literal
 
 from pydantic import Field
-from stutters_mcp_core import InvalidRequest, NotFound
-from stutters_mcp_core.writes import field_changes
 
+from fmc_mcp._core import InvalidRequest, NotFound
+from fmc_mcp._core.writes import field_changes
 from fmc_mcp.client import FmcApp, is_uuid
 
 Domain = Annotated[

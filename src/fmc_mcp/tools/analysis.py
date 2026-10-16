@@ -6,8 +6,8 @@ from typing import Annotated, Any
 
 from fastmcp import Context
 from pydantic import Field
-from stutters_mcp_core import InvalidRequest, ToolRegistrar, UpstreamError, get_client
 
+from fmc_mcp._core import InvalidRequest, ToolRegistrar, UpstreamError, get_client
 from fmc_mcp.catalog import Catalog, IpInterval, ip_contains, parse_ip_value, port_contains
 from fmc_mcp.client import FmcApp
 from fmc_mcp.flow import access_policy_of, device_context

@@ -7,9 +7,9 @@ from typing import Any
 import httpx
 import pytest
 import respx
-import stutters_mcp_core.policy
 from fastmcp import Client
 
+import fmc_mcp._core.policy
 from fmc_mcp.rails import split_warnings
 from fmc_mcp.server import create_server
 
@@ -72,7 +72,7 @@ async def test_cluster_counts_its_members_and_blast_limit_blocks(fmc: respx.Mock
 async def test_deploy_window_blocks_outside(fmc: respx.MockRouter, monkeypatch: pytest.MonkeyPatch) -> None:
     fmc.get(f"{CFG}/deployment/deployabledevices").mock(return_value=items([PENDING]))
     # Wednesday 12:00 UTC; the window is Saturday nights only
-    monkeypatch.setattr(stutters_mcp_core.policy, "_now", lambda: datetime(2026, 10, 14, 12, 0, tzinfo=UTC))
+    monkeypatch.setattr(fmc_mcp._core.policy, "_now", lambda: datetime(2026, 10, 14, 12, 0, tzinfo=UTC))
     async with Client(server(deploy_window="Sat 22:00-04:00 UTC")) as c:
         out = await run(c, "fmc_deploy", {})
         assert out["status"] == "blocked", out
@@ -87,7 +87,7 @@ async def test_deploy_window_blocks_outside(fmc: respx.MockRouter, monkeypatch: 
 
 async def test_deploy_window_open_allows(fmc: respx.MockRouter, monkeypatch: pytest.MonkeyPatch) -> None:
     fmc.get(f"{CFG}/deployment/deployabledevices").mock(return_value=items([PENDING]))
-    monkeypatch.setattr(stutters_mcp_core.policy, "_now", lambda: datetime(2026, 10, 17, 23, 0, tzinfo=UTC))
+    monkeypatch.setattr(fmc_mcp._core.policy, "_now", lambda: datetime(2026, 10, 17, 23, 0, tzinfo=UTC))
     async with Client(server(deploy_window="Sat 22:00-04:00 UTC")) as c:
         out = await run(c, "fmc_deploy", {})
     assert out["status"] == "preview" and out["preview"]["deploy_window"]["open"] is True
@@ -177,7 +177,7 @@ async def test_window_rechecked_at_confirm(fmc: respx.MockRouter, monkeypatch: p
     fmc.get(f"{CFG}/deployment/deployabledevices").mock(return_value=items([PENDING]))
     post = fmc.post(f"{CFG}/deployment/deploymentrequests")
     now = {"t": datetime(2026, 10, 17, 23, 0, tzinfo=UTC)}  # Saturday 23:00, inside
-    monkeypatch.setattr(stutters_mcp_core.policy, "_now", lambda: now["t"])
+    monkeypatch.setattr(fmc_mcp._core.policy, "_now", lambda: now["t"])
     async with Client(server(deploy_window="Sat 22:00-04:00 UTC")) as c:
         out = await run(c, "fmc_deploy", {})
         assert out["status"] == "preview"

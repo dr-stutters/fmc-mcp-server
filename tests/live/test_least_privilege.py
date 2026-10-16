@@ -12,8 +12,8 @@ from typing import Any
 
 import pytest
 from fastmcp import Client
-from stutters_mcp_core.testing.least_privilege import read_tier_report, readonly_live_settings
 
+from fmc_mcp._core.testing.least_privilege import read_tier_report, readonly_live_settings
 from fmc_mcp.config import Settings
 from fmc_mcp.server import create_server
 

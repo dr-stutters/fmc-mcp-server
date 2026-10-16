@@ -7,8 +7,8 @@ from typing import Annotated, Any, Literal
 
 from fastmcp import Context
 from pydantic import BaseModel, Field
-from stutters_mcp_core import Confirm, InvalidRequest, Plan, ToolRegistrar, UpstreamError, get_client
 
+from fmc_mcp._core import Confirm, InvalidRequest, Plan, ToolRegistrar, UpstreamError, get_client
 from fmc_mcp.client import FmcApp
 from fmc_mcp.preview import fmc_preview
 from fmc_mcp.tools.common import Domain, obj_type

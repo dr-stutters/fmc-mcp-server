@@ -6,8 +6,7 @@ from __future__ import annotations
 import ipaddress
 from typing import Any
 
-from stutters_mcp_core import InvalidRequest, NotFound
-
+from fmc_mcp._core import InvalidRequest, NotFound
 from fmc_mcp.catalog import parse_port_query
 from fmc_mcp.client import FmcApp
 from fmc_mcp.tools.common import PROTOCOLS, ref_of, resolve_object

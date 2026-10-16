@@ -6,8 +6,8 @@ import httpx
 import pytest
 import respx
 from fastmcp import Client
-from stutters_mcp_core import InvalidRequest
 
+from fmc_mcp._core import InvalidRequest
 from fmc_mcp.server import create_server
 from fmc_mcp.tools.security_intel import _entry_name, classify
 

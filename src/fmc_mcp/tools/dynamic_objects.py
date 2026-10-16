@@ -12,7 +12,8 @@ from typing import Annotated, Any
 from fastmcp import Context
 from fastmcp.tools import ToolResult
 from pydantic import Field
-from stutters_mcp_core import (
+
+from fmc_mcp._core import (
     Confirm,
     InvalidRequest,
     NotFound,
@@ -23,8 +24,7 @@ from stutters_mcp_core import (
     get_client,
     list_result,
 )
-from stutters_mcp_core.http import page_of
-
+from fmc_mcp._core.http import page_of
 from fmc_mcp.client import FmcApp
 from fmc_mcp.preview import fmc_preview
 from fmc_mcp.tools.common import Domain, resolve_in

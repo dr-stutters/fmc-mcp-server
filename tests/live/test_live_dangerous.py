@@ -51,8 +51,7 @@ async def test_deploy_refused_outside_deploy_window() -> None:
     A second server as the same user: its login ends the shared client's session, which recovers."""
     from datetime import UTC, datetime, timedelta
 
-    from stutters_mcp_core.testing import live_settings
-
+    from fmc_mcp._core.testing import live_settings
     from fmc_mcp.config import Settings
     from fmc_mcp.server import create_server
 

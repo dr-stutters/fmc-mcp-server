@@ -14,8 +14,8 @@ import json
 from typing import Any
 
 import httpx
-from stutters_mcp_core import AuthError, InvalidRequest, UpstreamError
 
+from fmc_mcp._core import AuthError, InvalidRequest, UpstreamError
 from fmc_mcp.config import Settings
 
 LOGIN = "/auth/login"
