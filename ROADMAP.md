@@ -115,3 +115,11 @@ These are left to `fmc_api_call` or out of scope.
 - **Running upgrades from chat:** long, high-risk tasks. F14 reads status only.
 - **Chassis and multi-instance, device templates, zero trust, TID, network map, integrations (Umbrella, AIOps, external storage), DHCP/DDNS:** low operator value for this server. Use `fmc_api_call`.
 - **Creating FMC users or roles:** the API is read-only for them. F16 documents the UI steps.
+
+
+## Wave 3 (planned 2026-10-16)
+See the [suite roadmap](https://github.com/dr-stutters/stutters-mcp-core/blob/main/ROADMAP.md#wave-3-planned-2026-10-16).
+
+| # | Item | Milestone |
+|---|---|---|
+| [F34](https://github.com/dr-stutters/fmc-mcp-server/issues/79) | ISE as identity source over pxGrid + user↔IP lookup; prove AD-group rules on traffic | Next |
