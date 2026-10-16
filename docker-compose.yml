@@ -1,13 +1,11 @@
 # fmc-mcp-server on cortex: host port 8035 -> container 8000.
 #
 #   cp .env.example .env    # set FMC_URL/USERNAME/PASSWORD and MCP_AUTH_TOKENS (fmc-mcp-server token <name>)
-#   CORE_READ_TOKEN=... docker compose up -d --build
+#   docker compose up -d --build
 services:
   fmc-mcp-server:
     build:
       context: .
-      secrets:
-        - core_read_token
     image: fmc-mcp-server:latest
     container_name: fmc-mcp
     restart: unless-stopped
@@ -34,10 +32,6 @@ services:
       - ALL
     security_opt:
       - no-new-privileges:true
-
-secrets:
-  core_read_token:
-    environment: CORE_READ_TOKEN
 
 volumes:
   spec-cache:

@@ -5,8 +5,8 @@ import httpx
 import pytest
 import respx
 from fastmcp.exceptions import ToolError
-from stutters_mcp_core.testing import call_tool
 
+from fmc_mcp._core.testing import call_tool
 from fmc_mcp.server import create_server
 
 from .conftest import ACP_ID, CFG, empty, fixture, items, make_settings

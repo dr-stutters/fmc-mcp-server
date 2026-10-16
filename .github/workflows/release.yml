@@ -1,8 +1,8 @@
 name: release
 on: {push: {tags: ["v*"]}}
-permissions: {contents: write, packages: write, id-token: write}
+permissions: {contents: write, packages: write, id-token: write}   # required: callers must grant these
 jobs:
   release:
-    uses: dr-stutters/stutters-mcp-core/.github/workflows/python-release.yml@main
-    with: {image: true}
+    uses: dr-stutters/stutters-mcp-core/.github/workflows/python-release.yml@bundle-core   # @main once core #64 merges
+    with: {image: true, bundle-core: true}
     secrets: inherit

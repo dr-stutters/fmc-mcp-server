@@ -9,8 +9,8 @@ from collections.abc import Awaitable, Callable, Iterable
 from typing import Any
 
 from fastmcp import Context
-from stutters_mcp_core import Plan, get_client, preview_or_apply
 
+from fmc_mcp._core import Plan, get_client, preview_or_apply
 from fmc_mcp.client import FmcApp
 
 REROUTE_FRESH = 300.0  # seconds; older entries on a reused task are not this call's

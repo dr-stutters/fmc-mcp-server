@@ -1,11 +1,13 @@
 # syntax=docker/dockerfile:1
 # fmc-mcp-server image. Build with
-#   docker build --secret id=core_read_token,env=CORE_READ_TOKEN .
-# (the secret is only needed while stutters-mcp-core is private).
+#   docker build .
+# No token: core is bundled into the wheel as fmc_mcp._core (ADR-005). When the context isn't vendored
+# yet (a fresh clone), the build clones the pinned core tag from GitHub first.
 
-# --- build: resolve dependencies with uv into a self-contained virtualenv -------------------
+# --- build: the bundled wheel plus the locked dependencies in a self-contained virtualenv -----------
 FROM python:3.12-slim-bookworm AS build
 COPY --from=ghcr.io/astral-sh/uv:0.10.9 /uv /bin/uv
+# git: scripts/bundle_core.py clones the pinned core tag when src/fmc_mcp/_core isn't vendored
 RUN apt-get update && apt-get install -y --no-install-recommends git && rm -rf /var/lib/apt/lists/*
 
 ENV UV_COMPILE_BYTECODE=1 \
@@ -14,14 +16,15 @@ ENV UV_COMPILE_BYTECODE=1 \
 WORKDIR /app
 
 COPY pyproject.toml uv.lock README.md LICENSE ./
-RUN --mount=type=secret,id=core_read_token,required=false \
-    if [ -s /run/secrets/core_read_token ]; then \
-      git config --global url."https://x-access-token:$(cat /run/secrets/core_read_token)@github.com/".insteadOf "https://github.com/"; \
-    fi && \
-    uv sync --locked --no-dev --no-install-project && \
-    rm -f /root/.gitconfig
+RUN uv sync --locked --no-dev --no-install-project
+COPY scripts/bundle_core.py ./scripts/
 COPY src ./src
-RUN uv sync --locked --no-dev --no-editable
+RUN if [ ! -f src/fmc_mcp/_core/BUNDLE.json ]; then python scripts/bundle_core.py vendor; fi && \
+    python scripts/bundle_core.py check --offline && \
+    uv build --wheel --out-dir /dist && \
+    python scripts/bundle_core.py check --offline --dist /dist && \
+    uv pip install --python /app/.venv/bin/python --no-deps /dist/*.whl && \
+    uv pip check --python /app/.venv/bin/python
 
 # --- runtime ---------------------------------------------------------------------------------
 FROM python:3.12-slim-bookworm

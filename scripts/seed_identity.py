@@ -28,8 +28,8 @@ from pathlib import Path
 from typing import Any
 
 from dotenv import dotenv_values
-from stutters_mcp_core import NotFound
 
+from fmc_mcp._core import NotFound
 from fmc_mcp.client import FmcApp
 from fmc_mcp.config import Settings
 from fmc_mcp.tools.identity import fmc_fingerprint, pem_body
