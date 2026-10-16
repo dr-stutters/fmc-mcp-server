@@ -1,13 +1,14 @@
 """F16: the read tier as the read-only FMC user (role mcp-ro), the write user's role, and the 403 matrix.
 
-Needs the users from scripts/seed_access.py: FMC_RO_USERNAME / FMC_RO_PASSWORD (role mcp-ro) in .env, and
-FMC_USERNAME (role mcp-rw) for the rest of the live suite. The read tier must work completely as mcp-ro;
-`test_ro_user_cannot_write` proves FMC itself refuses a write from that account (not just the MCP tiers).
+Needs the users from docs/least-privilege.md: FMC_RO_USERNAME / FMC_RO_PASSWORD (role mcp-ro) in .env, and
+FMC_USERNAME (role mcp-rw) for the rest of the live suite. The read-tier test also needs a managed FTD
+(FMC_LIVE_DEVICE) and an address beyond it (FMC_LIVE_PING_TARGET, else FMC_LIVE_FTD_GATEWAY;
+docs/live-tests.md). The read tier must work completely as mcp-ro; `test_ro_user_cannot_write` proves FMC
+itself refuses a write from that account (not just the MCP tiers).
 """
 
 from __future__ import annotations
 
-import os
 from typing import Any
 
 import pytest
@@ -17,13 +18,16 @@ from fmc_mcp._core.testing.least_privilege import read_tier_report, readonly_liv
 from fmc_mcp.config import Settings
 from fmc_mcp.server import create_server
 
+from .live_env import live_env
+
 pytestmark = pytest.mark.live
 
-DEVICE = os.environ.get("FMC_LIVE_DEVICE", "mcp-ftd1")
+DEVICE = live_env("FMC_LIVE_DEVICE")
+PING_TARGET = live_env("FMC_LIVE_PING_TARGET", live_env("FMC_LIVE_FTD_GATEWAY"))
 POLICY = "mcp-test-acp"
 FTD_POLICY = "mcp-test-ftd-acp"
 
-# Objects from scripts/seed_lab.py and the ftd-fmc lab (mcp-ftd1). Device tools need the FTD online.
+# The seeded mcp-test-* objects (docs/live-tests.md) and the FTD FMC_LIVE_DEVICE. Device tools need it online.
 SAMPLES: dict[str, dict[str, Any]] = {
     "fmc_get_device": {"device": DEVICE},
     "fmc_list_device_interfaces": {"device": DEVICE},
@@ -44,7 +48,7 @@ SAMPLES: dict[str, dict[str, Any]] = {
         "input_interface": "inside",
         "protocol": "icmp",
         "source_ip": "10.99.1.10",
-        "destination_ip": "198.18.128.1",
+        "destination_ip": PING_TARGET,
     },
     "fmc_get_hit_counts": {"policy": FTD_POLICY, "device": DEVICE},
     "fmc_device_health": {"device": DEVICE},
@@ -73,6 +77,10 @@ EXPECTED_DENIED = {
 }
 
 
+@pytest.mark.skipif(
+    not (DEVICE and PING_TARGET),
+    reason="FMC_LIVE_DEVICE and FMC_LIVE_PING_TARGET (or FMC_LIVE_FTD_GATEWAY) not set (docs/live-tests.md)",
+)
 async def test_read_tier_as_readonly_user() -> None:
     settings = readonly_live_settings(Settings, "FMC_")
     report = await read_tier_report(create_server(settings), SAMPLES, skip=SKIP)

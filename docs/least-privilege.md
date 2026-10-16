@@ -71,8 +71,9 @@ licence registration, FMC upgrades.
 
 ## 3. Create the roles and users
 
-**Scripted (lab and rebuild):** `uv run python scripts/seed_access.py` (idempotent; `--check` shows what
-differs, `--delete` removes users and roles, `--reset-passwords` re-applies the passwords from `.env`).
+**Scripted (lab and rebuild):** the maintainers' seed script `seed_access.py` lives in the suite's private lab
+repo (stutters-mcp-lab), not here. It is idempotent (`--check` shows what differs, `--delete` removes users and
+roles, `--reset-passwords` re-applies the passwords from `.env`) and reads, from the fmc-mcp-server checkout:
 
 - `.env.admin` (git-ignored, mode 600): `FMC_ADMIN_USERNAME` / `FMC_ADMIN_PASSWORD`, an FMC administrator.
 - `.env`: `FMC_USERNAME` / `FMC_PASSWORD` (`mcp-api-rw`), `FMC_RO_USERNAME` / `FMC_RO_PASSWORD`
@@ -122,5 +123,6 @@ The full live suite (writes, deploys, rollback, HA/VPN where the lab has them) r
 
 ## 5. Lab rebuild
 
-`scripts/seed_access.py` runs first in the FMC step of `~/MCP-Suite/scripts/rebuild-lab.sh` (it only needs
-the admin login), and `~/MCP-Suite/LAB-REBUILD.md` lists the roles and users under FMC.
+The seed script runs first in the FMC step of the lab rebuild script in the suite's private lab repo
+(stutters-mcp-lab; it only needs the admin login), and that repo's rebuild runbook lists the roles and users
+under FMC. On your own FMC, follow §3 by hand.

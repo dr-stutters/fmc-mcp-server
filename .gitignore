@@ -26,9 +26,5 @@ tests/fixtures/raw/
 .idea/
 .DS_Store
 
-# scripts/seed_domain.py failure screenshot
-seed_domain_failure.png
-seed_identity_failure.png
-
 # stutters-mcp-core, vendored at build time (scripts/bundle_core.py vendor)
 src/fmc_mcp/_core/

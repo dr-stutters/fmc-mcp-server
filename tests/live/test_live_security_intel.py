@@ -1,5 +1,6 @@
-"""F21 Security Intelligence on the real FTD: block the outside gateway for mcp-test-ftd-acp through the SI
-network block list, deploy, packet tracer shows the SI drop; unblock and deploy again."""
+"""F21 Security Intelligence on the real FTD: block FMC_LIVE_PING_TARGET (default: the outside gateway)
+for mcp-test-ftd-acp through the SI network block list, deploy, packet tracer shows the SI drop; unblock and
+deploy again."""
 
 import json
 from typing import Any
@@ -7,11 +8,12 @@ from typing import Any
 import pytest
 from fastmcp import Client
 
-from .test_live_ftd import ACP, DEVICE, apply, call, deploy, fresh_port, needs_ftd
+from .live_env import live_env
+from .test_live_ftd import ACP, DEVICE, GATEWAY, apply, call, deploy, fresh_port, needs_ftd
 
 pytestmark = pytest.mark.live
 
-TARGET = "198.18.128.1"
+TARGET = live_env("FMC_LIVE_PING_TARGET", GATEWAY)
 
 
 async def trace(client: Client[Any]) -> dict[str, Any]:

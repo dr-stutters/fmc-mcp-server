@@ -1,7 +1,7 @@
 """Live F9: contain and release a host with the quarantine dynamic object (no deployment).
 
 Uses 10.99.1.250 (no real host) so it can run against a lab where the quarantine rules are already
-deployed; the real-traffic check (ping from inside-host blocked, then restored) is in the notes."""
+deployed; the real-traffic check (ping from the inside host blocked, then restored) is manual."""
 
 from typing import Any
 

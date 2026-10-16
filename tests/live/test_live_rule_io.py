@@ -1,5 +1,5 @@
-"""F23: export mcp-test-acp (scripts/seed_lab.py), import the rows into a scratch policy, compare,
-delete it."""
+"""F23: export mcp-test-acp (the seeded objects, docs/live-tests.md), import the rows into a scratch policy,
+compare, delete it."""
 
 from typing import Any
 

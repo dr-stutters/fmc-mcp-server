@@ -15,8 +15,23 @@
   builds the image from the bundled wheel.
 - README: `uvx` installs from the release wheel; a git checkout no longer installs without `vendor`.
 
+- **Live tests are environment-driven (F39, #84).** Inputs that depend on one FMC/FTD (device name, FTD
+  addresses, packet tracer and ping targets, leaf domain, realm, group, identity policy) come from documented
+  `FMC_LIVE_*` variables (environment or `.env`); a test whose variables are unset skips and names them. New:
+  `FMC_LIVE_FTD_OUTSIDE_IP`, `FMC_LIVE_FTD_GATEWAY`, `FMC_LIVE_TRACE_TARGET`, `FMC_LIVE_FTD_NO_ARP_IP`,
+  `FMC_LIVE_NTP_SERVER`, `FMC_LIVE_LEAF_DOMAIN`, `FMC_LIVE_REALM`, `FMC_LIVE_REALM_GROUP`,
+  `FMC_LIVE_IDENTITY_POLICY`; `FMC_LIVE_DEVICE` is now required (no built-in default) and
+  `FMC_LIVE_PING_TARGET` defaults to `FMC_LIVE_FTD_GATEWAY`. All of them are listed in the new
+  `docs/live-tests.md` and, commented, in `.env.example`.
+- `scripts/capture_fixtures.py --ftd` takes the device from `FMC_LIVE_DEVICE` and the trace target from
+  `FMC_LIVE_TRACE_TARGET`; its redaction no longer names a lab platform.
+
 ### Removed
 - The git source for stutters-mcp-core and `CORE_READ_TOKEN` (Dockerfile build secret, compose, workflows).
+- Lab seed scripts `scripts/seed_lab.py`, `seed_access.py`, `seed_domain.py` and `seed_identity.py` (F39, #84):
+  they moved to the suite's private lab repo (stutters-mcp-lab). `docs/least-privilege.md` keeps the GUI steps
+  and the description of the endpoints the role/user script uses; `docs/live-tests.md` describes the seeded
+  `mcp-test-*` objects the read tests expect.
 
 ## 0.10.1 (2026-10-16)
 
