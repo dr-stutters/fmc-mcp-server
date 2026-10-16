@@ -23,6 +23,7 @@ from fmc_mcp.tools import (
     dns,
     dynamic_objects,
     ha,
+    identity,
     intrusion,
     object_import,
     object_writes,
@@ -75,6 +76,11 @@ Workflows:
   fmc_set_intrusion_rule_state in a custom policy (fmc_create_intrusion_policy on top of a system one;
   fmc_update_access_rule intrusion_policy=... puts it on an ALLOW rule) -> fmc_deploy. Custom Snort 3
   rules: fmc_create_intrusion_rule.
+- Users and groups in access rules (AD/LDAP): fmc_create_trusted_ca (LDAPS) -> fmc_create_realm ->
+  fmc_test_realm -> fmc_download_realm -> fmc_create_identity_policy + fmc_create_identity_rule (PASSIVE
+  needs ISE/pxGrid or an agent for user-IP mappings) -> select the identity policy in the access policy
+  editor (FMC's REST API can't) -> fmc_create_access_rule users=[group] -> fmc_deploy;
+  fmc_rule_lookup identities=[user, groups] evaluates such rules.
 - Health: fmc_list_devices, fmc_device_health, fmc_list_vpn_tunnels; "what changed or broke in the
   last hour?": fmc_recent_activity (health alerts + audit + deployments), fmc_list_health_alerts.
 - Day-2 admin: fmc_upgrade_status (versions), fmc_list_backups / fmc_backup_devices,
@@ -166,6 +172,7 @@ def create_server(
             tickets.register,
             decryption.register,
             dns.register,
+            identity.register,
             prompts.register,
         ],
         status=FmcApp.status,

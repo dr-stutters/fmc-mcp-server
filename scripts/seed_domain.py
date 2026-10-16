@@ -61,8 +61,8 @@ async def create(url: str, admin: tuple[str, str], name: str, device: str) -> No
         page = await (await browser.new_context(ignore_https_errors=True)).new_page()
         try:
             await page.goto(url + "/ui/login", wait_until="networkidle")
-            await page.fill("input[type=text]", admin[0])
-            await page.fill("input[type=password]", admin[1])
+            await page.get_by_label("Username").fill(admin[0])
+            await page.get_by_label("Password").fill(admin[1])
             await page.keyboard.press("Enter")
             await page.wait_for_timeout(5000)
             end = page.get_by_role("button", name="End Existing Session")

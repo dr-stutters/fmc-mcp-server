@@ -1,5 +1,42 @@
 # Changelog
 
+## 0.10.0 (2026-10-16)
+
+F13 identity slice (roadmap item moved back to Next once the lab got a real AD). Core pin unchanged (v0.12.4).
+Tools: 59 read, 68 write, 9 dangerous (136).
+
+### Added
+- **AD/LDAP realms:** `fmc_get_realm` (directories, bind user, include/exclude groups, schedule, downloaded
+  users and groups with the last sync time), `fmc_create_realm` (AD or LDAP, several directory servers,
+  `ldaps://` / `starttls://` with a trusted CA; the bind password is write-only: never shown, its hash binds the
+  confirm), `fmc_delete_realm` (blocked while identity rules use it), `fmc_create_trusted_ca` (PEM import,
+  duplicate fingerprint check).
+- **Realm test and download:** `fmc_test_realm` and `fmc_download_realm`. FMC 10.0's REST API has no AD/LDAP realm
+  test or download (`testrealms` and `realms/operational/download` are Azure AD / SAML only), so these log in to
+  FMC's web UI as the new optional `FMC_UI_USERNAME` / `FMC_UI_PASSWORD` (its own user: a UI login ends the same
+  user's REST session) and call the realm page's functions; the download waits for FMC's task message and reports
+  groups/users before and after.
+- **Identity policies:** `fmc_get_identity_policy` (rules, the access policies using it),
+  `fmc_create_identity_policy`, `fmc_create_identity_rule` (PASSIVE / ACTIVE captive portal / NO, realm, zones,
+  networks, ports; placed in the standard category), `fmc_delete_identity_rule`.
+- **Access rules on AD users and groups:** `fmc_create_access_rule` / `fmc_update_access_rule` take `users`
+  (`group`, `realm\\name`, `user:name`); the preview is blocked when the access policy has no identity policy or
+  that policy has no rule for the realm (FMC's own refusal, explained). Update previews show users before/after.
+- **`fmc_rule_lookup(identities=[user, groups])`** evaluates user/group rules; without it they stay conditional.
+- `scripts/seed_identity.py`: trusted CA, realm, download, identity policy + passive rule, and the access policy
+  link (Playwright, UI only). `scripts/seed_access.py` adds `identity_realms.modify` to `mcp-rw` and the UI user
+  `mcp-ui-svc`.
+
+### Fixed
+- `scripts/seed_domain.py` (and the new seed script) find FMC 10.0.1's login fields by label; the old
+  `input[type=text]` selector no longer matched.
+
+### Known FMC limits (documented in the tools)
+- An access policy's identity policy can't be set over REST: FMC accepts `identityPolicySetting` on PUT and
+  silently drops it (the UI saves it over GWT-RPC). Select it in the access policy editor's Identity step.
+- User-to-IP mappings need a passive source (ISE/pxGrid, identity agent) or captive portal; FMC has no REST call
+  to inject them.
+
 ## 0.9.1 (2026-10-15)
 
 Core pinned to v0.12.4. Tools unchanged: 56 read, 61 write, 9 dangerous (126).

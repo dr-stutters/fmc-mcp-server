@@ -163,6 +163,14 @@
       "tier": "dangerous",
       "title": "Form HA pair"
     },
+    "fmc_create_identity_policy": {
+      "tier": "write",
+      "title": "Create identity policy"
+    },
+    "fmc_create_identity_rule": {
+      "tier": "write",
+      "title": "Create identity rule"
+    },
     "fmc_create_intrusion_policy": {
       "tier": "write",
       "title": "Create intrusion policy"
@@ -195,6 +203,10 @@
       "tier": "write",
       "title": "Create prefilter rule"
     },
+    "fmc_create_realm": {
+      "tier": "write",
+      "title": "Create AD/LDAP realm"
+    },
     "fmc_create_s2s_vpn": {
       "tier": "write",
       "title": "Create site-to-site VPN"
@@ -210,6 +222,10 @@
     "fmc_create_subinterface": {
       "tier": "write",
       "title": "Create subinterface"
+    },
+    "fmc_create_trusted_ca": {
+      "tier": "write",
+      "title": "Create trusted CA certificate"
     },
     "fmc_create_vrf": {
       "tier": "write",
@@ -230,6 +246,10 @@
     "fmc_delete_dynamic_object": {
       "tier": "write",
       "title": "Delete dynamic object"
+    },
+    "fmc_delete_identity_rule": {
+      "tier": "write",
+      "title": "Delete identity rule"
     },
     "fmc_delete_interface": {
       "tier": "write",
@@ -255,6 +275,10 @@
       "tier": "write",
       "title": "Delete prefilter rule"
     },
+    "fmc_delete_realm": {
+      "tier": "write",
+      "title": "Delete realm"
+    },
     "fmc_delete_s2s_vpn": {
       "tier": "write",
       "title": "Delete site-to-site VPN"
@@ -278,6 +302,10 @@
     "fmc_dns_block": {
       "tier": "write",
       "title": "Block or unblock domains (DNS)"
+    },
+    "fmc_download_realm": {
+      "tier": "write",
+      "title": "Download realm users and groups"
     },
     "fmc_export_access_rules": {
       "tier": "read",
@@ -327,6 +355,10 @@
       "tier": "read",
       "title": "Rule hit counts"
     },
+    "fmc_get_identity_policy": {
+      "tier": "read",
+      "title": "Identity policies"
+    },
     "fmc_get_intrusion_policy": {
       "tier": "read",
       "title": "Intrusion policy summary"
@@ -342,6 +374,10 @@
     "fmc_get_ravpn": {
       "tier": "read",
       "title": "Get remote-access VPN"
+    },
+    "fmc_get_realm": {
+      "tier": "read",
+      "title": "Realms (AD/LDAP)"
     },
     "fmc_get_routing": {
       "tier": "read",
@@ -543,6 +579,10 @@
       "tier": "read",
       "title": "Cisco Secure Firewall Management Center status"
     },
+    "fmc_test_realm": {
+      "tier": "read",
+      "title": "Test realm directory connection"
+    },
     "fmc_ticket": {
       "tier": "write",
       "title": "Open, submit or discard a ticket"
@@ -588,5 +628,5 @@
       "title": "Where is an object used"
     }
   },
-  "version": "0.9.1"
+  "version": "0.10.0"
 }
