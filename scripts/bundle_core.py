@@ -100,7 +100,8 @@ def _req_name(req: str) -> str:
 
 
 def _req_key(req: str) -> str:
-    return re.sub(r"\s+", "", req).lower()
+    # wheel metadata writes markers with single quotes (python_version < '3.13'); pyproject may use double
+    return re.sub(r"\s+", "", req).lower().replace('"', "'")
 
 
 def load_pin(root: Path) -> Pin:
@@ -217,6 +218,8 @@ def rewrite_imports(text: str, target: str, path: str) -> str:
 def build_bundle(pin: Pin, tree: Path, commit: str) -> tuple[dict[str, bytes], dict[str, Any]]:
     """The files of src/<pkg>/_core (relative path -> bytes) and the BUNDLE.json metadata."""
     version, deps = core_dependencies(tree, pin.extras)
+    if pin.tag != f"v{version}":
+        raise BundleError(f"tag {pin.tag} holds core version {version}: tag and pyproject version must match")
     src = tree / "src" / CORE_PKG
     if not src.is_dir():
         raise BundleError(f"{tree}: no src/{CORE_PKG}")
