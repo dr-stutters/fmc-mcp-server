@@ -12,6 +12,7 @@ import asyncio
 import base64
 import binascii
 import hashlib
+import ipaddress
 import re
 import time
 from typing import Annotated, Any, Literal
@@ -39,7 +40,7 @@ from fmc_mcp.tools.common import Domain, block_labels, ref_label, resolve_in
 from fmc_mcp.tools.object_writes import applied
 from fmc_mcp.tools.policies import ACCESS, all_rules
 from fmc_mcp.tools.policy_writes import NetsParam, PortsParam, ZonesParam
-from fmc_mcp.ui import FmcUiSession
+from fmc_mcp.ui import FmcUiSession, ui_credentials
 
 REALMS = "object/realms"
 CA_CERTS = "object/externalcacertificates"
@@ -131,6 +132,14 @@ def fmc_fingerprint(der: bytes) -> str:
     return ":".join(f"{b:02X}" for b in hashlib.sha1(der, usedforsecurity=False).digest())
 
 
+def _is_ip(host: str) -> bool:
+    try:
+        ipaddress.ip_address(host.strip("[]"))
+    except ValueError:
+        return False
+    return True
+
+
 def parse_directory(text: str) -> tuple[str, int, str]:
     """'host', 'host:port', 'ldaps://host[:port]', 'starttls://host[:port]' -> (host, port, encryption)."""
     t = text.strip()
@@ -187,14 +196,22 @@ async def download_messages(ui: FmcUiSession, realm_name: str) -> list[dict[str,
     """FMC's task notifications about this realm's user/group downloads (newest first)."""
     data = await ui.pjb("SF::Messaging::PJB::fetchInitial", [])
     tasks = ((data or {}).get("messages") or {}).get("task") or []
+    pattern = re.compile(r"\bfrom\s+" + re.escape(realm_name) + r"(?![\w.-])", re.I)
     out = [
         m
         for m in tasks
         if isinstance(m, dict)
         and "download" in str(m.get("category", "")).lower()
-        and realm_name.lower() in str(m.get("body", "")).lower()
+        and pattern.search(_strip(m.get("body")))
     ]
-    return sorted(out, key=lambda m: int(m.get("seq") or 0), reverse=True)
+    return sorted(out, key=lambda m: _int(m.get("seq")), reverse=True)
+
+
+def _int(v: Any) -> int:
+    try:
+        return int(v)
+    except (TypeError, ValueError):
+        return 0
 
 
 def register(reg: ToolRegistrar) -> None:
@@ -266,8 +283,10 @@ def register(reg: ToolRegistrar) -> None:
     ) -> dict[str, Any]:
         """Have FMC bind to each of an AD/LDAP realm's directory servers with the stored bind user and
         password (the realm page's Test button) and report which work. Needs FMC_UI_USERNAME: FMC's REST
-        API has no AD/LDAP realm test. FMC only says pass/fail; on failure check the host and port from
-        FMC's side, the bind user/password, and for LDAPS the CA certificate and the server name in it."""
+        API has no AD/LDAP realm test. It is in the read tier because it changes nothing, but it logs in
+        to FMC's web UI (ending that UI user's other UI session). FMC only says pass/fail; on failure
+        check the host and port from FMC's side, the bind user/password, and for LDAPS the CA
+        certificate and the server name in it."""
         app: FmcApp = get_client(ctx)
         r = await resolve_realm(app, realm, domain)
         full = await app.api.get(await app.config_path(f"{REALMS}/{r['id']}", domain))
@@ -279,7 +298,7 @@ def register(reg: ToolRegistrar) -> None:
             for idx, d in enumerate(dirs):
                 started = time.monotonic()
                 res = await ui.pjb("SF::IdentityRealm::RealmTest::testDirectoryConnection", [full, idx])
-                ok = str((res or {}).get("status")) == "0"
+                ok = isinstance(res, dict) and str(res.get("status")) == "0"
                 results.append(
                     {
                         **directory_row(d),
@@ -427,7 +446,7 @@ def register(reg: ToolRegistrar) -> None:
         ] = None,
         exclude_groups: Annotated[list[str] | None, Field(description="Groups not to download")] = None,
         group_attribute: Annotated[
-            Literal["member", "uniqueMember", "custom"] | str, Field(description="Group membership attribute")
+            str, Field(min_length=1, description="Group membership attribute (member, uniqueMember, ...)")
         ] = "member",
         description: Annotated[str | None, Field(description="Description")] = None,
         domain: Domain = None,
@@ -452,7 +471,7 @@ def register(reg: ToolRegistrar) -> None:
                 c = await resolve_in(app, CA_CERTS, ca_certificate, "trusted CA certificate", domain)
                 cert_ref = {"id": c["id"], "type": "ExternalCACertificate", "name": c.get("name")}
             for host, _, enc in servers:
-                if enc != "NONE" and re.fullmatch(r"[\d.]+|[0-9a-fA-F:]+", host):
+                if enc != "NONE" and _is_ip(host):
                     blockers.append(
                         f"{host} is an IP address: with {enc} FMC checks the server certificate's name, so "
                         "use the DC's DNS name (and make sure FMC resolves it) unless the certificate has "
@@ -533,6 +552,7 @@ def register(reg: ToolRegistrar) -> None:
             plan=Plan(
                 f"Create {realm_type} realm {name!r}",
                 details={"realm": shown, "bind_password": "set (hidden)"},
+                fingerprint={"body": body},
                 blockers=blockers,
                 side_effects=[
                     "FMC downloads users and groups on the schedule (daily from 00:00); run "
@@ -564,12 +584,17 @@ def register(reg: ToolRegistrar) -> None:
             blockers.append("FMC is already downloading this realm; check fmc_get_realm in a minute.")
         if not r.get("enabled", True):
             blockers.append("The realm is disabled; FMC doesn't download disabled realms.")
+        try:
+            ui_credentials(app.settings)
+        except InvalidRequest as e:
+            blockers.append(str(e))
 
         async def apply() -> Any:
             async with FmcUiSession(app.settings) as ui:
                 seen = {m.get("uuid") for m in await download_messages(ui, str(r.get("name")))}
                 await ui.pjb("SF::IdentityRealm::IdentityRealm::refreshRealm", [r["id"]])
                 result: dict[str, Any] = {"realm": r.get("name"), "status": "started"}
+                started = time.monotonic()
                 deadline = time.monotonic() + wait
                 while wait and time.monotonic() < deadline:
                     await asyncio.sleep(3)
@@ -578,7 +603,15 @@ def register(reg: ToolRegistrar) -> None:
                         for m in await download_messages(ui, str(r.get("name")))
                         if m.get("uuid") not in seen
                     ]
-                    done = [m for m in new if str(m.get("status")).lower() in ("success", "failure", "error")]
+                    done = [
+                        m
+                        for m in new
+                        if str(m.get("status") or "").lower() not in ("", "running", "pending", "in progress")
+                    ]
+                    if not done and new and time.monotonic() - started > 15:
+                        cur = await app.api.get(await app.config_path(f"{REALMS}/{r['id']}", domain))
+                        if not (cur.get("metadata") or {}).get("isDownloading"):
+                            done = new
                     if done:
                         result["status"] = str(done[0].get("status")).lower()
                         result["fmc_message"] = _strip(done[0].get("body"))[:400]
@@ -645,6 +678,23 @@ def register(reg: ToolRegistrar) -> None:
             ]
         if users:
             blockers.append(f"Identity rules use this realm: {'; '.join(users)}. Delete them first.")
+        acps = await app.all(await app.config_path(ACCESS, domain))
+        in_rules = []
+        for acp in acps.items:
+            rows = await all_rules(app, await app.config_path(f"{ACCESS}/{acp['id']}/accessrules", domain))
+            in_rules += [
+                f"{acp.get('name')} / {x.get('name')}"
+                for x in rows.items
+                if any(
+                    (o.get("realm") or {}).get("id") == r["id"]
+                    for o in ((x.get("users") or {}).get("objects") or [])
+                )
+            ]
+        if in_rules:
+            blockers.append(
+                f"Access rules use its users or groups: {'; '.join(in_rules[:10])}. "
+                "Change or delete them first."
+            )
         path = await app.config_path(f"{REALMS}/{r['id']}", domain)
         return await fmc_preview(
             ctx,
@@ -809,7 +859,7 @@ def register(reg: ToolRegistrar) -> None:
             plan=Plan(
                 f"Add identity rule {name!r} ({authentication}) to {p.get('name')!r}",
                 details={"rule": identity_rule_row(body), "rules_now": len(existing.items)},
-                fingerprint={"policy": p["id"], "rules": [r.get("id") for r in existing.items]},
+                fingerprint={"policy": p["id"], "rules": [r.get("id") for r in existing.items], "body": body},
                 blockers=blockers,
                 side_effects=side,
             ),

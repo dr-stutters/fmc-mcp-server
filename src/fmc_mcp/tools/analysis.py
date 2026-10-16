@@ -94,12 +94,16 @@ def _user_match(block: Any, identities: list[str] | None) -> bool | None:
         return True
     if identities is None:
         return None
-    given = {i.strip().lower() for i in identities if i.strip()}
-    given |= {i.split("\\", 1)[1] for i in given if "\\" in i}
+    given: list[tuple[str | None, str]] = []
+    for i in identities:
+        t = i.strip().lower()
+        if t:
+            realm, _, name = t.rpartition("\\")
+            given.append((realm or None, name))
     for r in refs:
         name = str(r.get("name", "")).lower()
-        realm = str((r.get("realm") or {}).get("name", "")).lower()
-        if name in given or (realm and f"{realm}\\{name}" in given):
+        rrealm = str((r.get("realm") or {}).get("name", "")).lower() or None
+        if any(n == name and (gr is None or rrealm is None or gr == rrealm) for gr, n in given):
             return True
     return False
 

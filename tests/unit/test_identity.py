@@ -53,7 +53,7 @@ USER = {
 }
 IDP = {"id": "871a2430-c8fd-11f1-acd3-69ea5174bd84", "name": "idp", "type": "IdentityPolicy"}
 ACP = {"id": "00000000-0000-0ed3-0000-021474847655", "name": "acp", "type": "AccessPolicy"}
-CA_PEM = (Path(__file__).resolve().parent.parent / "fixtures" / "test-ca.pem").read_text()
+CA_PEM = (Path(__file__).resolve().parent.parent / "fixtures" / "test-ca-cert.txt").read_text()
 
 
 def server(**kw: Any) -> Any:
@@ -120,6 +120,20 @@ def test_user_match() -> None:
     assert _user_match(block, ["corp\\contractors"]) is True
     assert _user_match(block, ["alice", "employees"]) is False
     assert _user_match(block, []) is False
+    assert _user_match(block, ["other\\contractors"]) is False
+
+
+async def test_download_without_ui_user_is_blocked_in_preview(fmc: respx.MockRouter) -> None:
+    mock_realm(fmc)
+    async with Client(server()) as c:
+        out = await run(c, "fmc_download_realm", {"realm": "corp"})
+    assert out["status"] == "blocked" and "FMC_UI_USERNAME" in out["blockers"][0]
+
+
+def test_ldaps_dns_name_is_not_an_ip() -> None:
+    from fmc_mcp.tools.identity import _is_ip
+
+    assert _is_ip("10.0.0.1") and _is_ip("fe80::1") and not _is_ip("cafe") and not _is_ip("dc01.example.com")
 
 
 # --- realms ----------------------------------------------------------------------------------------------
