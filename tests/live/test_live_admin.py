@@ -1,5 +1,5 @@
 """F14 admin operations against the lab FMC: versions, backups list, a health threshold changed and
-reverted, and a per-device object override set, listed and removed (mcp-test-unused on mcp-ftd1)."""
+reverted, and a per-device object override set, listed and removed (mcp-test-unused on FMC_LIVE_DEVICE)."""
 
 import json
 from typing import Any

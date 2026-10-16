@@ -101,7 +101,7 @@ How to test each gate item:
 | Peer router image (cat8000v / IOL) in CML | F6, F11 | CML image library | — | ✅ present |
 | Second FTDv (CML capacity: ≤ 5 nodes, about 8 GB RAM each) | F10, F11 | CML; new `ftd-ha` recipe in cml-mcp-server | Failover and state links inside CML | ⏳ to set up |
 | ise-mcp-server ANC / quarantine prompt | F9 | ise-mcp-server roadmap | — | ⏳ ise Next |
-| AD realm (DC01.mitchcloud.lab 198.18.130.11) and internal CA (`mitchcloud-CA`) | F13 (identity, decryption) | lab AD (`scripts/seed_identity.py` seeds FMC's side) | FMC ↔ AD LDAP 389 (LDAPS 636 not up: the DC has no LDAPS certificate yet) | ✅ LDAP in place (2026-10-16) |
+| AD realm (DC01.mitchcloud.lab 198.18.130.11) and internal CA (`mitchcloud-CA`) | F13 (identity, decryption) | lab AD (the suite's private lab repo (stutters-mcp-lab) seeds FMC's side) | FMC ↔ AD LDAP 389 (LDAPS 636 not up: the DC has no LDAPS certificate yet) | ✅ LDAP in place (2026-10-16) |
 | Dedicated FMC API users and custom roles | F16 | FMC UI (manual) | — | ⏳ to set up |
 | FMCv 7.4 and 7.6 | F17 | CML image library or lab | — | ❌ not available yet |
 | SCC tenant with cdFMC and an API token | F15 | Cisco SCC | server → SCC HTTPS | ❌ unavailable |

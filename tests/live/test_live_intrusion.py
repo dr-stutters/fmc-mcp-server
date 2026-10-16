@@ -4,13 +4,13 @@ allow rule mcp-test-allow-out of mcp-test-ftd-acp. DROP -> packet tracer shows t
 access rule are restored."""
 
 import json
-import os
 from typing import Any
 
 import pytest
 from fastmcp import Client
 
-from .test_live_ftd import ACP, DEVICE, apply, call, deploy, needs_ftd
+from .live_env import live_env
+from .test_live_ftd import ACP, DEVICE, GATEWAY, apply, call, deploy, needs_ftd
 
 pytestmark = pytest.mark.live
 
@@ -19,7 +19,7 @@ GROUP = "mcp-test-rules"
 RULE = "2000:1000001"
 RULE_TEXT = 'alert icmp any any -> any any ( msg:"mcp-test icmp echo"; itype:8; sid:1000001; rev:1; )'
 ALLOW_RULE = "mcp-test-allow-out"
-TARGET = os.environ.get("FMC_LIVE_PING_TARGET", "198.18.128.1")
+TARGET = live_env("FMC_LIVE_PING_TARGET", GATEWAY)
 
 
 async def trace(client: Client[Any]) -> dict[str, Any]:

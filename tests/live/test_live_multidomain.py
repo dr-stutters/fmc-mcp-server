@@ -1,5 +1,5 @@
-"""F19 multi-domain against the lab's leaf domain Global/mcp-test-leaf (scripts/seed_domain.py), which holds
-mcp-ftd1. Skipped on a single-domain FMC."""
+"""F19 multi-domain against a leaf domain (FMC_LIVE_LEAF_DOMAIN, e.g. Global/mcp-test-leaf) that holds the FTD
+FMC_LIVE_DEVICE. Skipped without them (docs/live-tests.md) or when FMC has no such domain."""
 
 import json
 from typing import Any
@@ -7,9 +7,11 @@ from typing import Any
 import pytest
 from fastmcp import Client
 
+from .live_env import live_env, need
+
 pytestmark = pytest.mark.live
 
-LEAF = "Global/mcp-test-leaf"
+LEAF = live_env("FMC_LIVE_LEAF_DOMAIN")
 
 
 async def call(client: Client[Any], name: str, args: dict[str, Any]) -> Any:
@@ -20,17 +22,19 @@ async def call(client: Client[Any], name: str, args: dict[str, Any]) -> Any:
 
 
 async def leaf(client: Client[Any]) -> dict[str, Any]:
+    need("FMC_LIVE_LEAF_DOMAIN")
     out = await call(client, "fmc_list_domains", {"response_format": "json"})
     rows = {r["name"]: r for r in out["results"]}
     if LEAF not in rows:
-        pytest.skip(f"no {LEAF} domain (scripts/seed_domain.py)")
+        pytest.skip(f"FMC has no domain {LEAF} (FMC_LIVE_LEAF_DOMAIN)")
     return rows
 
 
 async def test_domain_tree(client: Client[Any]) -> None:
+    device = need("FMC_LIVE_DEVICE")
     rows = await leaf(client)
     assert rows["Global"]["leaf"] is False
-    assert rows[LEAF]["leaf"] is True and "mcp-ftd1" in (rows[LEAF].get("devices") or [])
+    assert rows[LEAF]["leaf"] is True and device in (rows[LEAF].get("devices") or [])
 
 
 async def test_object_lifecycle_in_leaf_and_inherited_block(client: Client[Any]) -> None:
@@ -61,8 +65,9 @@ async def test_object_lifecycle_in_leaf_and_inherited_block(client: Client[Any])
 
 async def test_device_tools_from_global_reach_the_leaf_device(client: Client[Any]) -> None:
     """Device changes from Global go to the device's leaf domain (FMC refuses them in Global)."""
+    device = need("FMC_LIVE_DEVICE")
     await leaf(client)
-    out = await call(client, "fmc_list_device_interfaces", {"device": "mcp-ftd1", "response_format": "json"})
+    out = await call(client, "fmc_list_device_interfaces", {"device": device, "response_format": "json"})
     assert out["results"], out
-    routes = await call(client, "fmc_list_routes", {"device": "mcp-ftd1", "response_format": "json"})
+    routes = await call(client, "fmc_list_routes", {"device": device, "response_format": "json"})
     assert "results" in routes
