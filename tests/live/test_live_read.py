@@ -1,4 +1,4 @@
-"""Read-only live tests. They expect the objects from scripts/seed_lab.py."""
+"""Read-only live tests. They expect the seeded mcp-test-* objects and policies (docs/live-tests.md)."""
 
 import json
 from typing import Any
@@ -22,7 +22,7 @@ async def seeded(client: Client[Any]) -> None:
         client, "fmc_list_policies", {"kind": "access", "name": "mcp-test-acp", "response_format": "json"}
     )
     if not data["results"]:
-        pytest.skip("lab not seeded: run `uv run python scripts/seed_lab.py`")
+        pytest.skip("mcp-test-* objects not seeded (docs/live-tests.md)")
 
 
 async def test_domains_and_devices(client: Client[Any]) -> None:

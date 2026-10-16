@@ -8,13 +8,15 @@ from typing import Any
 import pytest
 from fastmcp import Client
 
-from .test_live_ftd import ACP, DEVICE, apply, call, deploy, needs_ftd
+from .live_env import live_env
+from .test_live_ftd import ACP, DEVICE, GATEWAY, apply, call, deploy, needs_ftd
 
 pytestmark = pytest.mark.live
 
 PF = "mcp-test-pf"
 RULE = "mcp-test-fastpath-host"
 DEFAULT_PF = "Default Prefilter Policy"
+TARGET = live_env("FMC_LIVE_PING_TARGET", GATEWAY)
 
 
 async def trace(client: Client[Any]) -> dict[str, Any]:
@@ -26,7 +28,7 @@ async def trace(client: Client[Any]) -> dict[str, Any]:
             "input_interface": "inside",
             "protocol": "icmp",
             "source_ip": "10.99.1.10",
-            "destination_ip": "198.18.128.1",
+            "destination_ip": TARGET,
             "verbose": True,
         },
     )
@@ -50,7 +52,7 @@ async def test_fastpath_rule(client: Client[Any]) -> None:
                 "name": RULE,
                 "action": "FASTPATH",
                 "source_networks": ["10.99.1.10"],
-                "destination_networks": ["198.18.128.1"],
+                "destination_networks": [TARGET],
                 "bidirectional": True,
             },
         )

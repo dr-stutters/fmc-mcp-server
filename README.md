@@ -268,7 +268,7 @@ MCP_ENABLE_DANGEROUS=false   # or MCP_DENY_TOOLS=fmc_api_call: no raw non-GET ca
 
 Give the server its own FMC user with a custom role; never `admin`. [docs/least-privilege.md](docs/least-privilege.md)
 has the tested role definitions (`mcp-ro` for the read tier, `mcp-rw` for writes and deploys), the 403
-matrix, and `scripts/seed_access.py`, which creates the roles and users (FMC's REST API can't). Use one
+matrix, and the GUI steps to create the roles and users (FMC's REST API can't). Use one
 user per running copy (container, CLI, tests, people): a login ends the same user's other sessions.
 
 The REST API must be enabled under **Administration > Configuration > REST API Preferences**.
@@ -326,14 +326,13 @@ claude mcp add --transport http fmc http://<host>:8035/mcp --header "Authorizati
 
 ```bash
 uv run ruff check && uv run ruff format --check && uv run mypy && uv run pytest
-uv run python scripts/seed_lab.py          # create the mcp-test-* objects the live tests expect
 uv run pytest tests/live -m live           # live tests; the whole run uses a single FMC login
-# tests/live/test_live_ftd.py also needs a managed FTD: FMC_LIVE_FTD_HOST and FMC_LIVE_FTD_REG_KEY
-# (the CML recipe ftd-fmc in cml-mcp-server builds an FTDv on 198.18.128.151)
+# FTD, domain and realm inputs come from FMC_LIVE_* variables (docs/live-tests.md); unset = skipped
 uv run python scripts/capture_fixtures.py  # refresh the redacted fixtures in tests/fixtures (--ftd: device ones)
 ```
 
-The live write tests create `mcp-test-w-*` objects and policies, then delete them.
+The live write tests create `mcp-test-w-*` objects and policies, then delete them. [docs/live-tests.md](docs/live-tests.md) lists
+the `FMC_LIVE_*` variables, what the FTD tests expect and the seeded `mcp-test-*` objects.
 
 The live FTD tests onboard (or re-check) the FTD, configure interfaces, zones, a default route and
 NAT, deploy and verify with show commands, run packet tracer and hit counts, and deploy and roll back a

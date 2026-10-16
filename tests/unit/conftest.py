@@ -77,7 +77,7 @@ def empty() -> httpx.Response:
 
 @pytest.fixture
 def lab(fmc: respx.MockRouter) -> respx.MockRouter:
-    """The seeded lab (scripts/seed_lab.py) as recorded in tests/fixtures."""
+    """The seeded mcp-test-* objects (docs/live-tests.md) as recorded in tests/fixtures."""
     fmc.get(f"{CFG}/policy/accesspolicies").mock(
         return_value=httpx.Response(200, json=fixture("accesspolicies"))
     )

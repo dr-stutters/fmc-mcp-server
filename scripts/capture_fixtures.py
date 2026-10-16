@@ -1,9 +1,11 @@
-"""Capture a few real FMC responses (after scripts/seed_lab.py) as redacted unit-test fixtures.
+"""Capture a few real FMC responses as redacted unit-test fixtures.
 
-    uv run python scripts/capture_fixtures.py          # policies and objects (seeded lab)
-    uv run python scripts/capture_fixtures.py --ftd    # device fixtures from the managed FTD mcp-ftd1
-                                                       # (after tests/live/test_live_ftd.py)
+    uv run python scripts/capture_fixtures.py          # policies and objects (the seeded mcp-test-* set)
+    uv run python scripts/capture_fixtures.py --ftd    # device fixtures from the managed FTD named by
+                                                       # FMC_LIVE_DEVICE (after tests/live/test_live_ftd.py;
+                                                       # also FMC_LIVE_TRACE_TARGET, docs/live-tests.md)
 
+The first form expects the mcp-test-* objects and policies the live read tests use (docs/live-tests.md).
 Redaction: the FMC address/hostname and serial are replaced, `links` are dropped. Review the diff
 before committing.
 """
@@ -12,6 +14,7 @@ from __future__ import annotations
 
 import asyncio
 import json
+import os
 import re
 import sys
 import time
@@ -39,8 +42,10 @@ def scrub(data: Any, host: str) -> Any:
         return [scrub(v, host) for v in data]
     if isinstance(data, str):
         data = data.replace(host, "fmc.test")
-        data = re.sub(r"fmcv?\.[\w.-]*dcloud[\w.-]*", "fmc.example.com", data)
-        data = re.sub(r"\b198\.18\.\d+\.\d+\b", "192.0.2.10", data)  # lab addresses (not 198.18.0.0/15)
+        data = re.sub(r"\bfmcv?\d*\.(?!test\b)[\w-]+(?:\.[\w-]+)+", "fmc.example.com", data)  # FMC FQDNs
+        data = re.sub(
+            r"\b198\.1[89]\.\d+\.\d+\b", "192.0.2.10", data
+        )  # 198.18.0.0/15, common in lab platforms
         data = re.sub(r"Serial Number: \S+", "Serial Number: REDACTED", data)
         return data
     return data
@@ -48,8 +53,10 @@ def scrub(data: Any, host: str) -> Any:
 
 async def capture_ftd(app: FmcApp, host: str) -> None:
     """Device-side fixtures: interfaces, routes, show command, packet tracer, hit counts, health."""
+    name = os.environ.get("FMC_LIVE_DEVICE") or sys.exit("--ftd needs FMC_LIVE_DEVICE (the FTD's name)")
+    target = os.environ.get("FMC_LIVE_TRACE_TARGET") or sys.exit("--ftd needs FMC_LIVE_TRACE_TARGET")
     devs = await app.all(await app.config_path("devices/devicerecords"))
-    dev = next(d for d in devs.items if d.get("name") == "mcp-ftd1")
+    dev = next(d for d in devs.items if d.get("name") == name)
     acps = await app.all(await app.config_path("policy/accesspolicies"))
     acp = next(p for p in acps.items if p.get("name") == "mcp-test-ftd-acp")
     base = f"devices/devicerecords/{dev['id']}"
@@ -103,7 +110,7 @@ async def capture_ftd(app: FmcApp, host: str) -> None:
         "sourceIPValue": "10.99.1.10",
         "sourcePort": "40000",
         "destinationIPType": "IPv4",
-        "destinationIPValue": "198.18.134.76",
+        "destinationIPValue": target,
         "destinationPort": "23",
     }
     path = f"/api/fmc_troubleshoot/v1/domain/{await app.domain_uuid(None)}/packettracer/traces"
