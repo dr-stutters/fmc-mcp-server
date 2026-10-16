@@ -2,7 +2,31 @@
 
 ## 0.11.0 (unreleased)
 
+### Added
+- **`fmc-mcp-server check` preflight (F36, #81; core C21).** Runs without an MCP client: token generation
+  (`generatetoken`: reachability, TLS trust, credentials), the domains the API user can see (fails when none, or
+  when `FMC_DOMAIN` doesn't exist), the user's FMC roles (its own `users/users` record) against the enabled tiers
+  (fails when writes are on with `mcp-ro`, warns when a read-only server runs as Administrator or as the built-in
+  `admin`, and when the roles are unreadable or unknown while writes are on), the FMC version against the tested
+  matrix (10.0; 7.2 minimum) and `FMC_RATE_LIMIT` against FMC's 120 requests/minute (warns above it). Text or
+  `--json`, `--strict`, `--instance`; exit 1 on a failure; every `FMC_INSTANCES` FMC. `serve --http` /
+  `serve --stdio`. README quickstart for a release wheel (`uvx --from`) and for the image, with Claude Code /
+  Claude Desktop config. PyPI publishing stays open (deferred).
+- **Published image (F37, #82; core C22).** `release.yml` calls core `publish-image.yml`:
+  `ghcr.io/dr-stutters/fmc-mcp-server` for amd64 and arm64, cosign keyless signature, SPDX SBOM attestation;
+  `<version>` + `latest` on releases, `<version>-rcN` + `rc` on pre-release tags. `docker-compose.yml` pulls it
+  (`MCP_IMAGE_TAG`; `--build` still builds locally).
+- **Shared-host guide and example (F38, #83).** `docs/deploying.md` (read-only defaults, per-user tokens and the
+  audit log, several FMCs with `FMC_INSTANCES`, one FMC API user per server instance, the 120 requests/minute
+  budget and the shared limiter, Caddy TLS, the least-privilege user step by step, change-management tickets for
+  regulated sites, upgrades and verifying signatures) and `examples/shared-host/` (server + Caddy, and a test
+  override with two mocked FMCs). Contract tests pin the tier defaults (`tests/unit/test_tier_defaults.py`).
+
 ### Changed
+- Bundled core v0.14.0.
+- **`docker-compose.yml` no longer enables writes.** It set `MCP_ENABLE_WRITES: "true"`; the container is now
+  read-only unless `.env` sets `MCP_ENABLE_WRITES=true` (and `MCP_ENABLE_DANGEROUS=true`). Operators who relied
+  on the compose default must add it to `.env`.
 - **stutters-mcp-core is bundled into the package (F35, #80; core C20 / ADR-005).** The wheel, sdist and image
   carry core v0.13.0 as `fmc_mcp._core`, so installing needs no git dependency and Docker needs no
   `CORE_READ_TOKEN`. The pin is `[tool.bundle-core]` (tag + commit) in `pyproject.toml`; core's runtime

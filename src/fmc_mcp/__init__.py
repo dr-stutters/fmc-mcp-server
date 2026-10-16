@@ -11,10 +11,11 @@ except ModuleNotFoundError as e:  # a source tree or git checkout without the bu
         name=e.name,
     ) from None
 from fmc_mcp.config import Settings
+from fmc_mcp.preflight import preflight
 from fmc_mcp.server import SPEC, create_server
 
 __all__ = ["SPEC", "Settings", "create_server", "main"]
 
 
 def main() -> None:
-    run_cli(SPEC, Settings, create_server)
+    run_cli(SPEC, Settings, create_server, preflight=preflight)
