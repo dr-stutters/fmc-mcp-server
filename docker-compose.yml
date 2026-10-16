@@ -1,12 +1,17 @@
-# fmc-mcp-server on cortex: host port 8035 -> container 8000.
+# fmc-mcp-server: docker compose for one FMC (host port 8035). Shared hosts: docs/deploying.md.
 #
-#   cp .env.example .env    # set FMC_URL/USERNAME/PASSWORD and MCP_AUTH_TOKENS (fmc-mcp-server token <name>)
-#   docker compose up -d --build
+#   cp .env.example .env && chmod 600 .env   # FMC_URL/USERNAME/PASSWORD and MCP_AUTH_TOKENS (one token per person)
+#   docker compose up -d            # pulls ghcr.io/dr-stutters/fmc-mcp-server (MCP_IMAGE_TAG, default latest)
+#   docker compose up -d --build    # or build from this checkout (MCP_PULL_POLICY=build keeps the local image)
+#
+# Read-only unless .env sets MCP_ENABLE_WRITES=true (and MCP_ENABLE_DANGEROUS=true for deploys, device/HA
+# changes and policy deletes).
 services:
   fmc-mcp-server:
+    image: ghcr.io/dr-stutters/fmc-mcp-server:${MCP_IMAGE_TAG:-latest}
+    pull_policy: ${MCP_PULL_POLICY:-always}
     build:
       context: .
-    image: fmc-mcp-server:latest
     container_name: fmc-mcp
     restart: unless-stopped
     env_file: .env
@@ -19,8 +24,6 @@ services:
       MCP_HOST: 0.0.0.0
       MCP_PORT: "8000"
       MCP_CACHE_DIR: /cache
-      MCP_ENABLE_WRITES: "true"
-      MCP_ENABLE_DANGEROUS: "false"
     ports:
       - "${MCP_PUBLISH_PORT:-8035}:8000"
     volumes:

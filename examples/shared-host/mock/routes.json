@@ -1,0 +1,8 @@
+{
+  "POST /api/fmc_platform/v1/auth/generatetoken": {"status": 204, "text": "", "headers": {"X-auth-access-token": "mock-access-token", "X-auth-refresh-token": "mock-refresh-token", "DOMAIN_UUID": "e276abec-e0f2-11e3-8169-6d9ed49b625f", "USER_UUID": "0b5c0c2e-0000-4000-8000-00000000a001", "DOMAINS": "[{\"name\": \"Global\", \"uuid\": \"e276abec-e0f2-11e3-8169-6d9ed49b625f\"}]"}},
+  "POST /api/fmc_platform/v1/auth/refreshtoken": {"status": 204, "text": "", "headers": {"X-auth-access-token": "mock-access-token", "X-auth-refresh-token": "mock-refresh-token", "DOMAIN_UUID": "e276abec-e0f2-11e3-8169-6d9ed49b625f", "USER_UUID": "0b5c0c2e-0000-4000-8000-00000000a001", "DOMAINS": "[{\"name\": \"Global\", \"uuid\": \"e276abec-e0f2-11e3-8169-6d9ed49b625f\"}]"}},
+  "GET /api/fmc_platform/v1/info/serverversion": {"json": {"items": [{"serverVersion": "10.0.1 (build 1)", "hostname": "__NAME__", "model": "Secure Firewall Management Center for VMware"}], "paging": {"count": 1}}},
+  "GET /api/fmc_platform/v1/info/domain": {"json": {"items": [{"name": "Global", "uuid": "e276abec-e0f2-11e3-8169-6d9ed49b625f", "type": "Domain"}], "paging": {"count": 1}}},
+  "GET /api/fmc_config/v1/domain/e276abec-e0f2-11e3-8169-6d9ed49b625f/devices/devicerecords": {"json": {"items": [], "paging": {"offset": 0, "limit": 1, "count": 0, "pages": 0}}},
+  "GET /api/fmc_config/v1/domain/e276abec-e0f2-11e3-8169-6d9ed49b625f/users/users/0b5c0c2e-0000-4000-8000-00000000a001": {"json": {"id": "0b5c0c2e-0000-4000-8000-00000000a001", "name": "mcp-api-ro", "type": "User", "roles": [{"name": "mcp-ro", "type": "UserRole"}]}}
+}

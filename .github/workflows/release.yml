@@ -2,7 +2,10 @@ name: release
 on: {push: {tags: ["v*"]}}
 permissions: {contents: write, packages: write, id-token: write}   # required: callers must grant these
 jobs:
-  release:
+  release:   # wheel + sdist (core bundled) + Python SBOM on the GitHub release; a -rc tag makes a pre-release
     uses: dr-stutters/stutters-mcp-core/.github/workflows/python-release.yml@main
-    with: {image: true, bundle-core: true}
+    with: {bundle-core: true}
     secrets: inherit
+  image:     # F37: ghcr.io/dr-stutters/fmc-mcp-server, amd64 + arm64, cosign keyless, SBOM attestation
+    needs: release
+    uses: dr-stutters/stutters-mcp-core/.github/workflows/publish-image.yml@main

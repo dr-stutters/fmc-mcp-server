@@ -1,0 +1,12 @@
+# TLS in front of the MCP server. MCP_HOSTNAME is the name clients use (https://<name>/mcp).
+#   Public name with ports 80/443 reachable: Caddy gets a certificate from Let's Encrypt (CADDY_TLS=you@example.com).
+#   Internal name: CADDY_TLS=internal (Caddy's own CA; trust /data/caddy/pki/authorities/local/root.crt on clients),
+#   or mount your own certificate and use "tls /certs/mcp.crt /certs/mcp.key".
+{$MCP_HOSTNAME:localhost} {
+	tls {$CADDY_TLS:internal}
+	encode zstd gzip
+	reverse_proxy fmc-mcp-server:8000 {
+		# Streamable HTTP: don't buffer server-sent events
+		flush_interval -1
+	}
+}
