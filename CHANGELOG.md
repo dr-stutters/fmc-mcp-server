@@ -1,5 +1,20 @@
 # Changelog
 
+## 0.10.1 (2026-10-16)
+
+Tools unchanged (59 read, 68 write, 9 dangerous).
+
+### Changed
+- `scripts/seed_identity.py` prefers LDAPS: the realm points at `dc01.mitchcloud.lab:636` with the lab CA when
+  FMC's directory test passes, otherwise it keeps (or restores) plain LDAP to 198.18.130.11:389 and says why
+  (`--ldap` skips the attempt). Directory edits omit `dirPassword`, which FMC keeps.
+
+### Found live (DC now has its LDAPS certificate, CN=DC01.mitchcloud.lab, no IP SAN)
+- FMC validates the LDAPS server certificate against the configured host: LDAPS to the IP fails FMC's test.
+- FMC's DNS (198.18.128.1, 8.8.8.8) can't resolve `dc01.mitchcloud.lab`: even plain LDAP to the name fails, so
+  LDAPS to the name fails too. LDAPS works once FMC resolves the name (FMC's DNS server set to the DC, a manual
+  FMC system setting) or the certificate carries the IP.
+
 ## 0.10.0 (2026-10-16)
 
 F13 identity slice (roadmap item moved back to Next once the lab got a real AD). Core pin unchanged (v0.12.4).

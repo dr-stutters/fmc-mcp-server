@@ -1,7 +1,8 @@
 """Idempotently create the lab's identity setup (roadmap F13 identity) on FMC:
 
 - trusted CA `mcp-test-mitchcloud-CA` (the lab AD's root CA, for LDAPS once the DC has a certificate),
-- AD realm `mcp-test-mitchcloud` (DC01.mitchcloud.lab 198.18.130.11:389, group base OU=MCP-Lab),
+- AD realm `mcp-test-mitchcloud` (group base OU=MCP-Lab): LDAPS to dc01.mitchcloud.lab:636 with that CA when
+  FMC's test passes (FMC must resolve the name), else plain LDAP to 198.18.130.11:389,
   then a user/group download (expects the four mcp-* groups),
 - identity policy `mcp-test-idp` with a PASSIVE rule for the realm (10.99.1.0/24),
 - `mcp-test-idp` selected in access policy `mcp-test-ftd-acp` (FMC's REST API can't do that: drives
@@ -41,6 +42,14 @@ CA_NAME = "mcp-test-mitchcloud-CA"
 CA_FILE = Path(os.environ.get("LAB_CA_PEM", "~/MCP-Suite/lab-ca/mitchcloud-CA.pem")).expanduser()
 REALM = "mcp-test-mitchcloud"
 DC = "198.18.130.11"
+DC_NAME = "dc01.mitchcloud.lab"  # the name in the DC's LDAPS certificate (no IP SAN)
+PLAIN = {
+    "id": 0,
+    "hostname": DC,
+    "port": 389,
+    "encryptionProtocol": "NONE",
+    "useRoutingToSelectInterface": False,
+}
 BASE_DN = "DC=mitchcloud,DC=lab"
 GROUP_DN = "OU=MCP-Lab,DC=mitchcloud,DC=lab"
 AD_DOMAIN = "mitchcloud.lab"
@@ -121,6 +130,60 @@ class Seeder:
         created: dict[str, Any] = await self.app.api.post(await self.path("object/realms"), body)
         print(f"realm {REALM}: created")
         return created
+
+    async def directory(self, realm: dict[str, Any], want_ldaps: bool) -> None:
+        """Prefer LDAPS to DC_NAME:636 with the lab CA; keep plain LDAP to the IP when FMC can't use it.
+
+        FMC checks the server certificate's name against the configured host, so LDAPS needs the DNS name, and
+        FMC must resolve it (on 2026-10-16 FMC's DNS, 198.18.128.1 / 8.8.8.8, didn't know mitchcloud.lab:
+        LDAPS
+        to the name and to the IP both failed the test, plain LDAP to the IP passed)."""
+        base = await self.path(f"object/realms/{realm['id']}")
+        cur = await self.app.api.get(base)
+        dirs = cur.get("directoryConfigurations") or []
+        if dirs and dirs[0].get("encryptionProtocol") == "LDAPS" and await self.test(cur):
+            print(f"realm directory: ok (LDAPS {dirs[0].get('hostname')}:636)")
+            return
+        if want_ldaps:
+            cas = await self.app.all(await self.path("object/externalcacertificates"))
+            ca = next((c for c in cas.items if c.get("name") == CA_NAME), None)
+            if ca is not None:
+                ldaps = {
+                    **PLAIN,
+                    "hostname": DC_NAME,
+                    "port": 636,
+                    "encryptionProtocol": "LDAPS",
+                    "encryptionCert": {"id": ca["id"], "type": "ExternalCACertificate", "name": CA_NAME},
+                }
+                await self.put_dirs(base, cur, ldaps)
+                if await self.test(await self.app.api.get(base)):
+                    print(f"realm directory: LDAPS {DC_NAME}:636 (CA {CA_NAME})")
+                    return
+                print(
+                    f"realm directory: LDAPS to {DC_NAME} failed FMC's test (FMC must resolve that name: "
+                    "add the DC 198.18.130.11 as FMC's DNS server, Administration > Configuration > "
+                    "Management "
+                    "Interfaces); keeping LDAP 389"
+                )
+        now = await self.app.api.get(base)
+        first = (now.get("directoryConfigurations") or [{}])[0]
+        if first.get("encryptionProtocol") != "NONE" or first.get("hostname") != DC:
+            await self.put_dirs(base, now, PLAIN)
+        print(f"realm directory: LDAP {DC}:389")
+
+    async def put_dirs(self, base: str, cur: dict[str, Any], directory: dict[str, Any]) -> None:
+        body = {k: v for k, v in cur.items() if k not in ("links", "metadata", "dirPassword")}
+        body["directoryConfigurations"] = [directory]  # dirPassword omitted: FMC keeps the stored one
+        await self.app.api.put(base, body)
+
+    async def test(self, realm: dict[str, Any]) -> bool:
+        try:
+            async with FmcUiSession(self.app.settings) as ui:
+                res = await ui.pjb("SF::IdentityRealm::RealmTest::testDirectoryConnection", [realm, 0])
+        except Exception as e:  # noqa: BLE001 - no UI user: assume it works
+            print(f"realm test skipped ({e})")
+            return True
+        return isinstance(res, dict) and str(res.get("status")) == "0"
 
     async def download(self, realm: dict[str, Any]) -> None:
         groups = await self.app.all(await self.path("object/realmusergroups"))
@@ -242,6 +305,7 @@ async def link_in_ui(url: str, admin: tuple[str, str], acp_id: str) -> None:
 async def main() -> None:
     ap = argparse.ArgumentParser(description=__doc__, formatter_class=argparse.RawDescriptionHelpFormatter)
     ap.add_argument("--delete", action="store_true")
+    ap.add_argument("--ldap", action="store_true", help="plain LDAP 389, don't try LDAPS")
     ap.add_argument("--no-link", action="store_true", help="skip selecting the policy in the ACP (UI)")
     args = ap.parse_args()
     env = load_env()
@@ -253,6 +317,7 @@ async def main() -> None:
             return
         await seeder.ca()
         realm = await seeder.realm()
+        await seeder.directory(realm, want_ldaps=not args.ldap)
         await seeder.download(realm)
         await seeder.identity_policy(realm)
         acp, linked = await seeder.linked()
