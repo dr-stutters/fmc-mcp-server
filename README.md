@@ -16,6 +16,73 @@ Tested against **FMC 10.0.1** (Global plus a leaf domain) with managed **FTDv 10
 should work. Older versions are best-effort. `docs/GAP-ANALYSIS.md` maps the whole FMC API to the
 tools.
 
+## Quickstart (5 minutes)
+
+You need: an FMC user for the server with the REST API enabled (**Administration > Configuration > REST API
+Preferences**). Read-only is enough to start: a custom role `mcp-ro`, see
+[docs/least-privilege.md](docs/least-privilege.md). Use a user of its own: every FMC login ends that user's other
+sessions, so never the GUI `admin` or another integration's user.
+
+**A. On your laptop (stdio), from a release wheel.** Every [GitHub release](https://github.com/dr-stutters/fmc-mcp-server/releases)
+has a wheel with stutters-mcp-core bundled in; it needs only PyPI dependencies.
+
+```bash
+WHEEL=https://github.com/dr-stutters/fmc-mcp-server/releases/download/v0.11.0/fmc_mcp_server-0.11.0-py3-none-any.whl
+export FMC_URL=https://fmc.example.com FMC_USERNAME=mcp-api-ro FMC_PASSWORD='...'
+uvx --from "$WHEEL" fmc-mcp-server check            # preflight: TLS, token, domains, role, version, rate limit
+claude mcp add fmc -e FMC_URL=$FMC_URL -e FMC_USERNAME=$FMC_USERNAME -e FMC_PASSWORD="$FMC_PASSWORD" \
+  -- uvx --from "$WHEEL" fmc-mcp-server              # stdio is the default transport
+```
+
+Claude Desktop (`claude_desktop_config.json`), same idea:
+
+```json
+{
+  "mcpServers": {
+    "fmc": {
+      "command": "uvx",
+      "args": ["--from", "https://github.com/dr-stutters/fmc-mcp-server/releases/download/v0.11.0/fmc_mcp_server-0.11.0-py3-none-any.whl", "fmc-mcp-server"],
+      "env": {"FMC_URL": "https://fmc.example.com", "FMC_USERNAME": "mcp-api-ro", "FMC_PASSWORD": "..."}
+    }
+  }
+}
+```
+
+**B. On a shared host (HTTP), from the image.** Multi-arch (amd64/arm64), signed, with an SBOM:
+`ghcr.io/dr-stutters/fmc-mcp-server:<version>` (or `:latest`).
+
+```bash
+docker run --rm -e FMC_URL=https://fmc.example.com -e FMC_USERNAME=mcp-api-ro -e FMC_PASSWORD='...' \
+  ghcr.io/dr-stutters/fmc-mcp-server fmc-mcp-server check
+docker run --rm ghcr.io/dr-stutters/fmc-mcp-server fmc-mcp-server token alice   # one token per person
+cp .env.example .env && chmod 600 .env    # FMC_*, MCP_AUTH_TOKENS=alice:sha256:...
+docker compose up -d                      # pulls the image; http://localhost:8035/mcp
+```
+
+For a team, use [docs/deploying.md](docs/deploying.md): read-only by default, per-user tokens in the audit
+log, several FMCs, one FMC API user per server, the 120 requests/minute budget, TLS with Caddy, change
+management tickets, upgrades.
+
+**`check`** runs without an MCP client and exits 1 on a failure (`--json` for scripts, `--strict` to fail on
+warnings, `--instance dr` for one FMC). It logs in once (token generation: reachability, TLS trust,
+credentials) and reports the domains the user can see, the user's FMC roles against the enabled tiers, the FMC
+version against the tested matrix and the server's rate limit against FMC's 120 requests/minute:
+
+```text
+  OK    reachability[api]      generatetoken answered (18 ms)
+  OK    tls                    certificate verified against the system trust store
+  OK    auth                   token generated for mcp-api-ro
+  OK    role                   role 'mcp-ro' allows the enabled tier(s): read
+  OK    version                Cisco Secure Firewall Management Center 10.0.1 (build 1): tested
+  OK    domains                2 visible: Global, Global/Branch; default Global
+  OK    rate_limit             110 requests/min (default; FMC allows 120/min per FMC), shared by every caller of this server
+```
+
+FMC shows a user's roles only to accounts with User Management (which `mcp-ro` / `mcp-rw` don't have); then
+`role` can't tell and warns when writes are on. The check's login ends the same user's other FMC sessions.
+`fmc-mcp-server serve --http` serves HTTP (needs `MCP_AUTH_TOKENS`); `fmc-mcp-server config` shows the effective
+settings and where each came from, without contacting FMC.
+
 ## Safety model
 
 | Tier | Enabled by | What it can do |
@@ -232,7 +299,9 @@ end that user's other API sessions.** To avoid that, the server:
 
 Give the server its **own FMC user**.
 
-The client-side rate limiter keeps the server under FMC's per-source-IP limits.
+The client-side rate limiter keeps the server under FMC's per-source-IP limits. It is shared by every caller
+of the server, and FMC's 120 requests/minute are shared by every API user of that FMC: on a shared host see
+[docs/deploying.md](docs/deploying.md) (one FMC user per server instance, the request budget).
 
 ### Deploy safety rails (F18)
 
@@ -273,13 +342,14 @@ user per running copy (container, CLI, tests, people): a login ends the same use
 
 The REST API must be enabled under **Administration > Configuration > REST API Preferences**.
 
-## Running
+## Running from source
 
 ```bash
+git clone https://github.com/dr-stutters/fmc-mcp-server && cd fmc-mcp-server
 python3 scripts/bundle_core.py vendor       # bundles the pinned stutters-mcp-core as fmc_mcp._core (needs git)
 uv sync
 cp .env.example .env && chmod 600 .env      # set FMC_URL, FMC_USERNAME, FMC_PASSWORD
-uv run fmc-mcp-server check                 # connect and print fmc_status
+uv run fmc-mcp-server check                 # preflight (see the quickstart)
 uv run fmc-mcp-server                       # run the stdio server
 ```
 
@@ -292,29 +362,20 @@ generated, not committed: `scripts/bundle_core.py vendor` writes it, `check` rep
 `update --tag vX.Y.Z` moves the pin (then `uv lock`). A plain git checkout has no `fmc_mcp/_core`, so install
 from a release wheel rather than `git+https://...`.
 
-### Claude Code over stdio
+## Docker
 
 ```bash
-claude mcp add fmc \
-  --env FMC_URL=https://fmc.example.com --env FMC_USERNAME=mcp-api --env FMC_PASSWORD=... \
-  -- uvx --from https://github.com/dr-stutters/fmc-mcp-server/releases/download/v<version>/fmc_mcp_server-<version>-py3-none-any.whl fmc-mcp-server
-```
-
-### HTTP container
-
-```bash
-uv run fmc-mcp-server token alice   # prints a bearer token and its MCP_AUTH_TOKENS entry
+docker run --rm ghcr.io/dr-stutters/fmc-mcp-server fmc-mcp-server token alice   # bearer token + its MCP_AUTH_TOKENS entry
 # add MCP_AUTH_TOKENS=alice:sha256:... to .env
-docker compose up -d --build        # no token: the image is built from the bundled wheel
+docker compose up -d                        # pulls ghcr.io/dr-stutters/fmc-mcp-server (MCP_IMAGE_TAG, default latest)
+docker compose up -d --build                # or build from this checkout (no token: core is bundled)
 curl http://localhost:8035/health
 ```
 
-The compose file:
-
-- publishes port 8035;
-- runs the container with a read-only root filesystem, no capabilities and a named volume for the
-  spec cache;
-- enables writes, and keeps the dangerous tier off.
+The compose file publishes port 8035 and runs the container as non-root with a read-only root filesystem, no
+capabilities and a named volume for the spec cache. It is **read-only** unless `.env` sets
+`MCP_ENABLE_WRITES=true` (and `MCP_ENABLE_DANGEROUS=true` for deploys). Shared hosts (TLS, several FMCs,
+per-user tokens, the rate budget, upgrades): [docs/deploying.md](docs/deploying.md).
 
 Connect Claude Code to the container:
 

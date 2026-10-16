@@ -1,0 +1,54 @@
+# Shared host: fmc-mcp-server behind Caddy (TLS), one server for several FMCs. Guide: docs/deploying.md.
+#
+#   cp .env.example .env && chmod 600 .env   # FMC API users, FMC_INSTANCES, one MCP token per person
+#   docker compose up -d                     # https://$MCP_HOSTNAME/mcp
+#   docker compose exec fmc-mcp-server fmc-mcp-server check
+#
+# Try it without FMC (two mocked FMCs, a test token):
+#   docker compose -f docker-compose.yml -f docker-compose.mock.yml up -d
+services:
+  fmc-mcp-server:
+    image: ghcr.io/dr-stutters/fmc-mcp-server:${MCP_IMAGE_TAG:-latest}
+    pull_policy: ${MCP_PULL_POLICY:-always}
+    restart: unless-stopped
+    env_file:
+      - path: .env
+        required: false   # the mock override supplies everything
+    environment:
+      MCP_TRANSPORT: http
+      MCP_HOST: 0.0.0.0
+      MCP_PORT: "8000"
+      MCP_CACHE_DIR: /cache
+      MCP_AUDIT_LOG: /cache/fmc-audit.log   # one JSON line per call, with the caller's token name
+      MCP_AUDIT_LOG_MAX_MB: "50"
+      MCP_AUDIT_LOG_BACKUPS: "5"
+    expose:
+      - "8000"            # reached only through Caddy
+    volumes:
+      - fmc-cache:/cache
+    read_only: true
+    tmpfs:
+      - /tmp
+    cap_drop:
+      - ALL
+    security_opt:
+      - no-new-privileges:true
+
+  caddy:
+    image: caddy:2.10.2
+    restart: unless-stopped
+    environment:
+      MCP_HOSTNAME: ${MCP_HOSTNAME:-localhost}
+      CADDY_TLS: ${CADDY_TLS:-internal}
+    ports:
+      - "${MCP_HTTPS_PORT:-443}:443"
+      - "${MCP_HTTP_PORT:-80}:80"     # ACME HTTP challenge and the redirect to HTTPS
+    volumes:
+      - ./Caddyfile:/etc/caddy/Caddyfile:ro
+      - caddy-data:/data
+    depends_on:
+      - fmc-mcp-server
+
+volumes:
+  fmc-cache:
+  caddy-data:

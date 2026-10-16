@@ -5,8 +5,10 @@ from typing import Any
 import httpx
 import pytest
 import respx
+from fastmcp import FastMCP
 
 from fmc_mcp.config import Settings
+from fmc_mcp.server import create_server
 
 BASE = "https://fmc.test"
 DOMAIN = "e276abec-e0f2-11e3-8169-6d9ed49b625f"
@@ -25,6 +27,10 @@ def make_settings(**kw: Any) -> Settings:
     }
     base.update(kw)
     return Settings(_env_file=None, **base)  # type: ignore[call-arg]
+
+
+def make_server(**kw: Any) -> FastMCP[Any]:
+    return create_server(make_settings(**kw))
 
 
 def login_response(n: int = 1) -> httpx.Response:
