@@ -2,7 +2,7 @@ name: ci
 on: {push: {branches: [main]}, pull_request: {}}
 jobs:
   ci:
-    uses: dr-stutters/stutters-mcp-core/.github/workflows/python-ci.yml@bundle-core   # @main once core #64 merges
+    uses: dr-stutters/stutters-mcp-core/.github/workflows/python-ci.yml@main
     with: {bundle-core: true}
   bundle:   # vendor core, drift check, wheel + sdist, suite against the installed wheel (pip --no-index)
-    uses: dr-stutters/stutters-mcp-core/.github/workflows/bundle-core.yml@bundle-core   # @main once core #64 merges
+    uses: dr-stutters/stutters-mcp-core/.github/workflows/bundle-core.yml@main
