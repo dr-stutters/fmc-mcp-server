@@ -1,5 +1,23 @@
 # Changelog
 
+## 0.11.0 (unreleased)
+
+### Changed
+- **stutters-mcp-core is bundled into the package (F35, #80; core C20 / ADR-005).** The wheel, sdist and image
+  carry core v0.13.0 as `fmc_mcp._core`, so installing needs no git dependency and Docker needs no
+  `CORE_READ_TOKEN`. The pin is `[tool.bundle-core]` (tag + commit) in `pyproject.toml`; core's runtime
+  dependencies are listed in the server's own. `scripts/bundle_core.py` vendors it (`vendor`, after a clone),
+  checks for drift (`check`) and moves the pin (`update --tag`). Code and tests import `fmc_mcp._core`; importing
+  the package without the bundle says how to fix it.
+- `fmc_status` reports the bundled core version (`server.core_version`).
+- CI: the core `bundle-core.yml` job vendors, fails on drift, builds the wheel and sdist, installs the wheel
+  with `pip install --no-index` in a clean venv and runs the unit + contract suite against it. The release
+  builds the image from the bundled wheel.
+- README: `uvx` installs from the release wheel; a git checkout no longer installs without `vendor`.
+
+### Removed
+- The git source for stutters-mcp-core and `CORE_READ_TOKEN` (Dockerfile build secret, compose, workflows).
+
 ## 0.10.1 (2026-10-16)
 
 Tools unchanged (59 read, 68 write, 9 dangerous).

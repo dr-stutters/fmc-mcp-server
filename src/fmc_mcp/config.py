@@ -1,8 +1,9 @@
 """Settings: FMC_* connection variables plus the shared MCP_* server variables."""
 
 from pydantic import Field, SecretStr, field_validator
-from stutters_mcp_core import BaseServerSettings, server_config
-from stutters_mcp_core.policy import ChangeWindow
+
+from fmc_mcp._core import BaseServerSettings, server_config
+from fmc_mcp._core.policy import ChangeWindow
 
 # FMC allows about 120 requests/minute and 10 concurrent connections per source IP.
 DEFAULT_RATE_LIMIT = 110.0

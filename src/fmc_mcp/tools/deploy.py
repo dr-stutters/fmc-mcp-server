@@ -8,9 +8,9 @@ from typing import Annotated, Any
 from fastmcp import Context
 from fastmcp.tools import ToolResult
 from pydantic import Field
-from stutters_mcp_core import ResponseFormat, ToolRegistrar, get_client, list_result
-from stutters_mcp_core.http import page_of
 
+from fmc_mcp._core import ResponseFormat, ToolRegistrar, get_client, list_result
+from fmc_mcp._core.http import page_of
 from fmc_mcp.client import FmcApp
 from fmc_mcp.tools.common import Domain, ref_label, resolve_in
 from fmc_mcp.tools.devices import DEVICES, DeviceRef

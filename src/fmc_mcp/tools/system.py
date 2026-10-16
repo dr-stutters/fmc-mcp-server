@@ -8,7 +8,8 @@ from typing import Annotated, Any
 from fastmcp import Context
 from fastmcp.tools import ToolResult
 from pydantic import Field
-from stutters_mcp_core import (
+
+from fmc_mcp._core import (
     ResponseFormat,
     ToolRegistrar,
     UpstreamError,
@@ -16,8 +17,7 @@ from stutters_mcp_core import (
     list_result,
     object_result,
 )
-from stutters_mcp_core.http import page_of
-
+from fmc_mcp._core.http import page_of
 from fmc_mcp.audit import NOISE_SUBSYSTEMS, compact_message, coverage_note, fetch_audit, is_read
 from fmc_mcp.client import FmcApp
 from fmc_mcp.tools.common import Domain, slim

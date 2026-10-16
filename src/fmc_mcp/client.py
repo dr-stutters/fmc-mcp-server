@@ -11,8 +11,9 @@ import weakref
 from typing import Any
 
 import httpx
-from stutters_mcp_core import AuthError, InvalidRequest, NotFound
-from stutters_mcp_core.http import (
+
+from fmc_mcp._core import AuthError, InvalidRequest, NotFound
+from fmc_mcp._core.http import (
     ApiClient,
     LoginTokenAuth,
     OffsetLimit,
@@ -23,7 +24,6 @@ from stutters_mcp_core.http import (
     default_error_detail,
     fetch_all,
 )
-
 from fmc_mcp.config import DEFAULT_MAX_CONCURRENCY, DEFAULT_RATE_LIMIT, Settings
 
 log = logging.getLogger(__name__)

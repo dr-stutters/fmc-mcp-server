@@ -7,7 +7,8 @@ import re
 from typing import Annotated, Literal
 
 from pydantic import Field
-from stutters_mcp_core import InvalidRequest, Tier, ToolRegistrar, tool_ref
+
+from fmc_mcp._core import InvalidRequest, Tier, ToolRegistrar, tool_ref
 
 # Prompt arguments end up inside instructions: keep them to one line of plain characters.
 _SAFE = re.compile(r"^[\w.:/@ ()+,-]{1,200}$")

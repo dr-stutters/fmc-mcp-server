@@ -6,8 +6,8 @@ from typing import Any
 
 import pytest_asyncio
 from fastmcp import Client, FastMCP
-from stutters_mcp_core.testing import live_settings
 
+from fmc_mcp._core.testing import live_settings
 from fmc_mcp.config import Settings
 from fmc_mcp.server import create_server
 

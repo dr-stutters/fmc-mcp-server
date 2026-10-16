@@ -1,12 +1,15 @@
+import importlib.resources
+import json
 import time
 from typing import Any
 
 import httpx
 import pytest
 import respx
-from stutters_mcp_core import AuthError, InvalidRequest
-from stutters_mcp_core.testing import call_tool
 
+from fmc_mcp._core import AuthError, InvalidRequest
+from fmc_mcp._core import __version__ as core_version
+from fmc_mcp._core.testing import call_tool
 from fmc_mcp.client import FmcApp, fmc_error_detail
 from fmc_mcp.server import create_server
 
@@ -21,6 +24,9 @@ async def test_status(fmc: respx.MockRouter) -> None:
     assert info["managed_devices"] == 0
     assert info["api_user"] == "apiuser"
     assert info["session"]["logins"] == 1
+    # core is bundled (fmc_mcp._core, F35): status reports the bundled version
+    bundle = json.loads((importlib.resources.files("fmc_mcp._core") / "BUNDLE.json").read_text())
+    assert data["server"]["core_version"] == core_version == bundle["version"]
     text = str(data)
     for secret in ("'pw'", "access-1", "refresh-1"):
         assert secret not in text

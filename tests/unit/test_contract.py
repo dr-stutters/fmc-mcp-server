@@ -6,15 +6,15 @@ from typing import Any
 import pytest
 import respx
 from fastmcp import Client, FastMCP
-from stutters_mcp_core.manifest import build_manifest
-from stutters_mcp_core.testing import (
+
+from fmc_mcp._core.manifest import build_manifest
+from fmc_mcp._core.testing import (
     assert_inbound_references,
     assert_prompt_contract,
     assert_prompt_snapshots,
     assert_tool_contract,
     load_tool_manifests,
 )
-
 from fmc_mcp.server import create_server
 
 from .conftest import make_settings

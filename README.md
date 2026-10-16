@@ -276,18 +276,28 @@ The REST API must be enabled under **Administration > Configuration > REST API P
 ## Running
 
 ```bash
+python3 scripts/bundle_core.py vendor       # bundles the pinned stutters-mcp-core as fmc_mcp._core (needs git)
 uv sync
 cp .env.example .env && chmod 600 .env      # set FMC_URL, FMC_USERNAME, FMC_PASSWORD
 uv run fmc-mcp-server check                 # connect and print fmc_status
 uv run fmc-mcp-server                       # run the stdio server
 ```
 
+The shared [stutters-mcp-core](https://github.com/dr-stutters/stutters-mcp-core) library is **bundled** into the
+package as `fmc_mcp._core` (core ADR-005): the wheel, the sdist and the Docker image need nothing but their PyPI
+dependencies, with no git dependency and no token. `uv build` writes a wheel that installs on its own
+(`pip install dist/fmc_mcp_server-*.whl`); every GitHub release has one attached. The pinned core tag is
+`[tool.bundle-core]` in `pyproject.toml` and `fmc_status` reports it as `core_version`. The vendored copy is
+generated, not committed: `scripts/bundle_core.py vendor` writes it, `check` reports drift, and
+`update --tag vX.Y.Z` moves the pin (then `uv lock`). A plain git checkout has no `fmc_mcp/_core`, so install
+from a release wheel rather than `git+https://...`.
+
 ### Claude Code over stdio
 
 ```bash
 claude mcp add fmc \
   --env FMC_URL=https://fmc.example.com --env FMC_USERNAME=mcp-api --env FMC_PASSWORD=... \
-  -- uvx --from git+https://github.com/dr-stutters/fmc-mcp-server fmc-mcp-server
+  -- uvx --from https://github.com/dr-stutters/fmc-mcp-server/releases/download/v<version>/fmc_mcp_server-<version>-py3-none-any.whl fmc-mcp-server
 ```
 
 ### HTTP container
@@ -295,7 +305,7 @@ claude mcp add fmc \
 ```bash
 uv run fmc-mcp-server token alice   # prints a bearer token and its MCP_AUTH_TOKENS entry
 # add MCP_AUTH_TOKENS=alice:sha256:... to .env
-CORE_READ_TOKEN=$(gh auth token) docker compose up -d --build
+docker compose up -d --build        # no token: the image is built from the bundled wheel
 curl http://localhost:8035/health
 ```
 

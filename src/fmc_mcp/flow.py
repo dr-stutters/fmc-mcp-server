@@ -9,8 +9,7 @@ import ipaddress
 from dataclasses import dataclass
 from typing import Any
 
-from stutters_mcp_core import UpstreamError
-
+from fmc_mcp._core import UpstreamError
 from fmc_mcp.catalog import Catalog
 from fmc_mcp.client import FmcApp
 from fmc_mcp.tools.device_config import device_interfaces

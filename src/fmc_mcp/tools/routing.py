@@ -12,7 +12,8 @@ from typing import Annotated, Any
 
 from fastmcp import Context
 from pydantic import Field
-from stutters_mcp_core import (
+
+from fmc_mcp._core import (
     Confirm,
     InvalidRequest,
     NotFound,
@@ -21,7 +22,6 @@ from stutters_mcp_core import (
     UpstreamError,
     get_client,
 )
-
 from fmc_mcp.client import FmcApp
 from fmc_mcp.preview import fmc_preview
 from fmc_mcp.refs import NETWORK_TYPES, RefResolver

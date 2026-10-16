@@ -16,7 +16,8 @@ from typing import Annotated, Any, Literal
 from fastmcp import Context
 from fastmcp.tools import ToolResult
 from pydantic import Field
-from stutters_mcp_core import (
+
+from fmc_mcp._core import (
     InvalidRequest,
     NotFound,
     ResponseFormat,
@@ -25,8 +26,7 @@ from stutters_mcp_core import (
     get_client,
     list_result,
 )
-from stutters_mcp_core.http import page_of
-
+from fmc_mcp._core.http import page_of
 from fmc_mcp.catalog import Catalog
 from fmc_mcp.client import FmcApp, fmc_error_detail
 from fmc_mcp.flow import device_context

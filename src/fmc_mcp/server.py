@@ -5,9 +5,9 @@ from typing import Any
 import httpx
 from fastmcp import FastMCP
 from fastmcp.server.auth import AuthProvider
-from stutters_mcp_core import ServerSpec, build_server
-from stutters_mcp_core.spec import SpecSource
 
+from fmc_mcp._core import ServerSpec, build_server
+from fmc_mcp._core.spec import SpecSource
 from fmc_mcp.client import SPEC_PATH, FmcApp
 from fmc_mcp.config import Settings
 from fmc_mcp.tools import (

@@ -11,6 +11,7 @@
 .ruff_cache
 tests
 scripts
+!scripts/bundle_core.py
 docs
 *.pem
 *.key
