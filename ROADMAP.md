@@ -1,5 +1,5 @@
 # fmc-mcp-server roadmap
-_Last updated 2026-10-16: logs and events are pull-only ([ADR-003](https://github.com/dr-stutters/stutters-mcp-core/blob/main/docs/adr/003-no-event-ingestion.md)); F7 (FTD syslog) and F12 (eStreamer) dropped, F5 reframed as on-demand activity lookups. Current release **v0.10.0** (F13 identity: AD realms, identity policies, access rules on users and groups) (Now, Next and the Production gate delivered except F17; Later: F13 intrusion/decryption/DNS, F14, F20-F25; F15 cdFMC open; F13 identity delivered in v0.10.0). Suite roadmap: [stutters-mcp-core ROADMAP.md](https://github.com/dr-stutters/stutters-mcp-core/blob/main/ROADMAP.md). Gap analysis: [docs/GAP-ANALYSIS.md](docs/GAP-ANALYSIS.md)._
+_Last updated 2026-10-16: **Wave 4 planned (F35–F50): standalone packaging, de-labbed repo, RA VPN, route-based VPN/SD-WAN live, policy hygiene, file/malware + NAP, policy bundle export/import, four prompts.** logs and events are pull-only ([ADR-003](https://github.com/dr-stutters/stutters-mcp-core/blob/main/docs/adr/003-no-event-ingestion.md)); F7 (FTD syslog) and F12 (eStreamer) dropped, F5 reframed as on-demand activity lookups. Current release **v0.10.0** (F13 identity: AD realms, identity policies, access rules on users and groups) (Now, Next and the Production gate delivered except F17; Later: F13 intrusion/decryption/DNS, F14, F20-F25; F15 cdFMC open; F13 identity delivered in v0.10.0). Suite roadmap: [stutters-mcp-core ROADMAP.md](https://github.com/dr-stutters/stutters-mcp-core/blob/main/ROADMAP.md). Gap analysis: [docs/GAP-ANALYSIS.md](docs/GAP-ANALYSIS.md)._
 
 ## Summary
 - v0.4.0 has 45 read, 35 write and 7 dangerous tools plus the `fmc_why_blocked` and `fmc_onboard_ftd` prompts (v0.3.0: 41/30/7; v0.2.0: 35/20/7). The day-to-day firewall workflows are curated and were live-tested against FMC 10.0.1 with an FTDv 10.0 in CML: onboard, change → preview → deploy → verify → roll back, "why is this blocked?" and device health. 17 % of the 1446 API operations are behind curated tools; most of the rest go through `fmc_api_call`.
@@ -123,3 +123,70 @@ See the [suite roadmap](https://github.com/dr-stutters/stutters-mcp-core/blob/ma
 | # | Item | Milestone |
 |---|---|---|
 | [F34](https://github.com/dr-stutters/fmc-mcp-server/issues/79) | ISE as identity source over pxGrid + user↔IP lookup; prove AD-group rules on traffic | Next |
+
+
+## Wave 4 (planned 2026-10-16): standalone, reusable, deeper
+Scoping answers (2026-10-16). The suite-wide ones are shared with ise-mcp-server Wave 4:
+- **Goals:** make the server something anyone can deploy, not only this lab; then add FMC depth.
+- **Deployers:** engineers on a laptop (`uvx`, stdio, one FMC) and teams on a shared host (Docker over HTTP, tokens,
+  possibly several FMCs). Kubernetes/OAuth are not in this wave (core G1/G5 still apply later).
+- **Standalone:** stutters-mcp-core is **bundled into the package by a build workflow**. Nothing is pulled from git
+  or PyPI at install time.
+- **Lab tooling** (`scripts/seed_*.py` and lab-specific live tests and fixtures) moves to the private suite-wide repo
+  **`stutters-mcp-lab`**. Public live tests read env vars only.
+- **Depth:** remote-access VPN, route-based VPN and SD-WAN proven live, policy hygiene, file/malware and network
+  analysis policies, and a full policy bundle export/diff/import.
+- **cdFMC (F15)** stays in the plan for later. The backend seam can be built on mocks; the live proof waits for an SCC tenant.
+- **UX:** a second operator-eyes pass plus four new workflow prompts.
+- **Lab is down:** this wave is planned only. Phase A needs no lab and goes first. Phases B and C need FMC and FTDv back.
+
+### Phase A: standalone and reusable (no lab needed)
+| # | Item | Why (operator value) | External needs | Test plan | Size | Issue |
+|---|---|---|---|---|---|---|
+| F35 | **Bundle core into the package**: the suite's release workflow (as ise I35) vendors the pinned stutters-mcp-core tag into the wheel and image (`fmc_mcp._core`); no git dependency; CI fails on drift; `fmc_status` reports the bundled core version | Installing today needs a git dependency and a `CORE_READ_TOKEN` for Docker | none | Unit + contract suite on the built wheel in a clean venv; `pip install --no-index`; drift check by bumping the tag | M | |
+| F36 | **PyPI + `uvx` quickstart**: publish `fmc-mcp-server` with trusted publishing; console script (stdio by default); `fmc-mcp-server check` preflight (reachability, TLS trust, token generation, domains visible, API user's role vs tool tiers, FMC version, the 120 req/min budget); copy-paste Claude Desktop / Claude Code config; 5-minute quickstart | One command from install to a working FMC connection, with a clear answer when something is missing | PyPI account and the `fmc-mcp-server` name; trusted publisher | Clean-container wheel install; `check` against mocked FMC (each failure mode); TestPyPI first | M | |
+| F37 | **Published container image**: multi-arch GHCR image from the F35 wheel, cosign-signed, SBOM attached; compose pulls instead of building; `CORE_READ_TOKEN` removed | Teams run it on a shared host without cloning or building | GHCR package permissions | Pre-release tag run; `docker run ... check`; verify signature and SBOM | S | |
+| F38 | **Shared-host deployment guide and defaults**: read-only by default (write and dangerous tiers opt-in); per-user tokens named in the audit log; several FMCs from one host; **one FMC API user per server instance** (FMC ends other sessions of the same user, and the 120 req/min limit is per FMC), the server's own rate limiter shared across users; reverse-proxy TLS example; least-privilege FMC user setup from `docs/least-privilege.md` as a step-by-step guide; change-management tickets (F22) explained for regulated sites | A team deployment that is safe on day one and doesn't lock out other FMC API users | none | Contract tests for the tier defaults; compose example with two mocked FMCs; follow the docs on a clean host | M | |
+| F39 | **De-lab the public repo**: move `scripts/seed_lab.py`, `seed_access.py`, `seed_domain.py`, `seed_identity.py` and lab-only live tests to `stutters-mcp-lab` (`capture_fixtures.py` stays, made generic); public live tests take documented `FMC_LIVE_*` env vars and skip cleanly without them; replace dCloud IPs in prompt examples (`tools/prompts.py`) with RFC 5737 addresses and lab names in fixtures and docs; `scrub_check` (core G9) in CI | Anyone can run the live suite against their own FMC, and the public repo carries no lab details | Private repo `stutters-mcp-lab` | `scrub_check` clean in CI; unit suite green; live suite skips with no env | M | |
+
+### Phase B: FMC depth (needs the lab)
+| # | Item | Why (operator value) | External needs | Test plan | Size | Issue |
+|---|---|---|---|---|---|---|
+| F40 | **Remote-access VPN authoring**: connection profiles, group policies, address pools, AAA (local realm, AD realm from F13, or ISE RADIUS), certificate enrolment for the outside interface, Secure Client image and profile references (uploading the package stays a GUI step: multipart), split tunnel and NAT exemption; `fmc_ravpn_status` (active sessions and failures from the device via `show vpn-sessiondb`) | RA VPN is on almost every firewall and is configured across six GUI pages today; "why can't this user connect?" is a daily ticket | Secure Client licence (evaluation is fine), a Secure Client package uploaded once by hand, outside-interface certificate (lab AD CS); ISE for RADIUS auth (optional) | Live: build a profile on the CML FTDv, connect with `openconnect` from a CML Alpine node, AD user passes, a user outside the group fails and `fmc_ravpn_status` explains why | L | |
+| F41 | **Route-based VPN and SD-WAN, proven live**: VTI topologies with BGP or OSPF over the tunnels, the SD-WAN hub-and-spoke wizard (7.6+) on the existing tools; `fmc_vpn_status` per topology (tunnel and IKE state, last rekey, routes learned over the VTI, from `show crypto` and `show route` on each FTD) | These are mock-tested only; customers moving off policy-based VPN need them working | Three FTDv (hub + two spokes) inside the CML EVAL 5-node limit (stop `ise-access` while testing) | Live: hub-spoke VTI with BGP, spoke-to-spoke traffic, one tunnel taken down shows in `fmc_vpn_status`; SD-WAN wizard topology built and deployed | L | |
+| F42 | **Policy hygiene**: on top of `fmc_shadowed_rules` and `fmc_unused_objects`: duplicate objects (same value, different names), overly permissive rules (any-any allow, allow without an intrusion policy or logging), disabled rules, rules with no hits in N days, expired time ranges, consolidation candidates (adjacent rules differing in one field); `fmc_policy_audit` ranks findings with a proposed fix per finding | A policy review takes days by hand and is a standard PoC deliverable | none | Unit on recorded policies (`capture_fixtures.py`), so most of it can be built before the lab is back; live on `mcp-test-acp` seeded with each finding type | M | |
+| F43 | **File/malware and network analysis policies**: file policies read/write (file rules by application protocol, direction, file type and category, action: detect, block, malware cloud lookup, block malware), attach a file policy to an access rule; network analysis policy read, create on a base policy and assign to the ACP; no inspector-level authoring (left to `fmc_api_call`) | File blocking and malware inspection are part of most customer policies; today they are only reachable through `fmc_api_call` | Malware Defense licence (evaluation); cloud lookups need FMC internet access (check dCloud), otherwise test detect/block by file type only | Unit on recorded policies; live: block `.exe` over HTTP to a CML web host, the connection is reset and the rule shows hits | M | |
+| F44 | **Policy bundle export + diff**: `fmc_export_policy_bundle(acp)` writes the access policy with its prefilter, NAT, SSL, identity and intrusion references, every object and zone it uses, by name, as YAML with stable ordering; `fmc_diff_policy_bundle` compares two bundles, or a bundle with live FMC, by section (between domains or between FMCs) | A reviewable baseline, "what changed since last week", and PoC → production hand-off | none | Unit: round trip and stable ordering; live: export, change one rule, diff shows just that rule | L | |
+| F45 | **Policy bundle import** (depends on F44): plans create/update/skip in dependency order (objects → zones → policies → rules), matches by name, reuses the F23/F25 bulk paths to stay inside 120 req/min, honours change-management tickets (F22); applying is a dangerous-tier action with the change window, stops on first failure and reports what was applied; deploy stays a separate step | Moves a PoC firewall policy to production, or to a new domain, without retyping it | none | Unit with plans for empty and populated targets; live: export `mcp-test-acp`, import into a second domain, diff is empty | L | |
+
+### Phase C: operator UX and workflow prompts
+| # | Item | Why (operator value) | External needs | Test plan | Size | Issue |
+|---|---|---|---|---|---|---|
+| F46 | **Operator-eyes pass 2 + tool surface**: run operator tasks over the tools added since v0.9.0 (identity, tickets, prefilter, platform settings) and Wave 4's; `FMC_TOOLSETS` env to load only some areas (e.g. `troubleshoot,objects,deploy`) so clients with tool limits can use the ~137-tool server | The tool count makes tool choice harder; a laptop user rarely needs all of them | none | Scripted operator tasks live (as v0.9.0); contract test per toolset | M | |
+| F47 | **Prompt `fmc_rule_change_review`**: proposed rule change → preview → shadowing and overlap check → `fmc_rule_lookup` on sample flows before and after → pending changes → deploy plan with rollback | Catches the rule that shadows half the policy before it is deployed | none | Prompt test kit (core C9) on mocks; live with a rule inserted above `mcp-test` rules | S | |
+| F48 | **Prompt `fmc_firewall_health_review`**: device health, HA state, deploy backlog, licences, upgrade and content status, last backups, VPN tunnel state as one ranked report with next steps | A weekly or pre-change review in one request | none | Prompt test kit on mocks (works while the lab is down); live once it is back | S | |
+| F49 | **Prompt `fmc_vpn_troubleshoot`** (after F40/F41): S2S or RA VPN down → topology → tunnel and IKE state → routing over the tunnel → NAT exemption → certificate and AAA → fix preview | VPN outages are slow to diagnose across FMC and the device CLI | none | Live with a broken pre-shared key, a missing NAT exemption and an RA user outside the allowed group | S | |
+| F50 | **Prompt `fmc_policy_cleanup`** (after F42): hygiene findings → grouped cleanup plan → preview each change → ticket (when enabled) → deploy → verify hit counts | Turns an audit into an applied, reviewable cleanup | none | Live on the seeded `mcp-test-acp` | S | |
+
+### Later (kept)
+- **F15 cdFMC**: the backend seam (bearer auth, base URL, feature-gap map) can be built on mocks at any time; the live proof needs an SCC tenant.
+- **F17 version matrix 7.4 / 7.6 / 10.0**: needs older FMC versions.
+- **F34** (Wave 3): ISE as identity source over pxGrid.
+
+### Order
+1. **Now (no lab):** F35 → F37 → F36 → F39 → F38, then F48 on mocks and F42 on recorded fixtures. Target v0.11.0 (standalone).
+2. **When the lab is back:** F42 live, F44 → F45, F43, F40, F41. Target v0.12.0.
+3. **Then:** F46, F47, F49, F50. Target v0.13.0.
+
+### New prerequisites
+| Prerequisite | Needed for | Status |
+|---|---|---|
+| PyPI account, `fmc-mcp-server` name, trusted publisher | F36 | ⏳ owner |
+| GHCR package permissions | F37 | ⏳ owner |
+| Private repo `stutters-mcp-lab` | F39 | ⏳ owner (shared with ise I39) |
+| FMC 10.0.1 + FTDv lab back up | F40–F47, F49, F50 | ⏳ owner |
+| Secure Client package uploaded once + outside-interface certificate | F40 | ⏳ when the lab is back |
+| `openconnect` on a CML Alpine node | F40 | ⏳ (cml recipe change) |
+| Three FTDv within the CML 5-node limit | F41 | ⏳ (stop other labs while testing) |
+| Malware Defense licence (evaluation); FMC internet access for cloud lookups | F43 | ⏳ check on dCloud |
+| SCC tenant with cdFMC | F15 | ❌ unavailable |
