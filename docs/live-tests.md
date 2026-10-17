@@ -52,7 +52,8 @@ topology. The tests create and keep their own `mcp-test-ftd-*` zones, objects an
 
 ## Seeded objects
 
-`test_live_read.py`, `test_live_rule_io.py`, `test_least_privilege.py` and `scripts/capture_fixtures.py`
+`test_live_read.py`, `test_live_rule_io.py`, `test_live_bundle.py`, `test_least_privilege.py` and
+`scripts/capture_fixtures.py`
 expect a fixed set of `mcp-test-*` objects and policies: hosts `mcp-test-web` (10.10.10.80), `mcp-test-db`
 (10.10.20.5) and `mcp-test-unused` (10.99.99.99), networks, a range, port objects, groups, the zones
 `mcp-test-inside` / `mcp-test-outside`, the access policy `mcp-test-acp` (allow, block, redundant and
