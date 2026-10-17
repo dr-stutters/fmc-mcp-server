@@ -38,6 +38,18 @@
   file name (plain names inside that directory only). Unset by default, so shared HTTP hosts write nothing.
 - `scripts/capture_fixtures.py --bundle` records the GETs of a real export as `tests/fixtures/bundle_acp.json`.
 - `pyyaml` is a direct dependency (it was already installed through fastmcp).
+- **Policy bundle import (F45, #90).** `fmc_plan_policy_bundle_import` (read) and `fmc_import_policy_bundle`
+  (dangerous tier; its preview is the plan) apply a bundle from `fmc_export_policy_bundle` to a target domain or
+  FMC by name, in dependency order: missing objects are created (leaves in bulk per type, then groups level by
+  level), identical ones reused, same name with a different value is a blocker unless `update_objects`; missing
+  security zones and interface groups are created without interfaces; prefilter and NAT policies the target lacks
+  are created with their rules (an existing one is reused and a difference reported); the access policy is
+  created (default action, categories, prefilter/identity/decryption links, rules in order) or updated (default
+  action, added rules inserted next to their neighbours in the same section/category, changed rules replaced,
+  rules missing from the bundle deleted only with `delete_extra_rules`; reordering existing rules is reported, not
+  applied). Identity, decryption and intrusion policies, time ranges, realms, file policies, variable sets and
+  alerts must exist in the target (blockers otherwise). Stops at the first failure and lists what was applied;
+  deploying stays a separate step. The change window and an open change ticket apply.
 
 ### Changed
 - `fmc_shadowed_rules` and `fmc_get_hit_counts` share their logic with the audit (`shadow_findings`,
