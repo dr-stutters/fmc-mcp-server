@@ -3,6 +3,17 @@
 ## Unreleased
 
 ### Added
+- **SD-WAN status and troubleshooting (F51c, #107).** `fmc_sdwan_status(topology or branch)` reports, per
+  branch and hub: the WAN links (path-monitoring status, type and monitored IP, interface priority, and RTT,
+  jitter, loss and MOS parsed from `show path-monitoring`), the overlay tunnels (`health/tunnelstatuses`) and
+  iBGP neighbors (`show bgp summary`), every application route (`routing/policybasedroutes`) with the interface
+  it uses now and why (its ordering, by priority, order, jitter, loss, RTT or MOS, against the live link state;
+  `show policy-route` as evidence), and one ranked list of degraded links and overlay faults (down, lossy, slow,
+  jittery, low MOS, tunnel down, BGP neighbor not established) with the thresholds used. Show commands FMC
+  refuses are reported as unavailable, not as errors; `max_devices` caps them (spokes first). Prompt
+  `fmc_sdwan_troubleshoot(application, branch, ...)` ("app X is slow at branch Y"): path metrics -> app-route
+  rule -> chosen interface -> overlay -> packet tracer -> one previewed fix. Read tier. `capture_fixtures.py
+  --sdwan` also records the PBR entries and the three show commands.
 - **SD-WAN topology authoring (F51a, #107).** `fmc_create_sdwan_topology` builds FMC's SD-WAN wizard topology
   (`AUTO_VPN` hub and spoke, FMC 7.6+) preview-first and in dependency order: the spoke tunnel address pool
   (an existing IPv4 address pool, or a subnet: the hub takes the first address on a new loopback), the hub's

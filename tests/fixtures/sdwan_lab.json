@@ -900,7 +900,13 @@
       "interface": {
        "id": "d-hub-e0",
        "name": "Ethernet0/0",
-       "type": "PhysicalInterface"
+       "ifname": "outside1",
+       "type": "PhysicalInterface",
+       "priority": 10,
+       "pathMonitoring": {
+        "enable": true,
+        "type": "AUTO"
+       }
       },
       "status": "ONLINE"
      }
@@ -920,7 +926,13 @@
       "interface": {
        "id": "d-sp1-e0",
        "name": "Ethernet0/0",
-       "type": "PhysicalInterface"
+       "ifname": "outside1",
+       "type": "PhysicalInterface",
+       "priority": 10,
+       "pathMonitoring": {
+        "enable": true,
+        "type": "AUTO"
+       }
       },
       "status": "ONLINE"
      },
@@ -928,7 +940,13 @@
       "interface": {
        "id": "d-sp1-e1",
        "name": "Ethernet0/1",
-       "type": "PhysicalInterface"
+       "ifname": "outside2",
+       "type": "PhysicalInterface",
+       "priority": 1,
+       "pathMonitoring": {
+        "enable": true,
+        "type": "AUTO"
+       }
       },
       "status": "ONLINE"
      }
@@ -948,7 +966,13 @@
       "interface": {
        "id": "d-sp2-e0",
        "name": "Ethernet0/0",
-       "type": "PhysicalInterface"
+       "ifname": "outside1",
+       "type": "PhysicalInterface",
+       "priority": 10,
+       "pathMonitoring": {
+        "enable": true,
+        "type": "AUTO"
+       }
       },
       "status": "OFFLINE"
      },
@@ -956,7 +980,13 @@
       "interface": {
        "id": "d-sp2-e1",
        "name": "Ethernet0/1",
-       "type": "PhysicalInterface"
+       "ifname": "outside2",
+       "type": "PhysicalInterface",
+       "priority": 1,
+       "pathMonitoring": {
+        "enable": true,
+        "type": "AUTO"
+       }
       },
       "status": "ONLINE"
      }
@@ -965,6 +995,100 @@
   ],
   "paging": {
    "count": 3
+  }
+ },
+ "devices/devicerecords/d-sp1/routing/policybasedroutes": {
+  "items": [
+   {
+    "id": "pbr-sp1",
+    "type": "PolicyBasedRoute",
+    "ingressInterfaces": [
+     {
+      "id": "d-sp1-e2",
+      "name": "Ethernet0/2",
+      "ifname": "inside",
+      "type": "PhysicalInterface"
+     }
+    ],
+    "forwardingActions": [
+     {
+      "matchCriteria": {
+       "id": "acl-teams",
+       "name": "mcp-sdwan-teams",
+       "type": "ExtendedAccessList"
+      },
+      "forwardingActionType": "SET_EGRESS_INTF_BY_PRIORITY",
+      "egressInterfaces": [
+       {
+        "id": "d-sp1-e0",
+        "name": "Ethernet0/0",
+        "ifname": "outside1",
+        "type": "PhysicalInterface"
+       },
+       {
+        "id": "d-sp1-e1",
+        "name": "Ethernet0/1",
+        "ifname": "outside2",
+        "type": "PhysicalInterface"
+       }
+      ]
+     },
+     {
+      "matchCriteria": {
+       "id": "acl-voice",
+       "name": "mcp-sdwan-voice",
+       "type": "ExtendedAccessList"
+      },
+      "forwardingActionType": "SET_EGRESS_INTF_BY_JITTER",
+      "egressInterfaces": [
+       {
+        "id": "d-sp1-e1",
+        "name": "Ethernet0/1",
+        "ifname": "outside2",
+        "type": "PhysicalInterface"
+       },
+       {
+        "id": "d-sp1-e0",
+        "name": "Ethernet0/0",
+        "ifname": "outside1",
+        "type": "PhysicalInterface"
+       }
+      ]
+     }
+    ]
+   }
+  ],
+  "paging": {
+   "count": 1
+  }
+ },
+ "devices/devicerecords/d-hub/routing/policybasedroutes": {
+  "items": [],
+  "paging": {
+   "count": 0
+  }
+ },
+ "devices/devicerecords/d-sp2/routing/policybasedroutes": {
+  "items": [],
+  "paging": {
+   "count": 0
+  }
+ },
+ "show": {
+  "d-sp1": {
+   "show path-monitoring": "Interface: outside1\n  Remote peer: 203.0.113.1  Mode: AUTO\n  Records(Max/Current): 100/100\n  Average Delay(ms): 18.40 Average Jitter(ms): 2.10 Average Loss(%): 0.00 Average MOS: 4.38\nInterface: outside2\n  Remote peer: 198.51.100.1  Mode: AUTO\n  Records(Max/Current): 100/100\n  Average Delay(ms): 320.50 Average Jitter(ms): 45.00 Average Loss(%): 6.00 Average MOS: 2.90\n",
+   "show bgp summary": "BGP router identifier 10.111.0.1, local AS number 65000\nBGP table version is 7, main routing table version 7\n3 network entries using 600 bytes of memory\n\nNeighbor        V           AS MsgRcvd MsgSent   TblVer  InQ OutQ Up/Down  State/PfxRcd\n10.255.255.1    4        65000      40      38        7    0    0 00:30:12        3\n10.255.254.1    4        65000       0       0        1    0    0 never    Active\n",
+   "show policy-route": "Interface                 Route map\ninside                    FMC_GENERATED_PBR_1700000000\n"
+  },
+  "d-sp2": {
+   "show path-monitoring": "Interface: outside1\n  Average Delay(ms): 0 Average Jitter(ms): 0 Average Loss(%): 100.00 Average MOS: 0\n",
+   "show bgp summary": "Neighbor        V           AS MsgRcvd MsgSent   TblVer  InQ OutQ Up/Down  State/PfxRcd\n10.255.255.1    4        65000       0       0        1    0    0 never    Idle\n",
+   "show policy-route": ""
+  },
+  "d-hub": {
+   "show path-monitoring": "",
+   "show bgp summary": "BGP router identifier 10.255.255.1, local AS number 65000\nBGP table version is 7, main routing table version 7\n3 network entries using 600 bytes of memory\n\nNeighbor        V           AS MsgRcvd MsgSent   TblVer  InQ OutQ Up/Down  State/PfxRcd\n10.255.255.1    4        65000      40      38        7    0    0 00:30:12        3\n10.255.254.1    4        65000       0       0        1    0    0 never    Active\n",
+   "show policy-route": ""
   }
  }
 }
