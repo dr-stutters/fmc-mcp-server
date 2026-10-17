@@ -81,6 +81,65 @@
         "cml"
       ]
     },
+    "fmc_policy_cleanup": {
+      "arguments": [
+        "policy",
+        "unused_days"
+      ],
+      "references": [
+        "fmc_export_policy_bundle",
+        "fmc_policy_audit",
+        "fmc_where_used",
+        "fmc_delete_object",
+        "fmc_change_tickets",
+        "fmc_ticket",
+        "fmc_delete_access_rule",
+        "fmc_update_access_rule",
+        "fmc_diff_policy_bundle",
+        "fmc_pending_changes",
+        "fmc_list_policy_assignments",
+        "fmc_deploy",
+        "fmc_get_hit_counts",
+        "fmc_import_policy_bundle",
+        "fmc_rollback_deployment"
+      ],
+      "rendered": true,
+      "tier": "write",
+      "uses": [
+        "fmc"
+      ]
+    },
+    "fmc_rule_change_review": {
+      "arguments": [
+        "policy",
+        "rule",
+        "source",
+        "destination",
+        "protocol",
+        "port"
+      ],
+      "references": [
+        "fmc_get_access_rule",
+        "fmc_export_policy_bundle",
+        "fmc_rule_lookup",
+        "fmc_policy_audit",
+        "fmc_update_access_rule",
+        "fmc_create_access_rule",
+        "fmc_list_policy_assignments",
+        "fmc_pending_changes",
+        "fmc_deploy",
+        "fmc_packet_tracer",
+        "fmc_get_hit_counts",
+        "fmc_rollback_deployment",
+        "fmc_diff_policy_bundle",
+        "fmc_import_policy_bundle"
+      ],
+      "rendered": true,
+      "tier": "write",
+      "uses": [
+        "fmc"
+      ]
+    },
     "fmc_why_blocked": {
       "arguments": [
         "source",

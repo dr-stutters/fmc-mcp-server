@@ -328,6 +328,130 @@ note it and carry on.
 """
 
 
+def _rule_change_review_text(
+    policy: str,
+    rule: str,
+    source: str | None,
+    destination: str | None,
+    protocol: str,
+    port: int | None,
+) -> str:
+    """The fmc_rule_change_review instructions."""
+    pol = _q(policy, "policy")
+    rul = _q(rule, "rule")
+    flows: list[str] = []
+    if bool(source) != bool(destination):
+        raise InvalidRequest("A sample flow needs both source and destination (or neither).")
+    if source and destination:
+        for value, what in ((source, "source"), (destination, "destination")):
+            try:
+                ipaddress.ip_address(value.strip())
+            except ValueError:
+                raise InvalidRequest(f"{what} {value!r} is not an IP address.") from None
+        flow = f"source={_q(source, 'source')}, destination={_q(destination, 'destination')}"
+        flow += f", protocol={_q(protocol, 'protocol')}"
+        if port and protocol != "icmp":
+            flow += f", port={port}"
+        flows.append(f"the user's flow ({flow})")
+    sample = (
+        f"{flows[0]}, plus " if flows else ""
+    ) + "one flow the rule is meant to match and one just outside it (a neighbouring address or port)"
+    return f"""Review a proposed change to access rule {rul} in access control policy {pol} before it
+is made and before it is deployed. Nothing changes until the user approves a preview; deploying is a
+separate approval.
+
+1. Baseline: {tool_ref("fmc_get_access_rule")} with policy={pol}, rule={rul} (it may not exist yet:
+   then this is a new rule) and {tool_ref("fmc_export_policy_bundle")} with policy={pol}. Keep the
+   bundle text: it is the rollback point. Ask the user for the change if it isn't clear: action,
+   zones, networks, ports, applications, users, logging, intrusion policy, and position.
+
+2. Before: {tool_ref("fmc_rule_lookup")} with policy={pol} for {sample}. Record the matching rule and
+   verdict of each. Then {tool_ref("fmc_policy_audit")} with policy={pol},
+   checks=["shadowed", "permissive", "no_intrusion", "no_logging", "consolidation"] as the baseline
+   findings.
+
+3. Preview the change without confirm: {tool_ref("fmc_update_access_rule")} for an existing rule or
+   {tool_ref("fmc_create_access_rule")} for a new one, with exactly the user's values. Show the
+   preview (it lists what a PUT removes). Before asking for approval, reason over the policy:
+   - Would an earlier rule already take all of this rule's traffic (the new rule would be shadowed)?
+   - Would this rule take traffic that a later rule handles today (it shadows others)? Name them.
+   - Is it wider than asked (any source, any port, an ALLOW without an intrusion policy or logging)?
+
+4. Only after the user approves: call the same tool again with the confirm token. Then repeat step 2
+   with the same flows and compare: each flow's verdict should change only where the change intends;
+   new shadowed, redundant or permissive findings are regressions. If one appears, say so and
+   propose the fix (move_to, a narrower condition) as another preview.
+
+5. What a deploy would push: {tool_ref("fmc_list_policy_assignments")} with policy={pol} for the devices, and
+   {tool_ref("fmc_pending_changes")} for each (at most three). Pending changes that aren't this one
+   are a finding: someone else's work would go out too.
+
+6. Deploy plan (don't deploy unless the user asks): {tool_ref("fmc_deploy")} previewed for those
+   devices, then verification with {tool_ref("fmc_packet_tracer")} for the in-rule flow and
+   {tool_ref("fmc_get_hit_counts")} on the rule. Rollback: {tool_ref("fmc_rollback_deployment")} for
+   the device, or {tool_ref("fmc_diff_policy_bundle")} with a=<baseline bundle> to see exactly what
+   to undo, and {tool_ref("fmc_import_policy_bundle")} with the baseline to restore it.
+
+7. Report: the change as applied (or still only previewed), the flows before and after, audit
+   findings added or removed, pending changes per device, and the deploy and rollback steps.
+"""
+
+
+def _policy_cleanup_text(policy: str, unused_days: int) -> str:
+    """The fmc_policy_cleanup instructions."""
+    if not 1 <= unused_days <= 3650:
+        raise InvalidRequest(f"unused_days must be 1-3650, not {unused_days}.")
+    pol = _q(policy, "policy")
+    return f"""Clean up access control policy {pol}: turn its audit findings into a reviewed, grouped
+cleanup that is applied change by change with the user's approval. Nothing changes until the user
+approves a preview; deploying is a separate approval.
+
+1. Baseline: {tool_ref("fmc_export_policy_bundle")} with policy={pol}. Keep the bundle text: it is
+   the rollback point and the reference for the final diff.
+
+2. Findings: {tool_ref("fmc_policy_audit")} with policy={pol}, unused_days={unused_days}. Each finding
+   carries a proposed fix as a tool call.
+
+3. Group the findings into a cleanup plan and show it before changing anything:
+   a. Redundant rules (same action as the rule covering them): delete.
+   b. Disabled rules: delete, unless the user keeps them for a reason.
+   c. Rules with no hits in {unused_days} days: disable for one review cycle rather than delete
+      (enabled=false); ask about rare traffic (backups, DR, quarterly jobs) first.
+   d. Shadowed rules (a different action covers them): never automatic. Ask the owner whether the
+      rule's action was intended (then move it above the covering rule) or is obsolete (delete).
+   e. Rules on expired time ranges: delete, or extend the time range in the FMC UI.
+   f. ALLOW rules without an intrusion policy, rules that log nothing, any-any rules: propose the
+      change per rule; these change inspection and traffic, so the user decides each.
+   g. Merge candidates and duplicate objects: optional tidy-ups; for duplicates use
+      {tool_ref("fmc_where_used")} on each object before repointing and
+      {tool_ref("fmc_delete_object")}.
+   For each group give the rules or objects, the change and its risk. Ask which groups to apply.
+
+4. Change management: {tool_ref("fmc_change_tickets")}. If FMC requires tickets, open one with
+   {tool_ref("fmc_ticket")} (action="open") before the first change and say so.
+
+5. Apply the approved groups one change at a time with the finding's tool
+   ({tool_ref("fmc_delete_access_rule")}, {tool_ref("fmc_update_access_rule")},
+   {tool_ref("fmc_delete_object")}, ...): preview, show it, and confirm only what the user approved
+   (one approval may cover a whole group of identical changes; list them). Stop at the first
+   failure and report what was applied.
+
+6. Verify: {tool_ref("fmc_diff_policy_bundle")} with a=<baseline bundle> and the live policy must
+   show exactly the approved changes and nothing else. Then {tool_ref("fmc_policy_audit")} again:
+   the addressed findings are gone and no new ones appeared.
+
+7. Deploy plan (don't deploy unless the user asks): {tool_ref("fmc_pending_changes")} for the devices
+   from {tool_ref("fmc_list_policy_assignments")} with policy={pol}, then {tool_ref("fmc_deploy")}
+   previewed. Afterwards {tool_ref("fmc_get_hit_counts")} on the remaining rules confirms traffic
+   still matches where expected. Rollback: {tool_ref("fmc_import_policy_bundle")} with the baseline
+   bundle re-creates deleted rules and restores changed ones (preview first), or
+   {tool_ref("fmc_rollback_deployment")} on a device.
+
+8. Report: per group what was applied, skipped (and why) or left for the owner, the audit before and
+   after (counts per severity), the diff summary, and the ticket, deploy and rollback steps.
+"""
+
+
 def register(reg: ToolRegistrar) -> None:
     @reg.prompt(
         title="Why is this traffic blocked?",
@@ -453,3 +577,48 @@ def register(reg: ToolRegistrar) -> None:
         writes one ranked report (critical, warning, info), each finding with its evidence and a
         concrete next step. Read-only."""
         return _health_review_text(domain, device, lookback_hours)
+
+    @reg.prompt(
+        title="Review a rule change",
+        tier=Tier.WRITE,
+        example={
+            "policy": "mcp-test-acp",
+            "rule": "mcp-test-allow-web",
+            "source": "192.0.2.10",
+            "destination": "10.10.10.80",
+            "protocol": "tcp",
+            "port": "443",
+        },
+    )
+    def fmc_rule_change_review(
+        policy: Annotated[str, Field(description="Access control policy name or UUID")],
+        rule: Annotated[str, Field(description="Rule to change, or the name of the new rule")],
+        source: Annotated[str | None, Field(description="Sample flow source IP (optional)")] = None,
+        destination: Annotated[str | None, Field(description="Sample flow destination IP (optional)")] = None,
+        protocol: Annotated[Literal["tcp", "udp", "icmp"], Field(description="Sample flow protocol")] = "tcp",
+        port: Annotated[
+            int | None, Field(ge=1, le=65535, description="Sample flow destination port (tcp/udp)")
+        ] = None,
+    ) -> str:
+        """Review an access rule change before it is made and deployed: baseline bundle, sample flows
+        through fmc_rule_lookup before and after, a shadowing and overlap check, the change as a preview,
+        what a deploy would push, and a deploy plan with rollback. Changes only what the user approves."""
+        return _rule_change_review_text(policy, rule, source, destination, protocol, port)
+
+    @reg.prompt(
+        title="Clean up an access policy",
+        tier=Tier.WRITE,
+        example={"policy": "mcp-test-acp", "unused_days": "90"},
+    )
+    def fmc_policy_cleanup(
+        policy: Annotated[str, Field(description="Access control policy name or UUID")],
+        unused_days: Annotated[
+            int, Field(ge=1, le=3650, description="Rules with no hits in this many days count as unused")
+        ] = 90,
+    ) -> str:
+        """Turn fmc_policy_audit findings into an applied cleanup: baseline bundle, findings grouped into
+        a plan (delete redundant and disabled rules, disable unused ones, owner decisions for shadowed
+        rules, inspection and logging fixes, object tidy-ups), a change ticket when FMC needs one, each
+        change previewed and confirmed, a diff against the baseline and a re-audit, then a deploy plan
+        with rollback."""
+        return _policy_cleanup_text(policy, unused_days)
