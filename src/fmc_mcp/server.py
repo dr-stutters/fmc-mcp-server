@@ -14,6 +14,7 @@ from fmc_mcp.tools import (
     activity,
     admin,
     analysis,
+    app_routing,
     bundle,
     bundle_import,
     containment,
@@ -70,6 +71,10 @@ Workflows:
   fmc_set_access_logging sends connection/intrusion events there too.
 - Dynamic routing: fmc_get_routing (BGP, OSPF, ECMP, PBR, VRFs) -> fmc_configure_bgp /
   fmc_configure_ospf / fmc_create_vrf -> fmc_deploy -> fmc_run_show_command('show route').
+- SD-WAN application-aware routing: fmc_configure_wan_interface (priority, path monitoring) on each
+  WAN link -> fmc_create_app_route (applications/networks/users out of the link with the best
+  jitter, loss, RTT or MOS, or by priority) -> fmc_deploy -> fmc_run_show_command('show
+  policy-route'); ECMP across WAN links: fmc_configure_ecmp_zone; remove: fmc_delete_app_route.
 - Block a host fast: map its IP into a dynamic object that a BLOCK rule references
   (fmc_map_dynamic_object); mapping changes need no deployment, only the rule does (once).
   fmc_contain_host / fmc_release_host do this for one host with the quarantine object (and propose
@@ -176,6 +181,7 @@ def create_server(
             platform_settings.register,
             platform_access.register,
             routing.register,
+            app_routing.register,
             intrusion.register,
             admin.register,
             prefilter.register,

@@ -1,5 +1,31 @@
 # Changelog
 
+## Unreleased
+
+### Added
+- **SD-WAN application-aware routing (F51b, part of #107).** `fmc_configure_wan_interface` sets a routed
+  interface's priority, ICMP path monitoring (`auto`/`auto4`/`auto6` toward the next hop, or `ip` with a
+  monitored peer address) and HTTP-based application monitoring (with monitored applications), changing only
+  what is passed. `fmc_configure_ecmp_zone` creates, changes or deletes ECMP zones (global table or a VRF; an
+  interface already in another zone blocks). `fmc_create_app_route` matches applications (FMC's catalog, by
+  name), source/destination networks, ports or realm users in a new extended access list named after the
+  route, then adds a forwarding action to the policy-based route of the ingress interfaces (or creates one),
+  with the egress interface picked by `order`, `priority` or the best measured path (`jitter`, `loss`, `rtt`,
+  `mos`); metric ordering is blocked until every egress interface has path monitoring, ingress interfaces
+  already in a different policy-based route block, and a failed route deletes the new access list again.
+  `fmc_delete_app_route` removes the forwarding action (and the policy-based route when it was the last one)
+  and deletes the access list unless another route still uses it. All write tier, preview-first.
+- `fmc_get_routing` lists policy-based routes in full (match, egress interfaces, how one is picked) instead of
+  a count, and adds `wan_interfaces` (priority, path monitoring, HTTP monitoring of each configured interface).
+- `scripts/capture_fixtures.py --sdwan` records the F51b fixtures (GETs only) from an SD-WAN branch
+  (`FMC_LIVE_SDWAN_DEVICE`).
+
+### Notes
+- The metric `forwardingActionType` values (`SET_EGRESS_INTF_BY_JITTER`, `_LOST_PKTS`, `_RTT`, `_MOS`) are not
+  in FMC 10.0.1's OpenAPI spec (only `_ORDER` and `_PRIORITY` are); Cisco's guide spells them
+  `SET_EGRESS_INTERFACE_BY_*`. The INTF spelling matches working payloads; live verification is pending (F53).
+  `tests/fixtures/sdwan_app_routing.json` is spec-shaped until it is recorded on an SD-WAN branch.
+
 ## 0.12.0 (2026-10-17)
 
 Wave 4 Phase B: policy hygiene, policy bundles (export, diff, import) and three workflow prompts, all proven
