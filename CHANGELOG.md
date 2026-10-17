@@ -63,6 +63,11 @@
 - `fmc_shadowed_rules` and `fmc_get_hit_counts` share their logic with the audit (`shadow_findings`,
   `rule_hits`); their output is unchanged.
 
+### Fixed
+- `fmc_policy_audit` failed on a policy whose rules use time ranges: FMC sends `timeRangeObjects` as a plain
+  list, not an `{objects: [...]}` block. Found by the live hygiene seed; `tests/live/test_live_hygiene.py`
+  (`FMC_LIVE_HYGIENE_POLICY`) now covers every static check on a real policy.
+
 ## 0.11.0 (unreleased)
 
 ### Added

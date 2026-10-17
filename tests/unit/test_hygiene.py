@@ -167,7 +167,9 @@ def test_expired_time_ranges() -> None:
         {"id": "t3", "name": "old-unused", "effectiveEndDateTime": "2023-01-01T00:00"},
     ]
     rules = [
-        rule("holiday", 1, timeRangeObjects={"objects": [{"id": "t1", "name": "xmas-2024"}]}),
+        rule(
+            "holiday", 1, timeRangeObjects=[{"id": "t1", "name": "xmas-2024", "type": "TimeRange"}]
+        ),  # FMC's shape
         rule("always", 2, timeRangeObjects={"objects": [{"id": "t2", "name": "forever"}]}),
     ]
     found = expired_time_ranges("p", trs, rules, datetime(2026, 1, 1, tzinfo=UTC))

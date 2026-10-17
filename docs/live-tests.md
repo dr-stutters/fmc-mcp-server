@@ -37,6 +37,7 @@ Inputs that depend on your own FMC and FTD come from these variables, in the env
 | `FMC_LIVE_REALM` | `mcp-test-ad` | An AD/LDAP realm already set up in FMC, for `test_live_identity.py` |
 | `FMC_LIVE_REALM_GROUP` | `mcp-contractors` | A group in that realm (expected after a download; the group rule uses it) |
 | `FMC_LIVE_IDENTITY_POLICY` | `mcp-test-idp` | An identity policy on the realm, selected in `mcp-test-ftd-acp` (FMC's REST API can't select it; use the access policy editor) |
+| `FMC_LIVE_HYGIENE_POLICY` | `mcp-test-hygiene-acp` | An access policy seeded with one finding per static `fmc_policy_audit` check (any-any allow, two rules differing only in destination, a duplicate host, a rule on an expired time range, a rule that logs nothing), for `test_live_hygiene.py` |
 
 The FTD tests (`needs_ftd`) need `FMC_LIVE_DEVICE`, `FMC_LIVE_FTD_HOST`, `FMC_LIVE_FTD_REG_KEY`,
 `FMC_LIVE_FTD_OUTSIDE_IP`, `FMC_LIVE_FTD_GATEWAY` and `FMC_LIVE_TRACE_TARGET`.
