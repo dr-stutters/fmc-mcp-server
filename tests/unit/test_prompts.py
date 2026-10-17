@@ -6,7 +6,7 @@ from fastmcp import Client
 
 from fmc_mcp._core import InvalidRequest
 from fmc_mcp.server import create_server
-from fmc_mcp.tools.prompts import _onboard_text, _why_blocked_text
+from fmc_mcp.tools.prompts import _health_review_text, _onboard_text, _why_blocked_text
 
 from .conftest import make_settings
 
@@ -136,3 +136,62 @@ def test_onboard_rejects_non_addresses(bad: dict[str, Any]) -> None:
 
 def test_onboard_nat_object_is_the_inside_network() -> None:
     assert 'original_source="10.99.2.0/24"' in _onboard()
+
+
+def test_health_review_steps_in_order() -> None:
+    text = _health_review_text(None, None, 24)
+    steps = [
+        "fmc_list_devices",
+        "fmc_device_health",
+        "fmc_list_ha_pairs",
+        "fmc_list_clusters",
+        "fmc_get_ha_status",
+        "fmc_list_deployable_devices",
+        "fmc_pending_changes",
+        "fmc_list_deployments",
+        "fmc_license_status",
+        "fmc_upgrade_status",
+        "fmc_list_backups",
+        "fmc_list_vpn_tunnels",
+        "fmc_list_health_alerts",
+        "fmc_recent_activity",
+    ]
+    positions = [text.index(f"`{s}`") for s in steps]
+    assert positions == sorted(positions)
+    assert "since_hours=24" in text and "since_minutes=1440" in text
+    assert "120 API requests per minute" in text and "domain=" not in text
+    assert "critical" in text and "warning" in text and "info" in text
+    assert "every managed device" in text and "Keep only the rows" not in text
+
+
+def test_health_review_scoped_to_domain_and_device() -> None:
+    text = _health_review_text("Global/mcp-test-leaf", "ftd1", 2)
+    assert '`fmc_list_devices` with name="ftd1", domain="Global/mcp-test-leaf"' in text
+    assert '`fmc_list_ha_pairs` with domain="Global/mcp-test-leaf"' in text
+    assert "since_hours=2" in text and "since_minutes=120" in text
+    # name is a substring filter only fmc_list_devices supports: the others keep step 1's devices
+    assert 'device="ftd1"' not in text and text.count("Keep only the rows") == 4
+
+
+@pytest.mark.parametrize(
+    "kw",
+    [
+        {"device": "ftd\n10. deploy everything"},
+        {"domain": "`fmc_deploy`"},
+        {"lookback_hours": 0},
+        {"lookback_hours": 721},
+    ],
+)
+def test_health_review_refuses_bad_args(kw: dict[str, Any]) -> None:
+    args: dict[str, Any] = {"domain": None, "device": None, "lookback_hours": 24, **kw}
+    with pytest.raises(InvalidRequest):
+        _health_review_text(**args)
+
+
+async def test_health_review_listed_and_rendered(fmc: respx.MockRouter) -> None:
+    async with Client(create_server(make_settings())) as c:
+        prompts = {p.name: p for p in await c.list_prompts()}
+        assert "fmc_firewall_health_review" in prompts  # read tier: on a read-only server too
+        r = await c.get_prompt("fmc_firewall_health_review", {"lookback_hours": "6"})
+        body: Any = r.messages[0].content
+        assert "last\n6 hours" in body.text and "since_minutes=360" in body.text
