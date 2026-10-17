@@ -45,6 +45,7 @@ TOPOLOGY_TYPES = {
     "POINT_TO_POINT": "point-to-point",
     "HUB_AND_SPOKE": "hub and spoke",
     "FULL_MESH": "full mesh",
+    "AUTO_VPN": "hub and spoke",
 }
 
 
@@ -89,6 +90,10 @@ def endpoint_row(e: dict[str, Any]) -> dict[str, Any]:
         if e.get("tunnelSourceInterface")
         else None,
         "protected_networks": _names(e.get("protectedNetworks")),
+        "primary_hub": e.get("isPrimaryHub") if e.get("peerType") == "HUB" else None,
+        "spoke_pools": _names(e.get("ipv4PoolsForSpokeVti")) or None,
+        "backup_interfaces": [ref_label(b.get("interface") or {}) for b in e.get("backupInterfaces") or []]
+        or None,
         "connection": e.get("connectionType"),
         "nat_exempt": e.get("enableNATExempt"),
         "nat_exempt_inside": [ref_label(r) for r in e.get("insideInterface") or []] or None,

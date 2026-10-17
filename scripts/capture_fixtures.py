@@ -3,6 +3,10 @@
     uv run python scripts/capture_fixtures.py          # policies and objects (the seeded mcp-test-* set)
     uv run python scripts/capture_fixtures.py --bundle # every GET fmc_export_policy_bundle makes for
                                                        # mcp-test-acp + mcp-test-nat (bundle_acp.json)
+    uv run python scripts/capture_fixtures.py --sdwan  # the SD-WAN topology named by FMC_LIVE_SDWAN
+                                                       # (default mcp-sdwan-t1) with its devices'
+                                                       # interfaces, pools, zones and tunnel/path
+                                                       # health (sdwan_lab.json; GETs only)
     uv run python scripts/capture_fixtures.py --ftd    # device fixtures from the managed FTD named by
                                                        # FMC_LIVE_DEVICE (after tests/live/test_live_ftd.py;
                                                        # also FMC_LIVE_TRACE_TARGET, docs/live-tests.md)
@@ -141,6 +145,40 @@ async def capture_bundle(app: FmcApp, host: str) -> None:
     print("captured bundle_acp", len(out), "responses")
 
 
+async def capture_sdwan(app: FmcApp, host: str) -> None:
+    """Every GET the SD-WAN tools make for one AUTO_VPN topology, keyed by API path (reads only)."""
+    name = os.environ.get("FMC_LIVE_SDWAN", "mcp-sdwan-t1")
+    out: dict[str, Any] = {}
+
+    async def get(path: str, params: dict[str, Any] | None = None) -> Any:
+        data = await app.api.get(path, {"expanded": "true", "limit": 1000, **(params or {})})
+        key = path.split("/domain/", 1)[-1].split("/", 1)[-1]  # drop the domain UUID
+        out[key] = scrub(data, host)
+        return data
+
+    s2s = await app.config_path("policy/ftds2svpns")
+    topo = next(t for t in (await get(s2s)).get("items") or [] if t.get("name") == name)
+    eps = await get(f"{s2s}/{topo['id']}/endpoints")
+    for sub in ("ikesettings", "ipsecsettings"):
+        await get(f"{s2s}/{topo['id']}/{sub}")
+    for e in eps.get("items") or []:
+        dev = (e.get("device") or {}).get("id")
+        if not dev:
+            continue
+        for kind in ("physicalinterfaces", "virtualtunnelinterfaces", "loopbackinterfaces"):
+            await get(await app.config_path(f"devices/devicerecords/{dev}/{kind}"))
+    for coll in ("object/ipv4addresspools", "object/securityzones", "devices/devicerecords"):
+        await get(await app.config_path(coll))
+    for coll in ("health/tunnelstatuses", "health/pathmonitoredinterfaces"):
+        try:
+            await get(await app.config_path(coll))
+        except Exception as e:  # health collections answer 404/405 on some versions
+            print("skipped", coll, e)
+    OUT.mkdir(parents=True, exist_ok=True)
+    (OUT / "sdwan_lab.json").write_text(json.dumps(out, indent=1) + "\n")
+    print("captured sdwan_lab", len(out), "responses")
+
+
 async def main() -> None:
     settings = Settings()  # type: ignore[call-arg]
     host = re.sub(r"^https?://", "", settings.url).split("/")[0]
@@ -148,6 +186,12 @@ async def main() -> None:
     if "--bundle" in sys.argv:
         try:
             await capture_bundle(app, host)
+        finally:
+            await app.aclose()
+        return
+    if "--sdwan" in sys.argv:
+        try:
+            await capture_sdwan(app, host)
         finally:
             await app.aclose()
         return
