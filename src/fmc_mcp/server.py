@@ -40,6 +40,7 @@ from fmc_mcp.tools import (
     routing,
     rule_io,
     sdwan,
+    sdwan_status,
     security_intel,
     system,
     tickets,
@@ -74,7 +75,9 @@ Workflows:
 - SD-WAN (hub and spoke over VTIs): zone the WAN and inside interfaces (fmc_update_interface) ->
   fmc_create_sdwan_topology (hub DVTI, spoke pool, spokes, backup hub, iBGP overlay) -> fmc_deploy hubs
   and spokes -> fmc_get_vpn_topology / fmc_list_vpn_tunnels; add or remove branches and the backup hub
-  with fmc_update_sdwan_topology; remove with fmc_delete_s2s_vpn.
+  with fmc_update_sdwan_topology; remove with fmc_delete_s2s_vpn. Health per branch (WAN path metrics,
+  app route paths, tunnels, degraded links): fmc_sdwan_status; "app X is slow at branch Y":
+  fmc_sdwan_troubleshoot.
 - Block a host fast: map its IP into a dynamic object that a BLOCK rule references
   (fmc_map_dynamic_object); mapping changes need no deployment, only the rule does (once).
   fmc_contain_host / fmc_release_host do this for one host with the quarantine object (and propose
@@ -178,6 +181,7 @@ def create_server(
             ha.register,
             vpn.register,
             sdwan.register,
+            sdwan_status.register,
             activity.register,
             platform_settings.register,
             platform_access.register,

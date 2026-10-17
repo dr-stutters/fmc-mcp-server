@@ -140,6 +140,34 @@
         "fmc"
       ]
     },
+    "fmc_sdwan_troubleshoot": {
+      "arguments": [
+        "application",
+        "branch",
+        "destination",
+        "source",
+        "topology"
+      ],
+      "references": [
+        "fmc_sdwan_status",
+        "fmc_get_routing",
+        "fmc_api_call",
+        "fmc_run_show_command",
+        "fmc_get_vpn_topology",
+        "fmc_list_vpn_tunnels",
+        "fmc_list_health_alerts",
+        "fmc_packet_tracer",
+        "fmc_why_blocked",
+        "fmc_update_sdwan_topology",
+        "fmc_pending_changes",
+        "fmc_deploy"
+      ],
+      "rendered": true,
+      "tier": "read",
+      "uses": [
+        "fmc"
+      ]
+    },
     "fmc_why_blocked": {
       "arguments": [
         "source",
@@ -648,6 +676,10 @@
     "fmc_run_show_command": {
       "tier": "read",
       "title": "Run a show command on a device"
+    },
+    "fmc_sdwan_status": {
+      "tier": "read",
+      "title": "SD-WAN status"
     },
     "fmc_search_spec": {
       "tier": "read",
