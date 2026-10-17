@@ -1,0 +1,970 @@
+{
+ "_source": "Synthesized 2026-10-17 from the FMC 10.0.1 spec (FTDS2SVpnModel, VpnEndpoint, FTDVTIInterface, IPv4AddressPool, PathMonitoredInterface) and payloads validated on FMC 10.0.1 in an earlier CVD lab. Replace with `capture_fixtures.py --sdwan` once the mcp-sdwan-t1 topology is built live.",
+ "devices/devicerecords": {
+  "items": [
+   {
+    "id": "d-hub",
+    "name": "mcp-sdwan-t1-hub",
+    "type": "Device",
+    "model": "Cisco Secure Firewall Threat Defense for KVM",
+    "sw_version": "10.0.1"
+   },
+   {
+    "id": "d-sp1",
+    "name": "mcp-sdwan-t1-spoke1",
+    "type": "Device",
+    "model": "Cisco Secure Firewall Threat Defense for KVM",
+    "sw_version": "10.0.1"
+   },
+   {
+    "id": "d-sp2",
+    "name": "mcp-sdwan-t1-spoke2",
+    "type": "Device",
+    "model": "Cisco Secure Firewall Threat Defense for KVM",
+    "sw_version": "10.0.1"
+   },
+   {
+    "id": "d-sp3",
+    "name": "mcp-sdwan-t1-spoke3",
+    "type": "Device",
+    "model": "Cisco Secure Firewall Threat Defense for KVM",
+    "sw_version": "10.0.1"
+   },
+   {
+    "id": "d-hub2",
+    "name": "mcp-sdwan-t1-hub2",
+    "type": "Device",
+    "model": "Cisco Secure Firewall Threat Defense for KVM",
+    "sw_version": "10.0.1"
+   }
+  ],
+  "paging": {
+   "count": 5
+  }
+ },
+ "devices/devicerecords/d-hub/physicalinterfaces": {
+  "items": [
+   {
+    "id": "d-hub-e0",
+    "name": "Ethernet0/0",
+    "ifname": "outside1",
+    "type": "PhysicalInterface",
+    "enabled": true,
+    "securityZone": {
+     "id": "zone-outside1",
+     "name": "mcp-sdwan-outside1",
+     "type": "SecurityZone"
+    },
+    "ipv4": {
+     "static": {
+      "address": "203.0.113.1",
+      "netmask": "24"
+     }
+    }
+   },
+   {
+    "id": "d-hub-e1",
+    "name": "Ethernet0/1",
+    "ifname": "outside2",
+    "type": "PhysicalInterface",
+    "enabled": true,
+    "securityZone": {
+     "id": "zone-outside2",
+     "name": "mcp-sdwan-outside2",
+     "type": "SecurityZone"
+    },
+    "ipv4": {
+     "static": {
+      "address": "198.51.100.1",
+      "netmask": "24"
+     }
+    }
+   },
+   {
+    "id": "d-hub-e2",
+    "name": "Ethernet0/2",
+    "ifname": "inside",
+    "type": "PhysicalInterface",
+    "enabled": true,
+    "securityZone": {
+     "id": "zone-inside",
+     "name": "mcp-sdwan-inside",
+     "type": "SecurityZone"
+    },
+    "ipv4": {
+     "static": {
+      "address": "10.101.0.1",
+      "netmask": "24"
+     }
+    }
+   },
+   {
+    "id": "d-hub-e3",
+    "name": "Ethernet0/3",
+    "type": "PhysicalInterface",
+    "enabled": false
+   }
+  ],
+  "paging": {
+   "count": 4
+  }
+ },
+ "devices/devicerecords/d-hub/virtualtunnelinterfaces": {
+  "items": [
+   {
+    "id": "dvti-hub",
+    "name": "Virtual-Template1",
+    "ifname": "sdwan-dvti",
+    "type": "VTIInterface",
+    "tunnelType": "DYNAMIC",
+    "tunnelId": 1,
+    "enabled": true,
+    "tunnelSource": {
+     "id": "d-hub-e0",
+     "name": "Ethernet0/0",
+     "type": "PhysicalInterface"
+    },
+    "securityZone": {
+     "id": "zone-overlay",
+     "name": "mcp-sdwan-overlay",
+     "type": "SecurityZone"
+    },
+    "ipAddressAssignmentType": "BORROW_IP_FROM_INTERFACE",
+    "borrowIPfrom": {
+     "id": "lo-hub",
+     "name": "Loopback1",
+     "type": "LoopbackInterface"
+    },
+    "ipsecMode": "ipv4"
+   },
+   {
+    "id": "svti-hub",
+    "name": "Tunnel9",
+    "ifname": "legacy-s2s",
+    "type": "VTIInterface",
+    "tunnelType": "STATIC",
+    "tunnelId": 9,
+    "enabled": true,
+    "tunnelSource": {
+     "id": "d-hub-e1",
+     "name": "Ethernet0/1",
+     "type": "PhysicalInterface"
+    },
+    "ipv4": {
+     "static": {
+      "address": "169.254.9.1",
+      "netmask": "255.255.255.252"
+     }
+    },
+    "ipsecMode": "ipv4"
+   }
+  ],
+  "paging": {
+   "count": 2
+  }
+ },
+ "devices/devicerecords/d-hub/loopbackinterfaces": {
+  "items": [
+   {
+    "id": "lo-hub",
+    "name": "Loopback1",
+    "ifname": "sdwan-dvti-lo",
+    "type": "LoopbackInterface",
+    "loopbackId": 1,
+    "enabled": true,
+    "ipv4": {
+     "static": {
+      "address": "10.255.255.1",
+      "netmask": "255.255.255.255"
+     }
+    }
+   }
+  ],
+  "paging": {
+   "count": 1
+  }
+ },
+ "devices/devicerecords/d-sp1/physicalinterfaces": {
+  "items": [
+   {
+    "id": "d-sp1-e0",
+    "name": "Ethernet0/0",
+    "ifname": "outside1",
+    "type": "PhysicalInterface",
+    "enabled": true,
+    "securityZone": {
+     "id": "zone-outside1",
+     "name": "mcp-sdwan-outside1",
+     "type": "SecurityZone"
+    },
+    "ipv4": {
+     "static": {
+      "address": "203.0.113.11",
+      "netmask": "24"
+     }
+    }
+   },
+   {
+    "id": "d-sp1-e1",
+    "name": "Ethernet0/1",
+    "ifname": "outside2",
+    "type": "PhysicalInterface",
+    "enabled": true,
+    "securityZone": {
+     "id": "zone-outside2",
+     "name": "mcp-sdwan-outside2",
+     "type": "SecurityZone"
+    },
+    "ipv4": {
+     "static": {
+      "address": "198.51.100.11",
+      "netmask": "24"
+     }
+    }
+   },
+   {
+    "id": "d-sp1-e2",
+    "name": "Ethernet0/2",
+    "ifname": "inside",
+    "type": "PhysicalInterface",
+    "enabled": true,
+    "securityZone": {
+     "id": "zone-inside",
+     "name": "mcp-sdwan-inside",
+     "type": "SecurityZone"
+    },
+    "ipv4": {
+     "static": {
+      "address": "10.111.0.1",
+      "netmask": "24"
+     }
+    }
+   },
+   {
+    "id": "d-sp1-e3",
+    "name": "Ethernet0/3",
+    "type": "PhysicalInterface",
+    "enabled": false
+   }
+  ],
+  "paging": {
+   "count": 4
+  }
+ },
+ "devices/devicerecords/d-sp1/virtualtunnelinterfaces": {
+  "items": [
+   {
+    "id": "svti-d-sp1",
+    "name": "Tunnel1",
+    "ifname": "sdwan-vti1",
+    "type": "VTIInterface",
+    "tunnelType": "STATIC",
+    "tunnelId": 1,
+    "enabled": true,
+    "tunnelSource": {
+     "id": "d-sp1-e0",
+     "name": "Ethernet0/0",
+     "type": "PhysicalInterface"
+    },
+    "securityZone": {
+     "id": "zone-overlay",
+     "name": "mcp-sdwan-overlay",
+     "type": "SecurityZone"
+    },
+    "ipsecMode": "ipv4",
+    "metadata": {
+     "vpnTopologyName": "mcp-sdwan-t1"
+    }
+   }
+  ],
+  "paging": {
+   "count": 1
+  }
+ },
+ "devices/devicerecords/d-sp1/loopbackinterfaces": {
+  "items": [],
+  "paging": {
+   "count": 0
+  }
+ },
+ "devices/devicerecords/d-sp2/physicalinterfaces": {
+  "items": [
+   {
+    "id": "d-sp2-e0",
+    "name": "Ethernet0/0",
+    "ifname": "outside1",
+    "type": "PhysicalInterface",
+    "enabled": true,
+    "securityZone": {
+     "id": "zone-outside1",
+     "name": "mcp-sdwan-outside1",
+     "type": "SecurityZone"
+    },
+    "ipv4": {
+     "static": {
+      "address": "203.0.113.12",
+      "netmask": "24"
+     }
+    }
+   },
+   {
+    "id": "d-sp2-e1",
+    "name": "Ethernet0/1",
+    "ifname": "outside2",
+    "type": "PhysicalInterface",
+    "enabled": true,
+    "securityZone": {
+     "id": "zone-outside2",
+     "name": "mcp-sdwan-outside2",
+     "type": "SecurityZone"
+    },
+    "ipv4": {
+     "static": {
+      "address": "198.51.100.12",
+      "netmask": "24"
+     }
+    }
+   },
+   {
+    "id": "d-sp2-e2",
+    "name": "Ethernet0/2",
+    "ifname": "inside",
+    "type": "PhysicalInterface",
+    "enabled": true,
+    "securityZone": {
+     "id": "zone-inside",
+     "name": "mcp-sdwan-inside",
+     "type": "SecurityZone"
+    },
+    "ipv4": {
+     "static": {
+      "address": "10.112.0.1",
+      "netmask": "24"
+     }
+    }
+   },
+   {
+    "id": "d-sp2-e3",
+    "name": "Ethernet0/3",
+    "type": "PhysicalInterface",
+    "enabled": false
+   }
+  ],
+  "paging": {
+   "count": 4
+  }
+ },
+ "devices/devicerecords/d-sp2/virtualtunnelinterfaces": {
+  "items": [
+   {
+    "id": "svti-d-sp2",
+    "name": "Tunnel1",
+    "ifname": "sdwan-vti1",
+    "type": "VTIInterface",
+    "tunnelType": "STATIC",
+    "tunnelId": 1,
+    "enabled": true,
+    "tunnelSource": {
+     "id": "d-sp2-e0",
+     "name": "Ethernet0/0",
+     "type": "PhysicalInterface"
+    },
+    "securityZone": {
+     "id": "zone-overlay",
+     "name": "mcp-sdwan-overlay",
+     "type": "SecurityZone"
+    },
+    "ipsecMode": "ipv4",
+    "metadata": {
+     "vpnTopologyName": "mcp-sdwan-t1"
+    }
+   }
+  ],
+  "paging": {
+   "count": 1
+  }
+ },
+ "devices/devicerecords/d-sp2/loopbackinterfaces": {
+  "items": [],
+  "paging": {
+   "count": 0
+  }
+ },
+ "devices/devicerecords/d-sp3/physicalinterfaces": {
+  "items": [
+   {
+    "id": "d-sp3-e0",
+    "name": "Ethernet0/0",
+    "ifname": "outside1",
+    "type": "PhysicalInterface",
+    "enabled": true,
+    "securityZone": {
+     "id": "zone-outside1",
+     "name": "mcp-sdwan-outside1",
+     "type": "SecurityZone"
+    },
+    "ipv4": {
+     "static": {
+      "address": "203.0.113.13",
+      "netmask": "24"
+     }
+    }
+   },
+   {
+    "id": "d-sp3-e1",
+    "name": "Ethernet0/1",
+    "ifname": "outside2",
+    "type": "PhysicalInterface",
+    "enabled": true,
+    "securityZone": {
+     "id": "zone-outside2",
+     "name": "mcp-sdwan-outside2",
+     "type": "SecurityZone"
+    },
+    "ipv4": {
+     "static": {
+      "address": "198.51.100.13",
+      "netmask": "24"
+     }
+    }
+   },
+   {
+    "id": "d-sp3-e2",
+    "name": "Ethernet0/2",
+    "ifname": "inside",
+    "type": "PhysicalInterface",
+    "enabled": true,
+    "securityZone": {
+     "id": "zone-inside",
+     "name": "mcp-sdwan-inside",
+     "type": "SecurityZone"
+    },
+    "ipv4": {
+     "static": {
+      "address": "10.113.0.1",
+      "netmask": "24"
+     }
+    }
+   },
+   {
+    "id": "d-sp3-e3",
+    "name": "Ethernet0/3",
+    "type": "PhysicalInterface",
+    "enabled": false
+   }
+  ],
+  "paging": {
+   "count": 4
+  }
+ },
+ "devices/devicerecords/d-sp3/virtualtunnelinterfaces": {
+  "items": [],
+  "paging": {
+   "count": 0
+  }
+ },
+ "devices/devicerecords/d-sp3/loopbackinterfaces": {
+  "items": [],
+  "paging": {
+   "count": 0
+  }
+ },
+ "devices/devicerecords/d-hub2/physicalinterfaces": {
+  "items": [
+   {
+    "id": "d-hub2-e0",
+    "name": "Ethernet0/0",
+    "ifname": "outside1",
+    "type": "PhysicalInterface",
+    "enabled": true,
+    "securityZone": {
+     "id": "zone-outside1",
+     "name": "mcp-sdwan-outside1",
+     "type": "SecurityZone"
+    },
+    "ipv4": {
+     "static": {
+      "address": "203.0.113.2",
+      "netmask": "24"
+     }
+    }
+   },
+   {
+    "id": "d-hub2-e1",
+    "name": "Ethernet0/1",
+    "ifname": "outside2",
+    "type": "PhysicalInterface",
+    "enabled": true,
+    "securityZone": {
+     "id": "zone-outside2",
+     "name": "mcp-sdwan-outside2",
+     "type": "SecurityZone"
+    },
+    "ipv4": {
+     "static": {
+      "address": "198.51.100.2",
+      "netmask": "24"
+     }
+    }
+   },
+   {
+    "id": "d-hub2-e2",
+    "name": "Ethernet0/2",
+    "ifname": "inside",
+    "type": "PhysicalInterface",
+    "enabled": true,
+    "securityZone": {
+     "id": "zone-inside",
+     "name": "mcp-sdwan-inside",
+     "type": "SecurityZone"
+    },
+    "ipv4": {
+     "static": {
+      "address": "10.102.0.1",
+      "netmask": "24"
+     }
+    }
+   },
+   {
+    "id": "d-hub2-e3",
+    "name": "Ethernet0/3",
+    "type": "PhysicalInterface",
+    "enabled": false
+   }
+  ],
+  "paging": {
+   "count": 4
+  }
+ },
+ "devices/devicerecords/d-hub2/virtualtunnelinterfaces": {
+  "items": [],
+  "paging": {
+   "count": 0
+  }
+ },
+ "devices/devicerecords/d-hub2/loopbackinterfaces": {
+  "items": [],
+  "paging": {
+   "count": 0
+  }
+ },
+ "object/securityzones": {
+  "items": [
+   {
+    "id": "zone-outside1",
+    "name": "mcp-sdwan-outside1",
+    "type": "SecurityZone",
+    "interfaceMode": "ROUTED"
+   },
+   {
+    "id": "zone-outside2",
+    "name": "mcp-sdwan-outside2",
+    "type": "SecurityZone",
+    "interfaceMode": "ROUTED"
+   },
+   {
+    "id": "zone-inside",
+    "name": "mcp-sdwan-inside",
+    "type": "SecurityZone",
+    "interfaceMode": "ROUTED"
+   },
+   {
+    "id": "zone-overlay",
+    "name": "mcp-sdwan-overlay",
+    "type": "SecurityZone",
+    "interfaceMode": "ROUTED"
+   }
+  ],
+  "paging": {
+   "count": 4
+  }
+ },
+ "object/ipv4addresspools": {
+  "items": [
+   {
+    "id": "pool-t1",
+    "name": "mcp-sdwan-t1-pool",
+    "type": "IPv4AddressPool",
+    "ipAddressRange": "10.255.255.2-10.255.255.254",
+    "mask": "255.255.255.0"
+   }
+  ],
+  "paging": {
+   "count": 1
+  }
+ },
+ "policy/ftds2svpns": {
+  "items": [
+   {
+    "id": "topo-t1",
+    "name": "mcp-sdwan-t1",
+    "type": "FTDS2SVpn",
+    "topologyType": "AUTO_VPN",
+    "routeBased": true,
+    "ikeV1Enabled": false,
+    "ikeV2Enabled": true,
+    "autoVpnSettings": {
+     "routeSettings": {
+      "enableBgp": true,
+      "autonomousSystemNumber": 65000,
+      "communityAttribute": 1000,
+      "communityTagToAdvertiseLearntRoutes": 1000,
+      "enableMultiPath": true,
+      "distributeConnectedNetwork": {
+       "enableDistribution": true,
+       "interfaceSelection": "INSIDE_INTERFACE"
+      }
+     },
+     "spokeSvtiSecurityZone": {
+      "id": "zone-overlay",
+      "name": "mcp-sdwan-overlay",
+      "type": "SecurityZone"
+     }
+    }
+   }
+  ],
+  "paging": {
+   "count": 1
+  }
+ },
+ "policy/ftds2svpns/topo-t1/endpoints": {
+  "items": [
+   {
+    "id": "ep-hub",
+    "name": "mcp-sdwan-t1-hub",
+    "type": "EndPoint",
+    "peerType": "HUB",
+    "extranet": false,
+    "device": {
+     "id": "d-hub",
+     "name": "mcp-sdwan-t1-hub",
+     "type": "Device"
+    },
+    "connectionType": "BIDIRECTIONAL",
+    "isPrimaryHub": true,
+    "interface": {
+     "id": "dvti-hub",
+     "name": "Virtual-Template1",
+     "type": "VTIInterface"
+    },
+    "ipv4PoolsForSpokeVti": [
+     {
+      "id": "pool-t1",
+      "name": "mcp-sdwan-t1-pool",
+      "type": "IPv4AddressPool"
+     }
+    ],
+    "insideInterface": [
+     {
+      "id": "d-hub-e2",
+      "name": "Ethernet0/2",
+      "type": "PhysicalInterface"
+     }
+    ]
+   },
+   {
+    "id": "ep-spoke1",
+    "name": "mcp-sdwan-t1-spoke1",
+    "type": "EndPoint",
+    "peerType": "SPOKE",
+    "extranet": false,
+    "device": {
+     "id": "d-sp1",
+     "name": "mcp-sdwan-t1-spoke1",
+     "type": "Device"
+    },
+    "connectionType": "BIDIRECTIONAL",
+    "interface": {
+     "id": "d-sp1-e0",
+     "name": "Ethernet0/0",
+     "type": "PhysicalInterface"
+    },
+    "backupInterfaces": [
+     {
+      "interface": {
+       "id": "d-sp1-e1",
+       "name": "Ethernet0/1",
+       "type": "PhysicalInterface"
+      }
+     }
+    ],
+    "insideInterface": [
+     {
+      "id": "d-sp1-e2",
+      "name": "Ethernet0/2",
+      "type": "PhysicalInterface"
+     }
+    ]
+   },
+   {
+    "id": "ep-spoke2",
+    "name": "mcp-sdwan-t1-spoke2",
+    "type": "EndPoint",
+    "peerType": "SPOKE",
+    "extranet": false,
+    "device": {
+     "id": "d-sp2",
+     "name": "mcp-sdwan-t1-spoke2",
+     "type": "Device"
+    },
+    "connectionType": "BIDIRECTIONAL",
+    "interface": {
+     "id": "d-sp2-e0",
+     "name": "Ethernet0/0",
+     "type": "PhysicalInterface"
+    },
+    "insideInterface": [
+     {
+      "id": "d-sp2-e2",
+      "name": "Ethernet0/2",
+      "type": "PhysicalInterface"
+     }
+    ]
+   }
+  ],
+  "paging": {
+   "count": 3
+  }
+ },
+ "policy/ftds2svpns/topo-t1/ikesettings": {
+  "items": [
+   {
+    "id": "ike-t1",
+    "type": "IkeSettings",
+    "ikeV2Settings": {
+     "authenticationType": "AUTOMATIC_PRE_SHARED_KEY",
+     "automaticPreSharedKeyLength": 24,
+     "policies": [
+      {
+       "id": "pol-aes",
+       "name": "AES-GCM-NULL-SHA-LATEST",
+       "type": "IKEv2Policy"
+      }
+     ]
+    }
+   }
+  ],
+  "paging": {
+   "count": 1
+  }
+ },
+ "policy/ftds2svpns/topo-t1/ipsecsettings": {
+  "items": [
+   {
+    "id": "ips-t1",
+    "type": "IPSecSettings",
+    "cryptoMapType": "STATIC",
+    "ikeV2Mode": "TUNNEL",
+    "ikeV2IpsecProposal": [
+     {
+      "id": "prop-aes",
+      "name": "AES-GCM",
+      "type": "IKEv2IPsecProposal"
+     }
+    ],
+    "perfectForwardSecrecy": {
+     "enabled": false
+    },
+    "lifetimeSeconds": 28800
+   }
+  ],
+  "paging": {
+   "count": 1
+  }
+ },
+ "health/tunnelstatuses": {
+  "items": [
+   {
+    "id": "tun-spoke1-outside1",
+    "vpnTopology": {
+     "id": "topo-t1",
+     "name": "mcp-sdwan-t1"
+    },
+    "peerA": {
+     "device": {
+      "name": "mcp-sdwan-t1-hub"
+     },
+     "interface": {
+      "name": "sdwan-dvti"
+     },
+     "ipAddresses": {
+      "v4": [
+       "203.0.113.1"
+      ]
+     }
+    },
+    "peerB": {
+     "device": {
+      "name": "mcp-sdwan-t1-spoke1"
+     },
+     "interface": {
+      "name": "outside1"
+     },
+     "ipAddresses": {
+      "v4": [
+       "203.0.113.11"
+      ]
+     }
+    },
+    "state": "TUNNEL_UP",
+    "lastChange": 1792226400000
+   },
+   {
+    "id": "tun-spoke1-outside2",
+    "vpnTopology": {
+     "id": "topo-t1",
+     "name": "mcp-sdwan-t1"
+    },
+    "peerA": {
+     "device": {
+      "name": "mcp-sdwan-t1-hub"
+     },
+     "interface": {
+      "name": "sdwan-dvti"
+     },
+     "ipAddresses": {
+      "v4": [
+       "203.0.113.1"
+      ]
+     }
+    },
+    "peerB": {
+     "device": {
+      "name": "mcp-sdwan-t1-spoke1"
+     },
+     "interface": {
+      "name": "outside2"
+     },
+     "ipAddresses": {
+      "v4": [
+       "198.51.100.11"
+      ]
+     }
+    },
+    "state": "TUNNEL_UP",
+    "lastChange": 1792226400000
+   },
+   {
+    "id": "tun-spoke2-outside1",
+    "vpnTopology": {
+     "id": "topo-t1",
+     "name": "mcp-sdwan-t1"
+    },
+    "peerA": {
+     "device": {
+      "name": "mcp-sdwan-t1-hub"
+     },
+     "interface": {
+      "name": "sdwan-dvti"
+     },
+     "ipAddresses": {
+      "v4": [
+       "203.0.113.1"
+      ]
+     }
+    },
+    "peerB": {
+     "device": {
+      "name": "mcp-sdwan-t1-spoke2"
+     },
+     "interface": {
+      "name": "outside1"
+     },
+     "ipAddresses": {
+      "v4": [
+       "203.0.113.12"
+      ]
+     }
+    },
+    "state": "TUNNEL_DOWN",
+    "lastChange": 1792226400000
+   }
+  ],
+  "paging": {
+   "count": 3
+  }
+ },
+ "health/pathmonitoredinterfaces": {
+  "items": [
+   {
+    "id": "pm-d-hub",
+    "type": "PathMonitoredInterface",
+    "name": "mcp-sdwan-t1-hub",
+    "device": {
+     "id": "d-hub",
+     "name": "mcp-sdwan-t1-hub",
+     "type": "Device"
+    },
+    "interfaces": [
+     {
+      "interface": {
+       "id": "d-hub-e0",
+       "name": "Ethernet0/0",
+       "type": "PhysicalInterface"
+      },
+      "status": "ONLINE"
+     }
+    ]
+   },
+   {
+    "id": "pm-d-sp1",
+    "type": "PathMonitoredInterface",
+    "name": "mcp-sdwan-t1-spoke1",
+    "device": {
+     "id": "d-sp1",
+     "name": "mcp-sdwan-t1-spoke1",
+     "type": "Device"
+    },
+    "interfaces": [
+     {
+      "interface": {
+       "id": "d-sp1-e0",
+       "name": "Ethernet0/0",
+       "type": "PhysicalInterface"
+      },
+      "status": "ONLINE"
+     },
+     {
+      "interface": {
+       "id": "d-sp1-e1",
+       "name": "Ethernet0/1",
+       "type": "PhysicalInterface"
+      },
+      "status": "ONLINE"
+     }
+    ]
+   },
+   {
+    "id": "pm-d-sp2",
+    "type": "PathMonitoredInterface",
+    "name": "mcp-sdwan-t1-spoke2",
+    "device": {
+     "id": "d-sp2",
+     "name": "mcp-sdwan-t1-spoke2",
+     "type": "Device"
+    },
+    "interfaces": [
+     {
+      "interface": {
+       "id": "d-sp2-e0",
+       "name": "Ethernet0/0",
+       "type": "PhysicalInterface"
+      },
+      "status": "OFFLINE"
+     },
+     {
+      "interface": {
+       "id": "d-sp2-e1",
+       "name": "Ethernet0/1",
+       "type": "PhysicalInterface"
+      },
+      "status": "ONLINE"
+     }
+    ]
+   }
+  ],
+  "paging": {
+   "count": 3
+  }
+ }
+}
