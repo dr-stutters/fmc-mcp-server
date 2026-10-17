@@ -1,0 +1,325 @@
+{
+ "_source": "FMC 10.0.1 OpenAPI response examples (templates/devicetemplates*), renamed to the SD-WAN lab's mcp-sdwan-* names. FMC had no device templates when F51d was built; re-record with `scripts/capture_fixtures.py --templates` (FMC_LIVE_TEMPLATE) after the F53 C4 cell creates one.",
+ "/api/fmc_config/v1/domain/e276abec-e0f2-11e3-8169-6d9ed49b625f/templates/devicetemplates": {
+  "items": [
+   {
+    "id": "b02a4b38-c000-11ee-b131-635e66f9d48b",
+    "type": "DeviceTemplate",
+    "name": "mcp-sdwan-spoke-tmpl",
+    "firewallMode": "ROUTED",
+    "description": "Generated from mcp-sdwan-t1-spoke1",
+    "accessPolicy": {
+     "name": "mcp-sdwan-acp",
+     "id": "0050568A-02BD-0ed3-0000-008589934661",
+     "type": "AccessPolicy"
+    }
+   },
+   {
+    "id": "cd7655b0-ab61-11ed-b37b-cf540e11c570",
+    "type": "DeviceTemplate",
+    "name": "mcp-sdwan-transparent-tmpl",
+    "firewallMode": "TRANSPARENT",
+    "accessPolicy": {
+     "name": "mcp-sdwan-acp",
+     "id": "0050568A-02BD-0ed3-0000-008589934661",
+     "type": "AccessPolicy"
+    },
+    "description": "Template 2 description"
+   }
+  ],
+  "paging": {
+   "offset": 0,
+   "limit": 25,
+   "count": 2,
+   "pages": 1
+  }
+ },
+ "/api/fmc_config/v1/domain/e276abec-e0f2-11e3-8169-6d9ed49b625f/templates/devicetemplates/b02a4b38-c000-11ee-b131-635e66f9d48b": {
+  "id": "b02a4b38-c000-11ee-b131-635e66f9d48b",
+  "type": "DeviceTemplate",
+  "name": "mcp-sdwan-spoke-tmpl",
+  "firewallMode": "ROUTED",
+  "description": "Generated from mcp-sdwan-t1-spoke1",
+  "accessPolicy": {
+   "name": "mcp-sdwan-acp",
+   "id": "0050568A-02BD-0ed3-0000-008589934661",
+   "type": "AccessPolicy"
+  },
+  "metadata": {
+   "timestamp": 1706786066192,
+   "lastUser": {
+    "name": "mcp-api-svc"
+   },
+   "domain": {
+    "name": "Global",
+    "id": "e276abec-e0f2-11e3-8169-6d9ed49b625f",
+    "type": "Domain"
+   },
+   "isLocked": false,
+   "templateValidationMessages": [],
+   "otherAssociatedPolicies": [
+    {
+     "name": "mcp-sdwan-nat",
+     "id": "0050568A-02BD-0ed3-0000-008589935001",
+     "type": "FTDNatPolicy"
+    },
+    {
+     "name": "mcp-sdwan-t1",
+     "id": "0050568C-430C-0ed3-0000-017179870036",
+     "type": "FTDS2SVpn"
+    }
+   ],
+   "templateAssociationInfo": {
+    "associatedDevicesCount": 1
+   }
+  }
+ },
+ "/api/fmc_config/v1/domain/e276abec-e0f2-11e3-8169-6d9ed49b625f/templates/devicetemplates/b02a4b38-c000-11ee-b131-635e66f9d48b/templateinterfaces": {
+  "items": [
+   {
+    "slot": 0,
+    "port": 0,
+    "name": "GigabitEthernet0/0",
+    "id": "00000000-0000-0ed3-0000-004294967561",
+    "type": "TemplateInterface",
+    "ifname": "outside-mpls",
+    "enabled": true,
+    "mode": "NONE",
+    "securityZone": {
+     "name": "mcp-sdwan-outside",
+     "id": "z-out",
+     "type": "SecurityZone"
+    },
+    "ipv4": {
+     "static": {
+      "variable": {
+       "name": "wanIp",
+       "id": "0050568C-430C-0ed3-0000-150323856281",
+       "type": "Variable"
+      }
+     }
+    },
+    "metadata": {
+     "timestamp": 1706681990739,
+     "state": "COMMITTED"
+    }
+   },
+   {
+    "slot": 0,
+    "port": 1,
+    "name": "GigabitEthernet0/1",
+    "id": "00000000-0000-0ed3-0000-004294967562",
+    "type": "TemplateInterface",
+    "ifname": "inside",
+    "enabled": true,
+    "mode": "NONE",
+    "ipv4": {
+     "static": {
+      "variable": {
+       "name": "insideIp",
+       "id": "0050568C-430C-0ed3-0000-150323856282",
+       "type": "Variable"
+      }
+     }
+    },
+    "metadata": {
+     "timestamp": 1706681990765,
+     "state": "COMMITTED"
+    }
+   }
+  ],
+  "paging": {
+   "offset": 0,
+   "limit": 25,
+   "count": 2,
+   "pages": 1
+  }
+ },
+ "/api/fmc_config/v1/domain/e276abec-e0f2-11e3-8169-6d9ed49b625f/templates/devicetemplates/b02a4b38-c000-11ee-b131-635e66f9d48b/variables": {
+  "items": [
+   {
+    "variableType": "IPV4_HOST",
+    "value": "",
+    "name": "wanIp",
+    "description": "Spoke MPLS WAN address",
+    "type": "Variable",
+    "id": "0050568C-430C-0ed3-0000-150323856281",
+    "overridable": false
+   },
+   {
+    "variableType": "IPV4_HOST",
+    "value": "10.10.1.1/24",
+    "name": "insideIp",
+    "description": "Spoke inside address",
+    "type": "Variable",
+    "id": "0050568C-430C-0ed3-0000-150323856282",
+    "overridable": false
+   },
+   {
+    "variableType": "AS_NUMBER",
+    "value": "65001",
+    "name": "bgpAsnumber",
+    "type": "Variable",
+    "id": "0050568C-430C-0ed3-0000-150323856283",
+    "overridable": false
+   },
+   {
+    "variableType": "PASSWORD",
+    "value": "tmpl-default-secret",
+    "name": "localPassword",
+    "type": "Variable",
+    "id": "0050568C-430C-0ed3-0000-150323856284",
+    "overridable": false
+   }
+  ],
+  "paging": {
+   "offset": 0,
+   "limit": 25,
+   "count": 4,
+   "pages": 1
+  }
+ },
+ "/api/fmc_config/v1/domain/e276abec-e0f2-11e3-8169-6d9ed49b625f/templates/devicetemplates/b02a4b38-c000-11ee-b131-635e66f9d48b/modelmappings": {
+  "items": [
+   {
+    "metadata": {
+     "timestamp": 1706786066192,
+     "modelName": "Cisco Secure Firewall Threat Defense for VMware",
+     "validationState": "VALID"
+    },
+    "name": "vFTD",
+    "interfaceMappings": [
+     {
+      "templateInterface": "Ethernet1/1",
+      "modelInterface": "GigabitEthernet0/0"
+     },
+     {
+      "templateInterface": "Ethernet1/2",
+      "modelInterface": "GigabitEthernet0/1"
+     }
+    ],
+    "type": "ModelMapping",
+    "id": "00000000-0000-0ed3-0000-004294967965"
+   }
+  ],
+  "paging": {
+   "offset": 0,
+   "limit": 25,
+   "count": 1,
+   "pages": 1
+  }
+ },
+ "/api/fmc_config/v1/domain/e276abec-e0f2-11e3-8169-6d9ed49b625f/templates/devicetemplates/b02a4b38-c000-11ee-b131-635e66f9d48b/vpnsettings": {
+  "items": [
+   {
+    "id": "0050568C-430C-0ed3-0000-210453397646",
+    "type": "VpnSetting"
+   }
+  ],
+  "paging": {
+   "offset": 0,
+   "limit": 25,
+   "count": 1,
+   "pages": 1
+  }
+ },
+ "/api/fmc_config/v1/domain/e276abec-e0f2-11e3-8169-6d9ed49b625f/templates/devicetemplates/b02a4b38-c000-11ee-b131-635e66f9d48b/vpnsettings/0050568C-430C-0ed3-0000-210453397646": {
+  "vpnConnections": [
+   {
+    "localTunnelIdentity": {
+     "isLocalTunnelIdEnabled": true,
+     "localIdentityVariable": {
+      "name": "localIdentityVariable",
+      "id": "0050568C-430C-0ed3-0000-150323856263",
+      "type": "Variable"
+     }
+    },
+    "vpnInterface": {
+     "name": "GigabitEthernet0/0",
+     "id": "0050568C-430C-0ed3-0000-201863463048",
+     "type": "PhysicalInterface"
+    },
+    "ipv4Address": {
+     "variable": {
+      "name": "wanIp",
+      "id": "0050568C-430C-0ed3-0000-150323856281",
+      "type": "Variable"
+     }
+    }
+   }
+  ],
+  "s2sVpnSettings": {
+   "peerRole": "SPOKE",
+   "topologyType": "HUB_AND_SPOKE",
+   "s2sVpn": {
+    "id": "0050568C-430C-0ed3-0000-017179870036",
+    "type": "FTDS2SVPN",
+    "name": "mcp-sdwan-t1"
+   }
+  },
+  "protectedNetworks": [
+   {
+    "name": "mcp-sdwan-branch-lan",
+    "id": "0050568C-0030-0ed3-0000-034359738418",
+    "type": "Network"
+   }
+  ],
+  "id": "0050568C-430C-0ed3-0000-210453397646",
+  "type": "VpnSetting"
+ },
+ "/api/fmc_config/v1/domain/e276abec-e0f2-11e3-8169-6d9ed49b625f/templates/devicetemplates/b02a4b38-c000-11ee-b131-635e66f9d48b/objectoverrides/b02a4b38-c000-11ee-b131-635e66f9d48b": {
+  "declaredObjectOverrides": [
+   {
+    "type": "Host",
+    "name": "mcp-sdwan-branch-gw",
+    "id": "0050568A-7F07-0ed3-0000-021474837089",
+    "description": "Branch gateway"
+   },
+   {
+    "type": "Network",
+    "name": "mcp-sdwan-branch-lan",
+    "id": "0050568C-0030-0ed3-0000-034359738418",
+    "description": "Branch LAN"
+   }
+  ]
+ },
+ "/api/fmc_config/v1/domain/e276abec-e0f2-11e3-8169-6d9ed49b625f/object/hosts/0050568A-7F07-0ed3-0000-021474837089": {
+  "type": "Host",
+  "name": "mcp-sdwan-branch-gw",
+  "id": "0050568A-7F07-0ed3-0000-021474837089",
+  "value": "10.10.1.254"
+ },
+ "/api/fmc_config/v1/domain/e276abec-e0f2-11e3-8169-6d9ed49b625f/object/networks/0050568C-0030-0ed3-0000-034359738418": {
+  "type": "Network",
+  "name": "mcp-sdwan-branch-lan",
+  "id": "0050568C-0030-0ed3-0000-034359738418",
+  "value": "10.10.1.0/24"
+ },
+ "/api/fmc_config/v1/domain/e276abec-e0f2-11e3-8169-6d9ed49b625f/templates/devicetemplates/b02a4b38-c000-11ee-b131-635e66f9d48b/associations": {
+  "items": [
+   {
+    "id": "cf7fa0b2-bf30-11ee-be1a-ab9df8d04efd",
+    "type": "DeviceTemplateAssociation",
+    "syncStatus": "IN_SYNC",
+    "device": {
+     "name": "mcp-sdwan-t1-spoke1",
+     "id": "cf7fa0b2-bf30-11ee-be1a-ab9df8d04efd",
+     "type": "Device"
+    },
+    "lastAppliedStatus": "SUCCESS",
+    "lastAppliedTimestamp": 1706695164,
+    "variableValues": [
+     {
+      "key": "wanIp",
+      "value": "192.0.2.11/29"
+     },
+     {
+      "key": "localPassword",
+      "value": "spoke1-secret"
+     }
+    ],
+    "overriddenValues": {}
+   }
+  ]
+ }
+}
