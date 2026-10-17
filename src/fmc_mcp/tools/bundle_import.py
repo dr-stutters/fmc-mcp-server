@@ -326,6 +326,11 @@ class Planner:
                 self.blockers.append(
                     f"{fmc_type} {p['name']!r} doesn't exist in the target; create it first."
                 )
+        if self.bundle.get("identity_policy"):
+            self.warnings.append(
+                f"Select identity policy {self.bundle['identity_policy']['name']!r} in the access policy "
+                "editor's Identity step: FMC 10.0's REST API ignores identityPolicySetting."
+            )
         pre = self.bundle.get("prefilter_policy")
         if pre:
             have = await self.target.find("PrefilterPolicy", pre["name"])

@@ -106,7 +106,7 @@ Changes made in FMC reach the firewalls only after a **deployment** (`fmc_deploy
 
 ## Tools
 
-There are 136 tools when every tier is enabled (59 read, 68 write, 9 dangerous; the dangerous tier turns `fmc_api_call` into a raw call), and three workflow prompts (`fmc_why_blocked`, `fmc_firewall_health_review`; `fmc_onboard_ftd`, dangerous tier).
+There are 141 tools when every tier is enabled (63 read, 68 write, 10 dangerous; the dangerous tier turns `fmc_api_call` into a raw call), and five workflow prompts (`fmc_why_blocked`, `fmc_firewall_health_review`; `fmc_rule_change_review` and `fmc_policy_cleanup`, write tier; `fmc_onboard_ftd`, dangerous tier).
 
 **Read**
 
@@ -214,6 +214,14 @@ MD5 password, because FMC returns it masked and a PUT would replace it, unless y
 - **Is everything healthy?** The `fmc_firewall_health_review` prompt checks devices, HA, deployments,
   licences, content versions, backups, VPN and recent alerts, and ranks the findings (critical, warning,
   info) with a next step for each.
+- **Is this rule change safe?** The `fmc_rule_change_review` prompt baselines the policy, runs sample flows
+  through `fmc_rule_lookup` before and after, checks shadowing and overlap, previews the change and plans the
+  deploy with a rollback.
+- **Clean up a policy:** the `fmc_policy_cleanup` prompt turns `fmc_policy_audit` findings into grouped,
+  approved changes, verifies them with `fmc_diff_policy_bundle` against a baseline bundle and a re-audit, and
+  keeps the baseline for `fmc_import_policy_bundle` as a rollback.
+- **PoC to production:** `fmc_export_policy_bundle` -> `fmc_plan_policy_bundle_import` in the target domain or
+  FMC -> `fmc_import_policy_bundle` -> `fmc_diff_policy_bundle` -> assign and `fmc_deploy`.
 - **Rules on AD users and groups:** `fmc_create_trusted_ca` (for LDAPS) -> `fmc_create_realm` ->
   `fmc_test_realm` -> `fmc_download_realm` -> `fmc_create_identity_policy` + `fmc_create_identity_rule`
   (PASSIVE: user-IP mappings from ISE/pxGrid or an identity agent) -> select the identity policy in the
