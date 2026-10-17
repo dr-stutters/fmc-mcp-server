@@ -446,6 +446,10 @@
       "tier": "write",
       "title": "Import objects"
     },
+    "fmc_import_policy_bundle": {
+      "tier": "dangerous",
+      "title": "Import a policy bundle"
+    },
     "fmc_license_status": {
       "tier": "read",
       "title": "FMC licensing status"
@@ -549,6 +553,10 @@
     "fmc_pending_changes": {
       "tier": "read",
       "title": "Pending changes for a device"
+    },
+    "fmc_plan_policy_bundle_import": {
+      "tier": "read",
+      "title": "Plan a policy bundle import"
     },
     "fmc_policy_audit": {
       "tier": "read",
