@@ -67,6 +67,9 @@
 - `fmc_policy_audit` failed on a policy whose rules use time ranges: FMC sends `timeRangeObjects` as a plain
   list, not an `{objects: [...]}` block. Found by the live hygiene seed; `tests/live/test_live_hygiene.py`
   (`FMC_LIVE_HYGIENE_POLICY`) now covers every static check on a real policy.
+- `fmc_policy_audit`'s `unused` check no longer reports every rule as never hit on a device where the policy is
+  assigned but not yet deployed (its next deployment would ADD the access policy): that device's hit counts are
+  left out with a note, and with no device running the policy the check reports nothing.
 
 ## 0.11.0 (unreleased)
 

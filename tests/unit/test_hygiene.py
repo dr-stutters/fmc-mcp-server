@@ -94,6 +94,12 @@ async def test_audit_reads_hit_counts_from_assigned_devices_and_ha_members(lab: 
         return items(rows)
 
     get = lab.get(hc).mock(side_effect=hitcounts)
+    for dev in ("dev-1", "dev-2", "dev-3"):  # deployed everywhere: only an unrelated UPDATE pending
+        lab.get(f"{CFG}/deployment/deployabledevices/{dev}/pendingchanges").mock(
+            return_value=items(
+                [{"entityType": "AccessPolicy", "entityName": "mcp-test-acp", "action": "UPDATE"}]
+            )
+        )
     data = await call(
         "fmc_policy_audit", {"policy": "mcp-test-acp", "checks": ["unused"], "refresh_hits": False}
     )
@@ -177,3 +183,29 @@ def test_expired_time_ranges() -> None:
         ("medium", "holiday", "xmas-2024"),
         ("low", None, "old-unused"),
     ]
+
+
+async def test_unused_skips_devices_where_the_policy_is_not_deployed(lab: respx.MockRouter) -> None:
+    lab.get(f"{CFG}/assignment/policyassignments").mock(
+        return_value=items(
+            [
+                {
+                    "policy": {"id": ACP_ID, "type": "AccessPolicy"},
+                    "targets": [
+                        {"id": "dev-1", "name": "ftd1", "type": "Device"},
+                        {"id": "dev-2", "name": "ftd2", "type": "Device"},
+                    ],
+                }
+            ]
+        )
+    )
+    adds = [{"entityType": "AccessPolicy", "entityName": "mcp-test-acp", "action": "ADD"}]
+    lab.get(f"{CFG}/deployment/deployabledevices/dev-1/pendingchanges").mock(return_value=items(adds))
+    lab.get(f"{CFG}/deployment/deployabledevices/dev-2/pendingchanges").mock(return_value=items(adds))
+    hc = lab.get(f"{CFG}/policy/accesspolicies/{ACP_ID}/operational/hitcounts").mock(return_value=items([]))
+    data = await call(
+        "fmc_policy_audit", {"policy": "mcp-test-acp", "checks": ["unused"], "refresh_hits": False}
+    )
+    assert data["findings"] == [] and not hc.called
+    assert any("No assigned device runs this policy yet" in n for n in data["notes"])
+    assert any(n.startswith("ftd1: the policy is assigned but not deployed") for n in data["notes"])
