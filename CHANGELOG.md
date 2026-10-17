@@ -1,5 +1,14 @@
 # Changelog
 
+## Unreleased
+
+### Fixed
+- **`fmc_license_status` showed an empty smart-licence `metadata`.** FMC 10 returns `authStatus` (for example
+  `OUT_OF_COMPLIANCE`), `virtualAccount`, `exportControl`, `evalUsed`, `evalExpiresInDays` and the last sync and
+  renewal times in `items[].metadata` of `/license/smartlicenses`, and `slim()` dropped them. They are now lifted
+  into each `smart_license` row. The VPN strong-crypto check reads `exportControl` from the same place, so a
+  licence without export control again falls back to DES instead of being treated as strong-crypto capable.
+
 ## 0.12.0 (2026-10-17)
 
 Wave 4 Phase B: policy hygiene, policy bundles (export, diff, import) and three workflow prompts, all proven
