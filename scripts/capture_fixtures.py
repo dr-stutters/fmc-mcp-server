@@ -3,6 +3,9 @@
     uv run python scripts/capture_fixtures.py          # policies and objects (the seeded mcp-test-* set)
     uv run python scripts/capture_fixtures.py --bundle # every GET fmc_export_policy_bundle makes for
                                                        # mcp-test-acp + mcp-test-nat (bundle_acp.json)
+    uv run python scripts/capture_fixtures.py --templates # every GET fmc_get_device_template makes for
+                                                       # the template named by FMC_LIVE_TEMPLATE
+                                                       # (devicetemplates.json; F51d)
     uv run python scripts/capture_fixtures.py --ftd    # device fixtures from the managed FTD named by
                                                        # FMC_LIVE_DEVICE (after tests/live/test_live_ftd.py;
                                                        # also FMC_LIVE_TRACE_TARGET, docs/live-tests.md)
@@ -141,6 +144,42 @@ async def capture_bundle(app: FmcApp, host: str) -> None:
     print("captured bundle_acp", len(out), "responses")
 
 
+async def capture_templates(app: FmcApp, host: str) -> None:
+    """Record the GETs behind fmc_get_device_template (path -> response) for tests/unit/test_templates.py.
+    Read-only: lists the templates, then reads one template's interfaces, variables, model mappings,
+    VPN settings, overridable objects and associations."""
+    from fmc_mcp.tools.templates import (
+        OBJECT_PATHS,
+        TEMPLATES,
+        declared_overrides,
+        template_detail,
+        template_with_metadata,
+    )
+
+    name = os.environ.get("FMC_LIVE_TEMPLATE") or sys.exit("--templates needs FMC_LIVE_TEMPLATE (its name)")
+    recorded: dict[str, Any] = {}
+    real_get = app.api.get
+
+    async def get(path: str, params: dict[str, Any] | None = None, **kw: Any) -> Any:
+        data = await real_get(path, params, **kw)
+        if path.startswith("/api/fmc_config/"):
+            recorded[path] = scrub(data, host)
+        return data
+
+    app.api.get = get  # type: ignore[method-assign]
+    await app.all(await app.config_path(TEMPLATES), {"addOnMetadata": "true"})
+    t = await template_with_metadata(app, name, None)
+    await template_detail(app, t, None)
+    base = await app.config_path(f"{TEMPLATES}/{t['id']}")
+    for o in await declared_overrides(app, base, t["id"]):  # what fmc_apply_device_template's preview reads
+        if o.get("type") in OBJECT_PATHS and o.get("id"):
+            await app.api.get(await app.config_path(f"{OBJECT_PATHS[o['type']]}/{o['id']}"))
+    out = {"_source": f"recorded from FMC with scripts/capture_fixtures.py --templates ({name})"}
+    out.update({k: recorded[k] for k in sorted(recorded)})
+    (OUT / "devicetemplates.json").write_text(json.dumps(out, indent=1) + "\n")
+    print("captured devicetemplates", len(recorded), "responses")
+
+
 async def main() -> None:
     settings = Settings()  # type: ignore[call-arg]
     host = re.sub(r"^https?://", "", settings.url).split("/")[0]
@@ -148,6 +187,12 @@ async def main() -> None:
     if "--bundle" in sys.argv:
         try:
             await capture_bundle(app, host)
+        finally:
+            await app.aclose()
+        return
+    if "--templates" in sys.argv:
+        try:
+            await capture_templates(app, host)
         finally:
             await app.aclose()
         return

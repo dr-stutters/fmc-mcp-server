@@ -106,7 +106,7 @@ Changes made in FMC reach the firewalls only after a **deployment** (`fmc_deploy
 
 ## Tools
 
-There are 141 tools when every tier is enabled (63 read, 68 write, 10 dangerous; the dangerous tier turns `fmc_api_call` into a raw call), and five workflow prompts (`fmc_why_blocked`, `fmc_firewall_health_review`; `fmc_rule_change_review` and `fmc_policy_cleanup`, write tier; `fmc_onboard_ftd`, dangerous tier).
+There are 146 tools when every tier is enabled (65 read, 70 write, 11 dangerous; the dangerous tier turns `fmc_api_call` into a raw call), and five workflow prompts (`fmc_why_blocked`, `fmc_firewall_health_review`; `fmc_rule_change_review` and `fmc_policy_cleanup`, write tier; `fmc_onboard_ftd`, dangerous tier).
 
 **Read**
 
@@ -116,6 +116,7 @@ There are 141 tools when every tier is enabled (63 read, 68 write, 10 dangerous;
 | Activity (on demand) | `fmc_list_health_alerts`, `fmc_recent_activity` |
 | Devices | `fmc_list_devices`, `fmc_get_device`, `fmc_list_device_interfaces`, `fmc_list_routes`, `fmc_get_routing`, `fmc_get_platform_settings`, `fmc_list_ha_pairs`, `fmc_get_ha_status`, `fmc_list_clusters` |
 | VPN | `fmc_list_vpn_topologies` (incl. SD-WAN), `fmc_get_vpn_topology`, `fmc_get_ravpn` |
+| Device templates (FMC 7.6+) | `fmc_list_device_templates`, `fmc_get_device_template` (interfaces, variables, model mappings, VPN/SD-WAN settings, overridable objects, devices it was applied to; passwords masked) |
 | Troubleshooting | `fmc_packet_tracer`, `fmc_run_show_command`, `fmc_get_hit_counts`, `fmc_device_health`, `fmc_list_vpn_tunnels` |
 | Policies | `fmc_list_policies`, `fmc_get_access_policy`, `fmc_list_access_rules`, `fmc_get_access_rule`, `fmc_list_nat_rules`, `fmc_list_prefilter_rules`, `fmc_list_policy_assignments` |
 | Objects | `fmc_list_objects`, `fmc_get_object`, `fmc_find_object`, `fmc_where_used`, `fmc_unused_objects`, `fmc_list_dynamic_objects` |
@@ -169,6 +170,7 @@ Notes on some read tools:
 | Containment | `fmc_contain_host`, `fmc_release_host` (instant, no deploy); `fmc_si_block` (Security Intelligence block list for IPs, networks, URLs; logged; needs a deploy) |
 | HA | `fmc_configure_ha_monitoring` (monitored interfaces, standby IPs, failover MACs) |
 | VPN | `fmc_create_s2s_vpn` (point-to-point IKEv2 PSK; policy- or route-based), `fmc_delete_s2s_vpn` |
+| Device templates | `fmc_create_device_template` (generated from a standalone FTD, or empty from a firewall mode and access policy), `fmc_delete_device_template` |
 
 `fmc_create_access_rule` takes a position (`insert_before` or `insert_after`), a section and a
 category. `fmc_update_access_rule` can move a rule with `move_to`. `fmc_update_interface` sets the
@@ -190,6 +192,7 @@ MD5 password, because FMC returns it masked and a PUT would replace it, unless y
 | `fmc_ha_action` | Breaks, switches or deletes an HA pair. |
 | `fmc_delete_policy` | Deletes a whole policy. |
 | `fmc_backup_devices` | Backs up device configurations to FMC (not supported on FTDv). |
+| `fmc_apply_device_template` | Applies a device template to one standalone FTD with its variable values and object overrides (replaces its interface, routing, policy and VPN/SD-WAN configuration); the preview lists every variable and override. |
 
 ### Workflows
 
@@ -205,7 +208,12 @@ MD5 password, because FMC returns it masked and a PUT would replace it, unless y
 - **Block a host now:** `fmc_contain_host(ip, reason)` maps it into the quarantine dynamic object
   (`FMC_QUARANTINE_OBJECT`); the first call proposes the BLOCK rules and one deploy, later calls need no
   deployment. `fmc_release_host(ip)` undoes it. ise-mcp-server's `ise_quarantine_host` calls these.
-- **Onboard an FTD, guided:** the `fmc_onboard_ftd` prompt (optionally builds the FTDv in CML first).
+- **Onboard an FTD, guided:** the `fmc_onboard_ftd` prompt (optionally builds the FTDv in CML first;
+  with `template`, a device template configures it).
+- **Roll out a branch from a template (FMC 7.6+):** `fmc_create_device_template(source_device=<a working
+  branch>)` -> `fmc_get_device_template` (check the variables FMC created) -> `fmc_register_device` (the
+  new FTD) -> `fmc_apply_device_template(template, device, variables, overrides)` -> `fmc_deploy` the branch
+  and its hub(s) -> `fmc_get_vpn_topology`. Templates apply to standalone devices only.
 - **HA:** `fmc_create_ha_pair` -> `fmc_configure_ha_monitoring` (standby IPs) -> `fmc_deploy` (the pair's
   name) -> `fmc_get_ha_status` / `show failover`; `fmc_ha_action` switch, break or delete.
 - **Site-to-site VPN:** `fmc_create_s2s_vpn` -> `fmc_deploy` both peers -> `fmc_list_vpn_tunnels`. In FMC

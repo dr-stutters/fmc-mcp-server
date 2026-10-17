@@ -128,6 +128,7 @@ def _onboard_text(
     nat_policy: str | None,
     platform_settings: str | None,
     test_destination: str | None,
+    template: str | None = None,
 ) -> str:
     """The fmc_onboard_ftd instructions."""
     if not host and not recipe:
@@ -150,6 +151,26 @@ def _onboard_text(
     psp = _q(platform_settings, "platform_settings") if platform_settings else None
     dest = _q(test_destination, "test_destination") if test_destination else gw
     inside_net = json.dumps(str(inside_iface.network))
+    if template:
+        tpl = _q(template, "template")
+        template_step = f"""
+2b. Device template {tpl} (a branch like an existing one): {tool_ref("fmc_get_device_template")}
+   template={tpl} lists its variables (type and default), interfaces, overridable objects and VPN/SD-WAN
+   settings. Fill the variables for {dev} (interface addresses such as {out_ip} and {in_ip}, AS numbers,
+   router id) and call {tool_ref("fmc_apply_device_template")} template={tpl}, device={dev},
+   variables={{...}}, overrides={{...}} for per-branch objects. It is dangerous-tier and replaces the
+   device's configuration: show the preview (every variable, given or default, and every override) and
+   wait for approval. The template brings the interfaces, zones, routes, NAT and policy assignments and
+   the SD-WAN/VPN membership, so in steps 3-5 only check what {tool_ref("fmc_pending_changes")} shows and
+   fill gaps the template doesn't carry. In step 6 deploy {dev} and the hub(s) of its VPN topology, and
+   verify the tunnels with {tool_ref("fmc_get_vpn_topology")}.
+"""
+    else:
+        template_step = f"""
+   Rolling out a branch like an existing one? A device template does steps 3-5 (and SD-WAN/VPN
+   membership) in one call: {tool_ref("fmc_list_device_templates")}, then run this prompt again with
+   template=<its name> ({tool_ref("fmc_create_device_template")} makes one from a working branch).
+"""
     if recipe:
         build = (
             f"1. Build the FTD in CML: {tool_ref('cml_build_recipe')} with recipe={_q(recipe, 'recipe')} "
@@ -201,7 +222,7 @@ around a failed registration or deployment.
    deployment (5-10 minutes). Then {tool_ref("fmc_get_device")} name={dev}: it must be connected, with
    its model and version. A failure saying the device is unreachable or the key is wrong means the
    FTD's `configure manager add` does not match: fix it (step 1) and retry.
-
+{template_step}
 3. Interfaces and zones: {tool_ref("fmc_list_device_interfaces")} device={dev} (FTDv names them
    Ethernet0/0, Ethernet0/1, ...). Create zones if they don't exist
    ({tool_ref("fmc_list_objects")} type='security_zone', {tool_ref("fmc_create_security_zone")};
@@ -510,6 +531,7 @@ def register(reg: ToolRegistrar) -> None:
             "inside_interface": "Ethernet0/1",
             "nat_policy": "mcp-test-ha-nat",
             "platform_settings": "mcp-test-ps",
+            "template": "mcp-sdwan-spoke-tmpl",
         },
     )
     def fmc_onboard_ftd(
@@ -535,11 +557,20 @@ def register(reg: ToolRegistrar) -> None:
         test_destination: Annotated[
             str | None, Field(description="Address to test from the inside (default: the gateway)")
         ] = None,
+        template: Annotated[
+            str | None,
+            Field(
+                description="Device template to apply after registration (fmc_list_device_templates), "
+                "e.g. an SD-WAN spoke template"
+            ),
+        ] = None,
     ) -> str:
         """Onboard an FTD end to end: optionally build it in CML from a recipe, check licensing,
         register it with FMC, set outside/inside interfaces and zones, default route and NAT, assign
-        policies, deploy, and verify with show commands, packet tracer and real traffic. Explains the
-        `configure manager add` step for re-registration."""
+        policies, deploy, and verify with show commands, packet tracer and real traffic. With
+        `template`, a device template sets the interfaces, routing, policies and SD-WAN/VPN membership
+        in one call (fmc_apply_device_template). Explains the `configure manager add` step for
+        re-registration."""
         return _onboard_text(
             name,
             host,
@@ -553,6 +584,7 @@ def register(reg: ToolRegistrar) -> None:
             nat_policy,
             platform_settings,
             test_destination,
+            template,
         )
 
     @reg.prompt(
