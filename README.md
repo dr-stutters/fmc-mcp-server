@@ -106,7 +106,7 @@ Changes made in FMC reach the firewalls only after a **deployment** (`fmc_deploy
 
 ## Tools
 
-There are 141 tools when every tier is enabled (63 read, 68 write, 10 dangerous; the dangerous tier turns `fmc_api_call` into a raw call), and five workflow prompts (`fmc_why_blocked`, `fmc_firewall_health_review`; `fmc_rule_change_review` and `fmc_policy_cleanup`, write tier; `fmc_onboard_ftd`, dangerous tier).
+There are 143 tools when every tier is enabled (63 read, 70 write, 10 dangerous; the dangerous tier turns `fmc_api_call` into a raw call), and five workflow prompts (`fmc_why_blocked`, `fmc_firewall_health_review`; `fmc_rule_change_review` and `fmc_policy_cleanup`, write tier; `fmc_onboard_ftd`, dangerous tier).
 
 **Read**
 
@@ -168,7 +168,7 @@ Notes on some read tools:
 | Admin | `fmc_update_health_policy` (module on/off, thresholds), `fmc_set_object_override` (per-device object values) |
 | Containment | `fmc_contain_host`, `fmc_release_host` (instant, no deploy); `fmc_si_block` (Security Intelligence block list for IPs, networks, URLs; logged; needs a deploy) |
 | HA | `fmc_configure_ha_monitoring` (monitored interfaces, standby IPs, failover MACs) |
-| VPN | `fmc_create_s2s_vpn` (point-to-point IKEv2 PSK; policy- or route-based), `fmc_delete_s2s_vpn` |
+| VPN | `fmc_create_s2s_vpn` (point-to-point IKEv2 PSK; policy- or route-based), `fmc_delete_s2s_vpn`; SD-WAN: `fmc_create_sdwan_topology` (wizard hub and spoke: hub DVTI, spoke pool, spokes on their WAN interfaces, backup hub, iBGP overlay), `fmc_update_sdwan_topology` (add or remove spokes and the backup hub, ECMP) |
 
 `fmc_create_access_rule` takes a position (`insert_before` or `insert_after`), a section and a
 category. `fmc_update_access_rule` can move a rule with `move_to`. `fmc_update_interface` sets the
@@ -210,6 +210,10 @@ MD5 password, because FMC returns it masked and a PUT would replace it, unless y
   name) -> `fmc_get_ha_status` / `show failover`; `fmc_ha_action` switch, break or delete.
 - **Site-to-site VPN:** `fmc_create_s2s_vpn` -> `fmc_deploy` both peers -> `fmc_list_vpn_tunnels`. In FMC
   evaluation mode only DES crypto deploys; the tool picks it and says so.
+- **SD-WAN branches:** zone the WAN and inside interfaces (`fmc_update_interface`) -> `fmc_create_sdwan_topology`
+  (creates the hub's loopback, DVTI and spoke pool when missing, then the AUTO_VPN topology, IKEv2 and the
+  endpoints; a failed step deletes what it created) -> `fmc_deploy` hubs and spokes -> `fmc_get_vpn_topology`,
+  `show bgp summary`. New branch: `fmc_update_sdwan_topology add_spokes=[...]`, then deploy the spoke and the hubs.
 - **What changed or broke in the last hour?** `fmc_recent_activity`.
 - **Is everything healthy?** The `fmc_firewall_health_review` prompt checks devices, HA, deployments,
   licences, content versions, backups, VPN and recent alerts, and ranks the findings (critical, warning,

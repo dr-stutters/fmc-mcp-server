@@ -1,5 +1,23 @@
 # Changelog
 
+## Unreleased
+
+### Added
+- **SD-WAN topology authoring (F51a, #107).** `fmc_create_sdwan_topology` builds FMC's SD-WAN wizard topology
+  (`AUTO_VPN` hub and spoke, FMC 7.6+) preview-first and in dependency order: the spoke tunnel address pool
+  (an existing IPv4 address pool, or a subnet: the hub takes the first address on a new loopback), the hub's
+  dynamic VTI (reused by logical name or created from the hub WAN interface, borrowing the loopback's address,
+  in the overlay zone), the topology with iBGP overlay settings (AS, community tag, inside networks
+  redistributed, ECMP) or `overlay='ospf'` (no generated BGP; OSPF via `fmc_configure_ospf`), IKEv2 (automatic
+  or manual pre-shared key, DES defaults when FMC has no strong-crypto licence) and the endpoints: primary hub,
+  optional backup hub with its own DVTI and pool, and spokes on their WAN interface plus an optional backup WAN.
+  The preview blocks zone-less or unnamed WAN interfaces, a static VTI given as the hub DVTI, overlapping hub
+  pools and an existing name; a failed step deletes what was created, newest first, with the key masked.
+  `fmc_update_sdwan_topology` adds and removes spokes, adds or removes the backup hub and switches ECMP, and lists
+  the devices to deploy. `fmc_get_vpn_topology` shows the primary hub, spoke pools and backup WAN interfaces.
+  `scripts/capture_fixtures.py --sdwan` records a live topology for the unit tests (reads only). Unit-tested on
+  fixtures; live verification is part of the F53 matrix.
+
 ## 0.12.0 (2026-10-17)
 
 Wave 4 Phase B: policy hygiene, policy bundles (export, diff, import) and three workflow prompts, all proven
