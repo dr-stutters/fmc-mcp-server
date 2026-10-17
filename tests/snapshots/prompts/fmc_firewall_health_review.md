@@ -43,9 +43,11 @@ note it and carry on.
    job is critical while the device has had no successful deployment since; info once a later
    job succeeded.
 
-4. Licences: `fmc_license_status`. UNREGISTERED or an expired evaluation is critical.
-   EVALUATION is a warning: it ends 90 days after it began, and the API doesn't give the date, so
-   say so and point at System > Licenses > Smart Licenses in the FMC UI. Device licences are
+4. Licences: `fmc_license_status`. UNREGISTERED, an authStatus other than AUTHORIZED
+   (OUT_OF_COMPLIANCE, AUTHORIZATION_EXPIRED) or regStatus EVALUATION with evalExpiresInDays 0 is
+   critical; evalUsed alone on a registered FMC is not. Any other EVALUATION is a warning: give
+   evalExpiresInDays and the virtualAccount, and point at
+   System > Licenses > Smart Licenses in the FMC UI. Device licences are
    listed by device UUID: match them to the names from step 1. A device in scope without a
    licence entry is a warning.
 
