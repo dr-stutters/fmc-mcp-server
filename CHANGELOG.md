@@ -34,6 +34,24 @@
 - `scripts/capture_fixtures.py --sdwan-routing` records the F51b fixtures (GETs only) from an SD-WAN branch
   (`FMC_LIVE_SDWAN_DEVICE`).
 
+- **Device templates (F51d, part of #107).** `fmc_list_device_templates` and `fmc_get_device_template`
+  (read): a template's firewall mode, access policy and the other policies it assigns, validation messages,
+  template interfaces (with `${variable}` addresses), variables (type and default; PASSWORD values masked),
+  model mappings, VPN/SD-WAN settings (topology, hub or spoke role, tunnel interface and address
+  variables), overridable host/network/range/FQDN objects, and the devices it was applied to with the last
+  apply and sync status. `fmc_create_device_template` (write): generated from a standalone FTD
+  (`generatetemplate`, a background task the tool waits for) or empty from a firewall mode and access
+  policy; `fmc_delete_device_template` (write, destructive). `fmc_apply_device_template(template, device,
+  variables, overrides, deploy)` (dangerous): the preview lists every variable (given or template default)
+  and every overridable object (current and new value), the device's current template, the VPN topologies
+  it joins and a model-mapping check; unknown names, missing values, values of the wrong type (AS number,
+  IPv4/IPv6 host or network, range, router id, FQDN), HA or cluster members, a firewall-mode mismatch and a
+  closed deploy window block it. Waits for the apply task; `deploy=true` sets `postApplyAction=DEPLOY`.
+  The `fmc_onboard_ftd` prompt takes an optional `template` and links the template path otherwise.
+  Unit tests replay FMC 10.0.1 spec examples (`tests/fixtures/devicetemplates.json`; the lab FMC had no
+  templates yet); `scripts/capture_fixtures.py --templates` re-records them read-only. Not yet live-tested
+  (F53 cell C4).
+
 ### Notes
 - The metric `forwardingActionType` values (`SET_EGRESS_INTF_BY_JITTER`, `_LOST_PKTS`, `_RTT`, `_MOS`) are not
   in FMC 10.0.1's OpenAPI spec (only `_ORDER` and `_PRIORITY` are); Cisco's guide spells them

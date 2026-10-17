@@ -1,12 +1,14 @@
 # fmc_onboard_ftd
 
 title: Onboard an FTD
-arguments: {"access_policy": "mcp-test-ha-acp", "gateway": "198.18.128.1", "host": "198.18.128.161", "inside_interface": "Ethernet0/1", "inside_ip": "10.99.2.1/24", "name": "mcp-ftd2", "nat_policy": "mcp-test-ha-nat", "outside_interface": "Ethernet0/0", "outside_ip": "198.18.128.163/18", "platform_settings": "mcp-test-ps", "recipe": "ftd-fmc", "test_destination": "198.18.128.1"}
+arguments: {"access_policy": "mcp-test-ha-acp", "gateway": "198.18.128.1", "host": "198.18.128.161", "inside_interface": "Ethernet0/1", "inside_ip": "10.99.2.1/24", "name": "mcp-ftd2", "nat_policy": "mcp-test-ha-nat", "outside_interface": "Ethernet0/0", "outside_ip": "198.18.128.163/18", "platform_settings": "mcp-test-ps", "recipe": "ftd-fmc", "template": "mcp-sdwan-spoke-tmpl", "test_destination": "198.18.128.1"}
 
 Onboard an FTD end to end: optionally build it in CML from a recipe, check licensing,
 register it with FMC, set outside/inside interfaces and zones, default route and NAT, assign
-policies, deploy, and verify with show commands, packet tracer and real traffic. Explains the
-`configure manager add` step for re-registration.
+policies, deploy, and verify with show commands, packet tracer and real traffic. With
+`template`, a device template sets the interfaces, routing, policies and SD-WAN/VPN membership
+in one call (fmc_apply_device_template). Explains the `configure manager add` step for
+re-registration.
 
 ## user
 
@@ -30,6 +32,17 @@ around a failed registration or deployment.
    deployment (5-10 minutes). Then `fmc_get_device` name="mcp-ftd2": it must be connected, with
    its model and version. A failure saying the device is unreachable or the key is wrong means the
    FTD's `configure manager add` does not match: fix it (step 1) and retry.
+
+2b. Device template "mcp-sdwan-spoke-tmpl" (a branch like an existing one): `fmc_get_device_template`
+   template="mcp-sdwan-spoke-tmpl" lists its variables (type and default), interfaces, overridable objects and VPN/SD-WAN
+   settings. Fill the variables for "mcp-ftd2" (interface addresses such as "198.18.128.163/18" and "10.99.2.1/24", AS numbers,
+   router id) and call `fmc_apply_device_template` template="mcp-sdwan-spoke-tmpl", device="mcp-ftd2",
+   variables={...}, overrides={...} for per-branch objects. It is dangerous-tier and replaces the
+   device's configuration: show the preview (every variable, given or default, and every override) and
+   wait for approval. The template brings the interfaces, zones, routes, NAT and policy assignments and
+   the SD-WAN/VPN membership, so in steps 3-5 only check what `fmc_pending_changes` shows and
+   fill gaps the template doesn't carry. In step 6 deploy "mcp-ftd2" and the hub(s) of its VPN topology, and
+   verify the tunnels with `fmc_get_vpn_topology`.
 
 3. Interfaces and zones: `fmc_list_device_interfaces` device="mcp-ftd2" (FTDv names them
    Ethernet0/0, Ethernet0/1, ...). Create zones if they don't exist
