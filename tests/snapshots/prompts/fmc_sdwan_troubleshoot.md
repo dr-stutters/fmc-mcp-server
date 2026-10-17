@@ -1,0 +1,58 @@
+# fmc_sdwan_troubleshoot
+
+title: Troubleshoot an SD-WAN application
+arguments: {"application": "Teams", "branch": "mcp-sdwan-t1-spoke1", "destination": "52.112.0.10", "source": "10.111.0.10", "topology": "mcp-sdwan-t1"}
+
+"App X is slow at branch Y": walks the SD-WAN path from the path metrics (fmc_sdwan_status) to
+the app-route rule, the interface it picks now and why, the overlay tunnels and BGP, and a packet
+tracer check, then proposes one previewed fix. Read-only until the user approves the fix.
+
+## user
+
+"Teams" is slow or failing at branch "mcp-sdwan-t1-spoke1". Find out which WAN path it takes, whether
+that path is degraded, and propose a fix. Steps 1-5 are read-only; any change in step 6 is
+preview-first and runs only after the user approves it.
+
+1. Path metrics: `fmc_sdwan_status` with branch="mcp-sdwan-t1-spoke1", topology="mcp-sdwan-t1". Note each WAN link's health,
+   status, RTT, jitter, loss and MOS, the overlay tunnels (and how many are up), the iBGP neighbors and
+   the `degraded` list. A link that is down, or above the loss/RTT/jitter thresholds (or below the MOS
+   one) the result lists, is a suspect. If a show command was "not available", say so and use the
+   path-monitoring status alone.
+
+2. App route: in the same result's `app_routes`, find the rule whose `match` (an extended ACL or an
+   application/network object) covers "Teams". Confirm with `fmc_get_routing` with
+   device="mcp-sdwan-t1-spoke1" (policy-based routes); for the ACL's entries, `fmc_api_call` GET
+   object/extendedaccesslists with params={"expanded": true} and find the ACL by name.
+   No matching rule means "Teams" follows the routing table: check `fmc_run_show_command`
+   with device="mcp-sdwan-t1-spoke1", command='show route' for the destination (overlay BGP, ECMP or the
+   default route).
+
+3. Chosen interface: the rule's `path_now` and `why` say which egress interface carries "Teams" now and
+   why (the configured ordering: priority, order, or lowest jitter, loss, RTT or best MOS, against the
+   live metrics). Compare with step 1: a priority- or order-based rule that keeps "Teams" on a degraded
+   link while a healthy one is listed is the likely cause. 'show policy-route' in `evidence` shows
+   what the device actually applies.
+
+4. Overlay: `fmc_get_vpn_topology` with topology=<the topology from step 1> and
+   `fmc_list_vpn_tunnels`. A tunnel down or an iBGP neighbor not Established on the chosen
+   path sends "Teams" to the hub over another path, or nowhere. Use `fmc_run_show_command`
+   with device="mcp-sdwan-t1-spoke1" and 'show crypto ikev2 sa', 'show bgp summary' or 'show route bgp' for
+   detail, and `fmc_list_health_alerts` with since_minutes=60, device="mcp-sdwan-t1-spoke1" for interface
+   or tunnel alerts.
+
+5. Live check: `fmc_packet_tracer` with device="mcp-sdwan-t1-spoke1", protocol=<tcp or udp>, source_ip="10.111.0.10", destination_ip="52.112.0.10", destination_port=<the application port>, i.e. traffic from "10.111.0.10" to "52.112.0.10". The egress interface in the result must match step 3;
+   a drop names the phase and rule (the `fmc_why_blocked` prompt takes over for an
+   access-policy drop).
+
+6. Report and fix: give the cause with its evidence (the metric values, the rule, the interface, the
+   tunnel state), then propose one change and preview it, for example:
+   - order the rule's interfaces by a metric that suits "Teams" (jitter or MOS for voice and video,
+     loss for bulk transfers) instead of priority: change the policy-based route through the
+     app-routing tools when this server has them, else `fmc_api_call` PUT on the device's
+     routing/policybasedroutes entry (show the body; preview first);
+   - when the branch has a single WAN, add a backup WAN: `fmc_update_sdwan_topology`
+     (remove and re-add the spoke with backup_wan_interface);
+   - when the carrier link itself is bad, say so: no FMC change fixes it.
+   Then `fmc_pending_changes` with device="mcp-sdwan-t1-spoke1" and, after approval, `fmc_deploy`
+   (the branch, and the hubs when the topology changed). Re-run `fmc_sdwan_status` with
+   branch="mcp-sdwan-t1-spoke1" afterwards to show the new path.
