@@ -452,6 +452,75 @@ approves a preview; deploying is a separate approval.
 """
 
 
+def _sdwan_troubleshoot_text(
+    application: str,
+    branch: str,
+    destination: str | None,
+    source: str | None,
+    topology: str | None,
+) -> str:
+    """fmc_sdwan_troubleshoot: path metrics -> app route -> chosen interface -> overlay -> fix."""
+    app, br = _q(application, "application"), _q(branch, "branch")
+    topo = _q(topology, "topology") if topology else None
+    dst = _q(destination, "destination") if destination else None
+    src = _q(source, "source") if source else None
+    t_arg = f", topology={topo}" if topo else ""
+    flow = f"traffic from {src or '<a branch inside host>'} to {dst or '<the application server>'}"
+    tracer = (
+        f"{tool_ref('fmc_packet_tracer')} with device={br}, protocol=<tcp or udp>, "
+        f"source_ip={src or '<an inside host>'}, destination_ip={dst or '<the server>'}, "
+        "destination_port=<the application port>"
+    )
+    return f"""{app} is slow or failing at branch {br}. Find out which WAN path it takes, whether
+that path is degraded, and propose a fix. Steps 1-5 are read-only; any change in step 6 is
+preview-first and runs only after the user approves it.
+
+1. Path metrics: {tool_ref("fmc_sdwan_status")} with branch={br}{t_arg}. Note each WAN link's health,
+   status, RTT, jitter, loss and MOS, the overlay tunnels (and how many are up), the iBGP neighbors and
+   the `degraded` list. A link that is down, or above the loss/RTT/jitter thresholds (or below the MOS
+   one) the result lists, is a suspect. If a show command was "not available", say so and use the
+   path-monitoring status alone.
+
+2. App route: in the same result's `app_routes`, find the rule whose `match` (an extended ACL or an
+   application/network object) covers {app}. Confirm with {tool_ref("fmc_get_routing")} with
+   device={br} (policy-based routes); for the ACL's entries, {tool_ref("fmc_api_call")} GET
+   object/extendedaccesslists with params={{"expanded": true}} and find the ACL by name.
+   No matching rule means {app} follows the routing table: check {tool_ref("fmc_run_show_command")}
+   with device={br}, command='show route' for the destination (overlay BGP, ECMP or the
+   default route).
+
+3. Chosen interface: the rule's `path_now` and `why` say which egress interface carries {app} now and
+   why (the configured ordering: priority, order, or lowest jitter, loss, RTT or best MOS, against the
+   live metrics). Compare with step 1: a priority- or order-based rule that keeps {app} on a degraded
+   link while a healthy one is listed is the likely cause. 'show policy-route' in `evidence` shows
+   what the device actually applies.
+
+4. Overlay: {tool_ref("fmc_get_vpn_topology")} with topology=<the topology from step 1> and
+   {tool_ref("fmc_list_vpn_tunnels")}. A tunnel down or an iBGP neighbor not Established on the chosen
+   path sends {app} to the hub over another path, or nowhere. Use {tool_ref("fmc_run_show_command")}
+   with device={br} and 'show crypto ikev2 sa', 'show bgp summary' or 'show route bgp' for
+   detail, and {tool_ref("fmc_list_health_alerts")} with since_minutes=60, device={br} for interface
+   or tunnel alerts.
+
+5. Live check: {tracer}, i.e. {flow}. The egress interface in the result must match step 3;
+   a drop names the phase and rule (the {tool_ref("fmc_why_blocked")} prompt takes over for an
+   access-policy drop).
+
+6. Report and fix: give the cause with its evidence (the metric values, the rule, the interface, the
+   tunnel state), then propose one change and preview it, for example:
+   - order the rule's interfaces by a metric that suits {app} (jitter or MOS for voice and video,
+     loss for bulk transfers) instead of priority: change the policy-based route through the
+     app-routing tools when this server has them, else {tool_ref("fmc_api_call")} PUT on the device's
+     routing/policybasedroutes entry (show the body; preview first);
+   - when the branch has a single WAN, add a backup WAN: {tool_ref("fmc_update_sdwan_topology")}
+     (remove and re-add the spoke with backup_wan_interface);
+   - when the carrier link itself is bad, say so: no FMC change fixes it.
+   Then {tool_ref("fmc_pending_changes")} with device={br} and, after approval, {tool_ref("fmc_deploy")}
+   (the branch, and the hubs when the topology changed). Re-run {tool_ref("fmc_sdwan_status")} with
+   branch={br} afterwards to show the new path.
+"""
+
+
 def register(reg: ToolRegistrar) -> None:
     @reg.prompt(
         title="Why is this traffic blocked?",
@@ -622,3 +691,29 @@ def register(reg: ToolRegistrar) -> None:
         change previewed and confirmed, a diff against the baseline and a re-audit, then a deploy plan
         with rollback."""
         return _policy_cleanup_text(policy, unused_days)
+
+    @reg.prompt(
+        title="Troubleshoot an SD-WAN application",
+        example={
+            "application": "Teams",
+            "branch": "mcp-sdwan-t1-spoke1",
+            "destination": "52.112.0.10",
+            "source": "10.111.0.10",
+            "topology": "mcp-sdwan-t1",
+        },
+    )
+    def fmc_sdwan_troubleshoot(
+        application: Annotated[
+            str, Field(description="The application or service that is slow, e.g. Teams or 'web to 10.1.2.3'")
+        ],
+        branch: Annotated[str, Field(description="The branch (spoke) FTD name")],
+        destination: Annotated[
+            str | None, Field(description="Application server IP, for packet tracer")
+        ] = None,
+        source: Annotated[str | None, Field(description="A branch inside host IP, for packet tracer")] = None,
+        topology: Annotated[str | None, Field(description="SD-WAN topology name (optional)")] = None,
+    ) -> str:
+        """ "App X is slow at branch Y": walks the SD-WAN path from the path metrics (fmc_sdwan_status) to
+        the app-route rule, the interface it picks now and why, the overlay tunnels and BGP, and a packet
+        tracer check, then proposes one previewed fix. Read-only until the user approves the fix."""
+        return _sdwan_troubleshoot_text(application, branch, destination, source, topology)
