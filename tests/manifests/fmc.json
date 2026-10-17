@@ -1,8 +1,39 @@
 {
-  "core_version": "0.13.0",
+  "core_version": "0.14.0",
   "manifest": 1,
   "prefix": "fmc",
   "prompts": {
+    "fmc_firewall_health_review": {
+      "arguments": [
+        "domain",
+        "device",
+        "lookback_hours"
+      ],
+      "references": [
+        "fmc_list_devices",
+        "fmc_device_health",
+        "fmc_list_ha_pairs",
+        "fmc_list_clusters",
+        "fmc_get_ha_status",
+        "fmc_list_deployable_devices",
+        "fmc_pending_changes",
+        "fmc_list_deployments",
+        "fmc_license_status",
+        "fmc_upgrade_status",
+        "fmc_list_backups",
+        "fmc_list_vpn_tunnels",
+        "fmc_list_health_alerts",
+        "fmc_recent_activity",
+        "fmc_run_show_command",
+        "fmc_deploy",
+        "fmc_backup_devices"
+      ],
+      "rendered": true,
+      "tier": "read",
+      "uses": [
+        "fmc"
+      ]
+    },
     "fmc_onboard_ftd": {
       "arguments": [
         "name",

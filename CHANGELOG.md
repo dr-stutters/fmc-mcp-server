@@ -1,5 +1,15 @@
 # Changelog
 
+## Unreleased
+
+### Added
+- **Prompt `fmc_firewall_health_review` (F48, #93).** Optional `domain`, `device` (name contains) and
+  `lookback_hours` (default 24). Walks the aggregate tools once each (devices and `fmc_device_health` for the
+  non-green ones, HA pairs and clusters, deployable devices and failed deployments, licences, software and
+  VDB/SRU/LSP content age, backups, VPN tunnels, health alerts) within FMC's 120 requests/minute budget, and
+  writes one ranked report (critical, warning, info) where each finding has its evidence and a next step with
+  the tool call to make. Read tier; read-only.
+
 ## 0.11.0 (unreleased)
 
 ### Added
