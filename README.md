@@ -106,7 +106,7 @@ Changes made in FMC reach the firewalls only after a **deployment** (`fmc_deploy
 
 ## Tools
 
-There are 136 tools when every tier is enabled (59 read, 68 write, 9 dangerous; the dangerous tier turns `fmc_api_call` into a raw call), and two workflow prompts (`fmc_why_blocked`; `fmc_onboard_ftd`, dangerous tier).
+There are 136 tools when every tier is enabled (59 read, 68 write, 9 dangerous; the dangerous tier turns `fmc_api_call` into a raw call), and three workflow prompts (`fmc_why_blocked`, `fmc_firewall_health_review`; `fmc_onboard_ftd`, dangerous tier).
 
 **Read**
 
@@ -210,6 +210,9 @@ MD5 password, because FMC returns it masked and a PUT would replace it, unless y
 - **Site-to-site VPN:** `fmc_create_s2s_vpn` -> `fmc_deploy` both peers -> `fmc_list_vpn_tunnels`. In FMC
   evaluation mode only DES crypto deploys; the tool picks it and says so.
 - **What changed or broke in the last hour?** `fmc_recent_activity`.
+- **Is everything healthy?** The `fmc_firewall_health_review` prompt checks devices, HA, deployments,
+  licences, content versions, backups, VPN and recent alerts, and ranks the findings (critical, warning,
+  info) with a next step for each.
 - **Rules on AD users and groups:** `fmc_create_trusted_ca` (for LDAPS) -> `fmc_create_realm` ->
   `fmc_test_realm` -> `fmc_download_realm` -> `fmc_create_identity_policy` + `fmc_create_identity_rule`
   (PASSIVE: user-IP mappings from ISE/pxGrid or an identity agent) -> select the identity policy in the
