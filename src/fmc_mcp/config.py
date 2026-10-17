@@ -42,6 +42,12 @@ class Settings(BaseServerSettings):
         "the same user's REST session.",
     )
     ui_password: SecretStr | None = Field(default=None, description="Password of FMC_UI_USERNAME.")
+    ftd_reg_key: SecretStr | None = Field(
+        default=None,
+        description="Registration key fmc_register_device uses when the caller passes no reg_key (the key "
+        "set with `configure manager add` on the FTDs), so agents never handle it. Also as "
+        "FMC_FTD_REG_KEY_FILE or FMC_FTD_REG_KEY_REF.",
+    )
     bundle_dir: Path | None = Field(
         default=None,
         description="Directory fmc_export_policy_bundle also writes each bundle to (fmc_diff_policy_bundle "

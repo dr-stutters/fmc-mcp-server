@@ -27,11 +27,12 @@ around a failed registration or deployment.
 
 1. Build the FTD in CML: `cml_build_recipe` with recipe="ftd-fmc" (preview first; the FTDv boots in 15-30 minutes, so build with wait=false and then `cml_wait_for_converged`). Then `cml_verify_recipe` for the same recipe: the 'show managers' probe must show the FMC as pending. The recipe's fmc_side and credentials sections give the management IP and registration key.
 
-2. Register: `fmc_register_device` with name="mcp-ftd2", host="198.18.128.161", reg_key=<the registration
-   key>, access_policy="mcp-test-ha-acp", wait=true. This waits for the registration task and FMC's initial
-   deployment (5-10 minutes). Then `fmc_get_device` name="mcp-ftd2": it must be connected, with
-   its model and version. A failure saying the device is unreachable or the key is wrong means the
-   FTD's `configure manager add` does not match: fix it (step 1) and retry.
+2. Register: `fmc_register_device` with name="mcp-ftd2", host="198.18.128.161", access_policy="mcp-test-ha-acp",
+   wait=true; leave out reg_key when the server has FMC_FTD_REG_KEY (the preview says where the key
+   comes from), otherwise ask the user for the registration key. This waits for the registration task
+   and FMC's initial deployment (5-10 minutes). Then `fmc_get_device` name="mcp-ftd2": it must be
+   connected, with its model and version. A failure saying the device is unreachable or the key is wrong
+   means the FTD's `configure manager add` does not match: fix it (step 1) and retry.
 
 2b. Device template "mcp-sdwan-spoke-tmpl" (a branch like an existing one): `fmc_get_device_template`
    template="mcp-sdwan-spoke-tmpl" lists its variables (type and default), interfaces, overridable objects and VPN/SD-WAN

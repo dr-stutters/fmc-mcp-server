@@ -62,6 +62,12 @@
   templates yet); `scripts/capture_fixtures.py --templates` re-records them read-only. Not yet live-tested
   (F53 cell C4).
 
+- **`FMC_FTD_REG_KEY`** (also `_FILE` / `_REF`): the FTD registration key `fmc_register_device` uses when
+  `reg_key` is left out, so the key never passes through the conversation or an agent's tool arguments. The
+  preview says where the key comes from (`registration_key: from server config`) and never shows it; a
+  missing key is a clear error before anything is sent. `reg_key` is now optional and still overrides it.
+  docs/deploying.md §9.
+
 ### Fixed
 - **`fmc_license_status` showed an empty smart-licence `metadata`.** FMC 10 returns `authStatus` (for example
   `OUT_OF_COMPLIANCE`), `virtualAccount`, `exportControl`, `evalUsed`, `evalExpiresInDays` and the last sync and
