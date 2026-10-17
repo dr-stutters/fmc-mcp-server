@@ -301,6 +301,10 @@
       "tier": "write",
       "title": "Create site-to-site VPN"
     },
+    "fmc_create_sdwan_topology": {
+      "tier": "write",
+      "title": "Create SD-WAN topology"
+    },
     "fmc_create_security_zone": {
       "tier": "write",
       "title": "Create security zone"
@@ -728,6 +732,10 @@
     "fmc_update_prefilter_rule": {
       "tier": "write",
       "title": "Update prefilter rule"
+    },
+    "fmc_update_sdwan_topology": {
+      "tier": "write",
+      "title": "Update SD-WAN topology"
     },
     "fmc_upgrade_status": {
       "tier": "read",

@@ -1,0 +1,1020 @@
+"""Firewall SD-WAN (F51a): build and change FMC's SD-WAN wizard topology (AUTO_VPN hub and spoke).
+
+The wizard's topology is an `FTDS2SVpn` with `topologyType: AUTO_VPN` (with HUB_AND_SPOKE FMC silently
+drops `autoVpnSettings`). Each hub terminates spokes on a dynamic VTI (DVTI) that borrows its address
+from a loopback, and hands each spoke a tunnel address from an `IPv4AddressPool`; spokes are added on
+their physical WAN interface and FMC builds the spoke's static VTI itself. With iBGP on, FMC generates
+the overlay routing (`router bgp <AS>` with community-tagged route maps and the inside networks
+redistributed). Reads stay on fmc_list_vpn_topologies(kind='sdwan') and fmc_get_vpn_topology; delete
+with fmc_delete_s2s_vpn.
+"""
+
+# No `from __future__ import annotations`: FastMCP inspects signatures at runtime.
+import ipaddress
+from collections.abc import Awaitable, Callable
+from dataclasses import dataclass, field
+from typing import Annotated, Any, Literal
+
+from fastmcp import Context
+from pydantic import BaseModel, Field
+
+from fmc_mcp._core import (
+    Confirm,
+    InvalidRequest,
+    NotFound,
+    Plan,
+    ToolRegistrar,
+    UpstreamError,
+    get_client,
+)
+from fmc_mcp.client import FmcApp, is_uuid
+from fmc_mcp.preview import fmc_preview
+from fmc_mcp.tools.common import Domain, pick_by_name, ref_label, resolve_object
+from fmc_mcp.tools.device_config import device_interfaces, pick_interface
+from fmc_mcp.tools.devices import DEVICES, INTERFACE_KINDS
+from fmc_mcp.tools.vpn import (
+    DEFAULT_IKE_POLICY,
+    DEFAULT_IPSEC_PROPOSAL,
+    MASK,
+    S2S,
+    WEAK_IKE_POLICY,
+    WEAK_IPSEC_PROPOSAL,
+    TopologyRef,
+    _named,
+    _one,
+    _peer_device,
+    endpoint_row,
+    resolve_topology,
+    strong_crypto_allowed,
+    topology_row,
+)
+
+POOLS = "object/ipv4addresspools"
+WAN_KINDS = ["physical", "subinterface", "etherchannel", "vlan"]
+DEFAULT_AS = 65000
+DEFAULT_COMMUNITY = 1000
+MAX_TUNNEL_ID = 10413
+MAX_LOOPBACK_ID = 1024
+
+
+class SpokeSpec(BaseModel):
+    """One branch (spoke) of an SD-WAN topology."""
+
+    device: str = Field(min_length=1, description="Spoke FTD or HA pair (name/UUID)")
+    wan_interface: str = Field(
+        min_length=1,
+        description="The spoke's WAN interface (logical or hardware name); it must be in a security zone. "
+        "FMC builds the spoke's VTI on it and addresses it from the hub's spoke pool",
+    )
+    backup_wan_interface: str | None = Field(
+        None, description="A second WAN interface for a backup tunnel (e.g. LTE)"
+    )
+    inside_interfaces: list[str] = Field(
+        default_factory=list,
+        description="Inside interfaces whose connected networks the overlay advertises (iBGP)",
+    )
+
+
+Spokes = Annotated[list[SpokeSpec] | None, Field(description="Spokes (branches) to add")]
+PoolArg = Annotated[
+    str | None,
+    Field(
+        description="The hub's spoke tunnel address pool: an existing IPv4 address pool (name/UUID), or a "
+        "subnet such as 10.255.255.0/24 to create one (the hub takes the first address on a new "
+        "loopback, spokes get the rest). Each hub needs its own, non-overlapping subnet"
+    ),
+]
+DvtiArg = Annotated[
+    str,
+    Field(
+        description="Logical name of the hub's dynamic VTI: reused when it exists on the hub, otherwise "
+        "created (sourced from the hub WAN interface, borrowing the loopback's address)"
+    ),
+]
+LoopbackArg = Annotated[
+    str | None,
+    Field(
+        description="Existing loopback (logical or hardware name) the new DVTI borrows its address "
+        "from; omit to create one with the pool subnet's first address"
+    ),
+]
+
+
+# --- planning -----------------------------------------------------------------------------------
+
+
+@dataclass
+class PoolPlan:
+    ref: dict[str, Any] | None  # an existing pool
+    body: dict[str, Any] | None  # or one to create
+    network: ipaddress.IPv4Network | None
+    hub_ip: str | None  # the first address of a new pool subnet (for a new loopback)
+
+    def label(self) -> str:
+        if self.ref:
+            return str(self.ref.get("name"))
+        return f"{(self.body or {}).get('name')} (new: {(self.body or {}).get('ipAddressRange')})"
+
+
+@dataclass
+class HubPlan:
+    """A hub (primary or backup): its device, DVTI and loopback (existing or new) and spoke pool."""
+
+    role: str  # "primary hub" / "backup hub"
+    device: dict[str, Any]  # {id, type, name}: Device or DeviceHAPair
+    iface_device: str  # the device record whose interfaces are used (an HA pair's primary)
+    primary: bool
+    pool: PoolPlan
+    inside: list[dict[str, Any]]
+    dvti: dict[str, Any] | None = None  # existing DVTI ref
+    dvti_body: dict[str, Any] | None = None  # or one to create (borrowIPfrom filled at apply)
+    loopback: dict[str, Any] | None = None  # existing loopback ref
+    loopback_body: dict[str, Any] | None = None  # or one to create
+    blockers: list[str] = field(default_factory=list)
+
+    def summary(self) -> dict[str, Any]:
+        out: dict[str, Any] = {
+            "role": self.role,
+            "device": self.device["name"],
+            "dvti": self.dvti["name"] if self.dvti else f"{(self.dvti_body or {}).get('ifname')} (new)",
+            "spoke_pool": self.pool.label(),
+            "inside": [ref_label(i) for i in self.inside] or None,
+        }
+        if self.dvti_body:
+            out["dvti_source"] = ref_label(self.dvti_body["tunnelSource"])
+            out["loopback"] = (
+                ref_label(self.loopback)
+                if self.loopback
+                else f"{(self.loopback_body or {}).get('ifname')} (new: {self.pool.hub_ip}/32)"
+            )
+        return {k: v for k, v in out.items() if v is not None}
+
+
+def iref(i: dict[str, Any]) -> dict[str, Any]:
+    return {"id": i["id"], "type": i.get("type"), "name": i.get("name")}
+
+
+def _parse_range(rng: str) -> tuple[ipaddress.IPv4Address, ipaddress.IPv4Address] | None:
+    try:
+        a, b = (ipaddress.IPv4Address(x.strip()) for x in rng.split("-", 1))
+    except (ValueError, ipaddress.AddressValueError):
+        return None
+    return a, b
+
+
+def pool_network(pool: dict[str, Any]) -> ipaddress.IPv4Network | None:
+    """The subnet an existing IPv4 address pool hands addresses from (range start + mask)."""
+    rng = _parse_range(str(pool.get("ipAddressRange") or ""))
+    if not rng:
+        return None
+    mask = str(pool.get("mask") or "32")
+    try:
+        return ipaddress.IPv4Network(f"{rng[0]}/{mask}", strict=False)
+    except ValueError:
+        return None
+
+
+async def plan_pool(app: FmcApp, ref: str, new_name: str, domain: str | None) -> PoolPlan:
+    ref = ref.strip()
+    if "/" in ref:
+        try:
+            net = ipaddress.IPv4Network(ref, strict=False)
+        except ValueError:
+            raise InvalidRequest(f"Spoke pool {ref!r} is not an IPv4 subnet or a pool name.") from None
+        if net.prefixlen > 29:
+            raise InvalidRequest(f"Spoke pool {ref!r} is too small; use a /29 or larger (e.g. a /24).")
+        hosts = list(net.hosts())
+        body = {
+            "type": "IPv4AddressPool",
+            "name": new_name,
+            "ipAddressRange": f"{hosts[1]}-{hosts[-1]}",
+            "mask": str(net.netmask),
+            "description": "SD-WAN spoke tunnel addresses (fmc_create_sdwan_topology)",
+        }
+        return PoolPlan(None, body, net, str(hosts[0]))
+    full = await app.config_path(POOLS, domain)
+    if is_uuid(ref):
+        pool: dict[str, Any] = await app.api.get(f"{full}/{ref}")
+    else:
+        page = await app.all(full, expanded=True, cap=2000)
+        pool = pick_by_name(page.items, ref, "IPv4 address pool", partial=not page.complete)
+    return PoolPlan(
+        {"id": pool["id"], "type": pool.get("type") or "IPv4AddressPool", "name": pool.get("name")},
+        None,
+        pool_network(pool),
+        None,
+    )
+
+
+def _free_id(used: set[int], top: int) -> int:
+    return next(n for n in range(1, top + 1) if n not in used)
+
+
+async def plan_hub(
+    app: FmcApp,
+    *,
+    role: str,
+    primary: bool,
+    device: str,
+    wan_interface: str | None,
+    dvti: str,
+    loopback: str | None,
+    pool: str | None,
+    pool_name: str,
+    inside: list[str],
+    zone: dict[str, Any],
+    domain: str | None,
+) -> HubPlan:
+    dev, iface_dev = await _peer_device(app, device, domain)
+    vtis = await device_interfaces(app, iface_dev, domain, ["vti"])
+    loops = await device_interfaces(app, iface_dev, domain, ["loopback"])
+    others = await device_interfaces(app, iface_dev, domain, WAN_KINDS)
+    if not pool:
+        raise InvalidRequest(f"The {role} needs a spoke pool (an IPv4 address pool or a subnet).")
+    pp = await plan_pool(app, pool, pool_name, domain)
+    inside_refs = [iref(pick_interface(others, i, dev["name"])[1]) for i in inside]
+    hub = HubPlan(role, dev, iface_dev, primary, pp, inside_refs)
+    existing = [i for _, i in vtis if str(i.get("ifname") or "").lower() == dvti.strip().lower()]
+    if existing:
+        v = existing[0]
+        hub.dvti = iref(v)
+        if str(v.get("tunnelType") or "").upper() != "DYNAMIC":
+            hub.blockers.append(
+                f"{dvti!r} on {dev['name']} is a {v.get('tunnelType') or 'static'} VTI; an SD-WAN hub "
+                "needs a dynamic VTI (pick another name to create one)."
+            )
+        return hub
+    if not wan_interface:
+        raise InvalidRequest(
+            f"{dev['name']} has no VTI named {dvti!r}: give the {role}'s WAN interface to create it."
+        )
+    _, wan = pick_interface(others, wan_interface, dev["name"])
+    if not wan.get("ifname"):
+        hub.blockers.append(
+            f"WAN interface {wan.get('name')} on {dev['name']} has no logical name; set one with "
+            "fmc_update_interface first."
+        )
+    if loopback:
+        _, lo = pick_interface(loops, loopback, dev["name"])
+        hub.loopback = iref(lo)
+        if not ((lo.get("ipv4") or {}).get("static") or {}).get("address"):
+            hub.blockers.append(f"Loopback {lo.get('name')} on {dev['name']} has no IPv4 address.")
+    else:
+        if pp.hub_ip is None:
+            raise InvalidRequest(
+                f"With an existing pool, name the loopback the {role}'s DVTI borrows its address "
+                "from (hub_loopback / backup_hub_loopback), or give the pool as a subnet."
+            )
+        lid = _free_id({int(i.get("loopbackId") or 0) for _, i in loops}, MAX_LOOPBACK_ID)
+        hub.loopback_body = {
+            "type": "LoopbackInterface",
+            "loopbackId": lid,
+            "enabled": True,
+            "ifname": f"{dvti.strip()}-lo",
+            "ipv4": {"static": {"address": pp.hub_ip, "netmask": "255.255.255.255"}},
+        }
+    tid = _free_id({int(i.get("tunnelId") or 0) for _, i in vtis}, MAX_TUNNEL_ID)
+    hub.dvti_body = {
+        "type": "VTIInterface",
+        "tunnelType": "DYNAMIC",
+        "tunnelId": tid,
+        "ifname": dvti.strip(),
+        "enabled": True,
+        "tunnelSource": iref(wan),
+        "securityZone": {"id": zone["id"], "type": "SecurityZone", "name": zone.get("name")},
+        "ipAddressAssignmentType": "BORROW_IP_FROM_INTERFACE",
+        "ipsecMode": "ipv4",
+        "description": "SD-WAN hub DVTI (fmc_create_sdwan_topology)",
+    }
+    return hub
+
+
+@dataclass
+class SpokePlan:
+    device: dict[str, Any]
+    wan: dict[str, Any]
+    backup: dict[str, Any] | None
+    inside: list[dict[str, Any]]
+    blockers: list[str]
+
+    def endpoint(self) -> dict[str, Any]:
+        ep: dict[str, Any] = {
+            "name": self.device["name"],
+            "type": "EndPoint",
+            "peerType": "SPOKE",
+            "extranet": False,
+            "device": self.device,
+            "interface": self.wan,
+            "connectionType": "BIDIRECTIONAL",
+        }
+        if self.inside:
+            ep["insideInterface"] = self.inside
+        if self.backup:
+            ep["backupInterfaces"] = [{"interface": self.backup}]
+        return ep
+
+    def summary(self) -> dict[str, Any]:
+        out = {
+            "device": self.device["name"],
+            "wan": ref_label(self.wan),
+            "backup_wan": ref_label(self.backup) if self.backup else None,
+            "inside": [ref_label(i) for i in self.inside] or None,
+        }
+        return {k: v for k, v in out.items() if v is not None}
+
+
+async def plan_spoke(app: FmcApp, spec: SpokeSpec, domain: str | None) -> SpokePlan:
+    dev, iface_dev = await _peer_device(app, spec.device, domain)
+    others = await device_interfaces(app, iface_dev, domain, WAN_KINDS)
+    blockers: list[str] = []
+
+    def wan_ref(name: str) -> dict[str, Any]:
+        _, i = pick_interface(others, name, dev["name"])
+        if not i.get("securityZone"):
+            blockers.append(
+                f"WAN interface {i.get('name')} on {dev['name']} is in no security zone; SD-WAN only uses "
+                "zoned interfaces (fmc_update_interface zone=...)."
+            )
+        if not i.get("ifname"):
+            blockers.append(f"WAN interface {i.get('name')} on {dev['name']} has no logical name.")
+        return iref(i)
+
+    wan = wan_ref(spec.wan_interface)
+    backup = wan_ref(spec.backup_wan_interface) if spec.backup_wan_interface else None
+    if backup and backup["id"] == wan["id"]:
+        raise InvalidRequest(f"{dev['name']}: backup_wan_interface must differ from wan_interface.")
+    inside = [iref(pick_interface(others, i, dev["name"])[1]) for i in spec.inside_interfaces]
+    return SpokePlan(dev, wan, backup, inside, blockers)
+
+
+def hub_endpoint(hub: HubPlan, dvti: dict[str, Any], pool: dict[str, Any]) -> dict[str, Any]:
+    ep: dict[str, Any] = {
+        "name": hub.device["name"],
+        "type": "EndPoint",
+        "peerType": "HUB",
+        "isPrimaryHub": hub.primary,
+        "extranet": False,
+        "device": hub.device,
+        "interface": dvti,
+        "ipv4PoolsForSpokeVti": [pool],
+        "connectionType": "BIDIRECTIONAL",
+    }
+    if hub.inside:
+        ep["insideInterface"] = hub.inside
+    return ep
+
+
+def overlap_blockers(hubs: list[HubPlan], extra: list[ipaddress.IPv4Network] | None = None) -> list[str]:
+    """FMC needs every hub's spoke pool on its own subnet ('configure IPv4 Pools with unique subnet')."""
+    nets = [(h.role, h.pool.network) for h in hubs if h.pool.network] + [
+        ("existing hub", n) for n in extra or []
+    ]
+    out = []
+    for i, (ra, a) in enumerate(nets):
+        for rb, b in nets[i + 1 :]:
+            if a.overlaps(b):
+                out.append(
+                    f"The {ra} and {rb} spoke pools overlap ({a} / {b}); each hub needs its own subnet."
+                )
+    return out
+
+
+class Builder:
+    """Applies the plan in dependency order and undoes what it created when a step fails."""
+
+    def __init__(self, app: FmcApp, domain: str | None, secret: str | None = None) -> None:
+        self.app = app
+        self.domain = domain
+        self.secret = secret
+        self.done: list[str] = []
+        self.undo: list[tuple[str, str]] = []  # (label, path to DELETE), newest last
+
+    async def post(self, path: str, body: dict[str, Any], label: str, *, undo: bool = True) -> dict[str, Any]:
+        made: dict[str, Any] = await self.app.api.post(path, body)
+        self.done.append(label)
+        if undo and made.get("id"):
+            self.undo.append((label, f"{path}/{made['id']}"))
+        return made
+
+    async def pool(self, pp: PoolPlan) -> dict[str, Any]:
+        if pp.ref:
+            return pp.ref
+        assert pp.body is not None
+        made = await self.post(
+            await self.app.config_path(POOLS, self.domain), pp.body, f"pool {pp.body['name']!r}"
+        )
+        return {"id": made["id"], "type": made.get("type") or "IPv4AddressPool", "name": made.get("name")}
+
+    async def hub_dvti(self, hub: HubPlan) -> dict[str, Any]:
+        if hub.dvti:
+            return hub.dvti
+        assert hub.dvti_body is not None
+        base = await self.app.config_path(f"{DEVICES}/{hub.iface_device}", self.domain)
+        lo = hub.loopback
+        if lo is None:
+            assert hub.loopback_body is not None
+            made = await self.post(
+                f"{base}/{INTERFACE_KINDS['loopback']}",
+                hub.loopback_body,
+                f"loopback {hub.loopback_body['ifname']!r} on {hub.device['name']}",
+            )
+            lo = {"id": made["id"], "type": "LoopbackInterface", "name": made.get("name")}
+        body = {**hub.dvti_body, "borrowIPfrom": lo}
+        made = await self.post(
+            f"{base}/{INTERFACE_KINDS['vti']}", body, f"DVTI {body['ifname']!r} on {hub.device['name']}"
+        )
+        return {"id": made["id"], "type": made.get("type") or "VTIInterface", "name": made.get("name")}
+
+    async def run(self, what: str, steps: Callable[[], Awaitable[Any]]) -> Any:
+        try:
+            return await steps()
+        except Exception as e:  # undo whatever was created, newest first
+            failed = []
+            for label, path in reversed(self.undo):
+                try:
+                    await self.app.api.delete(path)
+                except Exception:
+                    failed.append(label)
+            self.app.invalidate_cache()
+            cleanup = (
+                f"Removing what was created failed for: {', '.join(failed)}; delete those by hand."
+                if failed
+                else "Everything created was deleted again; fix the cause and retry."
+                if self.undo
+                else ""
+            )
+            msg = str(e)
+            if self.secret:
+                msg = msg.replace(self.secret, MASK)
+            after = f" after {', '.join(self.done)}" if self.done else ""
+            raise UpstreamError(
+                f"{what} failed{after}: {msg}. {cleanup}".strip(), getattr(e, "status_code", None)
+            ) from None
+
+
+async def _zone(app: FmcApp, ref: str, domain: str | None) -> dict[str, Any]:
+    _, z = await resolve_object(app, ref, domain, ["security_zone"])
+    return z
+
+
+def _route_settings(overlay: str, bgp_as: int, community: int, multipath: bool) -> dict[str, Any]:
+    rs: dict[str, Any] = {"enableBgp": overlay == "bgp"}
+    if overlay == "bgp":
+        rs |= {
+            "autonomousSystemNumber": bgp_as,
+            "communityAttribute": community,
+            "communityTagToAdvertiseLearntRoutes": community,
+            "enableMultiPath": multipath,
+            "distributeConnectedNetwork": {
+                "enableDistribution": True,
+                "interfaceSelection": "INSIDE_INTERFACE",
+            },
+        }
+    return rs
+
+
+def _deploy_note(names: list[str]) -> str:
+    return f"Takes effect after deploying {', '.join(sorted(set(names)))} (fmc_deploy)."
+
+
+def register(reg: ToolRegistrar) -> None:
+    @reg.write(title="Create SD-WAN topology")
+    async def fmc_create_sdwan_topology(
+        ctx: Context,
+        name: Annotated[str, Field(description="New topology name", min_length=1, max_length=64)],
+        hub: Annotated[str, Field(description="Primary hub FTD or HA pair (name/UUID)")],
+        tunnel_zone: Annotated[
+            str,
+            Field(
+                description="Security zone for the overlay: the hub DVTI and every spoke VTI join it "
+                "(use it in access rules for spoke traffic)"
+            ),
+        ],
+        spoke_pool: PoolArg,
+        hub_wan_interface: Annotated[
+            str | None, Field(description="Hub WAN interface the new DVTI is sourced from")
+        ] = None,
+        hub_dvti: DvtiArg = "sdwan-dvti",
+        hub_loopback: LoopbackArg = None,
+        hub_inside_interfaces: Annotated[
+            list[str] | None, Field(description="Hub inside interfaces advertised into the overlay")
+        ] = None,
+        spokes: Spokes = None,
+        backup_hub: Annotated[
+            str | None,
+            Field(description="Backup (secondary) hub FTD or HA pair; spokes keep a tunnel to both"),
+        ] = None,
+        backup_hub_wan_interface: Annotated[
+            str | None, Field(description="Backup hub WAN interface for its DVTI")
+        ] = None,
+        backup_hub_dvti: DvtiArg = "sdwan-dvti",
+        backup_hub_loopback: LoopbackArg = None,
+        backup_spoke_pool: PoolArg = None,
+        backup_hub_inside_interfaces: Annotated[
+            list[str] | None, Field(description="Backup hub inside interfaces advertised into the overlay")
+        ] = None,
+        overlay: Annotated[
+            Literal["bgp", "ospf"],
+            Field(
+                description="Overlay routing: bgp (FMC generates iBGP over the tunnels, community-tagged, "
+                "inside networks redistributed) or ospf (no generated BGP; you run OSPF over the "
+                "tunnel and inside networks with fmc_configure_ospf)"
+            ),
+        ] = "bgp",
+        bgp_as: Annotated[int, Field(ge=1, le=4294967295, description="iBGP AS number")] = DEFAULT_AS,
+        community: Annotated[
+            int, Field(ge=1, le=65535, description="BGP community tagging the overlay's routes")
+        ] = DEFAULT_COMMUNITY,
+        multipath: Annotated[
+            bool, Field(description="ECMP over several tunnels (maximum-paths ibgp) when BGP is on")
+        ] = True,
+        pre_shared_key: Annotated[
+            str | None,
+            Field(
+                description="IKEv2 pre-shared key (never echoed back); default: FMC generates one per tunnel",
+                min_length=8,
+                max_length=127,
+            ),
+        ] = None,
+        ike_policies: Annotated[
+            list[str] | None, Field(description=f"IKEv2 policy names (default {DEFAULT_IKE_POLICY})")
+        ] = None,
+        ipsec_proposals: Annotated[
+            list[str] | None,
+            Field(description=f"IKEv2 IPsec proposal names (default {DEFAULT_IPSEC_PROPOSAL})"),
+        ] = None,
+        domain: Domain = None,
+        confirm: Confirm = None,
+    ) -> dict[str, Any]:
+        """Build an SD-WAN hub-and-spoke topology the way FMC's SD-WAN wizard does (FMC 7.6+): a
+        dynamic VTI on the hub (created from its WAN interface and a loopback when it doesn't exist), a
+        spoke tunnel address pool, the spokes on their WAN interfaces (FMC builds each spoke's VTI and
+        addresses it from the pool), an optional backup hub with its own DVTI and pool, IKEv2, and iBGP
+        overlay routing generated by FMC (or OSPF, configured separately). The preview shows every
+        object, interface and endpoint in creation order; a failed step deletes what was created.
+        Interfaces must have logical names and WAN interfaces a security zone. Then deploy the hubs and
+        spokes (fmc_deploy) and check fmc_get_vpn_topology and fmc_run_show_command('show bgp summary')."""
+        app: FmcApp = get_client(ctx)
+        spokes = spokes or []
+        if backup_hub and not backup_spoke_pool:
+            raise InvalidRequest("backup_hub needs backup_spoke_pool (its own subnet or pool).")
+        if not backup_hub and (backup_spoke_pool or backup_hub_wan_interface or backup_hub_loopback):
+            raise InvalidRequest("backup_* settings need backup_hub.")
+        blockers: list[str] = []
+        try:
+            await resolve_topology(app, name, domain)
+            blockers.append(f"A VPN topology named {name!r} already exists.")
+        except NotFound:
+            pass
+        zone = await _zone(app, tunnel_zone, domain)
+        hubs = [
+            await plan_hub(
+                app,
+                role="primary hub",
+                primary=True,
+                device=hub,
+                wan_interface=hub_wan_interface,
+                dvti=hub_dvti,
+                loopback=hub_loopback,
+                pool=spoke_pool,
+                pool_name=f"{name}-pool",
+                inside=hub_inside_interfaces or [],
+                zone=zone,
+                domain=domain,
+            )
+        ]
+        if backup_hub:
+            hubs.append(
+                await plan_hub(
+                    app,
+                    role="backup hub",
+                    primary=False,
+                    device=backup_hub,
+                    wan_interface=backup_hub_wan_interface,
+                    dvti=backup_hub_dvti,
+                    loopback=backup_hub_loopback,
+                    pool=backup_spoke_pool,
+                    pool_name=f"{name}-backup-pool",
+                    inside=backup_hub_inside_interfaces or [],
+                    zone=zone,
+                    domain=domain,
+                )
+            )
+            if hubs[1].device["id"] == hubs[0].device["id"]:
+                raise InvalidRequest("hub and backup_hub must be different devices.")
+        planned = [await plan_spoke(app, s, domain) for s in spokes]
+        seen = {h.device["id"] for h in hubs}
+        for sp in planned:
+            if sp.device["id"] in seen:
+                raise InvalidRequest(f"{sp.device['name']} appears twice (as a hub or spoke).")
+            seen.add(sp.device["id"])
+        for h in hubs:
+            blockers += h.blockers
+        for sp in planned:
+            blockers += sp.blockers
+        blockers += overlap_blockers(hubs)
+
+        strong_ok = await strong_crypto_allowed(app)
+        weak = strong_ok is False
+        side_effects = [_deploy_note([h.device["name"] for h in hubs] + [s.device["name"] for s in planned])]
+        if weak and not ike_policies and not ipsec_proposals:
+            side_effects.append(
+                "FMC has no strong-crypto (export-controlled) licence, so the defaults are "
+                f"{WEAK_IKE_POLICY} / {WEAK_IPSEC_PROPOSAL} (DES): fine for a lab, not for production. "
+                "FMC may also refuse SD-WAN topologies without it."
+            )
+        if overlay == "ospf":
+            side_effects.append(
+                "No overlay routing is generated: run OSPF over the tunnel and inside networks on every "
+                "hub and spoke (fmc_configure_ospf) before traffic can cross the overlay."
+            )
+        policies = await _named(
+            app,
+            "object/ikev2policies",
+            ike_policies or [WEAK_IKE_POLICY if weak else DEFAULT_IKE_POLICY],
+            "IKEv2 policy",
+            domain,
+        )
+        proposals = await _named(
+            app,
+            "object/ikev2ipsecproposals",
+            ipsec_proposals or [WEAK_IPSEC_PROPOSAL if weak else DEFAULT_IPSEC_PROPOSAL],
+            "IKEv2 IPsec proposal",
+            domain,
+        )
+        if weak and (strong := [p["name"] for p in [*policies, *proposals] if p["strong"]]):
+            blockers.append(
+                f"FMC has no strong-crypto licence, so it won't deploy {', '.join(strong)}; use DES ones "
+                f"such as {WEAK_IKE_POLICY} and {WEAK_IPSEC_PROPOSAL}."
+            )
+        zone_ref = {"id": zone["id"], "type": "SecurityZone", "name": zone.get("name")}
+        topo_body = {
+            "name": name,
+            "type": "FTDS2SVpn",
+            "topologyType": "AUTO_VPN",
+            "routeBased": True,
+            "ikeV1Enabled": False,
+            "ikeV2Enabled": True,
+            "autoVpnSettings": {
+                "routeSettings": _route_settings(overlay, bgp_as, community, multipath),
+                "spokeSvtiSecurityZone": zone_ref,
+            },
+        }
+        ike_v2: dict[str, Any] = {
+            "authenticationType": "MANUAL_PRE_SHARED_KEY" if pre_shared_key else "AUTOMATIC_PRE_SHARED_KEY",
+            "policies": [
+                {"id": p["id"], "type": p.get("type") or "IKEv2Policy", "name": p["name"]} for p in policies
+            ],
+        }
+        if pre_shared_key:
+            ike_v2 |= {"manualPreSharedKey": pre_shared_key, "enforceHexBasedPreSharedKeyOnly": False}
+        else:
+            ike_v2["automaticPreSharedKeyLength"] = 24
+        proposal_refs = [
+            {"id": p["id"], "type": p.get("type") or "IKEv2IPsecProposal", "name": p["name"]}
+            for p in proposals
+        ]
+        path = await app.config_path(S2S, domain)
+        steps: list[str] = []
+        for h in hubs:
+            if h.pool.body:
+                steps.append(
+                    f"create IPv4 address pool {h.pool.body['name']!r} ({h.pool.body['ipAddressRange']})"
+                )
+            if h.loopback_body:
+                steps.append(
+                    f"create loopback {h.loopback_body['ifname']!r} {h.pool.hub_ip}/32 on {h.device['name']}"
+                )
+            if h.dvti_body:
+                steps.append(f"create DVTI {h.dvti_body['ifname']!r} on {h.device['name']}")
+        steps += ["create AUTO_VPN topology", "set IKEv2 and IPsec"]
+        steps += [f"add {h.role} {h.device['name']}" for h in hubs]
+        steps += [f"add spoke {s.device['name']}" for s in planned]
+
+        async def apply() -> Any:
+            b = Builder(app, domain, pre_shared_key)
+
+            async def steps_() -> Any:
+                hub_eps = []
+                for h in hubs:
+                    pool = await b.pool(h.pool)
+                    dvti = await b.hub_dvti(h)
+                    hub_eps.append(hub_endpoint(h, dvti, pool))
+                topo = await b.post(path, topo_body, f"topology {name!r}")
+                app.invalidate_cache()
+                base = f"{path}/{topo['id']}"
+                ike = await _one(app, f"{base}/ikesettings")
+                await app.api.put(
+                    f"{base}/ikesettings/{ike['id']}",
+                    {"id": ike["id"], "type": ike.get("type") or "IkeSettings", "ikeV2Settings": ike_v2},
+                )
+                ips = await _one(app, f"{base}/ipsecsettings")
+                await app.api.put(
+                    f"{base}/ipsecsettings/{ips['id']}",
+                    {
+                        **{k: v for k, v in ips.items() if k not in ("links", "metadata")},
+                        "ikeV2IpsecProposal": proposal_refs,
+                    },
+                )
+                b.done.append("IKE/IPsec settings")
+                made = []
+                for ep in [*hub_eps, *(s.endpoint() for s in planned)]:
+                    # endpoints go with the topology: no separate undo
+                    made.append(await b.post(f"{base}/endpoints", ep, f"endpoint {ep['name']}", undo=False))
+                return {
+                    "topology": topology_row(topo),
+                    "endpoints": [endpoint_row(m) for m in made],
+                    "created": b.done,
+                    "next": "Deploy the hubs and spokes (fmc_deploy), then check fmc_get_vpn_topology, "
+                    "fmc_list_vpn_tunnels and fmc_run_show_command('show bgp summary'). To remove it: "
+                    "fmc_delete_s2s_vpn, then fmc_delete_interface for a DVTI/loopback created here.",
+                }
+
+            return await b.run(f"Building SD-WAN topology {name!r}", steps_)
+
+        shown_ike = {**ike_v2, "manualPreSharedKey": MASK} if pre_shared_key else ike_v2
+        return await fmc_preview(
+            ctx,
+            tool="fmc_create_sdwan_topology",
+            args={
+                "name": name,
+                "hub": hub,
+                "tunnel_zone": tunnel_zone,
+                "spoke_pool": spoke_pool,
+                "hub_wan_interface": hub_wan_interface,
+                "hub_dvti": hub_dvti,
+                "hub_loopback": hub_loopback,
+                "hub_inside_interfaces": hub_inside_interfaces,
+                "spokes": [s.model_dump() for s in spokes],
+                "backup_hub": backup_hub,
+                "backup_hub_wan_interface": backup_hub_wan_interface,
+                "backup_hub_dvti": backup_hub_dvti,
+                "backup_hub_loopback": backup_hub_loopback,
+                "backup_spoke_pool": backup_spoke_pool,
+                "backup_hub_inside_interfaces": backup_hub_inside_interfaces,
+                "overlay": overlay,
+                "bgp_as": bgp_as,
+                "community": community,
+                "multipath": multipath,
+                "pre_shared_key": pre_shared_key,
+                "ike_policies": ike_policies,
+                "ipsec_proposals": ipsec_proposals,
+                "domain": domain,
+            },
+            confirm=confirm,
+            plan=Plan(
+                f"Create SD-WAN topology {name!r}: hub {hubs[0].device['name']}"
+                + (f", backup hub {hubs[1].device['name']}" if len(hubs) > 1 else "")
+                + f", {len(planned)} spoke(s), overlay {overlay}",
+                details={
+                    "steps": steps,
+                    "topology": topo_body,
+                    "hubs": [h.summary() for h in hubs],
+                    "spokes": [s.summary() for s in planned],
+                    "ike_v2": shown_ike,
+                    "ipsec_proposals": [p["name"] for p in proposal_refs],
+                },
+                fingerprint={
+                    "hubs": [h.summary() for h in hubs],
+                    "spokes": [s.endpoint() for s in planned],
+                    "zone": zone["id"],
+                    "ike": [p["id"] for p in policies],
+                    "ipsec": [p["id"] for p in proposals],
+                },
+                blockers=blockers,
+                side_effects=side_effects,
+                blast_radius=len(hubs) + len(planned),
+            ),
+            apply=apply,
+        )
+
+    @reg.write(title="Update SD-WAN topology")
+    async def fmc_update_sdwan_topology(
+        ctx: Context,
+        topology: TopologyRef,
+        add_spokes: Spokes = None,
+        remove_spokes: Annotated[
+            list[str] | None, Field(description="Spoke devices (name/UUID) to remove from the topology")
+        ] = None,
+        add_backup_hub: Annotated[
+            str | None, Field(description="Add this FTD or HA pair as a backup (secondary) hub")
+        ] = None,
+        backup_hub_wan_interface: Annotated[
+            str | None, Field(description="Backup hub WAN interface for its new DVTI")
+        ] = None,
+        backup_hub_dvti: DvtiArg = "sdwan-dvti",
+        backup_hub_loopback: LoopbackArg = None,
+        backup_spoke_pool: PoolArg = None,
+        backup_hub_inside_interfaces: Annotated[
+            list[str] | None, Field(description="Backup hub inside interfaces advertised into the overlay")
+        ] = None,
+        remove_backup_hub: Annotated[
+            str | None, Field(description="Remove this backup hub (name/UUID); the primary hub stays")
+        ] = None,
+        multipath: Annotated[
+            bool | None, Field(description="Turn ECMP over several tunnels on or off (BGP overlay)")
+        ] = None,
+        domain: Domain = None,
+        confirm: Confirm = None,
+    ) -> dict[str, Any]:
+        """Change an SD-WAN (AUTO_VPN) topology: add or remove spokes, add or remove a backup hub (with
+        its own DVTI and spoke pool, created as in fmc_create_sdwan_topology), or switch ECMP. The
+        preview lists the endpoints before and after and the devices to deploy: adding or removing a
+        spoke changes the hubs' configuration too, and a hub change reaches every spoke. The primary
+        hub can't be removed (delete the topology with fmc_delete_s2s_vpn instead)."""
+        app: FmcApp = get_client(ctx)
+        add_spokes = add_spokes or []
+        remove_spokes = remove_spokes or []
+        if not (add_spokes or remove_spokes or add_backup_hub or remove_backup_hub or multipath is not None):
+            raise InvalidRequest(
+                "Nothing to change: give spokes or a backup hub to add or remove, or multipath."
+            )
+        if add_backup_hub and not backup_spoke_pool:
+            raise InvalidRequest("add_backup_hub needs backup_spoke_pool (its own subnet or pool).")
+        t = await resolve_topology(app, topology, domain)
+        if str(t.get("topologyType")) != "AUTO_VPN" and not t.get("autoVpnSettings"):
+            raise InvalidRequest(
+                f"{t.get('name')!r} is not an SD-WAN topology ({t.get('topologyType')}); this tool "
+                "only changes AUTO_VPN topologies (fmc_create_sdwan_topology)."
+            )
+        path = await app.config_path(f"{S2S}/{t['id']}", domain)
+        endpoints = (await app.all(f"{path}/endpoints", cap=2000)).items
+        by_dev: dict[Any, dict[str, Any]] = {(e.get("device") or {}).get("id"): e for e in endpoints}
+        hubs_now = [e for e in endpoints if e.get("peerType") == "HUB"]
+        blockers: list[str] = []
+
+        async def find(ref: str, role: str) -> dict[str, Any]:
+            dev, _ = await _peer_device(app, ref, domain)
+            ep = by_dev.get(dev["id"])
+            if ep is None or ep.get("peerType") != role:
+                raise InvalidRequest(f"{dev['name']} is not a {role.lower()} of {t.get('name')!r}.")
+            return ep
+
+        removing = [await find(r, "SPOKE") for r in remove_spokes]
+        drop_hub = None
+        if remove_backup_hub:
+            drop_hub = await find(remove_backup_hub, "HUB")
+            if drop_hub.get("isPrimaryHub"):
+                raise InvalidRequest(
+                    f"{drop_hub.get('name')} is the primary hub; delete the topology "
+                    "(fmc_delete_s2s_vpn) instead."
+                )
+        new_hub: HubPlan | None = None
+        if add_backup_hub:
+            if any(not e.get("isPrimaryHub") for e in hubs_now) and not drop_hub:
+                blockers.append(f"{t.get('name')!r} already has a backup hub; remove it first.")
+            zone = (t.get("autoVpnSettings") or {}).get("spokeSvtiSecurityZone")
+            if not zone:
+                raise InvalidRequest("The topology has no overlay security zone (autoVpnSettings).")
+            new_hub = await plan_hub(
+                app,
+                role="backup hub",
+                primary=False,
+                device=add_backup_hub,
+                wan_interface=backup_hub_wan_interface,
+                dvti=backup_hub_dvti,
+                loopback=backup_hub_loopback,
+                pool=backup_spoke_pool,
+                pool_name=f"{t.get('name')}-backup-pool",
+                inside=backup_hub_inside_interfaces or [],
+                zone=zone,
+                domain=domain,
+            )
+            if new_hub.device["id"] in by_dev:
+                raise InvalidRequest(f"{new_hub.device['name']} is already in {t.get('name')!r}.")
+            blockers += new_hub.blockers
+            existing_nets = []
+            for e in hubs_now:
+                if e is drop_hub:
+                    continue
+                for p in e.get("ipv4PoolsForSpokeVti") or []:
+                    try:
+                        pool = await app.api.get(f"{await app.config_path(POOLS, domain)}/{p['id']}")
+                    except (NotFound, UpstreamError):
+                        continue
+                    if (n := pool_network(pool)) is not None:
+                        existing_nets.append(n)
+            blockers += overlap_blockers([new_hub], existing_nets)
+        adding = [await plan_spoke(app, s, domain) for s in add_spokes]
+        for sp in adding:
+            if sp.device["id"] in by_dev and by_dev[sp.device["id"]] not in removing:
+                raise InvalidRequest(f"{sp.device['name']} is already in {t.get('name')!r}.")
+            if new_hub and sp.device["id"] == new_hub.device["id"]:
+                raise InvalidRequest(f"{sp.device['name']} can't be both the backup hub and a spoke.")
+            blockers += sp.blockers
+        new_topo = None
+        if multipath is not None:
+            rs = ((t.get("autoVpnSettings") or {}).get("routeSettings")) or {}
+            if not rs.get("enableBgp"):
+                blockers.append("multipath applies to the iBGP overlay, which this topology doesn't use.")
+            new_topo = {
+                **{k: v for k, v in t.items() if k not in ("links", "metadata")},
+                "autoVpnSettings": {
+                    **(t.get("autoVpnSettings") or {}),
+                    "routeSettings": {**rs, "enableMultiPath": multipath},
+                },
+            }
+
+        def label(e: dict[str, Any]) -> str:
+            role = (
+                "spoke" if e.get("peerType") == "SPOKE" else "hub" if e.get("isPrimaryHub") else "backup hub"
+            )
+            return f"{e.get('name')} ({role})"
+
+        before = [label(e) for e in endpoints]
+        gone = {id(e) for e in removing} | ({id(drop_hub)} if drop_hub else set())
+        after = [label(e) for e in endpoints if id(e) not in gone]
+        after += [f"{new_hub.device['name']} (backup hub)"] if new_hub else []
+        after += [f"{s.device['name']} (spoke)" for s in adding]
+        hub_names = [str(e.get("name")) for e in hubs_now]
+        if new_hub or drop_hub or new_topo:
+            deploy = [str(e.get("name")) for e in endpoints] + [s.device["name"] for s in adding]
+            deploy += [new_hub.device["name"]] if new_hub else []
+        else:
+            deploy = hub_names + [s.device["name"] for s in adding] + [str(e.get("name")) for e in removing]
+        side_effects = [_deploy_note(deploy)]
+        if removing or drop_hub:
+            side_effects.append("Removed devices' tunnels go down when they are deployed.")
+
+        async def apply() -> Any:
+            b = Builder(app, domain)
+
+            async def steps_() -> Any:
+                if new_topo is not None:
+                    await app.api.put(path, new_topo)
+                    b.done.append(f"multipath {'on' if multipath else 'off'}")
+                for e in removing + ([drop_hub] if drop_hub else []):
+                    await app.api.delete(f"{path}/endpoints/{e['id']}")
+                    b.done.append(f"removed {label(e)}")
+                made = []
+                if new_hub:
+                    pool = await b.pool(new_hub.pool)
+                    dvti = await b.hub_dvti(new_hub)
+                    ep = hub_endpoint(new_hub, dvti, pool)
+                    made.append(await b.post(f"{path}/endpoints", ep, f"backup hub {ep['name']}"))
+                for sp in adding:
+                    made.append(
+                        await b.post(f"{path}/endpoints", sp.endpoint(), f"spoke {sp.device['name']}")
+                    )
+                app.invalidate_cache()
+                return {
+                    "topology": t.get("name"),
+                    "changed": b.done,
+                    "added": [endpoint_row(m) for m in made],
+                    "next": _deploy_note(deploy),
+                }
+
+            return await b.run(f"Changing SD-WAN topology {t.get('name')!r}", steps_)
+
+        return await fmc_preview(
+            ctx,
+            tool="fmc_update_sdwan_topology",
+            owned=[t],
+            args={
+                "topology": topology,
+                "add_spokes": [s.model_dump() for s in add_spokes],
+                "remove_spokes": remove_spokes,
+                "add_backup_hub": add_backup_hub,
+                "backup_hub_wan_interface": backup_hub_wan_interface,
+                "backup_hub_dvti": backup_hub_dvti,
+                "backup_hub_loopback": backup_hub_loopback,
+                "backup_spoke_pool": backup_spoke_pool,
+                "backup_hub_inside_interfaces": backup_hub_inside_interfaces,
+                "remove_backup_hub": remove_backup_hub,
+                "multipath": multipath,
+                "domain": domain,
+            },
+            confirm=confirm,
+            plan=Plan(
+                f"Change SD-WAN topology {t.get('name')!r}: "
+                + ", ".join(
+                    x
+                    for x in (
+                        f"+{len(adding)} spoke(s)" if adding else "",
+                        f"-{len(removing)} spoke(s)" if removing else "",
+                        f"+backup hub {new_hub.device['name']}" if new_hub else "",
+                        f"-backup hub {drop_hub.get('name')}" if drop_hub else "",
+                        f"multipath {'on' if multipath else 'off'}" if multipath is not None else "",
+                    )
+                    if x
+                ),
+                details={
+                    "endpoints_before": before,
+                    "endpoints_after": after,
+                    "add_spokes": [s.summary() for s in adding] or None,
+                    "add_backup_hub": new_hub.summary() if new_hub else None,
+                    "remove": [label(e) for e in removing] + ([label(drop_hub)] if drop_hub else []) or None,
+                },
+                fingerprint={
+                    "topology": topology_row(t),
+                    "settings": t.get("autoVpnSettings"),
+                    "endpoints": sorted(str(e.get("id")) for e in endpoints),
+                    "add": [s.endpoint() for s in adding],
+                    "hub": new_hub.summary() if new_hub else None,
+                },
+                blockers=blockers,
+                side_effects=side_effects,
+                blast_radius=len(set(deploy)),
+            ),
+            apply=apply,
+        )
