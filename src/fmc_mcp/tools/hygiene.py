@@ -315,6 +315,13 @@ def _end_time(o: dict[str, Any]) -> datetime | None:
     return t if t.tzinfo else t.replace(tzinfo=UTC)
 
 
+def _time_ranges_of(r: dict[str, Any]) -> list[dict[str, Any]]:
+    """A rule's time range references: FMC sends a plain list (older exports used {objects: [...]})."""
+    block = r.get("timeRangeObjects")
+    refs = block.get("objects") if isinstance(block, dict) else block
+    return [ref for ref in refs or [] if isinstance(ref, dict)]
+
+
 def expired_time_ranges(
     policy: str, time_ranges: list[dict[str, Any]], rules: list[dict[str, Any]], now: datetime
 ) -> list[dict[str, Any]]:
@@ -328,7 +335,7 @@ def expired_time_ranges(
     for r in rules:
         if not r.get("enabled", True):
             continue
-        for ref in (r.get("timeRangeObjects") or {}).get("objects") or []:
+        for ref in _time_ranges_of(r):
             hit = expired.get(str(ref.get("id")))
             if not hit:
                 continue
