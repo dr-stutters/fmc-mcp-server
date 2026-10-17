@@ -50,6 +50,14 @@
   applied). Identity, decryption and intrusion policies, time ranges, realms, file policies, variable sets and
   alerts must exist in the target (blockers otherwise). Stops at the first failure and lists what was applied;
   deploying stays a separate step. The change window and an open change ticket apply.
+- **Prompts `fmc_rule_change_review` (F47, #92) and `fmc_policy_cleanup` (F50, #95), write tier.** The first
+  reviews one access rule change: baseline bundle, sample flows through `fmc_rule_lookup` before and after,
+  shadowing/overlap reasoning and `fmc_policy_audit` regressions, the change as a preview, what a deploy would
+  push, and a deploy plan with rollback (`fmc_rollback_deployment`, or the baseline bundle with
+  `fmc_diff_policy_bundle` / `fmc_import_policy_bundle`). The second turns `fmc_policy_audit` findings into a
+  grouped cleanup plan (delete redundant and disabled rules, disable unused ones for a cycle, owner decisions
+  for shadowed rules, inspection/logging fixes, object tidy-ups), opens a change ticket when FMC needs one,
+  applies each approved change preview-first, verifies with a bundle diff and a re-audit, and plans the deploy.
 
 ### Changed
 - `fmc_shadowed_rules` and `fmc_get_hit_counts` share their logic with the audit (`shadow_findings`,

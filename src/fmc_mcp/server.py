@@ -89,6 +89,8 @@ Workflows:
 - Policy review: fmc_policy_audit ranks shadowed, permissive, unlogged, uninspected, unused and mergeable
   rules, expired time ranges and duplicate objects, each with a fix to preview; then fmc_pending_changes
   -> fmc_deploy.
+  Prompts: fmc_policy_cleanup (findings -> approved cleanup -> diff + re-audit) and fmc_rule_change_review
+  (one rule change with before/after flows, shadowing check and a deploy plan with rollback).
 - Health: fmc_list_devices, fmc_device_health, fmc_list_vpn_tunnels; "what changed or broke in the
   last hour?": fmc_recent_activity (health alerts + audit + deployments), fmc_list_health_alerts.
   A full ranked review of the estate: the fmc_firewall_health_review prompt.
