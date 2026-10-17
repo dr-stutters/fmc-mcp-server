@@ -90,6 +90,8 @@ def rt(fmc: respx.MockRouter) -> respx.MockRouter:
         "ospfv3routes",
     ):
         fmc.get(f"{R}/{sub}").mock(return_value=empty())
+    for kind in ("physical", "sub", "etherchannel", "vlan", "virtualtunnel"):
+        fmc.get(f"{CFG}/devices/devicerecords/{DEV['id']}/{kind}interfaces").mock(return_value=empty())
     fmc.get(f"{CFG}/object/networks").mock(return_value=items([NET]))
     fmc.get(f"{CFG}/object/hosts").mock(return_value=empty())
     return fmc
