@@ -25,7 +25,16 @@ from fmc_mcp._core.http import page_of
 from fmc_mcp.client import FmcApp
 from fmc_mcp.preview import fmc_preview
 from fmc_mcp.refs import NETWORK_TYPES
-from fmc_mcp.tools.common import Domain, pick_by_name, ref_label, ref_of, resolve_in, resolve_object, slim
+from fmc_mcp.tools.common import (
+    Domain,
+    pick_by_name,
+    ref_label,
+    ref_of,
+    resolve_in,
+    resolve_object,
+    slim,
+    smart_license_row,
+)
 from fmc_mcp.tools.device_config import device_interfaces, pick_interface
 from fmc_mcp.tools.devices import DEVICES, HA_PAIRS
 from fmc_mcp.tools.troubleshoot import tunnel_row
@@ -151,7 +160,7 @@ async def strong_crypto_allowed(app: FmcApp) -> bool | None:
     items = (smart or {}).get("items") or []
     if not items:
         return None
-    for i in items:
+    for i in map(smart_license_row, items):
         if str(i.get("regStatus", "")).upper() == "EVALUATION" or i.get("exportControl") is False:
             return False
     return True

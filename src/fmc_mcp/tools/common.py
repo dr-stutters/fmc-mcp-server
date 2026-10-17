@@ -200,6 +200,18 @@ def slim(obj: Any) -> Any:
     return out
 
 
+def smart_license_row(item: dict[str, Any]) -> dict[str, Any]:
+    """One /license/smartlicenses item with its status fields lifted out of `metadata`.
+
+    FMC 10 puts authStatus (AUTHORIZED, OUT_OF_COMPLIANCE, ...), virtualAccount, exportControl,
+    evalUsed, evalExpiresInDays and the sync/renew times in items[].metadata, which slim() would drop.
+    Top-level values win over metadata ones of the same name."""
+    meta = item.get("metadata")
+    row: dict[str, Any] = slim(meta) if isinstance(meta, dict) else {}
+    row.update(slim({k: v for k, v in item.items() if k != "metadata"}))
+    return row
+
+
 def is_system(obj: dict[str, Any]) -> bool:
     """True for FMC's built-in read-only objects (any, RFC1918 groups, well-known ports, ...). Objects
     that are read-only only because an ancestor domain owns them (reason DOMAIN) are not system objects;

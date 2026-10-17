@@ -44,7 +44,6 @@
   a count, and adds `wan_interfaces` (priority, path monitoring, HTTP monitoring of each configured interface).
 - `scripts/capture_fixtures.py --sdwan-routing` records the F51b fixtures (GETs only) from an SD-WAN branch
   (`FMC_LIVE_SDWAN_DEVICE`).
-
 - **Device templates (F51d, part of #107).** `fmc_list_device_templates` and `fmc_get_device_template`
   (read): a template's firewall mode, access policy and the other policies it assigns, validation messages,
   template interfaces (with `${variable}` addresses), variables (type and default; PASSWORD values masked),
@@ -62,6 +61,13 @@
   Unit tests replay FMC 10.0.1 spec examples (`tests/fixtures/devicetemplates.json`; the lab FMC had no
   templates yet); `scripts/capture_fixtures.py --templates` re-records them read-only. Not yet live-tested
   (F53 cell C4).
+
+### Fixed
+- **`fmc_license_status` showed an empty smart-licence `metadata`.** FMC 10 returns `authStatus` (for example
+  `OUT_OF_COMPLIANCE`), `virtualAccount`, `exportControl`, `evalUsed`, `evalExpiresInDays` and the last sync and
+  renewal times in `items[].metadata` of `/license/smartlicenses`, and `slim()` dropped them. They are now lifted
+  into each `smart_license` row. The VPN strong-crypto check reads `exportControl` from the same place, so a
+  licence without export control again falls back to DES instead of being treated as strong-crypto capable.
 
 ### Notes
 - The metric `forwardingActionType` values (`SET_EGRESS_INTF_BY_JITTER`, `_LOST_PKTS`, `_RTT`, `_MOS`) are not
