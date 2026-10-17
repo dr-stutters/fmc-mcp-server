@@ -20,7 +20,7 @@ from fmc_mcp._core import (
 from fmc_mcp._core.http import page_of
 from fmc_mcp.audit import NOISE_SUBSYSTEMS, compact_message, coverage_note, fetch_audit, is_read
 from fmc_mcp.client import FmcApp
-from fmc_mcp.tools.common import Domain, slim
+from fmc_mcp.tools.common import Domain, slim, smart_license_row
 
 
 def iso(ts: Any) -> str | None:
@@ -160,13 +160,14 @@ def register(reg: ToolRegistrar) -> None:
 
     @reg.read(title="FMC licensing status")
     async def fmc_license_status(ctx: Context) -> dict[str, Any]:
-        """Smart Licensing registration status of the FMC (registered/unregistered, evaluation use,
-        export control) and the per-device license entitlements FMC knows about."""
+        """Smart Licensing status of the FMC (regStatus registered/unregistered/evaluation, authStatus
+        such as AUTHORIZED or OUT_OF_COMPLIANCE, virtual account, export control, evaluation used and
+        days left, last sync/renewal) and the per-device license entitlements FMC knows about."""
         app: FmcApp = get_client(ctx)
         smart = await app.api.get("/api/fmc_platform/v1/license/smartlicenses")
         devices = await app.all("/api/fmc_platform/v1/license/devicelicenses", expanded=False, cap=1000)
         return {
-            "smart_license": [slim(i) for i in (smart or {}).get("items", [])],
+            "smart_license": [smart_license_row(i) for i in (smart or {}).get("items") or []],
             "device_licenses": [slim(i) for i in devices.items],
         }
 
