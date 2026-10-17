@@ -6,6 +6,9 @@
     uv run python scripts/capture_fixtures.py --ftd    # device fixtures from the managed FTD named by
                                                        # FMC_LIVE_DEVICE (after tests/live/test_live_ftd.py;
                                                        # also FMC_LIVE_TRACE_TARGET, docs/live-tests.md)
+    uv run python scripts/capture_fixtures.py --sdwan  # app-aware routing reads (F51b) from the SD-WAN
+                                                       # branch named by FMC_LIVE_SDWAN_DEVICE: WAN
+                                                       # interfaces, PBR, ECMP zones, the route's ACL
 
 The first form expects the mcp-test-* objects and policies the live read tests use (docs/live-tests.md).
 Redaction: the FMC address/hostname and serial are replaced, `links` are dropped. Review the diff
@@ -121,6 +124,36 @@ async def capture_ftd(app: FmcApp, host: str) -> None:
     print("captured ftd_packettracer_drop")
 
 
+async def capture_sdwan(app: FmcApp, host: str) -> None:
+    """F51b fixtures (GETs only): a branch FTD's interfaces with path monitoring, its policy-based routes
+    and ECMP zones, and the extended access lists those routes match on (sdwan_app_routing.json)."""
+    name = os.environ.get("FMC_LIVE_SDWAN_DEVICE") or sys.exit("--sdwan needs FMC_LIVE_SDWAN_DEVICE")
+    devs = await app.all(await app.config_path("devices/devicerecords"))
+    dev = next(d for d in devs.items if d.get("name") == name)
+    base = f"devices/devicerecords/{dev['id']}"
+    out: dict[str, Any] = {"_source": f"recorded from FMC by capture_fixtures.py --sdwan ({name})"}
+    for key, sub in (
+        ("physicalinterfaces", "physicalinterfaces"),
+        ("virtualtunnelinterfaces", "virtualtunnelinterfaces"),
+        ("policybasedroutes", "routing/policybasedroutes"),
+        ("ecmpzones", "routing/ecmpzones"),
+    ):
+        out[key] = await app.api.get(await app.config_path(f"{base}/{sub}"), {"expanded": "true"})
+    acl_ids = {
+        str((a.get("matchCriteria") or {}).get("id"))
+        for p in out["policybasedroutes"].get("items") or []
+        for a in p.get("forwardingActions") or []
+    }
+    out["extendedaccesslists"] = [
+        await app.api.get(await app.config_path(f"object/extendedaccesslists/{i}")) for i in sorted(acl_ids)
+    ]
+    out["applications_page"] = await app.api.get(
+        await app.config_path("object/applications"), {"limit": 3, "offset": 1000}
+    )
+    (OUT / "sdwan_app_routing.json").write_text(json.dumps(scrub(out, host), indent=1) + "\n")
+    print("captured sdwan_app_routing")
+
+
 async def capture_bundle(app: FmcApp, host: str) -> None:
     """Record every GET of a real export (path -> response) for tests/unit/test_bundle.py to replay."""
     from fmc_mcp.tools.bundle import build_bundle
@@ -148,6 +181,13 @@ async def main() -> None:
     if "--bundle" in sys.argv:
         try:
             await capture_bundle(app, host)
+        finally:
+            await app.aclose()
+        return
+    if "--sdwan" in sys.argv:
+        try:
+            OUT.mkdir(parents=True, exist_ok=True)
+            await capture_sdwan(app, host)
         finally:
             await app.aclose()
         return
