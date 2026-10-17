@@ -330,6 +330,10 @@
       "tier": "read",
       "title": "Device health"
     },
+    "fmc_diff_policy_bundle": {
+      "tier": "read",
+      "title": "Diff policy bundles"
+    },
     "fmc_dns_block": {
       "tier": "write",
       "title": "Block or unblock domains (DNS)"
@@ -341,6 +345,10 @@
     "fmc_export_access_rules": {
       "tier": "read",
       "title": "Export access rules"
+    },
+    "fmc_export_policy_bundle": {
+      "tier": "read",
+      "title": "Export a policy bundle"
     },
     "fmc_find_intrusion_rules": {
       "tier": "read",

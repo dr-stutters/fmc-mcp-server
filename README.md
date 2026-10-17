@@ -126,6 +126,7 @@ There are 136 tools when every tier is enabled (59 read, 68 write, 9 dangerous; 
 | Change management | `fmc_change_tickets` (status, tickets, a ticket's changes and validation) |
 | Admin | `fmc_upgrade_status` (versions, upgrade history, packages), `fmc_list_backups`, `fmc_get_health_policy`, `fmc_list_users`, `fmc_list_object_overrides` |
 | Analysis | `fmc_rule_lookup`, `fmc_shadowed_rules`, `fmc_policy_audit` (ranked hygiene findings with a fix each), `fmc_export_access_rules` (rows or CSV, re-importable) |
+| Policy bundles | `fmc_export_policy_bundle` (an access policy with everything it references, as versioned YAML), `fmc_diff_policy_bundle` (two bundles, or a bundle against live FMC) |
 | Deployment | `fmc_list_deployable_devices`, `fmc_pending_changes`, `fmc_list_deployments` |
 | API spec | `fmc_search_spec`, `fmc_get_definition`, `fmc_api_call` (GET only) |
 
@@ -220,6 +221,16 @@ MD5 password, because FMC returns it masked and a PUT would replace it, unless y
   `fmc_create_access_rule(users=['group'])` -> `fmc_deploy`. `fmc_rule_lookup(identities=[user, groups])`
   evaluates user/group rules offline. FMC's REST API has no AD/LDAP realm test or download, so those two
   tools log in to FMC's web UI as `FMC_UI_USERNAME` (its own user, not the API user).
+- **Baseline a policy and see what changed:** `fmc_export_policy_bundle(policy)` returns one YAML bundle
+  (schema 1): the access policy's settings and ordered rules, its prefilter, decryption, identity, NAT and
+  intrusion policies (custom ones in full, built-in ones by name), and every object, group member, zone,
+  interface group and time range it uses, keyed by name with ids stripped. Re-exporting an unchanged policy
+  gives the same `digest` and the same text apart from `meta.exported_at`. Later,
+  `fmc_diff_policy_bundle(a=<bundle>)` compares it with the live policy (or `b=` another bundle, e.g. from
+  another domain or FMC): added, removed, changed (field by field) and moved items per section. One export
+  of `mcp-test-acp` costs about 16 requests. With `FMC_BUNDLE_DIR` set, each export is also written there
+  and both tools accept a bundle's file name; unset (the default, right for shared hosts) nothing is
+  written.
 - **Send FTD logs to a SIEM:** `fmc_configure_syslog` -> `fmc_assign_policy(kind='platform_settings')`
   -> `fmc_deploy` -> `fmc_run_show_command('show running-config logging')`.
 
@@ -280,6 +291,7 @@ including nested groups, to ranges, then walk the rules in order. The results ar
 | `FMC_DEPLOY_WINDOW` | off | Maintenance window for changes that reach devices (deploy, rollback, register, delete device, HA). Same syntax as `MCP_CHANGE_WINDOW`. See "Deploy safety rails". |
 | `FMC_TICKET` | | Change-management ticket id sent with every request (FMC 7.6+ change management; `fmc_ticket` sets it at run time) |
 | `FMC_UI_USERNAME`, `FMC_UI_PASSWORD` | | Optional FMC web-UI user for `fmc_test_realm` / `fmc_download_realm` (role with Integrations > Realms modify). Must differ from `FMC_USERNAME`: a UI login ends the same user's REST session. |
+| `FMC_BUNDLE_DIR` | off | Directory `fmc_export_policy_bundle` also writes bundles to (and `fmc_diff_policy_bundle` reads bundle file names from). Off: bundles are only returned inline. |
 | `FMC_ALLOW_IGNORE_WARNING` | `false` | Allow `fmc_deploy(ignore_warning=true)` (the preview must then list the FMC warnings being ignored) |
 | `MCP_TRANSPORT` | `stdio` | `stdio` or `http` |
 | `MCP_HOST`, `MCP_PORT`, `MCP_PATH` | `0.0.0.0`, `8000`, `/mcp` | HTTP listener |

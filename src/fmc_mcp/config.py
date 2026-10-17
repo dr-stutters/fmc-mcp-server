@@ -1,5 +1,7 @@
 """Settings: FMC_* connection variables plus the shared MCP_* server variables."""
 
+from pathlib import Path
+
 from pydantic import Field, SecretStr, field_validator
 
 from fmc_mcp._core import BaseServerSettings, server_config
@@ -40,6 +42,11 @@ class Settings(BaseServerSettings):
         "the same user's REST session.",
     )
     ui_password: SecretStr | None = Field(default=None, description="Password of FMC_UI_USERNAME.")
+    bundle_dir: Path | None = Field(
+        default=None,
+        description="Directory fmc_export_policy_bundle also writes each bundle to (fmc_diff_policy_bundle "
+        "reads bundle file names from). Unset: bundles are only returned inline, nothing is written.",
+    )
     allow_ignore_warning: bool = Field(
         default=False,
         description="Allow fmc_deploy(ignore_warning=true). Even then the preview must list the FMC "
