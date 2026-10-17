@@ -109,6 +109,48 @@ async def test_register_device_masks_key(fmc: respx.MockRouter) -> None:
     assert done["result"] == {"task_id": "t3", "note": "Started; check progress with fmc_get_task."}
 
 
+def _register_mocks(fmc: respx.MockRouter) -> respx.Route:
+    fmc.get(f"{CFG}/policy/accesspolicies").mock(
+        return_value=items([{"id": ACP_ID, "name": "acp", "type": "AccessPolicy"}])
+    )
+    return fmc.post(f"{CFG}/devices/devicerecords").mock(
+        return_value=httpx.Response(202, json={"metadata": {"task": {"id": "t3"}}})
+    )
+
+
+async def test_register_device_key_from_server_config(fmc: respx.MockRouter) -> None:
+    post = _register_mocks(fmc)
+    args = {"name": "ftd9", "host": "10.0.0.9", "access_policy": "acp", "wait": False}
+    settings = make_settings(mcp_enable_writes=True, mcp_enable_dangerous=True, ftd_reg_key="cfg-k3y")
+    async with Client(create_server(settings)) as c:
+        preview = await run(c, "fmc_register_device", args)
+        assert preview["status"] == "preview", preview
+        assert preview["preview"]["registration_key"] == "from server config (FMC_FTD_REG_KEY)"
+        done = await run(c, "fmc_register_device", {**args, "confirm": preview["confirm"]})
+    assert "cfg-k3y" not in json.dumps(preview) + json.dumps(done)
+    assert json.loads(post.calls.last.request.content)["regKey"] == "cfg-k3y"
+
+
+async def test_register_device_argument_overrides_server_key(fmc: respx.MockRouter) -> None:
+    post = _register_mocks(fmc)
+    args = {"name": "ftd9", "host": "10.0.0.9", "access_policy": "acp", "reg_key": "arg-key", "wait": False}
+    settings = make_settings(mcp_enable_writes=True, mcp_enable_dangerous=True, ftd_reg_key="cfg-k3y")
+    async with Client(create_server(settings)) as c:
+        preview = await run(c, "fmc_register_device", args)
+        assert preview["preview"]["registration_key"] == "from argument"
+        await run(c, "fmc_register_device", {**args, "confirm": preview["confirm"]})
+    assert json.loads(post.calls.last.request.content)["regKey"] == "arg-key"
+
+
+async def test_register_device_needs_a_key(fmc: respx.MockRouter) -> None:
+    post = _register_mocks(fmc)
+    args = {"name": "ftd9", "host": "10.0.0.9", "access_policy": "acp"}
+    async with Client(server()) as c:
+        r = await c.call_tool("fmc_register_device", args, raise_on_error=False)
+    assert r.is_error and "FMC_FTD_REG_KEY" in r.content[0].text  # type: ignore[union-attr]
+    assert not post.calls
+
+
 async def test_ha_break(fmc: respx.MockRouter) -> None:
     ha = {"id": "22222222-0000-0000-0000-000000000001", "name": "ha1", "primary": DEV, "secondary": DEV2}
     fmc.get(f"{CFG}/devicehapairs/ftddevicehapairs").mock(return_value=items([ha]))

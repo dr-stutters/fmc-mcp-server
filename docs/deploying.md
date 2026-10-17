@@ -199,3 +199,19 @@ docker-compose.mock.yml exec fmc-mcp-server fmc-mcp-server check` checks both, a
 - Upgrading FMC: run `check`; `version` warns on a release outside the tested matrix (10.0 today; 7.2+ should
   work) and fails below 7.2. FMC upgrades can change role permissions: re-check the role against
   least-privilege.md.
+
+## 9. Onboarding FTDs without handling the registration key
+
+`fmc_register_device` needs the registration key the FTD was given with `configure manager add <fmc> <key>`.
+Set it on the server instead of passing it in each call, so the key never appears in a conversation, a
+transcript or an agent's tool arguments (Claude Code's auto mode refuses to copy secrets into tool calls):
+
+```bash
+FMC_FTD_REG_KEY=...                                         # or
+FMC_FTD_REG_KEY_FILE=/run/secrets/ftd_reg_key               # Docker/Kubernetes secret, or
+FMC_FTD_REG_KEY_REF=file:/run/secrets/lab.env#FTD_REG_KEY   # one key of a KEY=VALUE or JSON file
+```
+
+Callers then leave out `reg_key`; the preview shows `registration_key: from server config (FMC_FTD_REG_KEY)`
+and never the value, and the value is masked in logs like every other secret setting. A `reg_key` argument
+still overrides it for a device configured with a different key. The NAT ID stays a per-device argument.

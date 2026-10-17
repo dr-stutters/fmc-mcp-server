@@ -485,10 +485,14 @@ def register(reg: ToolRegistrar) -> None:
         host: Annotated[
             str, Field(description="Device management IP or hostname (or omit with nat_id only)")
         ],
-        reg_key: Annotated[
-            str, Field(description="Registration key configured on the device (configure manager)")
-        ],
         access_policy: Annotated[str, Field(description="Access control policy name/UUID to assign")],
+        reg_key: Annotated[
+            str | None,
+            Field(
+                description="Registration key configured on the device (configure manager). Omit it to use "
+                "the server's FMC_FTD_REG_KEY, so the key never passes through the conversation."
+            ),
+        ] = None,
         nat_id: Annotated[
             str | None, Field(description="NAT ID, if the device was configured with one")
         ] = None,
@@ -507,13 +511,22 @@ def register(reg: ToolRegistrar) -> None:
         same registration key (and NAT ID), e.g. `configure manager add <fmc> <key>`, and FMC needs
         Smart Licensing or evaluation mode. With wait, polls the registration task and then FMC's
         initial deployment to the device (several minutes). The registration key is not echoed
-        back. Next steps: fmc_update_interface, fmc_create_static_route, fmc_assign_policy, fmc_deploy."""
+        back; without reg_key the server's FMC_FTD_REG_KEY is used. Next steps: fmc_update_interface,
+        fmc_create_static_route, fmc_assign_policy, fmc_deploy."""
         app: FmcApp = get_client(ctx)
+        configured = get_settings(ctx).ftd_reg_key
+        if not reg_key and configured is None:
+            raise InvalidRequest(
+                "No registration key: pass reg_key, or set FMC_FTD_REG_KEY (or _FILE / _REF) on the server "
+                "so the key stays out of the conversation."
+            )
+        key_source = "argument" if reg_key else "server config (FMC_FTD_REG_KEY)"
+        key = reg_key or (configured.get_secret_value() if configured else "")
         acp = await resolve_in(app, POLICY_KINDS["access"], access_policy, "access policy", domain)
         body: dict[str, Any] = {
             "name": name,
             "hostName": host,
-            "regKey": reg_key,
+            "regKey": key,
             "type": "Device",
             "license_caps": license_caps or ["ESSENTIALS"],
             "accessPolicy": {"id": acp["id"], "type": "AccessPolicy"},
@@ -574,6 +587,7 @@ def register(reg: ToolRegistrar) -> None:
                 details={
                     "domain": await app.domain_name(await app.domain_uuid(domain)),
                     "body": shown,
+                    "registration_key": f"from {key_source}",
                     "access_policy": acp.get("name"),
                     **({"deploy_window": window} if window else {}),
                 },
