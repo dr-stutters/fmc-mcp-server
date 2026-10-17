@@ -14,6 +14,7 @@ from fmc_mcp.client import FmcApp
 from fmc_mcp.rules import OPAQUE_CONDITIONS, flatten_access_rule, has_value
 from fmc_mcp.tools.analysis import shadow_findings
 from fmc_mcp.tools.common import Domain, is_system, ref_label
+from fmc_mcp.tools.deploy import DEPLOYABLE
 from fmc_mcp.tools.policies import ACCESS, all_rules, resolve_policy
 from fmc_mcp.tools.troubleshoot import _parse_local, rule_hits
 
@@ -398,6 +399,23 @@ async def assigned_devices(
     return devices, notes
 
 
+async def not_deployed(app: FmcApp, policy: dict[str, Any], device_id: str, domain: str | None) -> bool:
+    """True when the device's next deployment would ADD this access policy: it is assigned but the device
+    still runs another one, so its hit counts mean nothing. A deployed policy with edits pending shows as an
+    UPDATE instead. Unknown (the query fails) counts as deployed."""
+    path = await app.config_path(f"{DEPLOYABLE}/{device_id}/pendingchanges", domain)
+    try:
+        page = await app.all(path, cap=5000)
+    except UpstreamError:
+        return False
+    return any(
+        c.get("entityType") == "AccessPolicy"
+        and c.get("action") == "ADD"
+        and (c.get("entityName") == policy.get("name") or (c.get("entityId") or "") == policy.get("id"))
+        for c in page.items
+    )
+
+
 async def unused(
     ctx: Context,
     app: FmcApp,
@@ -414,6 +432,20 @@ async def unused(
     enabled = [r for r in rules if r.get("enabled", True)]
     if not enabled:  # FMC answers 500 to a hit-count query without rule ids
         return [], [label for _, label in devices], notes
+    running: list[tuple[str, str]] = []
+    for dev_id, label in devices:
+        if await not_deployed(app, policy, dev_id, domain):
+            notes.append(
+                f"{label}: the policy is assigned but not deployed yet; its zero hits were left out."
+            )
+        else:
+            running.append((dev_id, label))
+    if not running:
+        notes.append(
+            "No assigned device runs this policy yet: unused rules can't be judged until it is deployed."
+        )
+        return [], [label for _, label in devices], notes
+    devices = running
     hc_path = await app.config_path(f"{ACCESS}/{policy['id']}/operational/hitcounts", domain)
     total: dict[str, int] = {}
     latest: dict[str, datetime] = {}
