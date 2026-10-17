@@ -23,6 +23,7 @@ from fmc_mcp.tools import (
     dns,
     dynamic_objects,
     ha,
+    hygiene,
     identity,
     intrusion,
     object_import,
@@ -81,6 +82,9 @@ Workflows:
   needs ISE/pxGrid or an agent for user-IP mappings) -> select the identity policy in the access policy
   editor (FMC's REST API can't) -> fmc_create_access_rule users=[group] -> fmc_deploy;
   fmc_rule_lookup identities=[user, groups] evaluates such rules.
+- Policy review: fmc_policy_audit ranks shadowed, permissive, unlogged, uninspected, unused and mergeable
+  rules, expired time ranges and duplicate objects, each with a fix to preview; then fmc_pending_changes
+  -> fmc_deploy.
 - Health: fmc_list_devices, fmc_device_health, fmc_list_vpn_tunnels; "what changed or broke in the
   last hour?": fmc_recent_activity (health alerts + audit + deployments), fmc_list_health_alerts.
   A full ranked review of the estate: the fmc_firewall_health_review prompt.
@@ -150,6 +154,7 @@ def create_server(
             policies.register,
             objects.register,
             analysis.register,
+            hygiene.register,
             deploy.register,
             device_config.register,
             object_writes.register,

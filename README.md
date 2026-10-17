@@ -125,7 +125,7 @@ There are 136 tools when every tier is enabled (59 read, 68 write, 9 dangerous; 
 | Intrusion (Snort 3) | `fmc_get_intrusion_policy` (base, mode, usage, overridden rules), `fmc_find_intrusion_rules` (gid:sid, SID or text; per-policy state) |
 | Change management | `fmc_change_tickets` (status, tickets, a ticket's changes and validation) |
 | Admin | `fmc_upgrade_status` (versions, upgrade history, packages), `fmc_list_backups`, `fmc_get_health_policy`, `fmc_list_users`, `fmc_list_object_overrides` |
-| Analysis | `fmc_rule_lookup`, `fmc_shadowed_rules`, `fmc_export_access_rules` (rows or CSV, re-importable) |
+| Analysis | `fmc_rule_lookup`, `fmc_shadowed_rules`, `fmc_policy_audit` (ranked hygiene findings with a fix each), `fmc_export_access_rules` (rows or CSV, re-importable) |
 | Deployment | `fmc_list_deployable_devices`, `fmc_pending_changes`, `fmc_list_deployments` |
 | API spec | `fmc_search_spec`, `fmc_get_definition`, `fmc_api_call` (GET only) |
 
@@ -247,7 +247,7 @@ is a leaf, and the devices in each one. FMC's rules, which the tools follow:
 - Several FMCs per server: core `FMC_INSTANCES` (an `instance` argument on every tool).
 
 
-### Limits of `fmc_rule_lookup` and `fmc_shadowed_rules`
+### Limits of `fmc_rule_lookup`, `fmc_shadowed_rules` and `fmc_policy_audit`
 
 Both tools evaluate the access control policy offline. They resolve network and port objects,
 including nested groups, to ranges, then walk the rules in order. The results are best-effort:
@@ -260,6 +260,9 @@ including nested groups, to ranges, then walk the rules in order. The results ar
 - FQDN objects and ICMP codes are not resolved, so rules that use them are also conditional.
 - Zones are only checked when you pass `source_zone` or `destination_zone`.
 - MONITOR rules are reported, but evaluation continues past them.
+- `fmc_policy_audit` judges unused rules from hit counts summed across the assigned devices (HA members
+  included, clusters not). Counters reset when a device reloads, packet-tracer runs count as hits, and a device
+  FMC can't reach is reported in `notes` and left out.
 
 ## Configuration
 

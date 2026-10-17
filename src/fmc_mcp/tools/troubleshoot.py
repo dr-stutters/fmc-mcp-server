@@ -319,6 +319,52 @@ async def run_show(app: FmcApp, device_id: str, command: str, domain: str | None
     return "\n".join(str(i.get("commandOutput") or "") for i in items)
 
 
+async def rule_hits(
+    ctx: Context,
+    app: FmcApp,
+    hc_path: str,
+    rule_ids: list[str],
+    device_id: str,
+    domain: str | None,
+    *,
+    refresh: bool,
+    include_default: bool,
+) -> tuple[dict[str, dict[str, Any]], Any, list[str]]:
+    """Hit-count rows by rule id on one device, the counters' fetch time, and notes. With refresh,
+    FMC first pulls the counters from the device and FMC's clock offset is learned."""
+    notes: list[str] = []
+    refreshed_at: float | None = None
+    if refresh:
+        try:
+            resp = await app.api.put(hc_path, None, params={"filter": f"deviceId:{device_id}"})
+            tid = task_id_of(resp)
+            if tid:  # learn FMC's clock offset only from a refresh that really ran
+                await wait_task(ctx, app, tid, domain, "hit count refresh", limit_s=120)
+                refreshed_at = time.time()
+        except UpstreamError as e:
+            notes.append(f"Refresh failed ({e}); showing the last counters FMC has.")
+    # FMC 10.0.1 returns only the default action unless rule ids are listed explicitly.
+    hits: dict[str, dict[str, Any]] = {}
+    chunks = [rule_ids[i : i + HIT_ID_CHUNK] for i in range(0, len(rule_ids), HIT_ID_CHUNK)] or [[]]
+    for chunk in chunks:
+        flt = f"deviceId:{device_id};fetchZeroHitCount:true"
+        if chunk:
+            flt += f";ids:{','.join(chunk)}"
+        page = await app.all(hc_path, {"filter": flt}, cap=5000)
+        for h in page.items:
+            hits[str((h.get("rule") or {}).get("id"))] = h
+    if include_default:
+        page = await app.all(hc_path, {"filter": f"deviceId:{device_id};fetchZeroHitCount:true"}, cap=50)
+        for h in page.items:
+            hits.setdefault(str((h.get("rule") or {}).get("id")), h)
+    last = next((h.get("lastFetchTimeStamp") for h in hits.values() if h.get("lastFetchTimeStamp")), None)
+    if refreshed_at is not None:
+        learned = learn_local_offset(last, refreshed_at)
+        if learned is not None:
+            app.local_offset = learned
+    return hits, last, notes
+
+
 def register(reg: ToolRegistrar) -> None:
     @reg.read(title="Run a show command on a device")
     async def fmc_run_show_command(
@@ -489,39 +535,18 @@ def register(reg: ToolRegistrar) -> None:
         coll = ACCESS if kind == "access" else PREFILTER
         sub = "accessrules" if kind == "access" else "prefilterrules"
         hc_path = await app.config_path(f"{coll}/{p['id']}/operational/hitcounts", domain)
-        notes: list[str] = []
-        refreshed_at: float | None = None
-        if refresh:
-            try:
-                resp = await app.api.put(hc_path, None, params={"filter": f"deviceId:{dev['id']}"})
-                tid = task_id_of(resp)
-                if tid:  # learn FMC's clock offset only from a refresh that really ran
-                    await wait_task(ctx, app, tid, domain, "hit count refresh", limit_s=120)
-                    refreshed_at = time.time()
-            except UpstreamError as e:
-                notes.append(f"Refresh failed ({e}); showing the last counters FMC has.")
         rules = (await all_rules(app, await app.config_path(f"{coll}/{p['id']}/{sub}", domain))).items
         order = {r["id"]: i for i, r in enumerate(rules, 1)}
-        # FMC 10.0.1 returns only the default action unless rule ids are listed explicitly.
-        ids = [r["id"] for r in rules]
-        hits: dict[str, dict[str, Any]] = {}
-        chunks = [ids[i : i + HIT_ID_CHUNK] for i in range(0, len(ids), HIT_ID_CHUNK)] or [[]]
-        for chunk in chunks:
-            flt = f"deviceId:{dev['id']};fetchZeroHitCount:true"
-            if chunk:
-                flt += f";ids:{','.join(chunk)}"
-            page = await app.all(hc_path, {"filter": flt}, cap=5000)
-            for h in page.items:
-                hits[str((h.get("rule") or {}).get("id"))] = h
-        if kind == "access":
-            page = await app.all(hc_path, {"filter": f"deviceId:{dev['id']};fetchZeroHitCount:true"}, cap=50)
-            for h in page.items:
-                hits.setdefault(str((h.get("rule") or {}).get("id")), h)
-        last = next((h.get("lastFetchTimeStamp") for h in hits.values() if h.get("lastFetchTimeStamp")), None)
-        if refreshed_at is not None:
-            learned = learn_local_offset(last, refreshed_at)
-            if learned is not None:
-                app.local_offset = learned
+        hits, last, notes = await rule_hits(
+            ctx,
+            app,
+            hc_path,
+            [r["id"] for r in rules],
+            dev["id"],
+            domain,
+            refresh=refresh,
+            include_default=kind == "access",
+        )
         tz_offset = app.local_offset
         rows = []
         for rid, h in hits.items():
