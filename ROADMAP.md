@@ -1,5 +1,5 @@
 # fmc-mcp-server roadmap
-_Last updated 2026-10-16: **Wave 4 planned (F35–F50): standalone packaging, de-labbed repo, RA VPN, route-based VPN/SD-WAN live, policy hygiene, file/malware + NAP, policy bundle export/import, four prompts.** logs and events are pull-only ([ADR-003](https://github.com/dr-stutters/stutters-mcp-core/blob/main/docs/adr/003-no-event-ingestion.md)); F7 (FTD syslog) and F12 (eStreamer) dropped, F5 reframed as on-demand activity lookups. Current release **v0.10.0** (F13 identity: AD realms, identity policies, access rules on users and groups) (Now, Next and the Production gate delivered except F17; Later: F13 intrusion/decryption/DNS, F14, F20-F25; F15 cdFMC open; F13 identity delivered in v0.10.0). Suite roadmap: [stutters-mcp-core ROADMAP.md](https://github.com/dr-stutters/stutters-mcp-core/blob/main/ROADMAP.md). Gap analysis: [docs/GAP-ANALYSIS.md](docs/GAP-ANALYSIS.md)._
+_Last updated 2026-10-17: **v0.12.0 released**: F42 policy audit, F44/F45 policy bundle export, diff and import, F47/F48/F50 prompts (Wave 4 Phase B depth items done except F40, F41, F43; Phase C F46 and F49 open). Earlier: Wave 4 Phase A (F35–F39, standalone packaging) shipped as 0.11.0 release candidates. Logs and events stay pull-only ([ADR-003](https://github.com/dr-stutters/stutters-mcp-core/blob/main/docs/adr/003-no-event-ingestion.md)). Suite roadmap: [stutters-mcp-core ROADMAP.md](https://github.com/dr-stutters/stutters-mcp-core/blob/main/ROADMAP.md). Gap analysis: [docs/GAP-ANALYSIS.md](docs/GAP-ANALYSIS.md)._
 
 ## Summary
 - v0.4.0 has 45 read, 35 write and 7 dangerous tools plus the `fmc_why_blocked` and `fmc_onboard_ftd` prompts (v0.3.0: 41/30/7; v0.2.0: 35/20/7). The day-to-day firewall workflows are curated and were live-tested against FMC 10.0.1 with an FTDv 10.0 in CML: onboard, change → preview → deploy → verify → roll back, "why is this blocked?" and device health. 17 % of the 1446 API operations are behind curated tools; most of the rest go through `fmc_api_call`.
@@ -175,8 +175,8 @@ Scoping answers (2026-10-16). The suite-wide ones are shared with ise-mcp-server
 
 ### Order
 1. **Now (no lab):** F35 → F37 → F36 → F39 → F38, then F48 on mocks and F42 on recorded fixtures. Target v0.11.0 (standalone).
-2. **When the lab is back:** F42 live, F44 → F45, F43, F40, F41. Target v0.12.0.
-3. **Then:** F46, F47, F49, F50. Target v0.13.0.
+2. **When the lab is back:** F42 live, F44 → F45 ✅ (v0.12.0); F43, F40, F41 open.
+3. **Then:** F47, F50 ✅ (v0.12.0, with F48); F46, F49 open. Next target v0.13.0.
 
 ### New prerequisites
 | Prerequisite | Needed for | Status |

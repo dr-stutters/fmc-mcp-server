@@ -1,6 +1,9 @@
 # Changelog
 
-## Unreleased
+## 0.12.0 (2026-10-17)
+
+Wave 4 Phase B: policy hygiene, policy bundles (export, diff, import) and three workflow prompts, all proven
+live on FMC 10.0.1. 141 tools with every tier on (63 read, 68 write, 10 dangerous) and five prompts.
 
 ### Added
 - **Prompt `fmc_firewall_health_review` (F48, #93).** Optional `domain`, `device` (name contains) and
@@ -71,7 +74,7 @@
   assigned but not yet deployed (its next deployment would ADD the access policy): that device's hit counts are
   left out with a note, and with no device running the policy the check reports nothing.
 
-## 0.11.0 (unreleased)
+## 0.11.0 (release candidates only; shipped in 0.12.0)
 
 ### Added
 - **`fmc-mcp-server check` preflight (F36, #81; core C21).** Runs without an MCP client: token generation
