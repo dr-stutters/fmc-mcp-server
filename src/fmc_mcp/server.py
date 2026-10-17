@@ -41,6 +41,7 @@ from fmc_mcp.tools import (
     rule_io,
     security_intel,
     system,
+    templates,
     tickets,
     troubleshoot,
     vpn,
@@ -60,6 +61,10 @@ Workflows:
 - Onboard an FTD: fmc_register_device (waits for the initial deployment) -> fmc_update_interface
   (logical name, zone, IP) -> fmc_create_static_route -> fmc_assign_policy (NAT, platform settings)
   -> fmc_deploy -> verify with fmc_run_show_command ('show route', 'show interface ip brief').
+- Roll out a branch from a device template (FMC 7.6+): fmc_create_device_template (from a working
+  branch with source_device) -> fmc_get_device_template (variables, interfaces, VPN/SD-WAN settings)
+  -> fmc_register_device (the new FTD) -> fmc_apply_device_template(template, device, variables)
+  -> fmc_deploy (device and hubs) -> fmc_get_vpn_topology.
 - Change safely: make the change -> fmc_pending_changes (what the next deploy pushes) -> fmc_deploy
   -> fmc_run_show_command / fmc_list_deployments; undo a bad deployment with fmc_rollback_deployment.
 - "Why is this traffic blocked?": fmc_packet_tracer (live verdict, drop reason and matching rule on
@@ -172,6 +177,7 @@ def create_server(
             containment.register,
             ha.register,
             vpn.register,
+            templates.register,
             activity.register,
             platform_settings.register,
             platform_access.register,
