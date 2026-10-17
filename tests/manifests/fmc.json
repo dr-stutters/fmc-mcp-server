@@ -542,6 +542,10 @@
       "tier": "read",
       "title": "Pending changes for a device"
     },
+    "fmc_policy_audit": {
+      "tier": "read",
+      "title": "Audit an access policy"
+    },
     "fmc_recent_activity": {
       "tier": "read",
       "title": "Recent activity (health, audit, deployments)"
