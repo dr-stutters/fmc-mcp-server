@@ -9,6 +9,17 @@
   VDB/SRU/LSP content age, backups, VPN tunnels, health alerts) within FMC's 120 requests/minute budget, and
   writes one ranked report (critical, warning, info) where each finding has its evidence and a next step with
   the tool call to make. Read tier; read-only.
+- **`fmc_policy_audit` (F42, #87).** One ranked review of an access control policy: shadowed (high) and
+  redundant rules, any-any ALLOW/TRUST rules, ALLOW rules without an intrusion policy, rules that log nothing,
+  disabled rules, rules with no hits in `unused_days` (summed across the devices the policy is assigned to, HA
+  pairs expanded to both members), rules on expired time ranges, duplicate objects (same value, different names;
+  domain-wide, the ones this policy uses first) and adjacent rules that differ in one condition (merge
+  candidates). Every finding carries a proposed fix as a tool call to preview; `checks` runs a subset. Read tier;
+  the only operational call is the optional hit-count refresh.
+
+### Changed
+- `fmc_shadowed_rules` and `fmc_get_hit_counts` share their logic with the audit (`shadow_findings`,
+  `rule_hits`); their output is unchanged.
 
 ## 0.11.0 (unreleased)
 

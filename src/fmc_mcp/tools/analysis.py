@@ -320,35 +320,10 @@ def register(reg: ToolRegistrar) -> None:
         await cat.load_networks()
         await cat.load_ports()
 
-        prepared = []
-        skipped = 0
-        for r in sorted(rules.items, key=_rule_index):
-            if not r.get("enabled", True):
-                continue
-            dims = _dims(cat, r)
-            if dims is None:
-                skipped += 1
-                continue
-            prepared.append((r, dims, bool(_opaque(r))))
-
-        findings = []
-        for j, (rb, db, _) in enumerate(prepared):
-            for ra, da, opaque_a in prepared[:j]:
-                if opaque_a or str(ra.get("action", "")).upper() == "MONITOR":
-                    continue  # an earlier L7 rule doesn't cover everything; MONITOR never stops a flow
-                if _covers(da, db):
-                    same = ra.get("action") == rb.get("action")
-                    findings.append(
-                        {
-                            "rule": _brief(rb),
-                            "covered_by": _brief(ra),
-                            "kind": "redundant" if same else "shadowed",
-                        }
-                    )
-                    break
+        findings, enabled, skipped = shadow_findings(cat, rules.items)
         out: dict[str, Any] = {
             "policy": p.get("name"),
-            "enabled_rules": len(prepared) + skipped,
+            "enabled_rules": enabled,
             "findings": findings,
             "skipped_unresolvable": skipped,
             "limits": "Offline, conservative containment check of zones, networks and ports only; "
@@ -364,6 +339,38 @@ def register(reg: ToolRegistrar) -> None:
 
 
 Dims = dict[str, Any]
+
+
+def shadow_findings(cat: Catalog, rules: list[dict[str, Any]]) -> tuple[list[dict[str, Any]], int, int]:
+    """Enabled rules fully covered by an earlier enabled rule: (findings, enabled rules, skipped).
+    Needs the catalog's networks and ports loaded."""
+    prepared = []
+    skipped = 0
+    for r in sorted(rules, key=_rule_index):
+        if not r.get("enabled", True):
+            continue
+        dims = _dims(cat, r)
+        if dims is None:
+            skipped += 1
+            continue
+        prepared.append((r, dims, bool(_opaque(r))))
+
+    findings = []
+    for j, (rb, db, _) in enumerate(prepared):
+        for ra, da, opaque_a in prepared[:j]:
+            if opaque_a or str(ra.get("action", "")).upper() == "MONITOR":
+                continue  # an earlier L7 rule doesn't cover everything; MONITOR never stops a flow
+            if _covers(da, db):
+                same = ra.get("action") == rb.get("action")
+                findings.append(
+                    {
+                        "rule": _brief(rb),
+                        "covered_by": _brief(ra),
+                        "kind": "redundant" if same else "shadowed",
+                    }
+                )
+                break
+    return findings, len(prepared) + skipped, skipped
 
 
 def _rule_index(r: dict[str, Any]) -> int:
