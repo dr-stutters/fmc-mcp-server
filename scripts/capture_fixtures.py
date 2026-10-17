@@ -1,6 +1,8 @@
 """Capture a few real FMC responses as redacted unit-test fixtures.
 
     uv run python scripts/capture_fixtures.py          # policies and objects (the seeded mcp-test-* set)
+    uv run python scripts/capture_fixtures.py --bundle # every GET fmc_export_policy_bundle makes for
+                                                       # mcp-test-acp + mcp-test-nat (bundle_acp.json)
     uv run python scripts/capture_fixtures.py --ftd    # device fixtures from the managed FTD named by
                                                        # FMC_LIVE_DEVICE (after tests/live/test_live_ftd.py;
                                                        # also FMC_LIVE_TRACE_TARGET, docs/live-tests.md)
@@ -119,10 +121,36 @@ async def capture_ftd(app: FmcApp, host: str) -> None:
     print("captured ftd_packettracer_drop")
 
 
+async def capture_bundle(app: FmcApp, host: str) -> None:
+    """Record every GET of a real export (path -> response) for tests/unit/test_bundle.py to replay."""
+    from fmc_mcp.tools.bundle import build_bundle
+
+    recorded: dict[str, Any] = {}
+    real_get = app.api.get
+
+    async def get(path: str, params: dict[str, Any] | None = None, **kw: Any) -> Any:
+        data = await real_get(path, params, **kw)
+        if path.startswith("/api/fmc_config/"):
+            recorded[path] = scrub(data, host)
+        return data
+
+    app.api.get = get  # type: ignore[method-assign]
+    await build_bundle(app, "mcp-test-acp", None, ["mcp-test-nat"])
+    out = {k: recorded[k] for k in sorted(recorded)}
+    (OUT / "bundle_acp.json").write_text(json.dumps(out, indent=1) + "\n")
+    print("captured bundle_acp", len(out), "responses")
+
+
 async def main() -> None:
     settings = Settings()  # type: ignore[call-arg]
     host = re.sub(r"^https?://", "", settings.url).split("/")[0]
     app = FmcApp(settings)
+    if "--bundle" in sys.argv:
+        try:
+            await capture_bundle(app, host)
+        finally:
+            await app.aclose()
+        return
     if "--ftd" in sys.argv:
         try:
             OUT.mkdir(parents=True, exist_ok=True)
