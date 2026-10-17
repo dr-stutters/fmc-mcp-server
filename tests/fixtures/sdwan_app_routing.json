@@ -1,0 +1,350 @@
+{
+ "_source": "Spec-shaped until recorded: interfaces follow the FMC 10.0.1 + FTDv 10.0 recording in ftd_physicalinterfaces.json (WAN priority/path monitoring added), policybasedroutes and ecmpzones follow the FMC 10.0.1 OpenAPI response examples, applications_page is recorded (GET object/applications). Replace with `capture_fixtures.py --sdwan-routing` once an mcp-sdwan branch exists (F53).",
+ "physicalinterfaces": {
+  "items": [
+   {
+    "metadata": {
+     "timestamp": 1791995649637,
+     "domain": {
+      "name": "Global",
+      "id": "e276abec-e0f2-11e3-8169-6d9ed49b625f",
+      "type": "Domain"
+     },
+     "state": "COMMITTED",
+     "virtualRouter": {
+      "name": "Global",
+      "id": "42e95fbf-fd5a-42bf-a95f-bffd5a42bfd6",
+      "type": "VirtualRouter"
+     }
+    },
+    "type": "PhysicalInterface",
+    "nveOnly": false,
+    "MTU": 1500,
+    "mode": "NONE",
+    "enabled": true,
+    "name": "Ethernet0/0",
+    "id": "00000000-0000-0ed3-0000-021474850240",
+    "enableSGTPropagate": false,
+    "pathMonitoring": {
+     "enable": true,
+     "type": "AUTO"
+    },
+    "applicationMonitoring": {
+     "enable": true
+    },
+    "ifname": "wan1",
+    "securityZone": {
+     "id": "51015f2c-c7e9-11f1-88b7-6dea5174bd84",
+     "type": "SecurityZone"
+    },
+    "ipv4": {
+     "static": {
+      "address": "192.0.2.2",
+      "netmask": "24"
+     }
+    },
+    "ipv6": {
+     "enableIPV6": false
+    },
+    "managementOnly": false,
+    "priority": 1
+   },
+   {
+    "metadata": {
+     "timestamp": 1791995649637,
+     "domain": {
+      "name": "Global",
+      "id": "e276abec-e0f2-11e3-8169-6d9ed49b625f",
+      "type": "Domain"
+     },
+     "state": "COMMITTED",
+     "virtualRouter": {
+      "name": "Global",
+      "id": "42e95fbf-fd5a-42bf-a95f-bffd5a42bfd6",
+      "type": "VirtualRouter"
+     }
+    },
+    "type": "PhysicalInterface",
+    "nveOnly": false,
+    "MTU": 1500,
+    "mode": "NONE",
+    "enabled": true,
+    "name": "Ethernet0/1",
+    "id": "00000000-0000-0ed3-0000-021474850241",
+    "enableSGTPropagate": false,
+    "pathMonitoring": {
+     "enable": false
+    },
+    "applicationMonitoring": {
+     "enable": true
+    },
+    "ifname": "wan2",
+    "securityZone": {
+     "id": "51015f2c-c7e9-11f1-88b7-6dea5174bd84",
+     "type": "SecurityZone"
+    },
+    "ipv4": {
+     "static": {
+      "address": "198.51.100.2",
+      "netmask": "24"
+     }
+    },
+    "ipv6": {
+     "enableIPV6": false
+    },
+    "managementOnly": false,
+    "priority": 2
+   },
+   {
+    "metadata": {
+     "timestamp": 1791995649637,
+     "domain": {
+      "name": "Global",
+      "id": "e276abec-e0f2-11e3-8169-6d9ed49b625f",
+      "type": "Domain"
+     },
+     "state": "COMMITTED",
+     "virtualRouter": {
+      "name": "Global",
+      "id": "42e95fbf-fd5a-42bf-a95f-bffd5a42bfd6",
+      "type": "VirtualRouter"
+     }
+    },
+    "type": "PhysicalInterface",
+    "nveOnly": false,
+    "MTU": 1500,
+    "mode": "NONE",
+    "enabled": true,
+    "name": "Ethernet0/2",
+    "id": "00000000-0000-0ed3-0000-021474850242",
+    "enableSGTPropagate": false,
+    "pathMonitoring": {
+     "enable": false
+    },
+    "applicationMonitoring": {
+     "enable": true
+    },
+    "ifname": "inside",
+    "securityZone": {
+     "id": "4fcc07ce-c7e9-11f1-88b7-6dea5174bd84",
+     "type": "SecurityZone"
+    },
+    "ipv4": {
+     "static": {
+      "address": "10.99.1.1",
+      "netmask": "24"
+     }
+    },
+    "ipv6": {
+     "enableIPV6": false
+    },
+    "managementOnly": false,
+    "priority": 0
+   },
+   {
+    "metadata": {
+     "readOnly": {
+      "state": true,
+      "reason": "SYSTEM"
+     },
+     "timestamp": 1791995551350,
+     "domain": {
+      "name": "Global",
+      "id": "e276abec-e0f2-11e3-8169-6d9ed49b625f",
+      "type": "Domain"
+     },
+     "state": "COMMITTED",
+     "virtualRouter": {
+      "name": "Global",
+      "id": "42e95fbf-fd5a-42bf-a95f-bffd5a42bfd6",
+      "type": "VirtualRouter"
+     }
+    },
+    "type": "PhysicalInterface",
+    "nveOnly": false,
+    "MTU": 1500,
+    "mode": "NONE",
+    "enabled": true,
+    "name": "Management0/0",
+    "id": "00000000-0000-0ed3-0000-021474850232",
+    "enableSGTPropagate": true,
+    "pathMonitoring": {
+     "enable": false
+    },
+    "applicationMonitoring": {
+     "enable": true
+    },
+    "ifname": "management",
+    "ipv6": {
+     "enableIPV6": false
+    },
+    "managementOnly": true,
+    "priority": 0
+   }
+  ],
+  "paging": {
+   "offset": 0,
+   "limit": 25,
+   "count": 4,
+   "pages": 1
+  }
+ },
+ "virtualtunnelinterfaces": {
+  "links": {},
+  "paging": {
+   "offset": 0,
+   "limit": 0,
+   "count": 0,
+   "pages": 0
+  }
+ },
+ "policybasedroutes": {
+  "items": [
+   {
+    "metadata": {
+     "timestamp": 1754406722333,
+     "domain": {
+      "name": "Global",
+      "id": "e276abec-e0f2-11e3-8169-6d9ed49b625f",
+      "type": "Domain"
+     }
+    },
+    "ingressInterfaces": [
+     {
+      "ifname": "inside",
+      "type": "PhysicalInterface",
+      "id": "00000000-0000-0ed3-0000-021474850242",
+      "name": "Ethernet0/2"
+     }
+    ],
+    "forwardingActions": [
+     {
+      "matchCriteria": {
+       "name": "mcp-sdwan-voice",
+       "id": "00000000-0000-0ed3-0000-021474851001",
+       "type": "ExtendedAccessList"
+      },
+      "forwardingActionType": "SET_EGRESS_INTF_BY_JITTER",
+      "egressInterfaces": [
+       {
+        "ifname": "wan1",
+        "type": "PhysicalInterface",
+        "id": "00000000-0000-0ed3-0000-021474850240",
+        "name": "Ethernet0/0"
+       },
+       {
+        "ifname": "wan2",
+        "type": "PhysicalInterface",
+        "id": "00000000-0000-0ed3-0000-021474850241",
+        "name": "Ethernet0/1"
+       }
+      ]
+     }
+    ],
+    "id": "0050568C-2D8D-0ed3-0001-753862025530",
+    "type": "PolicyBasedRoutes",
+    "name": "mcp-sdwan-lan"
+   }
+  ],
+  "paging": {
+   "offset": 0,
+   "limit": 25,
+   "count": 1,
+   "pages": 1
+  }
+ },
+ "ecmpzones": {
+  "items": [
+   {
+    "metadata": {
+     "timestamp": 1529431113943,
+     "domain": {
+      "name": "Global",
+      "id": "e276abec-e0f2-11e3-8169-6d9ed49b625f",
+      "type": "Domain"
+     }
+    },
+    "type": "ecmpzones",
+    "name": "mcp-sdwan-wan",
+    "interfaces": [
+     {
+      "ifname": "wan1",
+      "type": "PhysicalInterface",
+      "id": "00000000-0000-0ed3-0000-021474850240",
+      "name": "Ethernet0/0"
+     },
+     {
+      "ifname": "wan2",
+      "type": "PhysicalInterface",
+      "id": "00000000-0000-0ed3-0000-021474850241",
+      "name": "Ethernet0/1"
+     }
+    ],
+    "id": "ecmp-0001"
+   }
+  ],
+  "paging": {
+   "offset": 0,
+   "limit": 25,
+   "count": 1,
+   "pages": 1
+  }
+ },
+ "extendedaccesslists": [
+  {
+   "id": "00000000-0000-0ed3-0000-021474851001",
+   "type": "ExtendedAccessList",
+   "name": "mcp-sdwan-voice",
+   "entries": [
+    {
+     "logLevel": "INFORMATIONAL",
+     "action": "PERMIT",
+     "logging": "DEFAULT",
+     "logInterval": 300,
+     "applications": {
+      "applications": [
+       {
+        "id": "2428",
+        "type": "Application",
+        "name": "Buffer"
+       }
+      ]
+     }
+    }
+   ],
+   "overridable": false,
+   "metadata": {
+    "domain": {
+     "name": "Global",
+     "id": "e276abec-e0f2-11e3-8169-6d9ed49b625f",
+     "type": "Domain"
+    }
+   }
+  }
+ ],
+ "applications_page": {
+  "items": [
+   {
+    "id": "5878",
+    "type": "Application",
+    "name": "Bublup"
+   },
+   {
+    "id": "2428",
+    "type": "Application",
+    "name": "Buffer"
+   },
+   {
+    "id": "6247",
+    "type": "Application",
+    "name": "BugHerd"
+   }
+  ],
+  "paging": {
+   "offset": 1000,
+   "limit": 3,
+   "count": 8393,
+   "pages": 2798
+  }
+ }
+}

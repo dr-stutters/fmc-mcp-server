@@ -106,7 +106,7 @@ Changes made in FMC reach the firewalls only after a **deployment** (`fmc_deploy
 
 ## Tools
 
-There are 143 tools when every tier is enabled (63 read, 70 write, 10 dangerous; the dangerous tier turns `fmc_api_call` into a raw call), and five workflow prompts (`fmc_why_blocked`, `fmc_firewall_health_review`; `fmc_rule_change_review` and `fmc_policy_cleanup`, write tier; `fmc_onboard_ftd`, dangerous tier).
+There are 147 tools when every tier is enabled (63 read, 74 write, 10 dangerous; the dangerous tier turns `fmc_api_call` into a raw call), and five workflow prompts (`fmc_why_blocked`, `fmc_firewall_health_review`; `fmc_rule_change_review` and `fmc_policy_cleanup`, write tier; `fmc_onboard_ftd`, dangerous tier).
 
 **Read**
 
@@ -157,6 +157,7 @@ Notes on some read tools:
 | NAT | `fmc_create_nat_policy`, `fmc_create_nat_rule`, `fmc_update_nat_rule`, `fmc_delete_nat_rule` |
 | Device configuration | `fmc_update_interface`, `fmc_create_subinterface`, `fmc_delete_interface`, `fmc_create_static_route`, `fmc_delete_static_route`, `fmc_assign_policy` |
 | Routing | `fmc_configure_bgp`, `fmc_configure_ospf`, `fmc_create_vrf`, `fmc_delete_vrf` |
+| SD-WAN application-aware routing | `fmc_configure_wan_interface` (priority, ICMP path monitoring to the next hop or an IP, HTTP application monitoring), `fmc_configure_ecmp_zone`, `fmc_create_app_route` (applications, networks, ports or users out of the WAN link picked by order, priority, or lowest jitter / loss / RTT or highest MOS), `fmc_delete_app_route`; `fmc_get_routing` shows the routes and WAN settings |
 | Platform settings / logging | `fmc_create_platform_settings_policy`, `fmc_configure_syslog`, `fmc_set_access_logging`, `fmc_configure_ntp`, `fmc_configure_snmp` (v2c; community write-only), `fmc_configure_ssh_access` |
 | Dynamic objects | `fmc_create_dynamic_object`, `fmc_delete_dynamic_object`, `fmc_map_dynamic_object` |
 | Intrusion tuning | `fmc_set_intrusion_rule_state` (ALERT/BLOCK/DROP/REJECT/PASS/DISABLE/DEFAULT per policy), `fmc_create_intrusion_policy`, `fmc_create_intrusion_rule` / `fmc_delete_intrusion_rule` (custom Snort 3 rules); `fmc_update_access_rule(intrusion_policy=...)` |

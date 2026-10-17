@@ -1,5 +1,6 @@
 """Dynamic routing on FTDs (F6): one readable view of BGP, OSPF, ECMP, PBR, BFD and VRFs, plus
-preview-first edits for the common cases (BGP neighbors and networks, OSPF areas, VRFs).
+preview-first edits for the common cases (BGP neighbors and networks, OSPF areas, VRFs). Application
+routes, ECMP zones and WAN interface settings are in app_routing.
 
 FMC's BGP and OSPF models are large nested objects that FMC replaces as a whole on PUT; these tools
 read the current object, change only the requested parts and send it back. Changes reach the device
@@ -25,6 +26,7 @@ from fmc_mcp._core import (
 from fmc_mcp.client import FmcApp
 from fmc_mcp.preview import fmc_preview
 from fmc_mcp.refs import NETWORK_TYPES, RefResolver
+from fmc_mcp.tools.app_routing import pbr_summary, wan_interfaces
 from fmc_mcp.tools.common import Domain, ref_label, ref_of
 from fmc_mcp.tools.device_config import (
     device_interfaces,
@@ -201,7 +203,9 @@ def register(reg: ToolRegistrar) -> None:
         """One view of the dynamic routing FMC holds for a device (or one VRF): BGP (AS, router id,
         neighbors with remote AS/state/BFD, advertised networks, redistribution, per address family),
         OSPFv2 processes (areas, networks, redistribution), OSPF interface settings, ECMP zones,
-        policy-based routes, BFD policies, VRFs and the static route count. Configuration, not the
+        policy-based routes (application routes: match, egress interfaces and how one is picked), WAN
+        interfaces (priority, path monitoring, HTTP application monitoring), BFD policies, VRFs and
+        the static route count. Configuration, not the
         live state: use fmc_run_show_command('show route') and the peer's CLI for that. Static routes
         in detail: fmc_list_routes."""
         app: FmcApp = get_client(ctx)
@@ -242,7 +246,10 @@ def register(reg: ToolRegistrar) -> None:
                 {"name": z.get("name"), "interfaces": _names(z.get("interfaces"))}
                 for z in await _items(app, f"{root}/ecmpzones", domain)
             ] or None
-            out["policy_based_routes"] = len(await _items(app, f"{root}/policybasedroutes", domain)) or None
+            out["policy_based_routes"] = [
+                pbr_summary(p) for p in await _items(app, f"{root}/policybasedroutes", domain)
+            ] or None
+            out["wan_interfaces"] = await wan_interfaces(app, dev["id"], domain) or None
             out["bfd_policies"] = len(await _items(app, f"{root}/bfdpolicies", domain)) or None
             out["ospfv3_processes"] = len(await _items(app, f"{root}/ospfv3routes", domain)) or None
             vrs = await _items(app, f"{root}/virtualrouters", domain)
