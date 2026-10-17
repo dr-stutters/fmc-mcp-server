@@ -41,6 +41,7 @@ from fmc_mcp.tools import (
     routing,
     rule_io,
     sdwan,
+    sdwan_status,
     security_intel,
     system,
     templates,
@@ -80,7 +81,9 @@ Workflows:
 - SD-WAN (hub and spoke over VTIs): zone the WAN and inside interfaces (fmc_update_interface) ->
   fmc_create_sdwan_topology (hub DVTI, spoke pool, spokes, backup hub, iBGP overlay) -> fmc_deploy hubs
   and spokes -> fmc_get_vpn_topology / fmc_list_vpn_tunnels; add or remove branches and the backup hub
-  with fmc_update_sdwan_topology; remove with fmc_delete_s2s_vpn.
+  with fmc_update_sdwan_topology; remove with fmc_delete_s2s_vpn. Health per branch (WAN path metrics,
+  app route paths, tunnels, degraded links): fmc_sdwan_status; "app X is slow at branch Y":
+  fmc_sdwan_troubleshoot.
 - SD-WAN application-aware routing: fmc_configure_wan_interface (priority, path monitoring) on each
   WAN link -> fmc_create_app_route (applications/networks/users out of the link with the best
   jitter, loss, RTT or MOS, or by priority) -> fmc_deploy -> fmc_run_show_command('show
@@ -189,6 +192,7 @@ def create_server(
             vpn.register,
             sdwan.register,
             templates.register,
+            sdwan_status.register,
             activity.register,
             platform_settings.register,
             platform_access.register,

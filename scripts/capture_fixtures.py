@@ -35,6 +35,7 @@ from typing import Any
 
 from fmc_mcp.client import FmcApp
 from fmc_mcp.config import Settings
+from fmc_mcp.tools.troubleshoot import run_show
 
 OUT = Path(__file__).resolve().parent.parent / "tests" / "fixtures"
 
@@ -201,8 +202,21 @@ async def capture_sdwan(app: FmcApp, host: str) -> None:
         dev = (e.get("device") or {}).get("id")
         if not dev:
             continue
-        for kind in ("physicalinterfaces", "virtualtunnelinterfaces", "loopbackinterfaces"):
+        for kind in (
+            "physicalinterfaces",
+            "virtualtunnelinterfaces",
+            "loopbackinterfaces",
+            "routing/policybasedroutes",
+        ):
             await get(await app.config_path(f"devices/devicerecords/{dev}/{kind}"))
+        shows = out.setdefault("show", {})
+        for cmd in ("show path-monitoring", "show policy-route", "show bgp summary"):
+            try:
+                text = await run_show(app, dev, cmd, None)
+            except Exception as e:  # a command FMC doesn't allow is recorded as missing
+                print("skipped", dev, cmd, e)
+                continue
+            shows.setdefault(dev, {})[cmd] = scrub(text, host)
     for coll in ("object/ipv4addresspools", "object/securityzones", "devices/devicerecords"):
         await get(await app.config_path(coll))
     for coll in ("health/tunnelstatuses", "health/pathmonitoredinterfaces"):
