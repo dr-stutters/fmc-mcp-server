@@ -16,6 +16,28 @@
   domain-wide, the ones this policy uses first) and adjacent rules that differ in one condition (merge
   candidates). Every finding carries a proposed fix as a tool call to preview; `checks` runs a subset. Read tier;
   the only operational call is the optional hit-count refresh.
+- **Policy bundle export and diff (F44, #89).** `fmc_export_policy_bundle(policy)` exports an access policy with
+  everything it depends on as one versioned YAML bundle (`schema: 1`, `meta` with policy, domain, FMC version,
+  server version, `exported_at` and a `digest`): settings, default action and categories; rules in order in
+  `fmc_export_access_rules`' row format plus `raw` for every setting that format can't carry (users with their
+  realm, URL categories, file policy, variable set, syslog, ICMP codes, ...), so nothing is dropped; the
+  prefilter, decryption, identity and intrusion policies it references and the NAT policies of its devices (or
+  `nat_policies=[...]`), custom ones in full (intrusion: base policy, mode and rule overrides) and built-in ones by
+  name; every object its rules use with groups expanded recursively, plus security zones, interface groups and
+  time ranges. Ids, links and metadata are stripped, items keyed by name, objects sorted by type then name,
+  group and condition members sorted, rules kept in order, so re-exporting an unchanged policy gives the same
+  digest and text apart from `meta.exported_at`. Collections are loaded in bulk (about 16 requests for
+  `mcp-test-acp`); bundles larger than one result page with `offset` / `next_offset`.
+  `fmc_diff_policy_bundle(a, b | live)` compares two bundles, or a bundle with a fresh export of the live policy:
+  per section (access/prefilter/decryption/identity/NAT settings and rules, intrusion policies, zones, interface
+  groups, time ranges, objects by type) it lists `added` (with the new value and the rule it follows),
+  `removed`, `changed` (field-level `{path: {from, to}}`) and `moved` (positions, `after`). Rules match by name;
+  unnamed (NAT) rules and pure renames match by position. The changes turn `a` into `b`; F45's importer reuses
+  this planner. Both are read tier.
+- **`FMC_BUNDLE_DIR`**: when set, every export is also written there and both bundle tools accept a bundle's
+  file name (plain names inside that directory only). Unset by default, so shared HTTP hosts write nothing.
+- `scripts/capture_fixtures.py --bundle` records the GETs of a real export as `tests/fixtures/bundle_acp.json`.
+- `pyyaml` is a direct dependency (it was already installed through fastmcp).
 
 ### Changed
 - `fmc_shadowed_rules` and `fmc_get_hit_counts` share their logic with the audit (`shadow_findings`,

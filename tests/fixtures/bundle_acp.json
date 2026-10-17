@@ -1,0 +1,2675 @@
+{
+ "/api/fmc_config/v1/domain/e276abec-e0f2-11e3-8169-6d9ed49b625f/object/hosts": {
+  "items": [
+   {
+    "type": "Host",
+    "value": "::/0",
+    "overridable": false,
+    "name": "any-ipv6",
+    "id": "dde11d62-288b-4b4c-92e0-1dad0496f14b",
+    "metadata": {
+     "readOnly": {
+      "state": true,
+      "reason": "RBAC"
+     },
+     "timestamp": 1775157448949,
+     "lastUser": {
+      "name": "mcp-api-ro"
+     },
+     "domain": {
+      "name": "Global",
+      "id": "e276abec-e0f2-11e3-8169-6d9ed49b625f",
+      "type": "Domain"
+     },
+     "ipType": "V_6",
+     "parentType": "NetworkAddress"
+    }
+   },
+   {
+    "type": "Host",
+    "value": "10.10.20.5",
+    "overridable": false,
+    "name": "mcp-test-db",
+    "id": "00000000-0000-0ed3-0000-021474836550",
+    "metadata": {
+     "readOnly": {
+      "state": true,
+      "reason": "RBAC"
+     },
+     "timestamp": 1792202012585,
+     "lastUser": {
+      "name": "mcp-api-ro"
+     },
+     "domain": {
+      "name": "Global",
+      "id": "e276abec-e0f2-11e3-8169-6d9ed49b625f",
+      "type": "Domain"
+     },
+     "ipType": "V_4",
+     "parentType": "NetworkAddress"
+    }
+   },
+   {
+    "type": "Host",
+    "value": "10.99.99.99",
+    "overridable": false,
+    "name": "mcp-test-unused",
+    "id": "00000000-0000-0ed3-0000-021474836568",
+    "metadata": {
+     "readOnly": {
+      "state": true,
+      "reason": "RBAC"
+     },
+     "timestamp": 1792202013900,
+     "lastUser": {
+      "name": "mcp-api-ro"
+     },
+     "domain": {
+      "name": "Global",
+      "id": "e276abec-e0f2-11e3-8169-6d9ed49b625f",
+      "type": "Domain"
+     },
+     "ipType": "V_4",
+     "parentType": "NetworkAddress"
+    }
+   },
+   {
+    "type": "Host",
+    "value": "10.10.10.80",
+    "overridable": false,
+    "name": "mcp-test-web",
+    "id": "00000000-0000-0ed3-0000-021474836532",
+    "metadata": {
+     "readOnly": {
+      "state": true,
+      "reason": "RBAC"
+     },
+     "timestamp": 1792202009227,
+     "lastUser": {
+      "name": "mcp-api-ro"
+     },
+     "domain": {
+      "name": "Global",
+      "id": "e276abec-e0f2-11e3-8169-6d9ed49b625f",
+      "type": "Domain"
+     },
+     "ipType": "V_4",
+     "parentType": "NetworkAddress"
+    }
+   }
+  ],
+  "paging": {
+   "offset": 0,
+   "limit": 1000,
+   "count": 4,
+   "pages": 1
+  }
+ },
+ "/api/fmc_config/v1/domain/e276abec-e0f2-11e3-8169-6d9ed49b625f/object/networkgroups": {
+  "items": [
+   {
+    "literals": [
+     {
+      "type": "Network",
+      "value": "0.0.0.0/0"
+     },
+     {
+      "type": "Network",
+      "value": "::/0"
+     }
+    ],
+    "type": "NetworkGroup",
+    "overridable": false,
+    "name": "any",
+    "id": "69fa2a3a-4487-4e3c-816f-4098f684826e",
+    "metadata": {
+     "readOnly": {
+      "state": true,
+      "reason": "RBAC"
+     },
+     "timestamp": 1775157448949,
+     "lastUser": {
+      "name": "mcp-api-ro"
+     },
+     "domain": {
+      "name": "Global",
+      "id": "e276abec-e0f2-11e3-8169-6d9ed49b625f",
+      "type": "Domain"
+     }
+    }
+   },
+   {
+    "literals": [
+     {
+      "type": "Network",
+      "value": "10.0.0.0/8"
+     },
+     {
+      "type": "Network",
+      "value": "172.16.0.0/12"
+     },
+     {
+      "type": "Network",
+      "value": "192.168.0.0/16"
+     }
+    ],
+    "type": "NetworkGroup",
+    "overridable": false,
+    "name": "IPv4-Private-All-RFC1918",
+    "id": "15b12b14-dace-4117-b9d9-a9a7dcfa356f",
+    "metadata": {
+     "readOnly": {
+      "state": true,
+      "reason": "RBAC"
+     },
+     "timestamp": 1775157448947,
+     "lastUser": {
+      "name": "mcp-api-ro"
+     },
+     "domain": {
+      "name": "Global",
+      "id": "e276abec-e0f2-11e3-8169-6d9ed49b625f",
+      "type": "Domain"
+     }
+    }
+   },
+   {
+    "literals": [
+     {
+      "type": "Network",
+      "value": "10.10.40.0/24"
+     }
+    ],
+    "objects": [
+     {
+      "type": "Host",
+      "name": "mcp-test-web",
+      "id": "00000000-0000-0ed3-0000-021474836532"
+     },
+     {
+      "type": "Network",
+      "name": "mcp-test-app-net",
+      "id": "00000000-0000-0ed3-0000-021474836604"
+     }
+    ],
+    "type": "NetworkGroup",
+    "overridable": false,
+    "name": "mcp-test-servers",
+    "id": "00000000-0000-0ed3-0000-021474836712",
+    "metadata": {
+     "readOnly": {
+      "state": true,
+      "reason": "RBAC"
+     },
+     "timestamp": 1792202023027,
+     "lastUser": {
+      "name": "mcp-api-ro"
+     },
+     "domain": {
+      "name": "Global",
+      "id": "e276abec-e0f2-11e3-8169-6d9ed49b625f",
+      "type": "Domain"
+     }
+    }
+   }
+  ],
+  "paging": {
+   "offset": 0,
+   "limit": 1000,
+   "count": 3,
+   "pages": 1
+  }
+ },
+ "/api/fmc_config/v1/domain/e276abec-e0f2-11e3-8169-6d9ed49b625f/object/networks": {
+  "items": [
+   {
+    "type": "Network",
+    "value": "0.0.0.0/0",
+    "overridable": false,
+    "name": "any-ipv4",
+    "id": "cb7116e8-66a6-480b-8f9b-295191a0940a",
+    "metadata": {
+     "readOnly": {
+      "state": true,
+      "reason": "RBAC"
+     },
+     "wildcard": false,
+     "timestamp": 1775157448949,
+     "lastUser": {
+      "name": "mcp-api-ro"
+     },
+     "domain": {
+      "name": "Global",
+      "id": "e276abec-e0f2-11e3-8169-6d9ed49b625f",
+      "type": "Domain"
+     },
+     "ipType": "V_4",
+     "parentType": "NetworkAddress"
+    }
+   },
+   {
+    "type": "Network",
+    "value": "192.0.2.10/15",
+    "overridable": false,
+    "name": "IPv4-Benchmark-Tests",
+    "id": "86caab8a-9bdd-420d-858b-5690fde8ce58",
+    "metadata": {
+     "readOnly": {
+      "state": true,
+      "reason": "RBAC"
+     },
+     "wildcard": false,
+     "timestamp": 1775157448949,
+     "lastUser": {
+      "name": "mcp-api-ro"
+     },
+     "domain": {
+      "name": "Global",
+      "id": "e276abec-e0f2-11e3-8169-6d9ed49b625f",
+      "type": "Domain"
+     },
+     "ipType": "V_4",
+     "parentType": "NetworkAddress"
+    }
+   },
+   {
+    "type": "Network",
+    "value": "169.254.0.0/16",
+    "overridable": false,
+    "name": "IPv4-Link-Local",
+    "id": "f0ce41ae-6ee9-4e00-8762-da9370c4fee5",
+    "metadata": {
+     "readOnly": {
+      "state": true,
+      "reason": "RBAC"
+     },
+     "wildcard": false,
+     "timestamp": 1775157448948,
+     "lastUser": {
+      "name": "mcp-api-ro"
+     },
+     "domain": {
+      "name": "Global",
+      "id": "e276abec-e0f2-11e3-8169-6d9ed49b625f",
+      "type": "Domain"
+     },
+     "ipType": "V_4",
+     "parentType": "NetworkAddress"
+    }
+   },
+   {
+    "type": "Network",
+    "value": "224.0.0.0/4",
+    "overridable": false,
+    "name": "IPv4-Multicast",
+    "id": "5622db1c-5cd5-4199-a4c8-d8f86dec3bd4",
+    "metadata": {
+     "readOnly": {
+      "state": true,
+      "reason": "RBAC"
+     },
+     "wildcard": false,
+     "timestamp": 1775157448948,
+     "lastUser": {
+      "name": "mcp-api-ro"
+     },
+     "domain": {
+      "name": "Global",
+      "id": "e276abec-e0f2-11e3-8169-6d9ed49b625f",
+      "type": "Domain"
+     },
+     "ipType": "V_4",
+     "parentType": "NetworkAddress"
+    }
+   },
+   {
+    "type": "Network",
+    "value": "10.0.0.0/8",
+    "overridable": false,
+    "name": "IPv4-Private-10.0.0.0-8",
+    "id": "95916354-5aa1-4057-8eea-b42a5a207abc",
+    "metadata": {
+     "readOnly": {
+      "state": true,
+      "reason": "RBAC"
+     },
+     "wildcard": false,
+     "timestamp": 1775157448947,
+     "lastUser": {
+      "name": "mcp-api-ro"
+     },
+     "domain": {
+      "name": "Global",
+      "id": "e276abec-e0f2-11e3-8169-6d9ed49b625f",
+      "type": "Domain"
+     },
+     "ipType": "V_4",
+     "parentType": "NetworkAddress"
+    }
+   },
+   {
+    "type": "Network",
+    "value": "172.16.0.0/12",
+    "overridable": false,
+    "name": "IPv4-Private-172.16.0.0-12",
+    "id": "b7a78a7d-20c5-47b2-b02f-86b4360112ac",
+    "metadata": {
+     "readOnly": {
+      "state": true,
+      "reason": "RBAC"
+     },
+     "wildcard": false,
+     "timestamp": 1775157448947,
+     "lastUser": {
+      "name": "mcp-api-ro"
+     },
+     "domain": {
+      "name": "Global",
+      "id": "e276abec-e0f2-11e3-8169-6d9ed49b625f",
+      "type": "Domain"
+     },
+     "ipType": "V_4",
+     "parentType": "NetworkAddress"
+    }
+   },
+   {
+    "type": "Network",
+    "value": "192.168.0.0/16",
+    "overridable": false,
+    "name": "IPv4-Private-192.168.0.0-16",
+    "id": "1dcefdd8-07f7-438a-9221-97d63710614e",
+    "metadata": {
+     "readOnly": {
+      "state": true,
+      "reason": "RBAC"
+     },
+     "wildcard": false,
+     "timestamp": 1775157448948,
+     "lastUser": {
+      "name": "mcp-api-ro"
+     },
+     "domain": {
+      "name": "Global",
+      "id": "e276abec-e0f2-11e3-8169-6d9ed49b625f",
+      "type": "Domain"
+     },
+     "ipType": "V_4",
+     "parentType": "NetworkAddress"
+    }
+   },
+   {
+    "type": "Network",
+    "value": "::ffff:0.0.0.0/96",
+    "overridable": false,
+    "name": "IPv6-IPv4-Mapped",
+    "id": "1047b91f-db3a-45b8-9c10-f48ed3f0c3d6",
+    "metadata": {
+     "readOnly": {
+      "state": true,
+      "reason": "RBAC"
+     },
+     "wildcard": false,
+     "timestamp": 1775157448949,
+     "lastUser": {
+      "name": "mcp-api-ro"
+     },
+     "domain": {
+      "name": "Global",
+      "id": "e276abec-e0f2-11e3-8169-6d9ed49b625f",
+      "type": "Domain"
+     },
+     "ipType": "V_6",
+     "parentType": "NetworkAddress"
+    }
+   },
+   {
+    "type": "Network",
+    "value": "fe80::/10",
+    "overridable": false,
+    "name": "IPv6-Link-Local",
+    "id": "192c14f2-39d9-409d-81e9-357793bdf1ec",
+    "metadata": {
+     "readOnly": {
+      "state": true,
+      "reason": "RBAC"
+     },
+     "wildcard": false,
+     "timestamp": 1775157448948,
+     "lastUser": {
+      "name": "mcp-api-ro"
+     },
+     "domain": {
+      "name": "Global",
+      "id": "e276abec-e0f2-11e3-8169-6d9ed49b625f",
+      "type": "Domain"
+     },
+     "ipType": "V_6",
+     "parentType": "NetworkAddress"
+    }
+   },
+   {
+    "type": "Network",
+    "value": "fc00::/7",
+    "overridable": false,
+    "name": "IPv6-Private-Unique-Local-Addresses",
+    "id": "0434674f-87f8-4e17-810e-97100407858b",
+    "metadata": {
+     "readOnly": {
+      "state": true,
+      "reason": "RBAC"
+     },
+     "wildcard": false,
+     "timestamp": 1775157448948,
+     "lastUser": {
+      "name": "mcp-api-ro"
+     },
+     "domain": {
+      "name": "Global",
+      "id": "e276abec-e0f2-11e3-8169-6d9ed49b625f",
+      "type": "Domain"
+     },
+     "ipType": "V_6",
+     "parentType": "NetworkAddress"
+    }
+   },
+   {
+    "type": "Network",
+    "value": "192.88.99.0/24",
+    "overridable": false,
+    "name": "IPv6-to-IPv4-Relay-Anycast",
+    "id": "04ea3f1f-f5a9-4eca-b051-487ebeb4c97f",
+    "metadata": {
+     "readOnly": {
+      "state": true,
+      "reason": "RBAC"
+     },
+     "wildcard": false,
+     "timestamp": 1775157448949,
+     "lastUser": {
+      "name": "mcp-api-ro"
+     },
+     "domain": {
+      "name": "Global",
+      "id": "e276abec-e0f2-11e3-8169-6d9ed49b625f",
+      "type": "Domain"
+     },
+     "ipType": "V_4",
+     "parentType": "NetworkAddress"
+    }
+   },
+   {
+    "type": "Network",
+    "value": "10.10.20.0/24",
+    "overridable": false,
+    "name": "mcp-test-app-net",
+    "id": "00000000-0000-0ed3-0000-021474836604",
+    "metadata": {
+     "readOnly": {
+      "state": true,
+      "reason": "RBAC"
+     },
+     "wildcard": false,
+     "timestamp": 1792202016384,
+     "lastUser": {
+      "name": "mcp-api-ro"
+     },
+     "domain": {
+      "name": "Global",
+      "id": "e276abec-e0f2-11e3-8169-6d9ed49b625f",
+      "type": "Domain"
+     },
+     "ipType": "V_4",
+     "parentType": "NetworkAddress"
+    }
+   },
+   {
+    "type": "Network",
+    "value": "10.10.10.0/24",
+    "overridable": false,
+    "name": "mcp-test-dmz-net",
+    "id": "00000000-0000-0ed3-0000-021474836586",
+    "metadata": {
+     "readOnly": {
+      "state": true,
+      "reason": "RBAC"
+     },
+     "wildcard": false,
+     "timestamp": 1792202015485,
+     "lastUser": {
+      "name": "mcp-api-ro"
+     },
+     "domain": {
+      "name": "Global",
+      "id": "e276abec-e0f2-11e3-8169-6d9ed49b625f",
+      "type": "Domain"
+     },
+     "ipType": "V_4",
+     "parentType": "NetworkAddress"
+    }
+   },
+   {
+    "type": "Network",
+    "value": "10.99.1.0/24",
+    "overridable": false,
+    "name": "mcp-test-ftd-inside-net",
+    "id": "00000000-0000-0ed3-0000-021474841321",
+    "metadata": {
+     "readOnly": {
+      "state": true,
+      "reason": "RBAC"
+     },
+     "wildcard": false,
+     "timestamp": 1792205990871,
+     "lastUser": {
+      "name": "mcp-api-ro"
+     },
+     "domain": {
+      "name": "Global",
+      "id": "e276abec-e0f2-11e3-8169-6d9ed49b625f",
+      "type": "Domain"
+     },
+     "ipType": "V_4",
+     "parentType": "NetworkAddress"
+    }
+   },
+   {
+    "type": "Network",
+    "value": "10.10.34.0/24",
+    "overridable": false,
+    "description": "CML ise-fmc-identity client VLAN 34",
+    "name": "mcp-test-identity-clients",
+    "id": "00000000-0000-0ed3-0000-021474840769",
+    "metadata": {
+     "readOnly": {
+      "state": true,
+      "reason": "RBAC"
+     },
+     "wildcard": false,
+     "timestamp": 1792205718921,
+     "lastUser": {
+      "name": "mcp-api-ro"
+     },
+     "domain": {
+      "name": "Global",
+      "id": "e276abec-e0f2-11e3-8169-6d9ed49b625f",
+      "type": "Domain"
+     },
+     "ipType": "V_4",
+     "parentType": "NetworkAddress"
+    }
+   }
+  ],
+  "paging": {
+   "offset": 0,
+   "limit": 1000,
+   "count": 15,
+   "pages": 1
+  }
+ },
+ "/api/fmc_config/v1/domain/e276abec-e0f2-11e3-8169-6d9ed49b625f/object/portobjectgroups": {
+  "items": [
+   {
+    "metadata": {
+     "readOnly": {
+      "state": true,
+      "reason": "RBAC"
+     },
+     "timestamp": 1792202023994,
+     "lastUser": {
+      "name": "mcp-api-ro"
+     },
+     "domain": {
+      "name": "Global",
+      "id": "e276abec-e0f2-11e3-8169-6d9ed49b625f",
+      "type": "Domain"
+     },
+     "parentType": "Port"
+    },
+    "type": "PortObjectGroup",
+    "objects": [
+     {
+      "type": "ProtocolPortObject",
+      "port": "443",
+      "overridable": false,
+      "name": "HTTPS",
+      "id": "1834bd00-38bb-11e2-86aa-62f0c593a59a"
+     },
+     {
+      "type": "ProtocolPortObject",
+      "port": "8443",
+      "overridable": false,
+      "name": "mcp-test-tcp-8443",
+      "id": "00000000-0000-0ed3-0000-021474836640"
+     }
+    ],
+    "overridable": false,
+    "name": "mcp-test-web-ports",
+    "id": "00000000-0000-0ed3-0000-021474836730"
+   }
+  ],
+  "paging": {
+   "offset": 0,
+   "limit": 1000,
+   "count": 1,
+   "pages": 1
+  }
+ },
+ "/api/fmc_config/v1/domain/e276abec-e0f2-11e3-8169-6d9ed49b625f/object/protocolportobjects": {
+  "items": [
+   {
+    "metadata": {
+     "readOnly": {
+      "state": true,
+      "reason": "RBAC"
+     },
+     "timestamp": 1775157449079,
+     "lastUser": {
+      "name": "mcp-api-ro"
+     },
+     "domain": {
+      "name": "Global",
+      "id": "e276abec-e0f2-11e3-8169-6d9ed49b625f",
+      "type": "Domain"
+     },
+     "parentType": "Port"
+    },
+    "type": "ProtocolPortObject",
+    "port": "5190",
+    "protocol": "TCP",
+    "overridable": false,
+    "name": "AOL",
+    "id": "1834d812-38bb-11e2-86aa-62f0c593a59a"
+   },
+   {
+    "metadata": {
+     "readOnly": {
+      "state": true,
+      "reason": "RBAC"
+     },
+     "timestamp": 1775157449080,
+     "lastUser": {
+      "name": "mcp-api-ro"
+     },
+     "domain": {
+      "name": "Global",
+      "id": "e276abec-e0f2-11e3-8169-6d9ed49b625f",
+      "type": "Domain"
+     },
+     "parentType": "Port"
+    },
+    "type": "ProtocolPortObject",
+    "port": "6881-6889",
+    "protocol": "TCP",
+    "overridable": false,
+    "name": "Bittorrent",
+    "id": "1834e5f0-38bb-11e2-86aa-62f0c593a59a"
+   },
+   {
+    "metadata": {
+     "readOnly": {
+      "state": true,
+      "reason": "RBAC"
+     },
+     "timestamp": 1775157449081,
+     "lastUser": {
+      "name": "mcp-api-ro"
+     },
+     "domain": {
+      "name": "Global",
+      "id": "e276abec-e0f2-11e3-8169-6d9ed49b625f",
+      "type": "Domain"
+     },
+     "parentType": "Port"
+    },
+    "type": "ProtocolPortObject",
+    "port": "53",
+    "protocol": "TCP",
+    "overridable": false,
+    "name": "DNS_over_TCP",
+    "id": "1834e712-38bb-11e2-86aa-62f0c593a59a"
+   },
+   {
+    "metadata": {
+     "readOnly": {
+      "state": true,
+      "reason": "RBAC"
+     },
+     "timestamp": 1775157449076,
+     "lastUser": {
+      "name": "mcp-api-ro"
+     },
+     "domain": {
+      "name": "Global",
+      "id": "e276abec-e0f2-11e3-8169-6d9ed49b625f",
+      "type": "Domain"
+     },
+     "parentType": "Port"
+    },
+    "type": "ProtocolPortObject",
+    "port": "53",
+    "protocol": "UDP",
+    "overridable": false,
+    "name": "DNS_over_UDP",
+    "id": "1834e8ca-38bb-11e2-86aa-62f0c593a59a"
+   },
+   {
+    "metadata": {
+     "readOnly": {
+      "state": true,
+      "reason": "RBAC"
+     },
+     "timestamp": 1775157449077,
+     "lastUser": {
+      "name": "mcp-api-ro"
+     },
+     "domain": {
+      "name": "Global",
+      "id": "e276abec-e0f2-11e3-8169-6d9ed49b625f",
+      "type": "Domain"
+     },
+     "parentType": "Port"
+    },
+    "type": "ProtocolPortObject",
+    "port": "21",
+    "protocol": "TCP",
+    "overridable": false,
+    "name": "FTP",
+    "id": "1834c674-38bb-11e2-86aa-62f0c593a59a"
+   },
+   {
+    "metadata": {
+     "readOnly": {
+      "state": true,
+      "reason": "RBAC"
+     },
+     "timestamp": 1775157449075,
+     "lastUser": {
+      "name": "mcp-api-ro"
+     },
+     "domain": {
+      "name": "Global",
+      "id": "e276abec-e0f2-11e3-8169-6d9ed49b625f",
+      "type": "Domain"
+     },
+     "parentType": "Port"
+    },
+    "type": "ProtocolPortObject",
+    "port": "80",
+    "protocol": "TCP",
+    "overridable": false,
+    "name": "HTTP",
+    "id": "18312adc-38bb-11e2-86aa-62f0c593a59a"
+   },
+   {
+    "metadata": {
+     "readOnly": {
+      "state": true,
+      "reason": "RBAC"
+     },
+     "timestamp": 1775157449076,
+     "lastUser": {
+      "name": "mcp-api-ro"
+     },
+     "domain": {
+      "name": "Global",
+      "id": "e276abec-e0f2-11e3-8169-6d9ed49b625f",
+      "type": "Domain"
+     },
+     "parentType": "Port"
+    },
+    "type": "ProtocolPortObject",
+    "port": "443",
+    "protocol": "TCP",
+    "overridable": false,
+    "name": "HTTPS",
+    "id": "1834bd00-38bb-11e2-86aa-62f0c593a59a"
+   },
+   {
+    "metadata": {
+     "readOnly": {
+      "state": true,
+      "reason": "RBAC"
+     },
+     "timestamp": 1775157449077,
+     "lastUser": {
+      "name": "mcp-api-ro"
+     },
+     "domain": {
+      "name": "Global",
+      "id": "e276abec-e0f2-11e3-8169-6d9ed49b625f",
+      "type": "Domain"
+     },
+     "parentType": "Port"
+    },
+    "type": "ProtocolPortObject",
+    "port": "143",
+    "protocol": "TCP",
+    "overridable": false,
+    "name": "IMAP",
+    "id": "1834c37c-38bb-11e2-86aa-62f0c593a59a"
+   },
+   {
+    "metadata": {
+     "readOnly": {
+      "state": true,
+      "reason": "RBAC"
+     },
+     "timestamp": 1775157449079,
+     "lastUser": {
+      "name": "mcp-api-ro"
+     },
+     "domain": {
+      "name": "Global",
+      "id": "e276abec-e0f2-11e3-8169-6d9ed49b625f",
+      "type": "Domain"
+     },
+     "parentType": "Port"
+    },
+    "type": "ProtocolPortObject",
+    "port": "389",
+    "protocol": "TCP",
+    "overridable": false,
+    "name": "LDAP",
+    "id": "1834d01a-38bb-11e2-86aa-62f0c593a59a"
+   },
+   {
+    "metadata": {
+     "readOnly": {
+      "state": true,
+      "reason": "RBAC"
+     },
+     "timestamp": 1792202018166,
+     "lastUser": {
+      "name": "mcp-api-ro"
+     },
+     "domain": {
+      "name": "Global",
+      "id": "e276abec-e0f2-11e3-8169-6d9ed49b625f",
+      "type": "Domain"
+     },
+     "parentType": "Port"
+    },
+    "type": "ProtocolPortObject",
+    "port": "8443",
+    "protocol": "TCP",
+    "overridable": false,
+    "name": "mcp-test-tcp-8443",
+    "id": "00000000-0000-0ed3-0000-021474836640"
+   },
+   {
+    "metadata": {
+     "readOnly": {
+      "state": true,
+      "reason": "RBAC"
+     },
+     "timestamp": 1792202019260,
+     "lastUser": {
+      "name": "mcp-api-ro"
+     },
+     "domain": {
+      "name": "Global",
+      "id": "e276abec-e0f2-11e3-8169-6d9ed49b625f",
+      "type": "Domain"
+     },
+     "parentType": "Port"
+    },
+    "type": "ProtocolPortObject",
+    "port": "5000-5100",
+    "protocol": "UDP",
+    "overridable": false,
+    "name": "mcp-test-udp-5000s",
+    "id": "00000000-0000-0ed3-0000-021474836658"
+   },
+   {
+    "metadata": {
+     "readOnly": {
+      "state": true,
+      "reason": "RBAC"
+     },
+     "timestamp": 1775157449078,
+     "lastUser": {
+      "name": "mcp-api-ro"
+     },
+     "domain": {
+      "name": "Global",
+      "id": "e276abec-e0f2-11e3-8169-6d9ed49b625f",
+      "type": "Domain"
+     },
+     "parentType": "Port"
+    },
+    "type": "ProtocolPortObject",
+    "port": "2049",
+    "protocol": "TCP",
+    "overridable": false,
+    "name": "NFSD-TCP",
+    "id": "1834c9c6-38bb-11e2-86aa-62f0c593a59a"
+   },
+   {
+    "metadata": {
+     "readOnly": {
+      "state": true,
+      "reason": "RBAC"
+     },
+     "timestamp": 1775157449078,
+     "lastUser": {
+      "name": "mcp-api-ro"
+     },
+     "domain": {
+      "name": "Global",
+      "id": "e276abec-e0f2-11e3-8169-6d9ed49b625f",
+      "type": "Domain"
+     },
+     "parentType": "Port"
+    },
+    "type": "ProtocolPortObject",
+    "port": "2049",
+    "protocol": "UDP",
+    "overridable": false,
+    "name": "NFSD-UDP",
+    "id": "1834caac-38bb-11e2-86aa-62f0c593a59a"
+   },
+   {
+    "metadata": {
+     "readOnly": {
+      "state": true,
+      "reason": "RBAC"
+     },
+     "timestamp": 1775157449078,
+     "lastUser": {
+      "name": "mcp-api-ro"
+     },
+     "domain": {
+      "name": "Global",
+      "id": "e276abec-e0f2-11e3-8169-6d9ed49b625f",
+      "type": "Domain"
+     },
+     "parentType": "Port"
+    },
+    "type": "ProtocolPortObject",
+    "port": "123",
+    "protocol": "TCP",
+    "overridable": false,
+    "name": "NTP-TCP",
+    "id": "1834cb92-38bb-11e2-86aa-62f0c593a59a"
+   },
+   {
+    "metadata": {
+     "readOnly": {
+      "state": true,
+      "reason": "RBAC"
+     },
+     "timestamp": 1775157449078,
+     "lastUser": {
+      "name": "mcp-api-ro"
+     },
+     "domain": {
+      "name": "Global",
+      "id": "e276abec-e0f2-11e3-8169-6d9ed49b625f",
+      "type": "Domain"
+     },
+     "parentType": "Port"
+    },
+    "type": "ProtocolPortObject",
+    "port": "123",
+    "protocol": "UDP",
+    "overridable": false,
+    "name": "NTP-UDP",
+    "id": "1834cc96-38bb-11e2-86aa-62f0c593a59a"
+   },
+   {
+    "metadata": {
+     "readOnly": {
+      "state": true,
+      "reason": "RBAC"
+     },
+     "timestamp": 1775157449077,
+     "lastUser": {
+      "name": "mcp-api-ro"
+     },
+     "domain": {
+      "name": "Global",
+      "id": "e276abec-e0f2-11e3-8169-6d9ed49b625f",
+      "type": "Domain"
+     },
+     "parentType": "Port"
+    },
+    "type": "ProtocolPortObject",
+    "port": "109",
+    "protocol": "TCP",
+    "overridable": false,
+    "name": "POP-2",
+    "id": "1834c462-38bb-11e2-86aa-62f0c593a59a"
+   },
+   {
+    "metadata": {
+     "readOnly": {
+      "state": true,
+      "reason": "RBAC"
+     },
+     "timestamp": 1775157449077,
+     "lastUser": {
+      "name": "mcp-api-ro"
+     },
+     "domain": {
+      "name": "Global",
+      "id": "e276abec-e0f2-11e3-8169-6d9ed49b625f",
+      "type": "Domain"
+     },
+     "parentType": "Port"
+    },
+    "type": "ProtocolPortObject",
+    "port": "110",
+    "protocol": "TCP",
+    "overridable": false,
+    "name": "POP-3",
+    "id": "1834c548-38bb-11e2-86aa-62f0c593a59a"
+   },
+   {
+    "metadata": {
+     "readOnly": {
+      "state": true,
+      "reason": "RBAC"
+     },
+     "timestamp": 1775157449078,
+     "lastUser": {
+      "name": "mcp-api-ro"
+     },
+     "domain": {
+      "name": "Global",
+      "id": "e276abec-e0f2-11e3-8169-6d9ed49b625f",
+      "type": "Domain"
+     },
+     "parentType": "Port"
+    },
+    "type": "ProtocolPortObject",
+    "port": "1645",
+    "protocol": "UDP",
+    "overridable": false,
+    "name": "RADIUS",
+    "id": "1834ce94-38bb-11e2-86aa-62f0c593a59a"
+   },
+   {
+    "metadata": {
+     "readOnly": {
+      "state": true,
+      "reason": "RBAC"
+     },
+     "timestamp": 1775157449079,
+     "lastUser": {
+      "name": "mcp-api-ro"
+     },
+     "domain": {
+      "name": "Global",
+      "id": "e276abec-e0f2-11e3-8169-6d9ed49b625f",
+      "type": "Domain"
+     },
+     "parentType": "Port"
+    },
+    "type": "ProtocolPortObject",
+    "port": "520",
+    "protocol": "UDP",
+    "overridable": false,
+    "name": "RIP",
+    "id": "1834d114-38bb-11e2-86aa-62f0c593a59a"
+   },
+   {
+    "metadata": {
+     "readOnly": {
+      "state": true,
+      "reason": "RBAC"
+     },
+     "timestamp": 1775157449079,
+     "lastUser": {
+      "name": "mcp-api-ro"
+     },
+     "domain": {
+      "name": "Global",
+      "id": "e276abec-e0f2-11e3-8169-6d9ed49b625f",
+      "type": "Domain"
+     },
+     "parentType": "Port"
+    },
+    "type": "ProtocolPortObject",
+    "port": "5060",
+    "protocol": "UDP",
+    "overridable": false,
+    "name": "SIP",
+    "id": "1834d204-38bb-11e2-86aa-62f0c593a59a"
+   },
+   {
+    "metadata": {
+     "readOnly": {
+      "state": true,
+      "reason": "RBAC"
+     },
+     "timestamp": 1775157449076,
+     "lastUser": {
+      "name": "mcp-api-ro"
+     },
+     "domain": {
+      "name": "Global",
+      "id": "e276abec-e0f2-11e3-8169-6d9ed49b625f",
+      "type": "Domain"
+     },
+     "parentType": "Port"
+    },
+    "type": "ProtocolPortObject",
+    "port": "25",
+    "protocol": "TCP",
+    "overridable": false,
+    "name": "SMTP",
+    "id": "1834bf44-38bb-11e2-86aa-62f0c593a59a"
+   },
+   {
+    "metadata": {
+     "readOnly": {
+      "state": true,
+      "reason": "RBAC"
+     },
+     "timestamp": 1775157449076,
+     "lastUser": {
+      "name": "mcp-api-ro"
+     },
+     "domain": {
+      "name": "Global",
+      "id": "e276abec-e0f2-11e3-8169-6d9ed49b625f",
+      "type": "Domain"
+     },
+     "parentType": "Port"
+    },
+    "type": "ProtocolPortObject",
+    "port": "465",
+    "protocol": "TCP",
+    "overridable": false,
+    "name": "SMTPS",
+    "id": "1834c07a-38bb-11e2-86aa-62f0c593a59a"
+   },
+   {
+    "metadata": {
+     "readOnly": {
+      "state": true,
+      "reason": "RBAC"
+     },
+     "timestamp": 1775157449076,
+     "lastUser": {
+      "name": "mcp-api-ro"
+     },
+     "domain": {
+      "name": "Global",
+      "id": "e276abec-e0f2-11e3-8169-6d9ed49b625f",
+      "type": "Domain"
+     },
+     "parentType": "Port"
+    },
+    "type": "ProtocolPortObject",
+    "port": "161",
+    "protocol": "UDP",
+    "overridable": false,
+    "name": "SNMP",
+    "id": "1834c264-38bb-11e2-86aa-62f0c593a59a"
+   },
+   {
+    "metadata": {
+     "readOnly": {
+      "state": true,
+      "reason": "RBAC"
+     },
+     "timestamp": 1775157449077,
+     "lastUser": {
+      "name": "mcp-api-ro"
+     },
+     "domain": {
+      "name": "Global",
+      "id": "e276abec-e0f2-11e3-8169-6d9ed49b625f",
+      "type": "Domain"
+     },
+     "parentType": "Port"
+    },
+    "type": "ProtocolPortObject",
+    "port": "22",
+    "protocol": "TCP",
+    "overridable": false,
+    "name": "SSH",
+    "id": "1834c890-38bb-11e2-86aa-62f0c593a59a"
+   },
+   {
+    "metadata": {
+     "readOnly": {
+      "state": true,
+      "reason": "RBAC"
+     },
+     "timestamp": 1775157449079,
+     "lastUser": {
+      "name": "mcp-api-ro"
+     },
+     "domain": {
+      "name": "Global",
+      "id": "e276abec-e0f2-11e3-8169-6d9ed49b625f",
+      "type": "Domain"
+     },
+     "parentType": "Port"
+    },
+    "type": "ProtocolPortObject",
+    "port": "514",
+    "protocol": "UDP",
+    "overridable": false,
+    "name": "SYSLOG",
+    "id": "1834d6e6-38bb-11e2-86aa-62f0c593a59a"
+   },
+   {
+    "metadata": {
+     "readOnly": {
+      "state": true,
+      "reason": "RBAC"
+     },
+     "timestamp": 1775157449081,
+     "lastUser": {
+      "name": "mcp-api-ro"
+     },
+     "domain": {
+      "name": "Global",
+      "id": "e276abec-e0f2-11e3-8169-6d9ed49b625f",
+      "type": "Domain"
+     },
+     "parentType": "Port"
+    },
+    "type": "ProtocolPortObject",
+    "port": "1021-65535",
+    "protocol": "TCP",
+    "overridable": false,
+    "name": "TCP_high_ports",
+    "id": "1834e50a-38bb-11e2-86aa-62f0c593a59a"
+   },
+   {
+    "metadata": {
+     "readOnly": {
+      "state": true,
+      "reason": "RBAC"
+     },
+     "timestamp": 1775157449080,
+     "lastUser": {
+      "name": "mcp-api-ro"
+     },
+     "domain": {
+      "name": "Global",
+      "id": "e276abec-e0f2-11e3-8169-6d9ed49b625f",
+      "type": "Domain"
+     },
+     "parentType": "Port"
+    },
+    "type": "ProtocolPortObject",
+    "port": "23",
+    "protocol": "TCP",
+    "overridable": false,
+    "name": "TELNET",
+    "id": "28e058e4-43b0-11e2-9bcd-7c2f9ed9bbee"
+   },
+   {
+    "metadata": {
+     "readOnly": {
+      "state": true,
+      "reason": "RBAC"
+     },
+     "timestamp": 1775157449079,
+     "lastUser": {
+      "name": "mcp-api-ro"
+     },
+     "domain": {
+      "name": "Global",
+      "id": "e276abec-e0f2-11e3-8169-6d9ed49b625f",
+      "type": "Domain"
+     },
+     "parentType": "Port"
+    },
+    "type": "ProtocolPortObject",
+    "port": "69",
+    "protocol": "UDP",
+    "overridable": false,
+    "name": "TFTP",
+    "id": "1834d5e2-38bb-11e2-86aa-62f0c593a59a"
+   },
+   {
+    "metadata": {
+     "readOnly": {
+      "state": true,
+      "reason": "RBAC"
+     },
+     "timestamp": 1775157449080,
+     "lastUser": {
+      "name": "mcp-api-ro"
+     },
+     "domain": {
+      "name": "Global",
+      "id": "e276abec-e0f2-11e3-8169-6d9ed49b625f",
+      "type": "Domain"
+     },
+     "parentType": "Port"
+    },
+    "type": "ProtocolPortObject",
+    "port": "5050",
+    "protocol": "TCP",
+    "overridable": false,
+    "name": "Yahoo_Messenger_Messages",
+    "id": "1834da1a-38bb-11e2-86aa-62f0c593a59a"
+   },
+   {
+    "metadata": {
+     "readOnly": {
+      "state": true,
+      "reason": "RBAC"
+     },
+     "timestamp": 1775157449080,
+     "lastUser": {
+      "name": "mcp-api-ro"
+     },
+     "domain": {
+      "name": "Global",
+      "id": "e276abec-e0f2-11e3-8169-6d9ed49b625f",
+      "type": "Domain"
+     },
+     "parentType": "Port"
+    },
+    "type": "ProtocolPortObject",
+    "port": "5000-5001",
+    "protocol": "TCP",
+    "overridable": false,
+    "name": "YahooMessenger_Voice_Chat_TCP",
+    "id": "1834db96-38bb-11e2-86aa-62f0c593a59a"
+   },
+   {
+    "metadata": {
+     "readOnly": {
+      "state": true,
+      "reason": "RBAC"
+     },
+     "timestamp": 1775157449080,
+     "lastUser": {
+      "name": "mcp-api-ro"
+     },
+     "domain": {
+      "name": "Global",
+      "id": "e276abec-e0f2-11e3-8169-6d9ed49b625f",
+      "type": "Domain"
+     },
+     "parentType": "Port"
+    },
+    "type": "ProtocolPortObject",
+    "port": "5000-5010",
+    "protocol": "UDP",
+    "overridable": false,
+    "name": "YahooMessenger_Voice_Chat_UDP",
+    "id": "1834dc86-38bb-11e2-86aa-62f0c593a59a"
+   }
+  ],
+  "paging": {
+   "offset": 0,
+   "limit": 1000,
+   "count": 31,
+   "pages": 1
+  }
+ },
+ "/api/fmc_config/v1/domain/e276abec-e0f2-11e3-8169-6d9ed49b625f/object/ranges": {
+  "items": [
+   {
+    "type": "Range",
+    "value": "10.10.30.10-10.10.30.20",
+    "overridable": false,
+    "name": "mcp-test-range",
+    "id": "00000000-0000-0ed3-0000-021474836622",
+    "metadata": {
+     "readOnly": {
+      "state": true,
+      "reason": "RBAC"
+     },
+     "timestamp": 1792202016883,
+     "lastUser": {
+      "name": "mcp-api-ro"
+     },
+     "domain": {
+      "name": "Global",
+      "id": "e276abec-e0f2-11e3-8169-6d9ed49b625f",
+      "type": "Domain"
+     },
+     "ipType": "V_4",
+     "parentType": "NetworkAddress"
+    }
+   }
+  ],
+  "paging": {
+   "offset": 0,
+   "limit": 1000,
+   "count": 1,
+   "pages": 1
+  }
+ },
+ "/api/fmc_config/v1/domain/e276abec-e0f2-11e3-8169-6d9ed49b625f/object/securityzones": {
+  "items": [
+   {
+    "name": "mcp-test-identity-inside",
+    "id": "20d5bbce-c9d6-11f1-8e93-9a786f180443",
+    "type": "SecurityZone",
+    "metadata": {
+     "readOnly": {
+      "state": false
+     },
+     "parentType": "InterfaceObject",
+     "timestamp": 1792207435,
+     "lastUser": {
+      "name": "admin",
+      "id": "68d03c42-d9bd-11dc-89f2-b7961d42c462",
+      "type": "user"
+     },
+     "domain": {
+      "name": "Global",
+      "id": "e276abec-e0f2-11e3-8169-6d9ed49b625f",
+      "type": "Domain"
+     }
+    },
+    "interfaces": [
+     {
+      "type": "PhysicalInterface",
+      "id": "00000000-0000-0ed3-0000-021474844897",
+      "name": "Ethernet0/1"
+     }
+    ],
+    "interfaceMode": "ROUTED"
+   },
+   {
+    "name": "mcp-test-identity-outside",
+    "id": "2481a77e-c9d6-11f1-8e93-9a786f180443",
+    "type": "SecurityZone",
+    "metadata": {
+     "readOnly": {
+      "state": false
+     },
+     "parentType": "InterfaceObject",
+     "timestamp": 1792207445,
+     "lastUser": {
+      "name": "admin",
+      "id": "68d03c42-d9bd-11dc-89f2-b7961d42c462",
+      "type": "user"
+     },
+     "domain": {
+      "name": "Global",
+      "id": "e276abec-e0f2-11e3-8169-6d9ed49b625f",
+      "type": "Domain"
+     }
+    },
+    "interfaces": [
+     {
+      "type": "PhysicalInterface",
+      "id": "00000000-0000-0ed3-0000-021474844896",
+      "name": "Ethernet0/0"
+     }
+    ],
+    "interfaceMode": "ROUTED"
+   },
+   {
+    "name": "mcp-test-ftd-dmz",
+    "id": "30ea0d2a-c9d7-11f1-8ee6-9b786f180443",
+    "type": "SecurityZone",
+    "metadata": {
+     "readOnly": {
+      "state": false
+     },
+     "parentType": "InterfaceObject",
+     "timestamp": 1792206157,
+     "lastUser": {
+      "name": "admin",
+      "id": "68d03c42-d9bd-11dc-89f2-b7961d42c462",
+      "type": "user"
+     },
+     "domain": {
+      "name": "Global",
+      "id": "e276abec-e0f2-11e3-8169-6d9ed49b625f",
+      "type": "Domain"
+     }
+    },
+    "interfaces": [
+     {
+      "type": "SubInterface",
+      "id": "00000000-0000-0ed3-0000-021474842317",
+      "name": "Ethernet0/1"
+     }
+    ],
+    "interfaceMode": "ROUTED"
+   },
+   {
+    "name": "mcp-test-inside",
+    "id": "937c914c-c9cd-11f1-8ee6-9b786f180443",
+    "type": "SecurityZone",
+    "metadata": {
+     "readOnly": {
+      "state": false
+     },
+     "parentType": "InterfaceObject",
+     "timestamp": 1792202020,
+     "lastUser": {
+      "name": "admin",
+      "id": "68d03c42-d9bd-11dc-89f2-b7961d42c462",
+      "type": "user"
+     },
+     "domain": {
+      "name": "Global",
+      "id": "e276abec-e0f2-11e3-8169-6d9ed49b625f",
+      "type": "Domain"
+     }
+    },
+    "interfaceMode": "ROUTED"
+   },
+   {
+    "name": "mcp-test-outside",
+    "id": "944bd36c-c9cd-11f1-8ee6-9b786f180443",
+    "type": "SecurityZone",
+    "metadata": {
+     "readOnly": {
+      "state": false
+     },
+     "parentType": "InterfaceObject",
+     "timestamp": 1792202021,
+     "lastUser": {
+      "name": "admin",
+      "id": "68d03c42-d9bd-11dc-89f2-b7961d42c462",
+      "type": "user"
+     },
+     "domain": {
+      "name": "Global",
+      "id": "e276abec-e0f2-11e3-8169-6d9ed49b625f",
+      "type": "Domain"
+     }
+    },
+    "interfaceMode": "ROUTED"
+   },
+   {
+    "name": "mcp-test-ftd-in",
+    "id": "d06d930e-c9d6-11f1-a4e0-98786f180443",
+    "type": "SecurityZone",
+    "metadata": {
+     "readOnly": {
+      "state": false
+     },
+     "parentType": "InterfaceObject",
+     "timestamp": 1792206008,
+     "lastUser": {
+      "name": "admin",
+      "id": "68d03c42-d9bd-11dc-89f2-b7961d42c462",
+      "type": "user"
+     },
+     "domain": {
+      "name": "Global",
+      "id": "e276abec-e0f2-11e3-8169-6d9ed49b625f",
+      "type": "Domain"
+     }
+    },
+    "interfaces": [
+     {
+      "type": "PhysicalInterface",
+      "id": "00000000-0000-0ed3-0000-021474837528",
+      "name": "Ethernet0/1"
+     }
+    ],
+    "interfaceMode": "ROUTED"
+   },
+   {
+    "name": "mcp-test-ftd-out",
+    "id": "d1686144-c9d6-11f1-a4e0-98786f180443",
+    "type": "SecurityZone",
+    "metadata": {
+     "readOnly": {
+      "state": false
+     },
+     "parentType": "InterfaceObject",
+     "timestamp": 1792205998,
+     "lastUser": {
+      "name": "admin",
+      "id": "68d03c42-d9bd-11dc-89f2-b7961d42c462",
+      "type": "user"
+     },
+     "domain": {
+      "name": "Global",
+      "id": "e276abec-e0f2-11e3-8169-6d9ed49b625f",
+      "type": "Domain"
+     }
+    },
+    "interfaces": [
+     {
+      "type": "PhysicalInterface",
+      "id": "00000000-0000-0ed3-0000-021474837527",
+      "name": "Ethernet0/0"
+     }
+    ],
+    "interfaceMode": "ROUTED"
+   }
+  ],
+  "paging": {
+   "offset": 0,
+   "limit": 1000,
+   "count": 7,
+   "pages": 1
+  }
+ },
+ "/api/fmc_config/v1/domain/e276abec-e0f2-11e3-8169-6d9ed49b625f/object/urls": {
+  "items": [
+   {
+    "type": "Url",
+    "url": "https://example.com",
+    "overridable": false,
+    "name": "mcp-test-url",
+    "id": "00000000-0000-0ed3-0000-021474836748",
+    "metadata": {
+     "readOnly": {
+      "state": true,
+      "reason": "RBAC"
+     },
+     "timestamp": 1792202024541,
+     "lastUser": {
+      "name": "mcp-api-ro"
+     },
+     "domain": {
+      "name": "Global",
+      "id": "e276abec-e0f2-11e3-8169-6d9ed49b625f",
+      "type": "Domain"
+     }
+    }
+   }
+  ],
+  "paging": {
+   "offset": 0,
+   "limit": 1000,
+   "count": 1,
+   "pages": 1
+  }
+ },
+ "/api/fmc_config/v1/domain/e276abec-e0f2-11e3-8169-6d9ed49b625f/policy/accesspolicies": {
+  "items": [
+   {
+    "metadata": {
+     "readOnly": {
+      "state": true,
+      "reason": "RBAC"
+     },
+     "inherit": false,
+     "lockingStatus": {
+      "status": "UNLOCKED"
+     },
+     "timestamp": 1792210541948,
+     "lastUser": {
+      "name": "Firepower System"
+     },
+     "domain": {
+      "name": "Global",
+      "id": "e276abec-e0f2-11e3-8169-6d9ed49b625f",
+      "type": "Domain"
+     }
+    },
+    "type": "AccessPolicy",
+    "rules": {
+     "refType": "list",
+     "type": "AccessRule"
+    },
+    "securityIntelligence": {
+     "id": "00000000-0000-0ed3-0000-021474836816",
+     "type": "SecurityIntelligencePolicy"
+    },
+    "advancedLoggingSetting": {
+     "type": "AdvancedLoggingSetting",
+     "id": "00000000-0000-0ed3-0000-021474836774"
+    },
+    "eveSetting": {
+     "id": "00000000-0000-0ed3-0000-021474836776",
+     "type": "EVESetting",
+     "enabled": false,
+     "inheritFromParent": false,
+     "isLockedForChild": false
+    },
+    "prefilterPolicySetting": {
+     "type": "PrefilterPolicy",
+     "name": "Default Prefilter Policy",
+     "id": "4897c8f4-e211-4661-b0a4-25b0826cded9"
+    },
+    "loggingPolicySetting": {
+     "isLockedForChild": false,
+     "syslogConfigFromPlatformSetting": false,
+     "enableFileAndMalwareSyslog": false,
+     "inheritFromParent": false,
+     "enableipsSyslog": false,
+     "enableSplunk": true,
+     "type": "LoggingSetting",
+     "id": "00000000-0000-0ed3-0000-021474836796"
+    },
+    "defaultAction": {
+     "sendEventsToFMC": false,
+     "enableSyslog": false,
+     "logBegin": false,
+     "logEnd": false,
+     "action": "BLOCK",
+     "type": "AccessPolicyDefaultAction",
+     "id": "00000000-0000-0ed3-0000-000268434432"
+    },
+    "name": "mcp-test-acp",
+    "description": "mcp live tests",
+    "id": "00000000-0000-0ed3-0000-021474836766"
+   },
+   {
+    "metadata": {
+     "readOnly": {
+      "state": true,
+      "reason": "RBAC"
+     },
+     "inherit": false,
+     "lockingStatus": {
+      "status": "UNLOCKED"
+     },
+     "timestamp": 1792210541948,
+     "lastUser": {
+      "name": "Firepower System"
+     },
+     "domain": {
+      "name": "Global",
+      "id": "e276abec-e0f2-11e3-8169-6d9ed49b625f",
+      "type": "Domain"
+     }
+    },
+    "type": "AccessPolicy",
+    "rules": {
+     "refType": "list",
+     "type": "AccessRule"
+    },
+    "securityIntelligence": {
+     "id": "00000000-0000-0ed3-0000-021474837122",
+     "type": "SecurityIntelligencePolicy"
+    },
+    "advancedLoggingSetting": {
+     "type": "AdvancedLoggingSetting",
+     "id": "00000000-0000-0ed3-0000-021474837080"
+    },
+    "identityPolicySetting": {
+     "type": "IdentityPolicy",
+     "name": "mcp-test-idp",
+     "id": "abb9d7bc-c9d5-11f1-a4e0-98786f180443"
+    },
+    "eveSetting": {
+     "id": "00000000-0000-0ed3-0000-021474837082",
+     "type": "EVESetting",
+     "enabled": false,
+     "inheritFromParent": false,
+     "isLockedForChild": false
+    },
+    "prefilterPolicySetting": {
+     "type": "PrefilterPolicy",
+     "name": "Default Prefilter Policy",
+     "id": "4897c8f4-e211-4661-b0a4-25b0826cded9"
+    },
+    "loggingPolicySetting": {
+     "isLockedForChild": false,
+     "syslogConfigFromPlatformSetting": false,
+     "enableFileAndMalwareSyslog": false,
+     "inheritFromParent": false,
+     "enableipsSyslog": false,
+     "enableSplunk": true,
+     "type": "LoggingSetting",
+     "id": "00000000-0000-0ed3-0000-021474837102"
+    },
+    "defaultAction": {
+     "sendEventsToFMC": false,
+     "enableSyslog": false,
+     "logBegin": false,
+     "logEnd": false,
+     "action": "BLOCK",
+     "type": "AccessPolicyDefaultAction",
+     "id": "00000000-0000-0ed3-0000-000268434440"
+    },
+    "name": "mcp-test-ftd-acp",
+    "id": "00000000-0000-0ed3-0000-021474837072"
+   },
+   {
+    "metadata": {
+     "readOnly": {
+      "state": true,
+      "reason": "RBAC"
+     },
+     "inherit": false,
+     "lockingStatus": {
+      "status": "UNLOCKED"
+     },
+     "timestamp": 1792210541948,
+     "lastUser": {
+      "name": "Firepower System"
+     },
+     "domain": {
+      "name": "Global",
+      "id": "e276abec-e0f2-11e3-8169-6d9ed49b625f",
+      "type": "Domain"
+     }
+    },
+    "type": "AccessPolicy",
+    "rules": {
+     "refType": "list",
+     "type": "AccessRule"
+    },
+    "securityIntelligence": {
+     "id": "00000000-0000-0ed3-0000-021474837294",
+     "type": "SecurityIntelligencePolicy"
+    },
+    "advancedLoggingSetting": {
+     "type": "AdvancedLoggingSetting",
+     "id": "00000000-0000-0ed3-0000-021474837252"
+    },
+    "eveSetting": {
+     "id": "00000000-0000-0ed3-0000-021474837254",
+     "type": "EVESetting",
+     "enabled": false,
+     "inheritFromParent": false,
+     "isLockedForChild": false
+    },
+    "prefilterPolicySetting": {
+     "type": "PrefilterPolicy",
+     "name": "Default Prefilter Policy",
+     "id": "4897c8f4-e211-4661-b0a4-25b0826cded9"
+    },
+    "loggingPolicySetting": {
+     "isLockedForChild": false,
+     "syslogConfigFromPlatformSetting": false,
+     "enableFileAndMalwareSyslog": false,
+     "inheritFromParent": false,
+     "enableipsSyslog": false,
+     "enableSplunk": true,
+     "type": "LoggingSetting",
+     "id": "00000000-0000-0ed3-0000-021474837274"
+    },
+    "defaultAction": {
+     "sendEventsToFMC": false,
+     "enableSyslog": false,
+     "logBegin": false,
+     "logEnd": false,
+     "action": "BLOCK",
+     "type": "AccessPolicyDefaultAction",
+     "id": "00000000-0000-0ed3-0000-000268434441"
+    },
+    "name": "mcp-test-ha-acp",
+    "id": "00000000-0000-0ed3-0000-021474837244"
+   },
+   {
+    "metadata": {
+     "readOnly": {
+      "state": true,
+      "reason": "RBAC"
+     },
+     "inherit": false,
+     "lockingStatus": {
+      "status": "UNLOCKED"
+     },
+     "timestamp": 1792210541948,
+     "lastUser": {
+      "name": "Firepower System"
+     },
+     "domain": {
+      "name": "Global",
+      "id": "e276abec-e0f2-11e3-8169-6d9ed49b625f",
+      "type": "Domain"
+     }
+    },
+    "type": "AccessPolicy",
+    "rules": {
+     "refType": "list",
+     "type": "AccessRule"
+    },
+    "securityIntelligence": {
+     "id": "00000000-0000-0ed3-0000-021474840511",
+     "type": "SecurityIntelligencePolicy"
+    },
+    "advancedLoggingSetting": {
+     "type": "AdvancedLoggingSetting",
+     "id": "00000000-0000-0ed3-0000-021474840469"
+    },
+    "eveSetting": {
+     "id": "00000000-0000-0ed3-0000-021474840471",
+     "type": "EVESetting",
+     "enabled": false,
+     "inheritFromParent": false,
+     "isLockedForChild": false
+    },
+    "prefilterPolicySetting": {
+     "type": "PrefilterPolicy",
+     "name": "Default Prefilter Policy",
+     "id": "4897c8f4-e211-4661-b0a4-25b0826cded9"
+    },
+    "loggingPolicySetting": {
+     "isLockedForChild": false,
+     "syslogConfigFromPlatformSetting": false,
+     "enableFileAndMalwareSyslog": false,
+     "inheritFromParent": false,
+     "enableipsSyslog": false,
+     "enableSplunk": true,
+     "type": "LoggingSetting",
+     "id": "00000000-0000-0ed3-0000-021474840491"
+    },
+    "defaultAction": {
+     "sendEventsToFMC": false,
+     "enableSyslog": false,
+     "logBegin": false,
+     "logEnd": false,
+     "action": "BLOCK",
+     "type": "AccessPolicyDefaultAction",
+     "id": "00000000-0000-0ed3-0000-000268434445"
+    },
+    "name": "mcp-test-identity-acp",
+    "description": "CML recipe ise-fmc-identity: user rules (F34) go above the baseline",
+    "id": "00000000-0000-0ed3-0000-021474840461"
+   }
+  ],
+  "paging": {
+   "offset": 0,
+   "limit": 1000,
+   "count": 4,
+   "pages": 1
+  }
+ },
+ "/api/fmc_config/v1/domain/e276abec-e0f2-11e3-8169-6d9ed49b625f/policy/accesspolicies/00000000-0000-0ed3-0000-021474836766": {
+  "metadata": {
+   "readOnly": {
+    "state": true,
+    "reason": "RBAC"
+   },
+   "inherit": false,
+   "lockingStatus": {
+    "status": "UNLOCKED"
+   },
+   "timestamp": 1792210541948,
+   "lastUser": {
+    "name": "Firepower System"
+   },
+   "domain": {
+    "name": "Global",
+    "id": "e276abec-e0f2-11e3-8169-6d9ed49b625f",
+    "type": "Domain"
+   }
+  },
+  "type": "AccessPolicy",
+  "rules": {
+   "refType": "list",
+   "type": "AccessRule"
+  },
+  "securityIntelligence": {
+   "id": "00000000-0000-0ed3-0000-021474836816",
+   "type": "SecurityIntelligencePolicy"
+  },
+  "advancedLoggingSetting": {
+   "type": "AdvancedLoggingSetting",
+   "id": "00000000-0000-0ed3-0000-021474836774"
+  },
+  "eveSetting": {
+   "id": "00000000-0000-0ed3-0000-021474836776",
+   "type": "EVESetting",
+   "enabled": false,
+   "inheritFromParent": false,
+   "isLockedForChild": false
+  },
+  "prefilterPolicySetting": {
+   "type": "PrefilterPolicy",
+   "name": "Default Prefilter Policy",
+   "id": "4897c8f4-e211-4661-b0a4-25b0826cded9"
+  },
+  "loggingPolicySetting": {
+   "isLockedForChild": false,
+   "syslogConfigFromPlatformSetting": false,
+   "enableFileAndMalwareSyslog": false,
+   "inheritFromParent": false,
+   "enableipsSyslog": false,
+   "enableSplunk": true,
+   "type": "LoggingSetting",
+   "id": "00000000-0000-0ed3-0000-021474836796"
+  },
+  "defaultAction": {
+   "sendEventsToFMC": false,
+   "enableSyslog": false,
+   "logBegin": false,
+   "logEnd": false,
+   "action": "BLOCK",
+   "type": "AccessPolicyDefaultAction",
+   "id": "00000000-0000-0ed3-0000-000268434432"
+  },
+  "name": "mcp-test-acp",
+  "description": "mcp live tests",
+  "id": "00000000-0000-0ed3-0000-021474836766"
+ },
+ "/api/fmc_config/v1/domain/e276abec-e0f2-11e3-8169-6d9ed49b625f/policy/accesspolicies/00000000-0000-0ed3-0000-021474836766/accessrules": {
+  "items": [
+   {
+    "metadata": {
+     "readOnly": {
+      "state": true,
+      "reason": "SYSTEM"
+     },
+     "ruleIndex": 1,
+     "section": "Default",
+     "category": "--Undefined--",
+     "accessPolicy": {
+      "name": "mcp-test-acp",
+      "id": "00000000-0000-0ed3-0000-021474836766",
+      "type": "AccessPolicy"
+     },
+     "timestamp": 1792202029342,
+     "domain": {
+      "name": "Global",
+      "id": "e276abec-e0f2-11e3-8169-6d9ed49b625f",
+      "type": "Domain"
+     }
+    },
+    "enabled": true,
+    "advancedLogging": {},
+    "sendEventsToFMC": false,
+    "enableSyslog": false,
+    "destinationDynamicObjects": {},
+    "logBegin": false,
+    "logEnd": false,
+    "logFiles": false,
+    "sourceDynamicObjects": {},
+    "destinationNetworks": {
+     "objects": [
+      {
+       "type": "NetworkGroup",
+       "overridable": false,
+       "name": "mcp-test-servers",
+       "id": "00000000-0000-0ed3-0000-021474836712"
+      }
+     ]
+    },
+    "vlanTags": {},
+    "destinationPorts": {
+     "objects": [
+      {
+       "type": "PortObjectGroup",
+       "overridable": false,
+       "name": "mcp-test-web-ports",
+       "id": "00000000-0000-0ed3-0000-021474836730"
+      }
+     ]
+    },
+    "action": "ALLOW",
+    "variableSet": {
+     "name": "Default-Set",
+     "id": "76fa83ea-c972-11e2-8be8-8e45bb1343c0",
+     "type": "VariableSet"
+    },
+    "type": "AccessRule",
+    "name": "mcp-test-allow-web",
+    "id": "00000000-0000-0ed3-0000-000268434433"
+   },
+   {
+    "metadata": {
+     "readOnly": {
+      "state": true,
+      "reason": "SYSTEM"
+     },
+     "ruleIndex": 2,
+     "section": "Default",
+     "category": "--Undefined--",
+     "accessPolicy": {
+      "name": "mcp-test-acp",
+      "id": "00000000-0000-0ed3-0000-021474836766",
+      "type": "AccessPolicy"
+     },
+     "timestamp": 1792202029342,
+     "domain": {
+      "name": "Global",
+      "id": "e276abec-e0f2-11e3-8169-6d9ed49b625f",
+      "type": "Domain"
+     }
+    },
+    "enabled": true,
+    "advancedLogging": {},
+    "sendEventsToFMC": false,
+    "enableSyslog": false,
+    "destinationDynamicObjects": {},
+    "logBegin": false,
+    "logEnd": false,
+    "logFiles": false,
+    "sourceDynamicObjects": {},
+    "sourceZones": {
+     "objects": [
+      {
+       "name": "mcp-test-inside",
+       "id": "937c914c-c9cd-11f1-8ee6-9b786f180443",
+       "type": "SecurityZone",
+       "subType": "Routed"
+      }
+     ]
+    },
+    "sourceNetworks": {
+     "literals": [
+      {
+       "type": "Network",
+       "value": "10.0.0.0/8"
+      }
+     ]
+    },
+    "destinationNetworks": {
+     "objects": [
+      {
+       "type": "Host",
+       "overridable": false,
+       "name": "mcp-test-db",
+       "id": "00000000-0000-0ed3-0000-021474836550"
+      }
+     ]
+    },
+    "vlanTags": {},
+    "destinationPorts": {
+     "literals": [
+      {
+       "type": "PortLiteral",
+       "port": "22",
+       "protocol": "6"
+      }
+     ]
+    },
+    "action": "ALLOW",
+    "variableSet": {
+     "name": "Default-Set",
+     "id": "76fa83ea-c972-11e2-8be8-8e45bb1343c0",
+     "type": "VariableSet"
+    },
+    "type": "AccessRule",
+    "name": "mcp-test-ssh-admin",
+    "id": "00000000-0000-0ed3-0000-000268434434"
+   },
+   {
+    "metadata": {
+     "readOnly": {
+      "state": true,
+      "reason": "SYSTEM"
+     },
+     "ruleIndex": 3,
+     "section": "Default",
+     "category": "--Undefined--",
+     "accessPolicy": {
+      "name": "mcp-test-acp",
+      "id": "00000000-0000-0ed3-0000-021474836766",
+      "type": "AccessPolicy"
+     },
+     "timestamp": 1792202029342,
+     "domain": {
+      "name": "Global",
+      "id": "e276abec-e0f2-11e3-8169-6d9ed49b625f",
+      "type": "Domain"
+     }
+    },
+    "enabled": true,
+    "advancedLogging": {},
+    "sendEventsToFMC": false,
+    "enableSyslog": false,
+    "destinationDynamicObjects": {},
+    "logBegin": false,
+    "logEnd": false,
+    "logFiles": false,
+    "sourceDynamicObjects": {},
+    "destinationNetworks": {
+     "objects": [
+      {
+       "type": "Host",
+       "overridable": false,
+       "name": "mcp-test-web",
+       "id": "00000000-0000-0ed3-0000-021474836532"
+      }
+     ]
+    },
+    "vlanTags": {},
+    "destinationPorts": {
+     "objects": [
+      {
+       "type": "ProtocolPortObject",
+       "protocol": "TCP",
+       "overridable": false,
+       "name": "HTTPS",
+       "id": "1834bd00-38bb-11e2-86aa-62f0c593a59a"
+      }
+     ]
+    },
+    "action": "ALLOW",
+    "variableSet": {
+     "name": "Default-Set",
+     "id": "76fa83ea-c972-11e2-8be8-8e45bb1343c0",
+     "type": "VariableSet"
+    },
+    "type": "AccessRule",
+    "name": "mcp-test-redundant",
+    "id": "00000000-0000-0ed3-0000-000268434435"
+   },
+   {
+    "metadata": {
+     "readOnly": {
+      "state": true,
+      "reason": "SYSTEM"
+     },
+     "ruleIndex": 4,
+     "section": "Default",
+     "category": "--Undefined--",
+     "accessPolicy": {
+      "name": "mcp-test-acp",
+      "id": "00000000-0000-0ed3-0000-021474836766",
+      "type": "AccessPolicy"
+     },
+     "timestamp": 1792202029342,
+     "domain": {
+      "name": "Global",
+      "id": "e276abec-e0f2-11e3-8169-6d9ed49b625f",
+      "type": "Domain"
+     }
+    },
+    "enabled": true,
+    "advancedLogging": {},
+    "sendEventsToFMC": false,
+    "enableSyslog": false,
+    "destinationDynamicObjects": {},
+    "logBegin": false,
+    "logEnd": false,
+    "logFiles": false,
+    "sourceDynamicObjects": {},
+    "destinationNetworks": {
+     "objects": [
+      {
+       "type": "Network",
+       "overridable": false,
+       "name": "mcp-test-app-net",
+       "id": "00000000-0000-0ed3-0000-021474836604"
+      }
+     ]
+    },
+    "vlanTags": {},
+    "action": "BLOCK",
+    "variableSet": {
+     "name": "Default-Set",
+     "id": "76fa83ea-c972-11e2-8be8-8e45bb1343c0",
+     "type": "VariableSet"
+    },
+    "type": "AccessRule",
+    "name": "mcp-test-block-app",
+    "id": "00000000-0000-0ed3-0000-000268434436"
+   },
+   {
+    "metadata": {
+     "readOnly": {
+      "state": true,
+      "reason": "SYSTEM"
+     },
+     "ruleIndex": 5,
+     "section": "Default",
+     "category": "--Undefined--",
+     "accessPolicy": {
+      "name": "mcp-test-acp",
+      "id": "00000000-0000-0ed3-0000-021474836766",
+      "type": "AccessPolicy"
+     },
+     "timestamp": 1792202029342,
+     "domain": {
+      "name": "Global",
+      "id": "e276abec-e0f2-11e3-8169-6d9ed49b625f",
+      "type": "Domain"
+     }
+    },
+    "enabled": true,
+    "advancedLogging": {},
+    "sendEventsToFMC": false,
+    "enableSyslog": false,
+    "destinationDynamicObjects": {},
+    "logBegin": false,
+    "logEnd": false,
+    "logFiles": false,
+    "sourceDynamicObjects": {},
+    "destinationNetworks": {
+     "objects": [
+      {
+       "type": "Host",
+       "overridable": false,
+       "name": "mcp-test-db",
+       "id": "00000000-0000-0ed3-0000-021474836550"
+      }
+     ]
+    },
+    "vlanTags": {},
+    "destinationPorts": {
+     "literals": [
+      {
+       "type": "PortLiteral",
+       "port": "3306",
+       "protocol": "6"
+      }
+     ]
+    },
+    "action": "ALLOW",
+    "variableSet": {
+     "name": "Default-Set",
+     "id": "76fa83ea-c972-11e2-8be8-8e45bb1343c0",
+     "type": "VariableSet"
+    },
+    "type": "AccessRule",
+    "name": "mcp-test-shadowed",
+    "id": "00000000-0000-0ed3-0000-000268434437"
+   },
+   {
+    "metadata": {
+     "readOnly": {
+      "state": true,
+      "reason": "SYSTEM"
+     },
+     "ruleIndex": 6,
+     "section": "Default",
+     "category": "--Undefined--",
+     "accessPolicy": {
+      "name": "mcp-test-acp",
+      "id": "00000000-0000-0ed3-0000-021474836766",
+      "type": "AccessPolicy"
+     },
+     "timestamp": 1792202029342,
+     "domain": {
+      "name": "Global",
+      "id": "e276abec-e0f2-11e3-8169-6d9ed49b625f",
+      "type": "Domain"
+     }
+    },
+    "enabled": true,
+    "advancedLogging": {},
+    "sendEventsToFMC": false,
+    "enableSyslog": false,
+    "destinationDynamicObjects": {},
+    "logBegin": false,
+    "logEnd": false,
+    "logFiles": false,
+    "sourceDynamicObjects": {},
+    "vlanTags": {},
+    "urls": {
+     "objects": [
+      {
+       "type": "Url",
+       "overridable": false,
+       "name": "mcp-test-url",
+       "id": "00000000-0000-0ed3-0000-021474836748"
+      }
+     ]
+    },
+    "action": "ALLOW",
+    "variableSet": {
+     "name": "Default-Set",
+     "id": "76fa83ea-c972-11e2-8be8-8e45bb1343c0",
+     "type": "VariableSet"
+    },
+    "type": "AccessRule",
+    "name": "mcp-test-url-rule",
+    "id": "00000000-0000-0ed3-0000-000268434438"
+   },
+   {
+    "metadata": {
+     "readOnly": {
+      "state": true,
+      "reason": "SYSTEM"
+     },
+     "ruleIndex": 7,
+     "section": "Default",
+     "category": "--Undefined--",
+     "accessPolicy": {
+      "name": "mcp-test-acp",
+      "id": "00000000-0000-0ed3-0000-021474836766",
+      "type": "AccessPolicy"
+     },
+     "timestamp": 1792202029342,
+     "domain": {
+      "name": "Global",
+      "id": "e276abec-e0f2-11e3-8169-6d9ed49b625f",
+      "type": "Domain"
+     }
+    },
+    "enabled": false,
+    "advancedLogging": {},
+    "sendEventsToFMC": false,
+    "enableSyslog": false,
+    "destinationDynamicObjects": {},
+    "logBegin": false,
+    "logEnd": false,
+    "logFiles": false,
+    "sourceDynamicObjects": {},
+    "destinationNetworks": {
+     "objects": [
+      {
+       "type": "Range",
+       "overridable": false,
+       "name": "mcp-test-range",
+       "id": "00000000-0000-0ed3-0000-021474836622"
+      }
+     ]
+    },
+    "vlanTags": {},
+    "action": "ALLOW",
+    "variableSet": {
+     "name": "Default-Set",
+     "id": "76fa83ea-c972-11e2-8be8-8e45bb1343c0",
+     "type": "VariableSet"
+    },
+    "type": "AccessRule",
+    "name": "mcp-test-disabled",
+    "id": "00000000-0000-0ed3-0000-000268434439"
+   }
+  ],
+  "paging": {
+   "offset": 0,
+   "limit": 1000,
+   "count": 7,
+   "pages": 1
+  }
+ },
+ "/api/fmc_config/v1/domain/e276abec-e0f2-11e3-8169-6d9ed49b625f/policy/accesspolicies/00000000-0000-0ed3-0000-021474836766/categories": {
+  "paging": {
+   "offset": 0,
+   "limit": 0,
+   "count": 0,
+   "pages": 0
+  }
+ },
+ "/api/fmc_config/v1/domain/e276abec-e0f2-11e3-8169-6d9ed49b625f/policy/ftdnatpolicies": {
+  "items": [
+   {
+    "metadata": {
+     "readOnly": {
+      "state": true,
+      "reason": "RBAC"
+     },
+     "timestamp": 1792206060622,
+     "lastUser": {
+      "name": "mcp-api-rw"
+     },
+     "domain": {
+      "name": "Global",
+      "id": "e276abec-e0f2-11e3-8169-6d9ed49b625f",
+      "type": "Domain"
+     }
+    },
+    "type": "FTDNatPolicy",
+    "rules": {
+     "refType": "list"
+    },
+    "name": "mcp-test-ftd-nat",
+    "id": "00000000-0000-0ed3-0000-021474841852"
+   },
+   {
+    "metadata": {
+     "readOnly": {
+      "state": true,
+      "reason": "RBAC"
+     },
+     "timestamp": 1792205731274,
+     "lastUser": {
+      "name": "mcp-api-rw"
+     },
+     "domain": {
+      "name": "Global",
+      "id": "e276abec-e0f2-11e3-8169-6d9ed49b625f",
+      "type": "Domain"
+     }
+    },
+    "type": "FTDNatPolicy",
+    "rules": {
+     "refType": "list"
+    },
+    "name": "mcp-test-identity-nat",
+    "description": "CML ise-fmc-identity: PAT clients to outside",
+    "id": "00000000-0000-0ed3-0000-021474840786"
+   },
+   {
+    "metadata": {
+     "readOnly": {
+      "state": true,
+      "reason": "RBAC"
+     },
+     "timestamp": 1792202032876,
+     "lastUser": {
+      "name": "mcp-api-rw"
+     },
+     "domain": {
+      "name": "Global",
+      "id": "e276abec-e0f2-11e3-8169-6d9ed49b625f",
+      "type": "Domain"
+     }
+    },
+    "type": "FTDNatPolicy",
+    "rules": {
+     "refType": "list"
+    },
+    "name": "mcp-test-nat",
+    "id": "00000000-0000-0ed3-0000-021474836981"
+   }
+  ],
+  "paging": {
+   "offset": 0,
+   "limit": 1000,
+   "count": 3,
+   "pages": 1
+  }
+ },
+ "/api/fmc_config/v1/domain/e276abec-e0f2-11e3-8169-6d9ed49b625f/policy/ftdnatpolicies/00000000-0000-0ed3-0000-021474836981/natrules": {
+  "items": [
+   {
+    "metadata": {
+     "readOnly": {
+      "state": true,
+      "reason": "RBAC"
+     },
+     "section": "BEFORE_AUTO",
+     "index": 1,
+     "parentType": "FTDNatRule",
+     "timestamp": 1792202032814,
+     "domain": {
+      "name": "Global",
+      "id": "e276abec-e0f2-11e3-8169-6d9ed49b625f",
+      "type": "Domain"
+     }
+    },
+    "interfaceInOriginalDestination": false,
+    "interfaceInTranslatedSource": false,
+    "originalSource": {
+     "type": "Network",
+     "overridable": false,
+     "name": "mcp-test-dmz-net",
+     "id": "00000000-0000-0ed3-0000-021474836586"
+    },
+    "translatedSource": {
+     "type": "Network",
+     "overridable": false,
+     "name": "mcp-test-app-net",
+     "id": "00000000-0000-0ed3-0000-021474836604"
+    },
+    "unidirectional": false,
+    "enabled": true,
+    "type": "FTDManualNatRule",
+    "dns": false,
+    "interfaceIpv6": false,
+    "fallThrough": false,
+    "natType": "STATIC",
+    "netToNet": false,
+    "routeLookup": false,
+    "noProxyArp": false,
+    "description": "mcp live tests",
+    "id": "00000000-0000-0ed3-0000-021474837034"
+   },
+   {
+    "metadata": {
+     "readOnly": {
+      "state": true,
+      "reason": "RBAC"
+     },
+     "section": "AUTO",
+     "parentType": "FTDNatRule",
+     "timestamp": 1792202032817,
+     "domain": {
+      "name": "Global",
+      "id": "e276abec-e0f2-11e3-8169-6d9ed49b625f",
+      "type": "Domain"
+     }
+    },
+    "interfaceInTranslatedNetwork": false,
+    "originalNetwork": {
+     "type": "Host",
+     "overridable": false,
+     "name": "mcp-test-web",
+     "id": "00000000-0000-0ed3-0000-021474836532"
+    },
+    "originalPort": 0,
+    "translatedNetwork": {
+     "type": "Host",
+     "overridable": false,
+     "name": "mcp-test-db",
+     "id": "00000000-0000-0ed3-0000-021474836550"
+    },
+    "translatedPort": 0,
+    "type": "FTDAutoNatRule",
+    "dns": false,
+    "interfaceIpv6": false,
+    "fallThrough": false,
+    "natType": "STATIC",
+    "netToNet": false,
+    "routeLookup": false,
+    "noProxyArp": false,
+    "id": "00000000-0000-0ed3-0000-021474837012"
+   }
+  ],
+  "paging": {
+   "offset": 0,
+   "limit": 1000,
+   "count": 2,
+   "pages": 1
+  }
+ },
+ "/api/fmc_config/v1/domain/e276abec-e0f2-11e3-8169-6d9ed49b625f/policy/prefilterpolicies/4897c8f4-e211-4661-b0a4-25b0826cded9": {
+  "metadata": {
+   "timestamp": 1775157449840,
+   "lastUser": {
+    "name": "admin"
+   },
+   "domain": {
+    "name": "Global",
+    "id": "e276abec-e0f2-11e3-8169-6d9ed49b625f",
+    "type": "Domain"
+   }
+  },
+  "type": "PrefilterPolicy",
+  "rules": {
+   "refType": "list",
+   "type": "PrefilterRule"
+  },
+  "defaultAction": {
+   "action": "ANALYZE_TUNNELS",
+   "type": "PrefilterPolicyDefaultAction",
+   "id": "00000000-0000-0ed3-0000-000000009998"
+  },
+  "name": "Default Prefilter Policy",
+  "description": "Default Prefilter Policy with default action to allow all tunnels",
+  "id": "4897c8f4-e211-4661-b0a4-25b0826cded9"
+ },
+ "/api/fmc_config/v1/domain/e276abec-e0f2-11e3-8169-6d9ed49b625f/policy/prefilterpolicies/4897c8f4-e211-4661-b0a4-25b0826cded9/prefilterrules": {
+  "paging": {
+   "offset": 0,
+   "limit": 0,
+   "count": 0,
+   "pages": 0
+  }
+ }
+}
