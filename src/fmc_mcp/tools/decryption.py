@@ -120,19 +120,26 @@ def advanced_row(p: dict[str, Any]) -> dict[str, Any]:
 
 
 def trusted_labels(p: dict[str, Any]) -> list[str]:
-    t = p.get("trustedCAs") or {}
-    return [ref_label(r) for r in (t.get("objects") or []) + (t.get("groups") or [])]
+    return [ref_label(r) for r in trusted_refs(p.get("trustedCAs"))]
+
+
+def trusted_refs(t: Any) -> list[dict[str, Any]]:
+    """A policy's trusted CAs as one reference list. FMC answers with `groups` and `objects` apart, but its
+    request schema (TrustedCAs) has only `objects`, holding CA objects and CA groups alike."""
+    if not isinstance(t, dict):
+        return []
+    out: list[dict[str, Any]] = []
+    for r in (t.get("groups") or []) + (t.get("objects") or []):
+        if isinstance(r, dict) and r.get("id") and all(r["id"] != o["id"] for o in out):
+            out.append({f: v for f, v in r.items() if f != "links"})
+    return out
 
 
 def policy_body(p: dict[str, Any]) -> dict[str, Any]:
-    """A decryption policy as FMC takes it back in a PUT (no metadata or links)."""
+    """A decryption policy as FMC takes it back in a PUT (no metadata or links; trusted CAs in `objects`)."""
     body = acp_settings_body(p)
-    t = body.get("trustedCAs")
-    if isinstance(t, dict):
-        body["trustedCAs"] = {
-            k: [{f: v for f, v in r.items() if f != "links"} for r in vs] if isinstance(vs, list) else vs
-            for k, vs in t.items()
-        }
+    if "trustedCAs" in body:
+        body["trustedCAs"] = {"objects": trusted_refs(body["trustedCAs"])}
     return body
 
 
@@ -344,19 +351,15 @@ def register(reg: ToolRegistrar) -> None:
                 }
                 changes["default_action"] = {"from": now, "to": default_action}
         if add_trusted_cas or remove_trusted_cas:
-            t = dict(desired.get("trustedCAs") or {})
+            refs = trusted_refs(cur.get("trustedCAs"))
             before = trusted_labels(cur)
-            have = {r.get("id") for k in ("objects", "groups") for r in t.get(k) or []}
             for r in await resolve_trusted(app, add_trusted_cas or [], domain):
-                if r["id"] not in have:
-                    t["objects"] = [*(t.get("objects") or []), r]
-                    have.add(r["id"])
+                if all(r["id"] != o.get("id") for o in refs):
+                    refs.append(r)
             drop = {r["id"] for r in await resolve_trusted(app, remove_trusted_cas or [], domain)}
-            for k in ("objects", "groups"):
-                if isinstance(t.get(k), list):
-                    t[k] = [r for r in t[k] if r.get("id") not in drop]
-            desired["trustedCAs"] = t
-            after = trusted_labels({"trustedCAs": t})
+            refs = [r for r in refs if r.get("id") not in drop]
+            desired["trustedCAs"] = {"objects": refs}
+            after = trusted_labels(desired)
             if before != after:
                 changes["trusted_cas"] = {"from": before, "to": after}
             if not after:

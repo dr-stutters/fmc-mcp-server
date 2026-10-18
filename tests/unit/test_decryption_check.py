@@ -43,7 +43,10 @@ def mock(fmc: respx.MockRouter, rules: list[dict[str, Any]] | None = None, linke
     fmc.get(PRULES).mock(return_value=items(RULES if rules is None else rules))
     ca = FX["internal_ca"]
     fmc.get(f"{CFG}/object/internalcas/{ca['id']}").mock(return_value=httpx.Response(200, json=ca))
-    acp = {**ACP, "decryptionPolicySetting": {"id": POL["id"], "name": POL["name"], "type": "DecryptionPolicy"}}
+    acp = {
+        **ACP,
+        "decryptionPolicySetting": {"id": POL["id"], "name": POL["name"], "type": "DecryptionPolicy"},
+    }
     fmc.get(f"{CFG}/policy/accesspolicies").mock(return_value=items([acp if linked else ACP]))
     fmc.get(f"{CFG}/policy/accesspolicies/{ACP['id']}").mock(
         return_value=httpx.Response(200, json=acp if linked else ACP)
@@ -65,7 +68,9 @@ def test_host_matches() -> None:
 
 async def test_resign_flow_with_readiness(fmc: respx.MockRouter) -> None:
     mock(fmc)
-    out = await run({"source": "192.0.2.10", "destination": "203.0.113.10", "access_policy": "mcp-test-tls-acp"})
+    out = await run(
+        {"source": "192.0.2.10", "destination": "203.0.113.10", "access_policy": "mcp-test-tls-acp"}
+    )
     assert out["decryption_policy"] == "mcp-test-tls" and out["action"] == "DECRYPT_RESIGN"
     assert out["matched_rule"]["name"] == "resign-outbound" and "HTTP inside" in out["inspection"]
     checks = {c["check"]: c for c in out["readiness"]}
@@ -79,21 +84,32 @@ async def test_resign_flow_with_readiness(fmc: respx.MockRouter) -> None:
 
 async def test_exemption_and_default(fmc: respx.MockRouter) -> None:
     mock(fmc)
-    dnd = await run({"source": "192.0.2.10", "destination": "203.0.113.66", "decryption_policy": "mcp-test-tls"})
+    dnd = await run(
+        {"source": "192.0.2.10", "destination": "203.0.113.66", "decryption_policy": "mcp-test-tls"}
+    )
     assert dnd["action"] == "DO_NOT_DECRYPT" and dnd["matched_rule"]["name"] == "dnd-bank"
     assert "can't see the payload" in dnd["inspection"]
-    other = await run({"source": "198.51.100.5", "destination": "203.0.113.10", "decryption_policy": "mcp-test-tls"})
+    other = await run(
+        {"source": "198.51.100.5", "destination": "203.0.113.10", "decryption_policy": "mcp-test-tls"}
+    )
     assert other["action"] == "DO_NOT_DECRYPT" and "default action" in other["verdict"]
     assert "readiness" not in other  # nothing to check without an access policy, device or decrypt rule
     port = await run(
-        {"source": "192.0.2.10", "destination": "203.0.113.10", "port": 8443, "decryption_policy": "mcp-test-tls"}
+        {
+            "source": "192.0.2.10",
+            "destination": "203.0.113.10",
+            "port": 8443,
+            "decryption_policy": "mcp-test-tls",
+        }
     )
     assert "matched_rule" not in port
 
 
 async def test_no_decryption_policy_and_wrong_link(fmc: respx.MockRouter) -> None:
     mock(fmc, linked=False)
-    out = await run({"source": "192.0.2.10", "destination": "203.0.113.10", "access_policy": "mcp-test-tls-acp"})
+    out = await run(
+        {"source": "192.0.2.10", "destination": "203.0.113.10", "access_policy": "mcp-test-tls-acp"}
+    )
     assert out["action"] is None and "no decryption policy" in out["verdict"]
     assert "fmc_set_decryption_policy" in out["next"]
     named = await run(
@@ -109,7 +125,14 @@ async def test_no_decryption_policy_and_wrong_link(fmc: respx.MockRouter) -> Non
     with pytest.raises(ToolError, match="device the flow crosses"):
         await run({"source": "192.0.2.10", "destination": "203.0.113.10"})
     with pytest.raises(ToolError, match="tcp or udp"):
-        await run({"source": "192.0.2.10", "destination": "203.0.113.10", "protocol": "icmp", "decryption_policy": "x"})
+        await run(
+            {
+                "source": "192.0.2.10",
+                "destination": "203.0.113.10",
+                "protocol": "icmp",
+                "decryption_policy": "x",
+            }
+        )
 
 
 async def test_url_rules_need_the_server_name(fmc: respx.MockRouter) -> None:

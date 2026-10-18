@@ -121,7 +121,7 @@ There are 153 tools when every tier is enabled (66 read, 76 write, 11 dangerous;
 | Policies | `fmc_list_policies`, `fmc_get_access_policy`, `fmc_list_access_rules`, `fmc_get_access_rule`, `fmc_list_nat_rules`, `fmc_list_prefilter_rules`, `fmc_list_policy_assignments` |
 | Objects | `fmc_list_objects`, `fmc_get_object`, `fmc_find_object`, `fmc_where_used`, `fmc_unused_objects`, `fmc_list_dynamic_objects` |
 | Security Intelligence | `fmc_get_security_intelligence` |
-| Decryption / DNS | `fmc_get_decryption_policy`, `fmc_get_dns_policy` |
+| Decryption / DNS | `fmc_get_decryption_policy` (rules, trusted CAs, TLS 1.3, access policies using it, `readiness`), `fmc_get_certificate` (internal CAs, internal certificates, trusted CAs: expiry, pending CSR, PEM to install on clients, where used; private keys never shown), `fmc_tls_decryption_check` (what decryption does to one flow and what a decrypt-resign rollout still lacks), `fmc_get_dns_policy` |
 | Identity (AD/LDAP) | `fmc_get_realm` (directories, downloaded users and groups), `fmc_test_realm` (bind test from FMC; needs `FMC_UI_USERNAME`), `fmc_get_identity_policy` (rules, access policies using it) |
 | Intrusion (Snort 3) | `fmc_get_intrusion_policy` (base, mode, usage, overridden rules), `fmc_find_intrusion_rules` (gid:sid, SID or text; per-policy state) |
 | Change management | `fmc_change_tickets` (status, tickets, a ticket's changes and validation) |
@@ -165,7 +165,8 @@ Notes on some read tools:
 | Dynamic objects | `fmc_create_dynamic_object`, `fmc_delete_dynamic_object`, `fmc_map_dynamic_object` |
 | Intrusion tuning | `fmc_set_intrusion_rule_state` (ALERT/BLOCK/DROP/REJECT/PASS/DISABLE/DEFAULT per policy), `fmc_create_intrusion_policy`, `fmc_create_intrusion_rule` / `fmc_delete_intrusion_rule` (custom Snort 3 rules); `fmc_update_access_rule(intrusion_policy=...)` |
 | Change management | `fmc_ticket` (open / submit / discard / release; an open ticket is sent as `ticket-id` with every change) |
-| Decryption | `fmc_create_decryption_policy`, `fmc_create_decryption_rule` (DO_NOT_DECRYPT, BLOCK, MONITOR), `fmc_delete_decryption_rule`, `fmc_set_decryption_policy` |
+| Decryption | `fmc_create_decryption_policy` / `fmc_update_decryption_policy` (default action, trusted CAs, TLS 1.3 decryption, untrusted issuers), `fmc_create_decryption_rule` (DECRYPT_RESIGN with an internal CA, DECRYPT_KNOWN_KEY, DO_NOT_DECRYPT, BLOCK, MONITOR; `insert_before`), `fmc_delete_decryption_rule`, `fmc_set_decryption_policy` |
+| TLS certificates | `fmc_create_internal_ca` (FMC generates the key: self-signed, or a CSR for your CA), `fmc_install_internal_ca_cert` (the signed certificate for that CSR), `fmc_import_certificate_files` (an existing CA or server certificate + key read from `FMC_PKI_DIR` on the server host; only file names pass through MCP), `fmc_delete_certificate` |
 | Identity (AD/LDAP) | `fmc_create_trusted_ca` (CA for LDAPS), `fmc_create_realm` (bind password write-only), `fmc_download_realm` (users and groups now; needs `FMC_UI_USERNAME`), `fmc_delete_realm`, `fmc_create_identity_policy`, `fmc_create_identity_rule` (PASSIVE / ACTIVE / NO), `fmc_delete_identity_rule`; access rules on users and groups: `fmc_create_access_rule` / `fmc_update_access_rule` `users=[...]` |
 | DNS | `fmc_create_dns_policy`, `fmc_set_dns_policy`, `fmc_dns_block` (block/unblock domains via custom SI DNS lists; NXDOMAIN or drop) |
 | Licences | `fmc_set_device_licenses` (IPS, MALWARE_DEFENSE, URL, ...) |
@@ -239,6 +240,13 @@ MD5 password, because FMC returns it masked and a PUT would replace it, unless y
 - **Clean up a policy:** the `fmc_policy_cleanup` prompt turns `fmc_policy_audit` findings into grouped,
   approved changes, verifies them with `fmc_diff_policy_bundle` against a baseline bundle and a re-audit, and
   keeps the baseline for `fmc_import_policy_bundle` as a rollback.
+- **TLS decryption (decrypt-resign):** `fmc_create_internal_ca` (FMC generates the key) -> install its
+  certificate (`fmc_get_certificate`) as a trusted root on the clients -> `fmc_create_decryption_policy`
+  (`tls13_decryption=true`; `trusted_cas` for private server PKIs) -> `fmc_create_decryption_rule`
+  (DO_NOT_DECRYPT exemptions first, then DECRYPT_RESIGN with `internal_ca`) -> `fmc_set_decryption_policy` ->
+  `fmc_deploy`; `fmc_tls_decryption_check` says what one flow gets and what is missing. An existing CA or
+  server key: `fmc_import_certificate_files` reads it from `FMC_PKI_DIR`, so a private key never travels
+  through MCP arguments or results.
 - **PoC to production:** `fmc_export_policy_bundle` -> `fmc_plan_policy_bundle_import` in the target domain or
   FMC -> `fmc_import_policy_bundle` -> `fmc_diff_policy_bundle` -> assign and `fmc_deploy`.
 - **Rules on AD users and groups:** `fmc_create_trusted_ca` (for LDAPS) -> `fmc_create_realm` ->
@@ -319,6 +327,7 @@ including nested groups, to ranges, then walk the rules in order. The results ar
 | `FMC_TICKET` | | Change-management ticket id sent with every request (FMC 7.6+ change management; `fmc_ticket` sets it at run time) |
 | `FMC_UI_USERNAME`, `FMC_UI_PASSWORD` | | Optional FMC web-UI user for `fmc_test_realm` / `fmc_download_realm` (role with Integrations > Realms modify). Must differ from `FMC_USERNAME`: a UI login ends the same user's REST session. |
 | `FMC_BUNDLE_DIR` | off | Directory `fmc_export_policy_bundle` also writes bundles to (and `fmc_diff_policy_bundle` reads bundle file names from). Off: bundles are only returned inline. |
+| `FMC_PKI_DIR` | off | Directory on the server host that `fmc_import_certificate_files` reads PEM certificate, key and passphrase files from (keys never pass through MCP). Off: file imports are refused; `fmc_create_internal_ca` still works (FMC generates the key). In Docker, bind-mount it read-only (see `docker-compose.yml`). |
 | `FMC_ALLOW_IGNORE_WARNING` | `false` | Allow `fmc_deploy(ignore_warning=true)` (the preview must then list the FMC warnings being ignored) |
 | `MCP_TRANSPORT` | `stdio` | `stdio` or `http` |
 | `MCP_HOST`, `MCP_PORT`, `MCP_PATH` | `0.0.0.0`, `8000`, `/mcp` | HTTP listener |
