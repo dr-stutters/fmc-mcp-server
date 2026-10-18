@@ -557,6 +557,193 @@ preview-first and runs only after the user approves it.
 """
 
 
+def _ha_failover_check_text(
+    ha_pair: str,
+    action: str,
+    domain: str | None,
+    source: str | None,
+    destination: str | None,
+    protocol: str,
+    port: int | None,
+    lab: str | None,
+    test_node: str | None,
+    target: str | None,
+) -> str:
+    """fmc_ha_failover_check: pre-checks -> traffic before -> switch -> verify -> traffic after -> report."""
+    if action not in ("check", "switch", "fail_active"):
+        raise InvalidRequest(f"action must be check, switch or fail_active, not {action!r}.")
+    proto = protocol.strip().lower()
+    if proto not in ("tcp", "udp", "icmp"):
+        raise InvalidRequest(f"protocol must be tcp, udp or icmp, not {protocol!r}.")
+    if bool(source) != bool(destination):
+        raise InvalidRequest("A test flow needs both source and destination (or neither).")
+    for value, what in ((source, "source"), (destination, "destination"), (target, "target")):
+        if value:
+            try:
+                ipaddress.ip_address(value.strip())
+            except ValueError:
+                raise InvalidRequest(f"{what} {value!r} is not an IP address.") from None
+    if (test_node or target) and not (lab and test_node and target):
+        raise InvalidRequest("Real traffic from CML needs lab, test_node and target together.")
+    if action == "fail_active" and not lab:
+        raise InvalidRequest("action='fail_active' powers off the active unit in CML: give the lab.")
+    pair = _q(ha_pair, "ha_pair")
+    dom = _q(domain, "domain") if domain else None
+    d = f", domain={dom}" if dom else ""
+    where = f" in domain {dom}" if dom else ""
+    lab_q = _q(lab, "lab") if lab else None
+    node_q = _q(test_node, "test_node") if test_node else None
+    tgt = json.loads(_q(target, "target")) if target else None
+    if proto == "icmp":
+        port = None
+    flow_steps: list[str] = []
+    if source and destination:
+        src, dst = _q(source, "source"), _q(destination, "destination")
+        dport = f", destination_port={port}" if port else ""
+        flow_steps.append(
+            f'{tool_ref("fmc_packet_tracer")} with device=<the active unit>, protocol="{proto}", '
+            f"source_ip={src}, destination_ip={dst}{dport}{d}: the verdict (expect allow), the "
+            "ingress and egress interfaces and the matched rule"
+        )
+    if lab_q and node_q:
+        flow_steps.append(
+            f"{tool_ref('cml_check_reachability')} with lab={lab_q}, nodes=[{node_q}], "
+            f'targets=["{tgt}"], count=10: success percent and average RTT of real packets through the pair'
+        )
+    if flow_steps:
+        traffic = "\n   - ".join(["", *flow_steps]).lstrip("\n")
+        traffic_step = f"Run each of these and keep the results as the baseline:\n{traffic}"
+    else:
+        traffic_step = (
+            "No test flow was given: ask the user for one that crosses the pair (an inside host to an "
+            "outside address), or take an address from a monitored data interface's network and trace "
+            f"it with {tool_ref('fmc_packet_tracer')} (device=<the active unit>{d}). Say in the report "
+            "that the traffic check used packet tracer only."
+        )
+    measure = ""
+    if lab_q and node_q:
+        measure = f"""
+   First, so the loss can be measured, start a ping series on the test host that runs through the
+   event (a Linux host; 600 probes at 5 per second, about 2 minutes): {tool_ref("cml_configure_node")}
+   with lab={lab_q}, node={node_q}, mode="exec",
+   lines=["nohup ping -i 0.2 -c 600 {tgt} > /tmp/ha-failover-ping.log 2>&1 &"] (preview-first: show it
+   and confirm after approval). Optional: a long-lived TCP flow from the same host, e.g.
+   "nohup iperf -c <a server beyond the pair> -t 300 -i 1 > /tmp/ha-failover-iperf.log 2>&1 &" when
+   an iperf server exists: its per-second throughput drops for the outage and recovers on the same
+   connection when the connection's state was replicated; the client reports a reset when it wasn't.
+   Then, within a minute:"""
+    after_series = (
+        f"""Then the loss during the event: {tool_ref("cml_configure_node")} with lab={lab_q},
+   node={node_q}, mode="exec", lines=["tail -n 3 /tmp/ha-failover-ping.log"] (after the series has
+   ended): packets transmitted vs received; at 0.2 s per probe, lost probes x 0.2 s estimates the
+   outage. The iperf log, if started, shows whether the long-lived connection survived. """
+        if lab_q and node_q
+        else "No test host was given, so the loss during the event was not measured: say so. "
+    )
+    if action == "check":
+        event = f"""4. No failover: only the checks were asked for. To run the switch later: this prompt with
+   action="switch", or {tool_ref("fmc_ha_action")} with ha_pair={pair}, action="switch" (dangerous,
+   preview-first).
+
+5. Report: readiness (`ready_for_switch` and the summary), each check with its evidence, the
+   traffic baseline, the last failover and its reason, and for each failed check or warning the fix
+   from step 1."""
+    else:
+        if action == "switch":
+            change = f"""   {tool_ref("fmc_ha_action")} with ha_pair={pair}, action="switch",
+   wait=true{d}. Show the preview (both units, their FMC states, the effect) and confirm only after
+   the user approves. Note when you confirm and when the task finishes: that is how long FMC took,
+   not the outage."""
+            verify = """After the switch the former standby is Active and the other unit is
+   Standby Ready; it passes through Cold Standby, Sync Config and Bulk Sync first, and until then
+   `standby_ready` fails: call again, at most 5 times."""
+            restore = ""
+        else:
+            change = f"""   Power off the active unit's CML node: {tool_ref("cml_set_node_state")} with
+   lab={lab_q}, node=<the active unit's node>, state="stop". Find the node with
+   {tool_ref("cml_list_nodes")} (lab={lab_q}): match the unit's management address
+   ({tool_ref("fmc_get_device")}) with the node's, or ask the user; never guess. Show the preview and
+   confirm only after the user approves. The standby must take over within the unit hold time
+   (trigger_criteria peerHoldTime from step 1)."""
+            verify = """After the failure the former standby is Active; the powered-off unit
+   can't answer, so its show commands come back as notes and `standby_ready` fails until it is back
+   (step 6)."""
+            restore = f"""
+   Then bring the unit back: {tool_ref("cml_set_node_state")} with lab={lab_q}, node=<the same node>,
+   state="start" (preview-first), and wait for it ({tool_ref("cml_wait_for_converged")}; an FTDv takes
+   10-20 minutes). It rejoins as the standby (Cold Standby, Sync Config, Bulk Sync, Standby Ready),
+   it doesn't take the active role back: {tool_ref("fmc_get_ha_status")} until `ready_for_switch` is
+   true again (at most 5 calls, a few minutes apart)."""
+        title = "Switch" if action == "switch" else "Unplanned failover (lab only)"
+        event_word = "switch" if action == "switch" else "failure"
+        event = f"""4. {title}: dangerous, preview-first.{measure}
+{change}
+
+5. Verify: {tool_ref("fmc_get_ha_status")} again (live=true, history=5{d}).
+   {verify}
+   last_failover must be new: the unit that took over, when, and why (a planned switch reads like
+   "Set by the config command" or "Other unit wants me Active"; an unplanned one like "HELLO not heard
+   from mate", "Interface check" or "Failover state check"). Every other blocker check passes.
+
+6. Traffic after: repeat step 2 with device=<the unit that is active now>. {after_series}Compare
+   stateful_replication with step 1: its TCP and UDP conn counters grow as connections are
+   replicated to the standby.{restore}
+
+7. Report: per unit, role, device_state before and after and active time; the failover and state
+   links; each check before and after; when the {event_word} happened and how long until a unit was
+   Standby Ready again; the traffic before and after, with the loss and the outage estimate, and
+   whether long-lived connections survived; the history entries the event added (time, from, to,
+   reason); anything that failed, with its next step. Mark what you could not measure (no test host,
+   a command FMC refused) as not measured instead of guessing."""
+    what = {
+        "check": "the checks only (no failover)",
+        "switch": "a planned switch of the active unit",
+        "fail_active": "an unplanned failover (the active unit powered off in CML)",
+    }[action]
+    change_note = (
+        "Every step is read-only."
+        if action == "check"
+        else "Steps 1-3 are read-only; step 4 changes the pair and runs only after the user approves "
+        "its preview."
+    )
+    return f"""Check that FTD HA pair {pair}{where} fails over cleanly: pre-checks, a traffic baseline,
+{what}, verification, the traffic afterwards and a report. {change_note}
+
+{tool_ref("fmc_get_ha_status")} runs a few show commands on the units each time (FMC allows about 120
+API requests per minute): call it once per step, and when you wait for a state, at most 5 times.
+
+1. Pre-checks: {tool_ref("fmc_get_ha_status")} with ha_pair={pair}, live=true, history=5{d}. Note per
+   unit the device, role, FMC state and device_state (the unit's own: Active, Standby Ready, Failed,
+   ...), active time, interface and module status and last_failure; the failover and state links
+   (interface, status, separate or shared), monitored_interfaces, config_status, versions,
+   stateful_replication (TCP/UDP connections replicated, errors), last_failover (when, which unit,
+   why) and every entry of `checks`. FMC's unit states trail a failover by up to a minute; the
+   device_state is current.
+   - `ready_for_switch` false: don't go past step 3; report each failed blocker with its fix:
+     a monitored interface Failed or No Link: cabling or the switch port on that unit
+     ({tool_ref("fmc_run_show_command")} with device=<unit>, command='show interface ip brief');
+     standby not Standby Ready: it is still syncing (Cold Standby, Bulk Sync), call again, or it is
+     Failed (its interfaces, snort, disk); failover link down: the link between the units;
+     config_status not HEALTHY_CONFIG: {tool_ref("fmc_pending_changes")} and {tool_ref("fmc_deploy")}
+     for the pair; versions differ: finish the upgrade ({tool_ref("fmc_upgrade_status")}); a module
+     (snort, disk) not up: {tool_ref("fmc_device_health")} for that unit.
+   - Warnings don't stop it, but say what a failover will cost: a state link that is down or
+     unconfigured, or replication errors, means connections drop; a data interface that is not
+     monitored or has no standby IP means its failure wouldn't trigger a failover
+     ({tool_ref("fmc_configure_ha_monitoring")}); state replication over the failover link is fine
+     for a lab, a separate state link is better under load (set when the pair is formed:
+     {tool_ref("fmc_create_ha_pair")} with state_interface).
+
+2. Traffic before. {traffic_step}
+
+3. Failover history before: each unit's `history` from step 1 (newest first) and last_failover.
+   The full table: {tool_ref("fmc_run_show_command")} with device=<unit>, command='show failover
+   history'{d}. Keep the newest entry per unit so the report can show what the event added.
+
+{event}
+"""
+
+
 def register(reg: ToolRegistrar) -> None:
     @reg.prompt(
         title="Why is this traffic blocked?",
@@ -764,3 +951,61 @@ def register(reg: ToolRegistrar) -> None:
         the app-route rule, the interface it picks now and why, the overlay tunnels and BGP, and a packet
         tracer check, then proposes one previewed fix. Read-only until the user approves the fix."""
         return _sdwan_troubleshoot_text(application, branch, destination, source, topology)
+
+    @reg.prompt(
+        title="HA failover check",
+        uses=["fmc", "cml"],
+        tier=Tier.DANGEROUS,
+        example={
+            "ha_pair": "mcp-fw-ha",
+            "action": "switch",
+            "domain": "Global/mcp-test-leaf",
+            "source": "192.0.2.10",
+            "destination": "198.51.100.1",
+            "protocol": "icmp",
+            "lab": "mcp-fw-ha",
+            "test_node": "inside-host",
+            "target": "198.51.100.1",
+        },
+    )
+    def fmc_ha_failover_check(
+        ha_pair: Annotated[str, Field(description="FTD HA pair name or UUID (fmc_list_ha_pairs)")],
+        action: Annotated[
+            Literal["check", "switch", "fail_active"],
+            Field(
+                description="check: pre-checks and traffic only; switch: planned switch with "
+                "fmc_ha_action; fail_active: power off the active unit in CML (lab test)"
+            ),
+        ] = "switch",
+        domain: Annotated[
+            str | None, Field(description="FMC domain name or UUID; the server's default domain if omitted")
+        ] = None,
+        source: Annotated[
+            str | None, Field(description="Test flow source IP for packet tracer, e.g. an inside host")
+        ] = None,
+        destination: Annotated[
+            str | None, Field(description="Test flow destination IP for packet tracer")
+        ] = None,
+        protocol: Annotated[Literal["tcp", "udp", "icmp"], Field(description="Test flow protocol")] = "icmp",
+        port: Annotated[
+            int | None, Field(ge=1, le=65535, description="Test flow destination port (tcp/udp)")
+        ] = None,
+        lab: Annotated[
+            str | None, Field(description="CML lab with a test host behind the pair (real traffic)")
+        ] = None,
+        test_node: Annotated[
+            str | None, Field(description="CML node to send real traffic from, e.g. an inside host")
+        ] = None,
+        target: Annotated[
+            str | None, Field(description="IP address the test node pings through the pair")
+        ] = None,
+    ) -> str:
+        """Does this HA pair fail over cleanly? Pre-checks with fmc_get_ha_status (standby ready,
+        failover and state links up, monitored interfaces, config in sync, versions, replication
+        errors), a traffic baseline (packet tracer, and real pings from a CML host), then a planned
+        switch (fmc_ha_action) or, in a lab, the active unit powered off, with a ping series for the
+        loss; then the roles, the failover history and its reason, and the traffic again, and a
+        report with the outage. The change runs only after the user approves its preview."""
+        return _ha_failover_check_text(
+            ha_pair, action, domain, source, destination, protocol, port, lab, test_node, target
+        )
