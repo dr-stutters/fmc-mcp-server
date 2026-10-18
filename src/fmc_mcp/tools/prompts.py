@@ -557,6 +557,73 @@ preview-first and runs only after the user approves it.
 """
 
 
+def _threat_review_text(policy: str, domain: str | None) -> str:
+    """fmc_threat_defense_review: posture -> rule hygiene -> SI/DNS -> intrusion policies -> NAP -> report."""
+    pol = _q(policy, "policy")
+    dom = _q(domain, "domain") if domain else None
+    d = f", domain={dom}" if dom else ""
+    where = f" in domain {dom}" if dom else ""
+    return f"""Review the threat-defense posture of access control policy {pol}{where}:
+what inspects the traffic it allows, what slips past inspection, and whether Security Intelligence, DNS,
+file and intrusion settings do their job. Every step is read-only: change and deploy nothing; each fix
+is a proposal the user approves separately.
+
+FMC allows about 120 API requests per minute: call each tool below once and drill into single objects
+only where a finding needs it. A tool that fails is a finding of its own (say what it hides) and you
+carry on.
+
+1. Posture: {tool_ref("fmc_threat_posture")} with policy={pol}{d}. It returns the default action, every
+   ALLOW rule's intrusion policy, file policy and logging, the intrusion policies in use (base policy,
+   PREVENTION or DETECTION), TRUST rules and prefilter FASTPATH rules, Security Intelligence and DNS
+   coverage, decryption, the network analysis policies that exist, the licences of the devices the
+   policy is assigned to, and ranked findings, each with a fix as a tool call. Keep them all.
+
+2. Rule hygiene that weakens inspection: {tool_ref("fmc_policy_audit")} with policy={pol},
+   checks=["no_intrusion", "no_logging", "permissive", "shadowed"], refresh_hits=false{d}. ALLOW rules
+   without an intrusion policy, rules that log nothing, any-any ALLOW rules and shadowed rules. Merge
+   with step 1 so each rule appears once.
+
+3. Security Intelligence in detail: {tool_ref("fmc_get_security_intelligence")} with policy={pol}{d}:
+   the block and do-not-block lists, the DNS policy's rules and the status of each feed and custom list.
+   A feed in a block list that is "not downloaded yet", "stale" or "downloaded but empty" is high (the
+   policy blocks less than it shows); a Talos category or feed in a do-not-block list is medium (it
+   exempts that traffic from Security Intelligence).
+
+4. Intrusion policies: for each policy in step 1's intrusion_policies (at most three),
+   {tool_ref("fmc_get_intrusion_policy")} with policy=<name>{d}: base policy, mode and overridden rules.
+   In a PREVENTION policy, overrides that DISABLE a rule or turn a drop into ALERT or PASS are medium
+   (list gid:sid and message); a custom policy based on "Connectivity Over Security" or "No Rules
+   Active" is info. When the user cares about a specific threat (e.g. Log4j),
+   {tool_ref("fmc_find_intrusion_rules")} with query=<text>, policy=<name>{d} shows whether it drops.
+
+5. Network analysis: {tool_ref("fmc_list_policies")} with kind="network_analysis"{d}. FMC's API does not
+   say which one the access policy uses: report what exists and the FMC UI path from step 1.
+
+6. Report. First a posture summary in a few lines: default action; how many ALLOW rules have an
+   intrusion policy, a file policy and logging; intrusion policies and modes; Talos categories in the
+   SI block lists; DNS policy; decryption; licences per device. Then one ranked list (high, medium,
+   low, info), findings with one cause merged. Each finding gives:
+   - a title naming the rule, policy, feed or device;
+   - evidence: the tool and the values it returned;
+   - the fix as the exact tool call to preview, e.g. {tool_ref("fmc_update_access_rule")} with
+     intrusion_policy=..., {tool_ref("fmc_set_si_lists")}, {tool_ref("fmc_set_dns_policy")},
+     {tool_ref("fmc_create_intrusion_policy")}, {tool_ref("fmc_set_intrusion_rule_state")},
+     {tool_ref("fmc_update_prefilter_rule")}, {tool_ref("fmc_set_device_licenses")},
+     {tool_ref("fmc_set_decryption_policy")}, or the FMC UI path where no tool covers it;
+   - the impact: what traffic it changes (a new drop can break an application) and that it needs a
+     deployment.
+
+7. Offer, don't apply: ask which fixes to apply. For each approved fix, preview it, show the preview
+   and confirm only what the user approved, one change at a time. Then
+   {tool_ref("fmc_pending_changes")} for the devices the policy is assigned to and a
+   {tool_ref("fmc_deploy")} preview naming exactly those devices (a separate approval). To show the
+   intrusion policy dropping real traffic afterwards: take a rule that drops in it (e.g. 1:58723,
+   Log4j "${{jndi:" in an HTTP header, with {tool_ref("fmc_find_intrusion_rules")}), send a harmless
+   request that matches it from a test client through the firewall, and check that the connection is
+   reset and that the intrusion event shows in the FMC UI (Analysis > Intrusions > Events).
+"""
+
+
 def register(reg: ToolRegistrar) -> None:
     @reg.prompt(
         title="Why is this traffic blocked?",
@@ -764,3 +831,21 @@ def register(reg: ToolRegistrar) -> None:
         the app-route rule, the interface it picks now and why, the overlay tunnels and BGP, and a packet
         tracer check, then proposes one previewed fix. Read-only until the user approves the fix."""
         return _sdwan_troubleshoot_text(application, branch, destination, source, topology)
+
+    @reg.prompt(
+        title="Threat-defense review of an access policy",
+        example={"policy": "mcp-fw-threat-acp", "domain": "Global/mcp-test-leaf"},
+    )
+    def fmc_threat_defense_review(
+        policy: Annotated[str, Field(description="Access control policy name or UUID")],
+        domain: Annotated[
+            str | None, Field(description="FMC domain name or UUID; the server's default domain if omitted")
+        ] = None,
+    ) -> str:
+        """How well does this access policy stop threats? Reviews intrusion policies on the default
+        action and every ALLOW rule (modes, base policies, overrides), file policies, what bypasses
+        inspection (TRUST, prefilter fastpath), Security Intelligence and DNS coverage with feed status,
+        decryption, network analysis policies and the device licences, with fmc_threat_posture and
+        fmc_policy_audit, then writes a ranked report where each finding has its evidence, a proposed fix
+        and the tool that applies it. Read-only; fixes run only after the user approves each preview."""
+        return _threat_review_text(policy, domain)

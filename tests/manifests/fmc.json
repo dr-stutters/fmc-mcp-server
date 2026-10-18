@@ -173,6 +173,35 @@
         "fmc"
       ]
     },
+    "fmc_threat_defense_review": {
+      "arguments": [
+        "policy",
+        "domain"
+      ],
+      "references": [
+        "fmc_threat_posture",
+        "fmc_policy_audit",
+        "fmc_get_security_intelligence",
+        "fmc_get_intrusion_policy",
+        "fmc_find_intrusion_rules",
+        "fmc_list_policies",
+        "fmc_update_access_rule",
+        "fmc_set_si_lists",
+        "fmc_set_dns_policy",
+        "fmc_create_intrusion_policy",
+        "fmc_set_intrusion_rule_state",
+        "fmc_update_prefilter_rule",
+        "fmc_set_device_licenses",
+        "fmc_set_decryption_policy",
+        "fmc_pending_changes",
+        "fmc_deploy"
+      ],
+      "rendered": true,
+      "tier": "read",
+      "uses": [
+        "fmc"
+      ]
+    },
     "fmc_why_blocked": {
       "arguments": [
         "source",
@@ -781,6 +810,10 @@
     "fmc_test_realm": {
       "tier": "read",
       "title": "Test realm directory connection"
+    },
+    "fmc_threat_posture": {
+      "tier": "read",
+      "title": "Threat-defense posture of an access policy"
     },
     "fmc_ticket": {
       "tier": "write",

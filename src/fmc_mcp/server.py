@@ -45,6 +45,7 @@ from fmc_mcp.tools import (
     security_intel,
     system,
     templates,
+    threat_posture,
     tickets,
     troubleshoot,
     vpn,
@@ -110,7 +111,8 @@ Workflows:
   domain) -> fmc_import_policy_bundle -> fmc_diff_policy_bundle against live -> assign + fmc_deploy.
 - Policy review: fmc_policy_audit ranks shadowed, permissive, unlogged, uninspected, unused and mergeable
   rules, expired time ranges and duplicate objects, each with a fix to preview; then fmc_pending_changes
-  -> fmc_deploy.
+  -> fmc_deploy. Threat-defense posture (intrusion and file policies, TRUST/fastpath bypasses, SI and DNS
+  coverage, decryption, licences): fmc_threat_posture; the fmc_threat_defense_review prompt combines both.
   Prompts: fmc_policy_cleanup (findings -> approved cleanup -> diff + re-audit) and fmc_rule_change_review
   (one rule change with before/after flows, shadowing check and a deploy plan with rollback).
 - Health: fmc_list_devices, fmc_device_health, fmc_list_vpn_tunnels; "what changed or broke in the
@@ -184,6 +186,7 @@ def create_server(
             objects.register,
             analysis.register,
             hygiene.register,
+            threat_posture.register,
             deploy.register,
             device_config.register,
             object_writes.register,
