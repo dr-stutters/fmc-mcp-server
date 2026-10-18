@@ -67,7 +67,10 @@ class SpokeSpec(BaseModel):
         "FMC builds the spoke's VTI on it and addresses it from the hub's spoke pool",
     )
     backup_wan_interface: str | None = Field(
-        None, description="A second WAN interface for a backup tunnel (e.g. LTE)"
+        None,
+        description="A second WAN interface for a backup tunnel (e.g. LTE). FMC 10.0.1 accepts it on "
+        "an AUTO_VPN spoke but stores nothing; the tool reads the spoke back and undoes the change "
+        "when FMC dropped it",
     )
     inside_interfaces: list[str] = Field(
         default_factory=list,
@@ -347,6 +350,28 @@ async def plan_spoke(app: FmcApp, spec: SpokeSpec, domain: str | None) -> SpokeP
     return SpokePlan(dev, wan, backup, inside, blockers)
 
 
+BACKUP_WAN_NOTE = (
+    "backup_wan_interface: FMC 10.0.1 answers 2xx to backupInterfaces on an AUTO_VPN spoke but "
+    "stores nothing, so no backup tunnel is built (seen live on mcp-sdwan-t1). The tool reads each "
+    "such spoke back and undoes the change if FMC dropped the backup interface."
+)
+
+
+async def check_backup_kept(app: FmcApp, endpoints: str, made: dict[str, Any], spoke: SpokePlan) -> None:
+    """Read a new spoke endpoint back and fail when FMC dropped its backup WAN interface."""
+    if not spoke.backup or not made.get("id"):
+        return
+    stored = await app.api.get(f"{endpoints}/{made['id']}")
+    kept = {(b.get("interface") or {}).get("id") for b in (stored or {}).get("backupInterfaces") or []}
+    if spoke.backup["id"] not in kept:
+        raise UpstreamError(
+            f"FMC accepted backup WAN interface {ref_label(spoke.backup)} for spoke "
+            f"{spoke.device['name']} but did not store it (the endpoint has no backupInterfaces), so "
+            "there would be no backup tunnel. FMC 10.0.1 doesn't take a second spoke WAN this way; "
+            "build the topology without backup_wan_interface"
+        )
+
+
 def hub_endpoint(hub: HubPlan, dvti: dict[str, Any], pool: dict[str, Any]) -> dict[str, Any]:
     ep: dict[str, Any] = {
         "name": hub.device["name"],
@@ -623,6 +648,8 @@ def register(reg: ToolRegistrar) -> None:
                 f"{WEAK_IKE_POLICY} / {WEAK_IPSEC_PROPOSAL} (DES): fine for a lab, not for production. "
                 "FMC may also refuse SD-WAN topologies without it."
             )
+        if any(sp.backup for sp in planned):
+            side_effects.append(BACKUP_WAN_NOTE)
         if overlay == "ospf":
             side_effects.append(
                 "No overlay routing is generated: run OSPF over the tunnel and inside networks on every "
@@ -718,9 +745,13 @@ def register(reg: ToolRegistrar) -> None:
                 )
                 b.done.append("IKE/IPsec settings")
                 made = []
-                for ep in [*hub_eps, *(s.endpoint() for s in planned)]:
+                for ep in hub_eps:
                     # endpoints go with the topology: no separate undo
                     made.append(await b.post(f"{base}/endpoints", ep, f"endpoint {ep['name']}", undo=False))
+                for sp in planned:
+                    ep = sp.endpoint()
+                    made.append(await b.post(f"{base}/endpoints", ep, f"endpoint {ep['name']}", undo=False))
+                    await check_backup_kept(app, f"{base}/endpoints", made[-1], sp)
                 return {
                     "topology": topology_row(topo),
                     "endpoints": [endpoint_row(m) for m in made],
@@ -935,6 +966,8 @@ def register(reg: ToolRegistrar) -> None:
         side_effects = [_deploy_note(deploy)]
         if removing or drop_hub:
             side_effects.append("Removed devices' tunnels go down when they are deployed.")
+        if any(sp.backup for sp in adding):
+            side_effects.append(BACKUP_WAN_NOTE)
 
         async def apply() -> Any:
             b = Builder(app, domain)
@@ -956,6 +989,7 @@ def register(reg: ToolRegistrar) -> None:
                     made.append(
                         await b.post(f"{path}/endpoints", sp.endpoint(), f"spoke {sp.device['name']}")
                     )
+                    await check_backup_kept(app, f"{path}/endpoints", made[-1], sp)
                 app.invalidate_cache()
                 return {
                     "topology": t.get("name"),
