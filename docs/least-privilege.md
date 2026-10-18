@@ -26,6 +26,7 @@ FMC 10.0 user roles are menu-based. Permission names as the FMC role editor show
 |---|---|---|---|
 | Insights & Reports | Dashboard | `overview`, `dashboards` | (UI only; harmless) |
 | Events & Logs > Analysis | Audit | `analysis`, `container_analysis`, `audit_log` | `fmc_list_audit_records`, `fmc_recent_activity` |
+| Events & Logs > Analysis | Users: Active Sessions, User Activity, Users (view) | not yet checked with a custom role | `fmc_user_identity_sessions`, `fmc_live_connections(user=...)` (FMC answers 403 on `analysis/activesessions` and `analysis/useractivity` without them; the lab roles lacked them on 2026-10-18) |
 | Policies > Security policies | Access Control, Intrusion, Rule Editor, Identity, Decryption, Prefilter, Malware & File, DNS, Umbrella DNS Policy (view) | `policy_response`, `firewall_policy`, `firewall`, `intrusion_policy`, `rules`, `identity`, `ssl`, `prefilter_policy`, `file_policy`, `dns_policy`, `umbrella_dns_policy` | `fmc_list_policies`, `fmc_get_access_policy`, `fmc_list_access_rules`, `fmc_get_access_rule`, `fmc_list_prefilter_rules`, `fmc_rule_lookup`, `fmc_shadowed_rules`, `fmc_policy_audit`, `fmc_get_hit_counts`, `fmc_get_intrusion_policy`, `fmc_find_intrusion_rules` |
 | Policies > Network policies | NAT, QoS (view) | `network_policies`, `nat_policy`, `nat`, `qos` | `fmc_list_nat_rules` |
 | Objects | Objects (view) | `object_manager` | `fmc_list_objects`, `fmc_get_object`, `fmc_find_object`, `fmc_where_used`, `fmc_unused_objects`, `fmc_list_dynamic_objects`, `fmc_list_object_overrides` |

@@ -116,6 +116,12 @@ NAT_ADDRESS_FIELDS = {
 }
 
 
+def nat_address_refs(rule: dict[str, Any]) -> list[tuple[str, dict[str, Any]]]:
+    """(row key, reference) for every original/translated source and destination a NAT rule names
+    (auto and manual rules); interface translations carry no reference and are left out."""
+    return [(key, rule[f]) for f, key in NAT_ADDRESS_FIELDS.items() if isinstance(rule.get(f), dict)]
+
+
 async def nat_policy_of(app: FmcApp, device_id: str, domain: str | None) -> str | None:
     """Id of the NAT policy assigned to a device (policy assignments)."""
     page = await app.all(await app.config_path("assignment/policyassignments", domain), cap=2000)
@@ -385,20 +391,19 @@ def register(reg: ToolRegistrar) -> None:
             cat = Catalog(app, domain)
             await cat.load_networks()
             want: list[tuple[int, int, int]] = [(ip.version, int(ip), int(ip))]
-            kept = []
-            for r in raw:
-                for f in NAT_ADDRESS_FIELDS:
-                    nets = cat.networks(r[f]) if r.get(f) else None
-                    if nets and ip_contains(nets, want):
-                        kept.append(r)
-                        break
-            raw = kept
+            raw = [
+                r
+                for r in raw
+                if any(
+                    (nets := cat.networks(ref)) and ip_contains(nets, want) for _, ref in nat_address_refs(r)
+                )
+            ]
         rows = [flatten_nat_rule(r) for r in raw]
         if address:
             for r, row in zip(raw, rows, strict=True):
-                for f, key in NAT_ADDRESS_FIELDS.items():
-                    if r.get(f) and row.get(key) and row[key] != "interface":
-                        value = (cat.objects.get(str(r[f].get("id"))) or r[f]).get("value")
+                for key, ref in nat_address_refs(r):
+                    if row.get(key) and row[key] != "interface":
+                        value = (cat.objects.get(str(ref.get("id"))) or ref).get("value")
                         if value:
                             row[key] = f"{row[key]} ({value})"
         rows.sort(key=lambda r: (order.get(str(r.get("section", "")).upper(), 1), r.get("index") or 0))
