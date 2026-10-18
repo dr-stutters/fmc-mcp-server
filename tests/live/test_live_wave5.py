@@ -67,7 +67,7 @@ async def call(client: Client[Any], name: str, args: dict[str, Any], *, show: bo
         data = data["result"]
     if show:
         text = json.dumps(data, default=str)
-        print(f"\n### {name} {json.dumps({k: v for k, v in args.items() if k != 'domain'})}\n{text[:6000]}")
+        print(f"\n### {name} {json.dumps({k: v for k, v in args.items() if k != 'domain'})}\n{text[:20000]}")
     return data
 
 
