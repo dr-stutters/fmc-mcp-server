@@ -106,7 +106,7 @@ Changes made in FMC reach the firewalls only after a **deployment** (`fmc_deploy
 
 ## Tools
 
-There are 153 tools when every tier is enabled (66 read, 76 write, 11 dangerous; the dangerous tier turns `fmc_api_call` into a raw call), and seven workflow prompts (`fmc_why_blocked`, `fmc_firewall_health_review`, `fmc_sdwan_troubleshoot`; `fmc_rule_change_review` and `fmc_policy_cleanup`, write tier; `fmc_onboard_ftd` and `fmc_ha_failover_check`, dangerous tier).
+There are 153 tools when every tier is enabled (66 read, 76 write, 11 dangerous; the dangerous tier turns `fmc_api_call` into a raw call), and six workflow prompts (`fmc_why_blocked`, `fmc_firewall_health_review`, `fmc_sdwan_troubleshoot`; `fmc_rule_change_review` and `fmc_policy_cleanup`, write tier; `fmc_onboard_ftd`, dangerous tier).
 
 **Read**
 
