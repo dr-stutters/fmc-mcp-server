@@ -145,7 +145,8 @@ def register(reg: ToolRegistrar) -> None:
         """List file (and malware) policies, or show one: its archive and analysis settings and its file
         rules (protocol, direction, file types and categories, action: detect, block, malware cloud lookup
         or block malware). Use it before adding file rules, or to see what an access rule's file policy
-        blocks. With catalog=true it lists the file categories and types to use in rules."""
+        blocks. With catalog=true it lists the file categories and types to use in rules. Build one with
+        fmc_create_file_policy + fmc_create_file_rule; which ALLOW rules lack one: fmc_threat_posture."""
         app: FmcApp = get_client(ctx)
         if catalog:
             cats = await file_catalog(app, FILE_CATEGORIES, domain)
@@ -309,8 +310,9 @@ def register(reg: ToolRegistrar) -> None:
         """Add a file rule to a file policy, e.g. block .exe downloads over HTTP (action BLOCK,
         file_types ['MSEXE'], protocol HTTP, direction DOWNLOAD) or look up every executable in the
         malware cloud. When several rules match a file, FMC applies the strictest action (block, then
-        block malware, then malware cloud lookup, then detect), not the rule order. Takes effect on
-        devices whose ALLOW access rules use the policy after the next deploy."""
+        block malware, then malware cloud lookup, then detect), not the rule order. File type and category
+        names: fmc_get_file_policy(catalog=true). Takes effect on devices whose ALLOW access rules use the
+        policy (fmc_update_access_rule file_policy=...) after the next deploy."""
         app: FmcApp = get_client(ctx)
         if not (file_types or file_categories):
             raise InvalidRequest("Give file_types and/or file_categories (fmc_get_file_policy catalog=true).")
