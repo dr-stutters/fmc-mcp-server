@@ -512,6 +512,16 @@ def _route_settings(overlay: str, bgp_as: int, community: int, multipath: bool) 
     return rs
 
 
+OSPF_OVERLAY_WARNING = (
+    "overlay='ospf' did not carry traffic on FMC 10.0.1 (live, mcp-sdwan-t1 and -t2): the hub's DVTI is "
+    "unnumbered (it borrows the loopback's /32) while each spoke VTI is numbered from the pool, so OSPF "
+    "reaches FULL and the hub learns the spoke networks, but the spokes install no OSPF routes (their "
+    "SPF reports the hub's router LSA 'Adv Router is not-reachable'). fmc_configure_ospf and FMC "
+    "10.0.1's ospfinterface API have no OSPF network-type setting to change that. Use overlay='bgp' "
+    "unless the tunnels' OSPF network type is set another way."
+)
+
+
 def _deploy_note(names: list[str]) -> str:
     return f"Takes effect after deploying {', '.join(sorted(set(names)))} (fmc_deploy)."
 
@@ -557,7 +567,8 @@ def register(reg: ToolRegistrar) -> None:
             Field(
                 description="Overlay routing: bgp (FMC generates iBGP over the tunnels, community-tagged, "
                 "inside networks redistributed) or ospf (no generated BGP; you run OSPF over the "
-                "tunnel and inside networks with fmc_configure_ospf)"
+                "tunnel and inside networks with fmc_configure_ospf). On FMC 10.0.1 an OSPF overlay "
+                "forms adjacencies but the spokes install no routes (see the preview warning); use bgp"
             ),
         ] = "bgp",
         bgp_as: Annotated[int, Field(ge=1, le=4294967295, description="iBGP AS number")] = DEFAULT_AS,
@@ -695,6 +706,8 @@ def register(reg: ToolRegistrar) -> None:
                 f"FMC has no strong-crypto licence, so it won't deploy {', '.join(strong)}; use DES ones "
                 f"such as {WEAK_IKE_POLICY} and {WEAK_IPSEC_PROPOSAL}."
             )
+        warnings = [OSPF_OVERLAY_WARNING] if overlay == "ospf" else []
+        side_effects += warnings
         zone_ref = {"id": zone["id"], "type": "SecurityZone", "name": zone.get("name")}
         topo_body = {
             "name": name,
@@ -819,6 +832,7 @@ def register(reg: ToolRegistrar) -> None:
                 + (f", backup hub {hubs[1].device['name']}" if len(hubs) > 1 else "")
                 + f", {len(planned)} spoke(s), overlay {overlay}",
                 details={
+                    **({"warnings": warnings} if warnings else {}),
                     "steps": steps,
                     "topology": topo_body,
                     "hubs": [h.summary() for h in hubs],
