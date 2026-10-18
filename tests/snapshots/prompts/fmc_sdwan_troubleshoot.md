@@ -16,8 +16,10 @@ preview-first and runs only after the user approves it.
 1. Path metrics: `fmc_sdwan_status` with branch="mcp-sdwan-t1-spoke1", topology="mcp-sdwan-t1". Note each WAN link's health,
    status, RTT, jitter, loss and MOS, the overlay tunnels (and how many are up), the iBGP neighbors and
    the `degraded` list. A link that is down, or above the loss/RTT/jitter thresholds (or below the MOS
-   one) the result lists, is a suspect. If a show command was "not available", say so and use the
-   path-monitoring status alone.
+   one) the result lists, is a suspect. If a show command was "not available" (FMC 10.0.1 refuses
+   show path-monitoring, show policy-route and show bgp summary), say so: wan_links then carry the
+   path-monitoring status only (health "not available"), so a brownout on a link that is still up
+   can't be seen through FMC; ask the user for the device's 'show path-monitoring' from its console.
 
 2. App route: in the same result's `app_routes`, find the rule whose `match` (an extended ACL or an
    application/network object) covers "Teams". Confirm with `fmc_get_routing` with
@@ -35,10 +37,13 @@ preview-first and runs only after the user approves it.
 
 4. Overlay: `fmc_get_vpn_topology` with topology=<the topology from step 1> and
    `fmc_list_vpn_tunnels`. A tunnel down or an iBGP neighbor not Established on the chosen
-   path sends "Teams" to the hub over another path, or nowhere. Use `fmc_run_show_command`
-   with device="mcp-sdwan-t1-spoke1" and 'show crypto ikev2 sa', 'show bgp summary' or 'show route bgp' for
-   detail, and `fmc_list_health_alerts` with since_minutes=60, device="mcp-sdwan-t1-spoke1" for interface
-   or tunnel alerts.
+   path sends "Teams" to the hub over another path, or nowhere. For a down tunnel, the reasons in
+   `degraded` read the IKEv2 counters: authentication failures growing between two status calls mean
+   a pre-shared key mismatch, retransmits alone mean the peer doesn't answer (dead path). Use
+   `fmc_run_show_command` with device="mcp-sdwan-t1-spoke1" and 'show crypto ikev2 sa', 'show crypto ikev2
+   stats' or 'show route bgp' for detail (FMC's tunnel states can lag the device by minutes), and
+   `fmc_list_health_alerts` with since_minutes=60, device="mcp-sdwan-t1-spoke1" for interface or tunnel
+   alerts.
 
 5. Live check: `fmc_packet_tracer` with device="mcp-sdwan-t1-spoke1", protocol=<tcp or udp>, source_ip="10.111.0.10", destination_ip="52.112.0.10", destination_port=<the application port>, i.e. traffic from "10.111.0.10" to "52.112.0.10". The egress interface in the result must match step 3;
    a drop names the phase and rule (the `fmc_why_blocked` prompt takes over for an
@@ -50,8 +55,9 @@ preview-first and runs only after the user approves it.
      loss for bulk transfers) instead of priority: change the policy-based route through the
      app-routing tools when this server has them, else `fmc_api_call` PUT on the device's
      routing/policybasedroutes entry (show the body; preview first);
-   - when the branch has a single WAN, add a backup WAN: `fmc_update_sdwan_topology`
-     (remove and re-add the spoke with backup_wan_interface);
+   - when the branch has a single WAN tunnel: say so. `fmc_update_sdwan_topology`'s
+     backup_wan_interface is refused by FMC 10.0.1 (it stores no backup interface), so a second
+     spoke tunnel has to be added in the FMC SD-WAN wizard for now;
    - when the carrier link itself is bad, say so: no FMC change fixes it.
    Then `fmc_pending_changes` with device="mcp-sdwan-t1-spoke1" and, after approval, `fmc_deploy`
    (the branch, and the hubs when the topology changed). Re-run `fmc_sdwan_status` with

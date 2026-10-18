@@ -11,12 +11,39 @@ from fastmcp import Client
 
 from fmc_mcp._core import InvalidRequest
 from fmc_mcp.server import create_server
+from fmc_mcp.tools import sdwan_status
 from fmc_mcp.tools.prompts import _sdwan_troubleshoot_text
-from fmc_mcp.tools.sdwan_status import choose_path, link_severity, parse_bgp_summary, parse_path_monitoring
+from fmc_mcp.tools.sdwan_status import (
+    choose_path,
+    link_severity,
+    parse_bgp_summary,
+    parse_ikev2_stats,
+    parse_path_monitoring,
+    parse_route_bgp,
+)
 
 from .conftest import CFG, fixture, items, make_settings
 
 LAB = fixture("sdwan_lab")
+SHOW = fixture("ftd_sdwan_show")  # recorded FMC 10.0.1 outputs and refusal
+FMC10_REFUSES = {"show path-monitoring", "show policy-route", "show bgp summary"}
+
+
+@pytest.fixture(autouse=True)
+def _fresh_ike_counters() -> Any:
+    sdwan_status._IKE_SEEN.clear()
+    yield
+    sdwan_status._IKE_SEEN.clear()
+
+
+def ike_stats(auth: int, retransmits: int, active: int = 0) -> str:
+    """The recorded `show crypto ikev2 stats` with other counter values."""
+    text = str(SHOW["show crypto ikev2 stats"])
+    text = text.replace("Authentication Failures:                 8", f"Authentication Failures: {auth:>17}")
+    text = text.replace(
+        "Retransmit limit exceeded:              13", f"Retransmit limit exceeded: {retransmits:>14}"
+    )
+    return text.replace("  Active Tunnels:                          0", f"  Active Tunnels: {active:>24}")
 
 
 def server() -> Any:
@@ -28,8 +55,15 @@ async def run(c: Client[Any], name: str, args: dict[str, Any]) -> Any:
     return r.structured_content if r.structured_content is not None else json.loads(r.content[0].text)  # type: ignore[union-attr]
 
 
-def lab(fmc: respx.MockRouter, *, refused: set[str] | None = None) -> list[str]:
-    """Mount the lab; return the log of show commands run (device id + command)."""
+def lab(
+    fmc: respx.MockRouter,
+    *,
+    refused: set[str] | None = None,
+    outputs: dict[str, dict[str, str]] | None = None,
+) -> list[str]:
+    """Mount the lab; return the log of show commands run (device id + command). `refused` commands get
+    FMC 10.0.1's 400; `outputs` (device id -> command -> text) override the lab's outputs (and can be
+    changed between calls)."""
     for key, data in LAB.items():
         if not key.startswith("_") and key != "show":
             fmc.get(f"{CFG}/{key}").mock(return_value=httpx.Response(200, json=data))
@@ -41,10 +75,10 @@ def lab(fmc: respx.MockRouter, *, refused: set[str] | None = None) -> list[str]:
         cmd = " ".join(x for x in (req.url.params.get("command"), req.url.params.get("parameters")) if x)
         ran.append(f"{dev} {cmd}")
         if cmd in (refused or set()):
-            return httpx.Response(
-                404, json={"error": {"messages": [{"description": "The command is invalid"}]}}
-            )
-        text = LAB["show"].get(dev, {}).get(cmd, "")
+            return httpx.Response(400, json=SHOW["refused"])
+        text = (outputs or {}).get(dev, {}).get(cmd)
+        if text is None:
+            text = LAB["show"].get(dev, {}).get(cmd, "")
         return httpx.Response(200, json={"items": [{"commandInput": cmd, "commandOutput": text}]})
 
     fmc.get(url__regex=r".*/devicerecords/[^/]+/operational/commands.*").mock(side_effect=show)
@@ -107,7 +141,7 @@ async def test_status_for_a_branch(fmc: respx.MockRouter) -> None:
     ran = lab(fmc)
     async with Client(server()) as c:
         out = await run(c, "fmc_sdwan_status", {"branch": "mcp-sdwan-t1-spoke1"})
-    assert [r.split(" ", 1)[0] for r in ran] == ["d-sp1"] * 3  # only the branch, three commands
+    assert [r.split(" ", 1)[0] for r in ran] == ["d-sp1"] * 4  # only the branch, four commands
     br = out["topologies"][0]["branches"]
     assert len(br) == 1 and br[0]["role"] == "spoke" and br[0]["tunnels_up"] == 2
     wan = {w["logical_name"]: w for w in br[0]["wan_links"]}
@@ -149,7 +183,10 @@ async def test_status_survives_refused_commands(fmc: respx.MockRouter) -> None:
     br = out["topologies"][0]["branches"][0]
     assert br["evidence"]["show path-monitoring"].startswith("not available")
     wan = {w["logical_name"]: w for w in br["wan_links"]}
-    assert "loss_pct" not in wan["outside2"] and wan["outside2"]["health"] == "ok"  # status ONLINE only
+    # ONLINE is all FMC knows: no metrics means "not available", not "ok" (a brownout stays ONLINE)
+    assert "loss_pct" not in wan["outside2"] and wan["outside2"]["health"] == "not available"
+    assert "status ONLINE" in wan["outside2"]["reasons"][0]
+    assert any("brownout" in n for n in out["notes"])
 
 
 async def test_status_without_commands_and_guards(fmc: respx.MockRouter) -> None:
@@ -184,6 +221,9 @@ def test_troubleshoot_text_order_and_quoting() -> None:
     assert positions == sorted(positions)
     assert 'branch="mcp-sdwan-t1-spoke1", topology="mcp-sdwan-t1"' in text
     assert 'destination_ip="52.112.0.10"' in text and "preview" in text
+    # FMC 10.0.1 refuses show bgp summary, and drops backup_wan_interface (SD-WAN matrix R2/R1)
+    assert "'show bgp summary'" not in text and "with backup_wan_interface" not in text
+    assert "'show crypto ikev2" in text and "pre-shared key" in text
     bare = _sdwan_troubleshoot_text("web", "b1", None, None, None)
     assert "<the server>" in bare and "topology=" not in bare.split("2. App route")[0]
     with pytest.raises(InvalidRequest):
@@ -197,3 +237,138 @@ async def test_troubleshoot_prompt_rendered(fmc: respx.MockRouter) -> None:
         r = await c.get_prompt("fmc_sdwan_troubleshoot", {"application": "Teams", "branch": "spoke1"})
     body: Any = r.messages[0].content
     assert '"Teams" is slow' in body.text
+
+
+# --- FMC 10.0.1: refused commands, IKEv2 counters, tunnel roll-up (SD-WAN matrix R2) -------------
+
+
+def test_parse_ikev2_stats_recorded() -> None:
+    assert parse_ikev2_stats(SHOW["show crypto ikev2 stats"]) == {
+        "active_tunnels": 0,
+        "authentication_failures": 8,
+        "auth_exchange_failed": 8,
+        "initial_exchange_failed": 4,
+        "retransmit_limit_exceeded": 13,
+        "sas_locally_initiated_failed": 12,
+        "counters_since": "never cleared",
+    }
+    assert parse_ikev2_stats(ike_stats(11, 20, 2))["authentication_failures"] == 11
+    assert parse_ikev2_stats(ike_stats(11, 20, 2))["retransmit_limit_exceeded"] == 20
+    assert parse_ikev2_stats(ike_stats(11, 20, 2))["active_tunnels"] == 2
+    assert parse_ikev2_stats("") == {}
+
+
+def test_parse_route_bgp() -> None:
+    assert parse_route_bgp(SHOW["show route bgp"]) == [
+        {"prefix": "10.20.1.0/255.255.255.0", "via": "10.255.20.1"},
+        {"prefix": "10.20.3.0/255.255.255.0", "via": "10.255.20.3"},
+    ]
+    assert parse_route_bgp("\n\n") == []
+
+
+async def test_fmc10_refused_commands_are_tried_once(fmc: respx.MockRouter) -> None:
+    ran = lab(fmc, refused=FMC10_REFUSES, outputs={"d-sp1": {"show route bgp": SHOW["show route bgp"]}})
+    async with Client(server()) as c:
+        out = await run(c, "fmc_sdwan_status", {"topology": "mcp-sdwan-t1"})
+    first = [r for r in ran if r.startswith("d-sp1 ")]
+    assert {r.split(" ", 1)[1] for r in first} == {
+        *FMC10_REFUSES,
+        "show crypto ikev2 stats",
+        "show route bgp",
+    }
+    later = {r.split(" ", 1)[1] for r in ran if not r.startswith("d-sp1 ")}
+    assert later == {"show crypto ikev2 stats", "show route bgp"}  # refused ones not asked again
+    branches = {b["device"]: b for b in out["topologies"][0]["branches"]}
+    sp1 = branches["mcp-sdwan-t1-spoke1"]
+    assert sp1["bgp_routes"][0] == {"prefix": "10.20.1.0/255.255.255.0", "via": "10.255.20.1"}
+    hub = branches["mcp-sdwan-t1-hub"]
+    assert hub["evidence"]["show bgp summary"].startswith("not available: FMC doesn't pass")
+    assert all(
+        w["health"] in ("not available", "critical") for b in branches.values() for w in b["wan_links"]
+    )
+    assert any("brownout" in n for n in out["notes"]) and any("tunnel monitor" in n for n in out["notes"])
+
+
+async def test_down_tunnel_psk_mismatch_vs_dead_path(fmc: respx.MockRouter) -> None:
+    outputs = {"d-sp2": {"show crypto ikev2 stats": ike_stats(8, 13)}}
+    lab(fmc, refused=FMC10_REFUSES, outputs=outputs)
+    args = {"branch": "mcp-sdwan-t1-spoke2"}
+
+    def tunnel_reasons(out: dict[str, Any]) -> list[str]:
+        return [x for d in out["degraded"] if d["interface"] == "overlay tunnel" for x in d["reasons"]]
+
+    async with Client(server()) as c:
+        first = await run(c, "fmc_sdwan_status", args)
+        assert any("Call fmc_sdwan_status again" in r for r in tunnel_reasons(first))
+        outputs["d-sp2"]["show crypto ikev2 stats"] = ike_stats(11, 13)  # wrong PSK: auth failures grow
+        psk = await run(c, "fmc_sdwan_status", args)
+        outputs["d-sp2"]["show crypto ikev2 stats"] = ike_stats(11, 15)  # dead WAN: only retransmits
+        dead = await run(c, "fmc_sdwan_status", args)
+    assert any("pre-shared key" in r and "rose by 3" in r for r in tunnel_reasons(psk))
+    assert any("doesn't answer" in r for r in tunnel_reasons(dead))
+    assert not any("pre-shared key" in r for r in tunnel_reasons(dead))
+    ike = psk["topologies"][0]["branches"][0]["ikev2"]
+    assert ike["authentication_failures"] == 11 and ike["since_last_check"]["authentication_failures"] == 3
+
+
+async def test_hub_down_is_one_rolled_up_entry(fmc: respx.MockRouter) -> None:
+    lab(fmc, refused=FMC10_REFUSES)
+    down = {**LAB["health/tunnelstatuses"]}
+    down["items"] = [{**t, "state": "TUNNEL_DOWN"} for t in down["items"]]
+    fmc.get(f"{CFG}/health/tunnelstatuses").mock(return_value=httpx.Response(200, json=down))
+    async with Client(server()) as c:
+        out = await run(c, "fmc_sdwan_status", {"topology": "mcp-sdwan-t1"})
+    tunnels = [d for d in out["degraded"] if d["interface"] == "overlay tunnel"]
+    assert len(tunnels) == 3  # each tunnel once (from its spoke), not from both ends
+    assert {d["device"] for d in tunnels} == {"mcp-sdwan-t1-spoke1", "mcp-sdwan-t1-spoke2"}
+    hub = [d for d in out["degraded"] if d["interface"] == "hub"]
+    assert (
+        len(hub) == 1 and hub[0]["device"] == "mcp-sdwan-t1-hub" and "all 3 tunnel(s)" in hub[0]["reasons"][0]
+    )
+
+
+async def test_app_route_over_a_down_tunnel_and_route_name(fmc: respx.MockRouter) -> None:
+    lab(fmc, refused=FMC10_REFUSES)
+    pbr = {
+        "items": [
+            {
+                "id": "pbr-sp2",
+                "type": "PolicyBasedRoute",
+                "ingressInterfaces": [{"id": "d-sp2-e2", "name": "Ethernet0/2", "ifname": "inside"}],
+                "forwardingActions": [
+                    {
+                        "matchCriteria": {
+                            "id": "acl-dc",
+                            "name": "mcp-sdwan-t2-dc-route",
+                            "type": "ExtendedAccessList",
+                        },
+                        "forwardingActionType": "SET_EGRESS_INTF_BY_ORDER",
+                        "egressInterfaces": [
+                            {
+                                "id": "vti-1",
+                                "name": "Tunnel1",
+                                "ifname": "mpls_static_vti_1",
+                                "type": "VTIInterface",
+                            },
+                        ],
+                    }
+                ],
+            }
+        ]
+    }
+    fmc.get(f"{CFG}/devices/devicerecords/d-sp2/routing/policybasedroutes").mock(
+        return_value=httpx.Response(200, json=pbr)
+    )
+    async with Client(server()) as c:
+        out = await run(c, "fmc_sdwan_status", {"branch": "mcp-sdwan-t1-spoke2"})
+    route = out["topologies"][0]["branches"][0]["app_routes"][0]
+    assert route["name"] == "mcp-sdwan-t2-dc-route"  # FMC 10 PBRs have no name: the ACL's
+    assert route["path_now"] is None and "down" in route["why"]  # its only tunnel is down
+
+
+async def test_fmc_tunnel_monitor_lag_is_flagged(fmc: respx.MockRouter) -> None:
+    lab(fmc, refused=FMC10_REFUSES, outputs={"d-sp1": {"show crypto ikev2 stats": ike_stats(0, 0, 0)}})
+    async with Client(server()) as c:
+        out = await run(c, "fmc_sdwan_status", {"branch": "mcp-sdwan-t1-spoke1"})
+    lag = [d for d in out["degraded"] if "lags" in d["reasons"][0]]
+    assert lag and lag[0]["severity"] == "warning" and "2 tunnel(s) up" in lag[0]["reasons"][0]
