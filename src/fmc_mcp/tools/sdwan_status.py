@@ -3,19 +3,27 @@ which path each application route takes now and why, and a ranked list of degrad
 
 Sources, all queried when called (ADR-003): the SD-WAN topology's endpoints, `health/tunnelstatuses`,
 `health/pathmonitoredinterfaces` (status and monitoring settings per interface), each device's
-`routing/policybasedroutes` (the app routes), and on the device through FMC: `show path-monitoring`
-(RTT, jitter, loss, MOS), `show policy-route`, `show bgp summary` (or `show route bgp`) and `show crypto
-ikev2 stats` (authentication failures vs retransmits: a wrong pre-shared key vs a dead path).
+`routing/policybasedroutes` (the app routes), the health monitor's `health/metrics` metric
+`pathmonitoring` (RTT, jitter, loss, MOS and peer reachability per path-monitored interface), and on the
+device through FMC: `show path-monitoring`, `show policy-route`, `show bgp summary` (or `show route bgp`)
+and `show crypto ikev2 stats` (authentication failures vs retransmits: a wrong pre-shared key vs a dead
+path).
 
 FMC 10.0.1 refuses `show path-monitoring`, `show policy-route`, `show bgp summary` and `show bgp
 neighbors` through operational/commands (400 "Either command is not supported or entered command is an
 invalid command"); `show route bgp`, `show crypto ikev2 sa` and `show crypto ikev2 stats` work. A
 command FMC refuses is tried once per call and then reported as "not available" for every device.
+The path metrics come from the health monitor instead: FMC 10.0.1 answers `metric:pathmonitoring` (not
+the `path_monitoring` the docs suggest; the spec lists only cpu, mem, interface, ...) with one series per
+interface and value, `rtt_average` and `jitter` in microseconds, `packet_loss` in percent. Its samples
+trail the device by up to ~5 minutes (live, SD-WAN matrix R2).
 """
 
 # No `from __future__ import annotations`: FastMCP inspects signatures at runtime.
+import json
 import re
 import time
+from datetime import UTC, datetime
 from typing import Annotated, Any
 
 from fastmcp import Context
@@ -45,10 +53,26 @@ FMC_TUNNEL_LAG = (
     "saw a change, and fmc_run_show_command('show crypto ikev2 sa') on the device is current."
 )
 NO_PATH_METRICS = (
-    "Path metrics are not available: FMC doesn't pass 'show path-monitoring' through, so a brownout "
-    "(loss, delay, jitter, low MOS) on a link that is still up can't be seen here; wan_links show the "
-    "path-monitoring status only. Check on the device console (show path-monitoring) for the numbers."
+    "Path metrics are not available: FMC doesn't pass 'show path-monitoring' through and its health monitor "
+    "has no pathmonitoring samples for these devices (no interface with path monitoring: "
+    "fmc_configure_wan_interface), so a brownout (loss, delay, jitter, low MOS) on a link that is still "
+    "up can't be seen here; wan_links show the path-monitoring status only."
 )
+
+HEALTH_METRICS_LAG = (
+    "Path metrics come from FMC's health monitor (health/metrics, metric pathmonitoring); its samples "
+    "trailed the device by up to ~5 minutes on FMC 10.0.1 ('sampled_at' per link), so a brownout shows "
+    "a few minutes after it starts and clears a few minutes after it ends."
+)
+# health/metrics metric=pathmonitoring: description -> (link field, divisor to the field's unit)
+PM_FIELDS = {
+    "rtt_average": ("rtt_ms", 1000.0),
+    "jitter": ("jitter_ms", 1000.0),
+    "packet_loss": ("loss_pct", 1.0),
+    "mos": ("mos", 1.0),
+}
+PM_WINDOW = 600  # seconds of history asked for; the newest sample per interface wins
+PM_STEP = 120
 
 _METRICS = {
     "rtt_ms": re.compile(r"(?:\bRTT|\bDelay|round[- ]trip)[^0-9\n]{0,24}?([\d.]+)", re.I),
@@ -79,6 +103,79 @@ def parse_path_monitoring(text: str) -> dict[str, dict[str, float]]:
                     continue
         out[m.group(1).rstrip(",").lower()] = vals
     return out
+
+
+def parse_path_metrics(data: Any) -> dict[str, dict[str, dict[str, Any]]]:
+    """health/metrics (metric=pathmonitoring) -> {device UUID: {interface logical name (lower case):
+    {rtt_ms, jitter_ms, loss_pct, mos, reachable, peer, interface, sampled_at}}}.
+
+    FMC wraps one Prometheus matrix per device in `items[].response` (a JSON string). Each series is one
+    value (`description`) of one interface; a change of the peer's reachability (label `rechability`)
+    starts a new series, so the newest sample per interface and value wins. An unreachable peer reports
+    zeros, which are dropped (they are not measurements)."""
+    best: dict[tuple[str, str, str], tuple[float, Any, dict[str, Any]]] = {}
+    for item in (data or {}).get("items") or []:
+        try:
+            prom = json.loads(item.get("response") or "{}")
+        except (TypeError, ValueError):
+            continue
+        for series in (prom.get("data") or {}).get("result") or []:
+            m = series.get("metric") or {}
+            desc, values = m.get("description"), series.get("values") or []
+            ifname = str(m.get("interface_name") or m.get("interface") or "").lower()
+            if desc not in PM_FIELDS or not values or not ifname:
+                continue
+            try:
+                ts, val = float(values[-1][0]), values[-1][1]
+            except (TypeError, ValueError, IndexError):
+                continue
+            key = (str(m.get("uuid") or item.get("deviceUUID")), ifname, str(desc))
+            if key not in best or ts >= best[key][0]:
+                best[key] = (ts, val, m)
+    out: dict[str, dict[str, dict[str, Any]]] = {}
+    newest: dict[tuple[str, str], float] = {}
+    for (dev, ifname, desc), (ts, val, m) in sorted(best.items(), key=lambda kv: kv[1][0]):
+        row = out.setdefault(dev, {}).setdefault(ifname, {"logical_name": ifname})
+        field, div = PM_FIELDS[desc]
+        try:
+            row[field] = round(float(val) / div, 2)
+        except (TypeError, ValueError):
+            continue
+        if ts >= newest.get((dev, ifname), 0.0):
+            newest[(dev, ifname)] = ts
+            row["reachable"] = str(m.get("rechability") or "").lower() == "yes"
+            row["peer"] = m.get("domain")
+            row["interface"] = m.get("interface")
+            row["sampled_at"] = datetime.fromtimestamp(ts, UTC).strftime("%Y-%m-%dT%H:%M:%SZ")
+    for links in out.values():
+        for row in links.values():
+            if row.get("reachable") is False:
+                for field, _ in PM_FIELDS.values():
+                    row.pop(field, None)
+            for k in ("peer", "interface"):
+                if row.get(k) is None:
+                    row.pop(k, None)
+    return out
+
+
+async def path_metrics(
+    app: FmcApp, device_ids: list[str], domain: str | None
+) -> tuple[dict[str, dict[str, dict[str, Any]]], str | None]:
+    """The health monitor's latest path metrics for these devices (one request), and a note when FMC
+    doesn't answer. Empty when no interface has path monitoring."""
+    ids = sorted({d for d in device_ids if d})
+    if not ids:
+        return {}, None
+    now = int(time.time())
+    flt = (
+        f"deviceUUIDs:{','.join(ids)};metric:pathmonitoring;startTime:{now - PM_WINDOW};"
+        f"endTime:{now};step:{PM_STEP}"
+    )
+    try:
+        data = await app.api.get(await app.config_path("health/metrics", domain), {"filter": flt})
+    except (InvalidRequest, NotFound, UpstreamError) as err:
+        return {}, f"health/metrics (pathmonitoring): {err}"
+    return parse_path_metrics(data), None
 
 
 def parse_bgp_summary(text: str) -> list[dict[str, Any]]:
@@ -213,6 +310,9 @@ def link_severity(link: dict[str, Any]) -> tuple[str, list[str]]:
         bump("critical", f"path monitoring reports {status}")
     elif status == "IDLE":
         bump("warning", "path monitoring is IDLE (no probe answers)")
+    if link.get("reachable") is False:  # the health monitor's view of the probe target
+        peer = f" {link['peer']}" if link.get("peer") else ""
+        bump("critical", f"path monitoring peer{peer} does not answer")
     for key, (warn, crit) in THRESHOLDS.items():
         v = link.get(key)
         if v is None:
@@ -227,7 +327,12 @@ def link_severity(link: dict[str, Any]) -> tuple[str, list[str]]:
             bump("critical", f"MOS {mos:g} <= {MOS_LIMITS[1]:g}")
         elif mos <= MOS_LIMITS[0]:
             bump("warning", f"MOS {mos:g} <= {MOS_LIMITS[0]:g}")
-    if level == "ok" and not status and all(link.get(k) is None for k in (*THRESHOLDS, "mos")):
+    if (
+        level == "ok"
+        and not status
+        and link.get("reachable") is None
+        and all(link.get(k) is None for k in (*THRESHOLDS, "mos"))
+    ):
         level = "unknown"
     return level, reasons
 
@@ -417,11 +522,13 @@ async def branch_status(
     refused: dict[str, str] | None = None,
     pair: dict[str, Any] | None = None,
     supported: Supported | None = None,
+    health: dict[str, dict[str, dict[str, Any]]] | None = None,
 ) -> tuple[dict[str, Any], list[dict[str, Any]]]:
     """One branch (or hub): its row and its degraded-link findings. `refused` collects the show
     commands FMC doesn't pass through, so the next devices don't ask again; `pair` is the HA pair
     record (with failover states) when the endpoint is an HA pair; `supported` is FMC's show-command
-    allowlist (commands it doesn't list are not sent)."""
+    allowlist (commands it doesn't list are not sent); `health` is the health monitor's path metrics
+    by device UUID (parse_path_metrics), used where show path-monitoring gave none."""
     refused = {} if refused is None else refused
     dev = endpoint.get("device") or {}
     name = str(dev.get("name") or endpoint.get("name"))
@@ -485,6 +592,27 @@ async def branch_status(
                 ]
         if bgp is None and (text := await show(ROUTE_BGP)) is not None:
             bgp_routes = parse_route_bgp(text)
+    # the health monitor's numbers: the unit the show commands run on (an HA pair's active unit) first
+    health = health or {}
+    unit_ids = [str(u["id"]) for u in units if u.get("id")]
+    hm = health.get(rec) or next((health[i] for i in unit_ids if i in health), None)
+    if hm:
+        metrics = True
+        for ifname, vals in hm.items():
+            link = links.setdefault(ifname, {"logical_name": ifname, "status": None})
+            for k, v in vals.items():
+                if link.get(k) is None:  # show path-monitoring, when FMC passes it, is newer
+                    link[k] = v
+        evidence["health/metrics pathmonitoring"] = [
+            f"{n}: "
+            + (
+                "peer not reachable"
+                if v.get("reachable") is False
+                else ", ".join(f"{k} {v[k]:g}" for k in ("rtt_ms", "jitter_ms", "loss_pct", "mos") if k in v)
+            )
+            + f" ({v.get('sampled_at')})"
+            for n, v in sorted(hm.items())
+        ]
     peers = ("peerA", "peerB")
     raw_own = [
         x
@@ -523,8 +651,8 @@ async def branch_status(
         if commands and not metrics and not measured and level in ("ok", "unknown"):
             level = NOT_AVAILABLE
             reasons = [
-                "no path metrics through FMC (show path-monitoring not available); path-monitoring "
-                f"status {link.get('status') or 'not reported'}"
+                "no path metrics through FMC (show path-monitoring not available and the health monitor "
+                f"has none for this interface); path-monitoring status {link.get('status') or 'not reported'}"
             ]
         row = {k: v for k, v in link.items() if v is not None and k != "id"}
         row["health"] = level
@@ -625,17 +753,19 @@ def register(reg: ToolRegistrar) -> None:
         domain: Domain = None,
     ) -> Any:
         """SD-WAN health per branch: the WAN links (path-monitoring status and settings, RTT, jitter,
-        loss and MOS from 'show path-monitoring'), the overlay tunnels and iBGP neighbors, every
+        loss, MOS and peer reachability from FMC's health monitor, or 'show path-monitoring' where FMC
+        passes it through), the overlay tunnels and iBGP neighbors, every
         application route (policy-based route) with the interface it uses now and why (the configured
         ordering against the live metrics, with 'show policy-route' as evidence), and one ranked list
         of degraded links (down, lossy, slow, jittery or low MOS; a hub whose tunnels are all down is
         one entry). For a down tunnel the IKEv2 counters tell a pre-shared key mismatch (authentication
         failures growing between two calls) from a dead path (retransmits only). FMC 10.0.1 doesn't pass
         show path-monitoring, show policy-route or show bgp summary through (they are not in its API
-        spec's supported list, so they aren't sent): path metrics are then 'not available', BGP comes
-        from 'show route bgp', and a brownout can't be seen through FMC. Read-only; queried when called.
-        Show commands cost one FMC request per device each (a command FMC refuses is tried once per
-        call); limit them with branch or max_devices."""
+        spec's supported list, so they aren't sent): path metrics come from the health monitor instead
+        (they trail the device by up to ~5 minutes, and a link without path monitoring has none: 'not
+        available'), and BGP comes from 'show route bgp'. Read-only; queried when called. Path metrics
+        cost one FMC request per topology; show commands one per device each (a command FMC refuses is
+        tried once per call); limit them with branch or max_devices."""
         app: FmcApp = get_client(ctx)
         if topology:
             t = await resolve_topology(app, topology, domain)
@@ -680,6 +810,8 @@ def register(reg: ToolRegistrar) -> None:
         out_topos: list[dict[str, Any]] = []
         ranked: list[dict[str, Any]] = []
         skipped: list[str] = []
+        hm_notes: list[str] = []
+        hm_used = False
         for t in topos:
             base = await app.config_path(f"{S2S}/{t['id']}", domain)
             eps = (await app.all(f"{base}/endpoints", cap=2000)).items
@@ -690,6 +822,13 @@ def register(reg: ToolRegistrar) -> None:
             tpath = await app.config_path("health/tunnelstatuses", domain)
             tunnels = (await app.all(tpath, {"filter": f"vpnTopologyId:{t['id']}"}, cap=5000)).items
             tunnels = [x for x in tunnels if (x.get("vpnTopology") or {}).get("id") in (None, t["id"])]
+            ep_ids = [str((ep.get("device") or {}).get("id")) for ep in eps]
+            health, hm_note = await path_metrics(
+                app, [i for d in ep_ids for i in (sorted(members[d]) if d in members else [d])], domain
+            )
+            hm_used = hm_used or bool(health)
+            if hm_note:
+                hm_notes.append(hm_note)
             branches = []
             found_here: list[dict[str, Any]] = []
             # spokes first: they are what "a branch" means, and they get the show-command budget first
@@ -706,7 +845,7 @@ def register(reg: ToolRegistrar) -> None:
                     i for d in (dev_id, *sorted(members.get(dev_id, ()))) for i in pm_by_dev.get(d, [])
                 ]
                 row, found = await branch_status(
-                    app, ep, t, tunnels, monitored, run, domain, refused, pair, supported
+                    app, ep, t, tunnels, monitored, run, domain, refused, pair, supported, health
                 )
                 branches.append(row)
                 found_here += found
@@ -728,8 +867,10 @@ def register(reg: ToolRegistrar) -> None:
                 "mos": {"warning": MOS_LIMITS[0], "critical": MOS_LIMITS[1]},
             },
         }
-        notes = [pm_note] if pm_note else []
-        if "show path-monitoring" in refused:
+        notes = ([pm_note] if pm_note else []) + sorted(set(hm_notes))
+        if hm_used:
+            notes.append(HEALTH_METRICS_LAG)
+        elif "show path-monitoring" in refused:
             notes.append(NO_PATH_METRICS)
         if any(r["interface"] in ("overlay tunnel", "hub") for r in ranked):
             notes.append(FMC_TUNNEL_LAG)

@@ -16,6 +16,12 @@
     uv run python scripts/capture_fixtures.py --sdwan-routing  # app-aware routing reads (F51b) from the
                                                        # SD-WAN branch named by FMC_LIVE_SDWAN_DEVICE: WAN
                                                        # interfaces, PBR, ECMP zones, the route's ACL
+    uv run python scripts/capture_fixtures.py --sdwan-metrics  # health/metrics metric=pathmonitoring (RTT,
+                                                       # jitter, loss, MOS per path-monitored interface)
+                                                       # for FMC_LIVE_SDWAN_DEVICE, stored under the key
+                                                       # FMC_LIVE_SDWAN_LABEL (default baseline) in
+                                                       # ftd_sdwan_pathmetrics.json; run it again with
+                                                       # FMC_LIVE_SDWAN_LABEL=brownout during a CML brownout
 
 The first form expects the mcp-test-* objects and policies the live read tests use (docs/live-tests.md).
 Redaction: the FMC address/hostname and serial are replaced, `links` are dropped. Review the diff
@@ -162,6 +168,26 @@ async def capture_sdwan_routing(app: FmcApp, host: str) -> None:
     print("captured sdwan_app_routing")
 
 
+async def capture_sdwan_metrics(app: FmcApp, host: str) -> None:
+    """fmc_sdwan_status's path metrics (GET only): the last 10 minutes of health/metrics
+    metric=pathmonitoring for one branch, with its UUID replaced by the sdwan_lab id (d-sp1). FMC returns
+    them only when the interface has path monitoring; its samples trail the device by up to ~5 minutes."""
+    name = os.environ.get("FMC_LIVE_SDWAN_DEVICE") or sys.exit("--sdwan-metrics needs FMC_LIVE_SDWAN_DEVICE")
+    label = os.environ.get("FMC_LIVE_SDWAN_LABEL", "baseline")
+    devs = await app.all(await app.config_path("devices/devicerecords"))
+    dev = next(d for d in devs.items if d.get("name") == name)
+    now = int(time.time())
+    flt = f"deviceUUIDs:{dev['id']};metric:pathmonitoring;startTime:{now - 600};endTime:{now};step:60"
+    data = await app.api.get(await app.config_path("health/metrics"), {"filter": flt, "expanded": "true"})
+    text = json.dumps(scrub(data, host)).replace(str(dev["id"]), "d-sp1")
+    path = OUT / "ftd_sdwan_pathmetrics.json"
+    out = json.loads(path.read_text()) if path.exists() else {}
+    out.setdefault("_source", f"recorded from FMC by capture_fixtures.py --sdwan-metrics ({name})")
+    out[label] = json.loads(text)
+    path.write_text(json.dumps(out, indent=1) + "\n")
+    print("captured ftd_sdwan_pathmetrics", label)
+
+
 async def capture_bundle(app: FmcApp, host: str) -> None:
     """Record every GET of a real export (path -> response) for tests/unit/test_bundle.py to replay."""
     from fmc_mcp.tools.bundle import build_bundle
@@ -272,6 +298,13 @@ async def main() -> None:
     if "--bundle" in sys.argv:
         try:
             await capture_bundle(app, host)
+        finally:
+            await app.aclose()
+        return
+    if "--sdwan-metrics" in sys.argv:
+        try:
+            OUT.mkdir(parents=True, exist_ok=True)
+            await capture_sdwan_metrics(app, host)
         finally:
             await app.aclose()
         return
