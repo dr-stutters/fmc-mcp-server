@@ -10,7 +10,7 @@ from typing import Annotated, Any
 from fastmcp import Context
 from pydantic import Field
 
-from fmc_mcp._core import ToolRegistrar, UpstreamError, get_client
+from fmc_mcp._core import InvalidRequest, ToolRegistrar, UpstreamError, get_client
 from fmc_mcp.client import FmcApp
 from fmc_mcp.tools.common import Domain, is_system, ref_label, resolve_in
 from fmc_mcp.tools.devices import DEVICES, HA_PAIRS
@@ -228,7 +228,7 @@ async def threat_posture(app: FmcApp, policy: str, domain: str | None) -> dict[s
                     "fmc_api_call",
                     method="PUT",
                     path=path_hint,
-                    body={**base_body, "action": "BLOCK", "logBegin": True},
+                    body={**base_body, "action": "BLOCK", "logBegin": True, "sendEventsToFMC": True},
                 ),
             )
         )
@@ -298,7 +298,7 @@ async def threat_posture(app: FmcApp, policy: str, domain: str | None) -> dict[s
     try:
         _, si = await _si_policy(app, acp, domain)
         si_rows = _si_rows(si)
-    except UpstreamError as e:
+    except (UpstreamError, InvalidRequest) as e:
         notes.append(f"Security Intelligence not readable: {e}")
         si = {}
     if si:
@@ -388,7 +388,12 @@ async def threat_posture(app: FmcApp, policy: str, domain: str | None) -> dict[s
                 + _call("fmc_set_decryption_policy", access_policy=name, decryption_policy="<name>"),
             )
         )
-    naps = await app.all(await app.config_path(POLICY_KINDS["network_analysis"], domain), expanded=False)
+    nap_names: list[str] = []
+    try:
+        naps = await app.all(await app.config_path(POLICY_KINDS["network_analysis"], domain), expanded=False)
+        nap_names = [str(p.get("name")) for p in naps.items]
+    except UpstreamError as e:
+        notes.append(f"Network analysis policies not readable: {e}")
     findings.append(_finding("network_analysis_policy", "info", NAP_NOTE, "Check it in the FMC UI."))
 
     # Licences on the assigned devices.
@@ -458,7 +463,7 @@ async def threat_posture(app: FmcApp, policy: str, domain: str | None) -> dict[s
         else None,
         "decryption_policy": decryption.get("name"),
         "identity_policy": (acp.get("identityPolicySetting") or {}).get("name"),
-        "network_analysis_policies_available": [p.get("name") for p in naps.items] or None,
+        "network_analysis_policies_available": nap_names or None,
         "devices": devices or None,
         "findings": findings,
     }
