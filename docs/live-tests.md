@@ -39,6 +39,29 @@ Inputs that depend on your own FMC and FTD come from these variables, in the env
 | `FMC_LIVE_IDENTITY_POLICY` | `mcp-test-idp` | An identity policy on the realm, selected in `mcp-test-ftd-acp` (FMC's REST API can't select it; use the access policy editor) |
 | `FMC_LIVE_HYGIENE_POLICY` | `mcp-test-hygiene-acp` | An access policy seeded with one finding per static `fmc_policy_audit` check (any-any allow, two rules differing only in destination, a duplicate host, a rule on an expired time range, a rule that logs nothing), for `test_live_hygiene.py` |
 
+### SD-WAN matrix (`test_live_sdwan_matrix.py`, F53)
+
+| Variable | Example | Used by |
+|---|---|---|
+| `FMC_LIVE_SDWAN_DOMAIN` | `Global/leaf` | Optional: the domain holding the SD-WAN devices |
+| `FMC_LIVE_SDWAN_PREFIX` | `mcp-sdwan` | Optional (default `mcp-sdwan`): prefix of every topology, route and template the suite creates |
+| `FMC_LIVE_SDWAN_WRITE` | `1` | Required for every cell: they create topologies and deploy every device in them |
+| `FMC_LIVE_SDWAN_T1_HUB` / `_T1_SPOKES` | `t1-hub` / `t1-spoke1,t1-spoke2` | T1 and T4 devices (spokes comma-separated) |
+| `FMC_LIVE_SDWAN_T2_HUB` / `_T2_HUB2` / `_T2_SPOKES` | `t2-hub` / `t2-hub2` / `t2-spoke1,t2-spoke2` | T2 (dual hub) |
+| `FMC_LIVE_SDWAN_T3_HA` / `_T3_SPOKES` | `t3-hub-ha` / `t3-spoke1,t3-spoke2` | T3: the hub HA pair's name, and its spokes |
+| `FMC_LIVE_SDWAN_WAN` / `_BACKUP_WAN` | `mpls` / `inet` | Logical names of the WAN interface (and the optional backup WAN) on every device |
+| `FMC_LIVE_SDWAN_INSIDE` | `inside` | Logical name of the inside interface advertised into the overlay |
+| `FMC_LIVE_SDWAN_ZONE` | `sdwan-overlay` | Security zone for the hub DVTI and spoke VTIs |
+| `FMC_LIVE_SDWAN_POOL` / `_POOL2` | `192.0.2.0/27` / `192.0.2.32/27` | Spoke tunnel pools of the hub (and of the T2 backup hub) |
+| `FMC_LIVE_SDWAN_OSPF_NETWORKS` | `overlay-net,inside-net` | C2 OSPF variant: network objects put in area 0 on every member (skipped without it) |
+| `FMC_LIVE_SDWAN_PATH_MONITORING` | `auto` | Optional (default `auto`): C3 path monitoring on the WAN interfaces (`auto` needs a default route on them) |
+| `FMC_LIVE_SDWAN_TRACE_SRC` / `_TRACE_DST` | `192.0.2.10` / `198.51.100.10` | Optional: C3 packet-tracer flow that the app route must catch (PBR-LOOKUP phase) |
+| `FMC_LIVE_SDWAN_APP_DEST` | `198.51.100.0/24` | Optional: the destination the C3 app route matches (default: the ICMP application) |
+| `FMC_LIVE_SDWAN_ONBOARD` | `t1-spoke3` | C4: the spoke left out of the topology and onboarded from a template of the first spoke |
+| `FMC_LIVE_SDWAN_ONBOARD_VAR_<NAME>` | `FMC_LIVE_SDWAN_ONBOARD_VAR_INSIDEIP=...` | C4: template variable values for the onboarded spoke |
+
+The cells, their evidence and the fault runs are recorded in [sdwan-matrix.md](sdwan-matrix.md).
+
 The FTD tests (`needs_ftd`) need `FMC_LIVE_DEVICE`, `FMC_LIVE_FTD_HOST`, `FMC_LIVE_FTD_REG_KEY`,
 `FMC_LIVE_FTD_OUTSIDE_IP`, `FMC_LIVE_FTD_GATEWAY` and `FMC_LIVE_TRACE_TARGET`.
 `scripts/capture_fixtures.py --ftd` reads `FMC_LIVE_DEVICE` and `FMC_LIVE_TRACE_TARGET` from the environment.
