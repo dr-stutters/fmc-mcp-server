@@ -127,6 +127,32 @@ unnumbered: the hub has two FULL neighbours on its virtual-access interfaces, ea
 install OSPF routes** to the hub's network, the other spoke's network and its loopback. Every pair of the hub and spoke hosts
 pings (5-10 ms).
 
+## Re-proof on v0.13.1 (2026-10-18, 10:25-10:55 UTC)
+
+The two features 0.13.1 ships for SD-WAN were re-proven live with the released fmc-mcp 0.13.1 (core 0.14.2) and
+cml-mcp main, on `mcp-sdwan-t1` in `Global/mcp-test-leaf`, using the tools only (no `fmc_api_call` for the
+topology). Everything was torn down afterwards.
+
+| Cell | Result | Evidence |
+|---|---|---|
+| T1 C1/C3, `fmc_create_sdwan_topology` with `backup_wan_interface` (R1) | **pass** | one call built `mcp-sdwan-t1` and the companion `mcp-sdwan-t1-wan2` (second hub DVTI, loopback and pool); one deploy; each backup-WAN spoke has two IKEv2 SAs and ECMP routes over both hub tunnel addresses; all host pairs ping |
+| T1 C3, dead WAN on the primary WAN (spoke1 `mpls` cable pulled) | **pass** | 0 % loss in the reachability rounds that started within about 5 s of the pull; routes on the second-WAN tunnel only about 31 s after the pull; ECMP back about 10 s after the link returned, with no loss |
+| T1 C5, brownout detected by `fmc_sdwan_status` (R2) | **pass** | `mpls` and its tunnel critical in `degraded` from the first poll (2 min); numbers at about 6.5 min: RTT 302 ms, jitter 40 ms, loss 30 %, MOS 0 (baseline 1.5 ms, 0 %, 4.4); the second WAN stayed ok |
+
+The matrix's T1 C5 brownout part is now **pass**, so T1 C5 is pass. T1 C3 stays **fail** only because of R9 (device
+behaviour).
+
+Notes from the run:
+- For the first ~5 minutes of the brownout, FMC's `pathmonitoring` series for `mpls` reported `rechability: No` with
+  zero values, while the device's `show path-monitoring` said reachable, 302 ms and 30 % loss. In that window
+  `fmc_sdwan_status` says "path monitoring peer ... does not answer" (critical) instead of giving numbers. After that,
+  the measured values came through.
+- `sampled_at` is the last step of the health-monitor range, and FMC repeats stale values at every step, so it can
+  look current while the value is minutes old.
+- `bgp_routes` in `fmc_sdwan_status` keeps only the first next hop of an ECMP route.
+- `fmc_delete_s2s_vpn`'s preview names the companion topology, and both deletes plus the DVTI, loopback and pool
+  cleanup left 0 topologies and no SAs.
+
 ## FMC-side setup before the cells
 
 The recipes leave the data interfaces unconfigured, so the T1 underlay is built with the MCP tools first (kept
