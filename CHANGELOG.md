@@ -1,6 +1,12 @@
 # Changelog
 
-## Unreleased
+## 0.13.0 (2026-10-18)
+
+Wave 4 Phase D, Firewall SD-WAN (F51 a–d): topology authoring, application-aware routing, SD-WAN status with a
+troubleshooting prompt, and device templates; `fmc_register_device` takes the registration key from server config.
+153 tools with every tier on (66 read, 76 write, 11 dangerous) and six prompts. Run live in the F53 matrix on
+FMC 10.0.1 with 12 FTDv 10.0 (T1–T4 × C1–C5, [docs/sdwan-matrix.md](docs/sdwan-matrix.md)): 5 pass, 9 fail, 3 blocked;
+the fixes for the failed cells are below (R1–R3, R5–R7). Failed cells are re-run after release.
 
 ### Added
 - **SD-WAN status and troubleshooting (F51c, #107).** `fmc_sdwan_status(topology or branch)` reports, per
@@ -40,8 +46,6 @@
   already in a different policy-based route block, and a failed route deletes the new access list again.
   `fmc_delete_app_route` removes the forwarding action (and the policy-based route when it was the last one)
   and deletes the access list unless another route still uses it. All write tier, preview-first.
-- `fmc_get_routing` lists policy-based routes in full (match, egress interfaces, how one is picked) instead of
-  a count, and adds `wan_interfaces` (priority, path monitoring, HTTP monitoring of each configured interface).
 - `scripts/capture_fixtures.py --sdwan-routing` records the F51b fixtures (GETs only) from an SD-WAN branch
   (`FMC_LIVE_SDWAN_DEVICE`).
 - **Device templates (F51d, part of #107).** `fmc_list_device_templates` and `fmc_get_device_template`
@@ -68,7 +72,34 @@
   missing key is a clear error before anything is sent. `reg_key` is now optional and still overrides it.
   docs/deploying.md §9.
 
+### Changed
+- `fmc_get_routing` lists policy-based routes in full (match, egress interfaces, how one is picked) instead of
+  a count, and adds `wan_interfaces` (priority, path monitoring, HTTP monitoring of each configured interface).
+- `fmc_register_device`: `reg_key` is optional; left out, the key comes from `FMC_FTD_REG_KEY` (see Added).
+- `fmc_get_vpn_topology` shows SD-WAN roles (primary and backup hub, spoke pools, backup WAN interfaces).
+- Prompt `fmc_onboard_ftd` takes an optional device `template`.
+
 ### Fixed
+- **SD-WAN, found by the F53 live matrix on FMC 10.0.1:**
+  - `fmc_configure_wan_interface` and `fmc_update_interface` on a VTI got 400 "managementOnly must be excluded";
+    VTI PUT bodies now drop the physical-only fields (R3, #130).
+  - `fmc_update_sdwan_topology` got 422 on `ipsecSettings`; it now PUTs only the top-level topology fields plus
+    `autoVpnSettings`. The preview warns that multipath across two hubs drops asymmetric traffic (R6, #131).
+  - `spokes[].backup_wan_interface` was stored by nothing (FMC 10.0.1 answers 2xx and drops it) while the tool
+    reported success; spokes are read back after the POST, and a dropped backup interface fails the call and
+    undoes the change. The preview says so (R1, #132).
+  - `fmc_sdwan_status` relied on `show path-monitoring`, `show policy-route` and `show bgp summary`, which FMC
+    10.0.1's command API refuses. Each refused command is tried once and reported as "not available";
+    `show route bgp` is the fallback; `show crypto ikev2 stats` tells a PSK mismatch from a dead path; links
+    without metrics get health "not available" with a brownout note; each tunnel is ranked once and an all-down
+    hub is one rolled-up entry; FMC's tunnel-monitor lag gets a warning; app routes are named; `path_now` leaves
+    a down VTI. The `fmc_sdwan_troubleshoot` prompt no longer suggests refused commands or `backup_wan_interface`
+    (R2, #133).
+  - `fmc_sdwan_status` on an HA-pair hub: the hub is matched by the pair, its members and `<pair>[<unit>]`,
+    `branch=<member>` resolves to the pair, `ha.units` reports failover states, and show commands run on the
+    active unit (R7, #134).
+  - `fmc_create_sdwan_topology(overlay='ospf')` now warns in the preview that FMC 10.0.1's AUTO_VPN addressing
+    (unnumbered hub DVTI, numbered spoke VTIs, no OSPF network-type field) leaves spokes without OSPF routes (R5, #135).
 - **`fmc_license_status` showed an empty smart-licence `metadata`.** FMC 10 returns `authStatus` (for example
   `OUT_OF_COMPLIANCE`), `virtualAccount`, `exportControl`, `evalUsed`, `evalExpiresInDays` and the last sync and
   renewal times in `items[].metadata` of `/license/smartlicenses`, and `slim()` dropped them. They are now lifted
@@ -76,6 +107,10 @@
   licence without export control again falls back to DES instead of being treated as strong-crypto capable.
 
 ### Notes
+- F53 platform limits on FMC 10.0.1 (blocked cells): device templates can't be generated from FTDv for KVM
+  ("version or model of the device is not supported"), and the FTDv cluster attempt on CML/KVM hung in FMC's
+  cluster-create job. OSPF over the SD-WAN overlay carries no traffic (R5). A second WAN tunnel per spoke needs
+  the FMC 10 wizard's payload, which is not captured yet (R1 follow-up).
 - The metric `forwardingActionType` values (`SET_EGRESS_INTF_BY_JITTER`, `_LOST_PKTS`, `_RTT`, `_MOS`) are not
   in FMC 10.0.1's OpenAPI spec (only `_ORDER` and `_PRIORITY` are); Cisco's guide spells them
   `SET_EGRESS_INTERFACE_BY_*`. The INTF spelling matches working payloads; live verification is pending (F53).
