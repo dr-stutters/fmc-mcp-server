@@ -53,6 +53,9 @@ Inputs that depend on your own FMC and FTD come from these variables, in the env
 | `FMC_LIVE_SDWAN_INSIDE` | `inside` | Logical name of the inside interface advertised into the overlay |
 | `FMC_LIVE_SDWAN_ZONE` | `sdwan-overlay` | Security zone for the hub DVTI and spoke VTIs |
 | `FMC_LIVE_SDWAN_POOL` / `_POOL2` | `192.0.2.0/27` / `192.0.2.32/27` | Spoke tunnel pools of the hub (and of the T2 backup hub) |
+| `FMC_LIVE_SDWAN_OSPF_NETWORKS` | `overlay-net,inside-net` | C2 OSPF variant: network objects put in area 0 on every member (skipped without it) |
+| `FMC_LIVE_SDWAN_PATH_MONITORING` | `auto` | Optional (default `auto`): C3 path monitoring on the WAN interfaces (`auto` needs a default route on them) |
+| `FMC_LIVE_SDWAN_TRACE_SRC` / `_TRACE_DST` | `192.0.2.10` / `198.51.100.10` | Optional: C3 packet-tracer flow that the app route must catch (PBR-LOOKUP phase) |
 | `FMC_LIVE_SDWAN_APP_DEST` | `198.51.100.0/24` | Optional: the destination the C3 app route matches (default: the ICMP application) |
 | `FMC_LIVE_SDWAN_ONBOARD` | `t1-spoke3` | C4: the spoke left out of the topology and onboarded from a template of the first spoke |
 | `FMC_LIVE_SDWAN_ONBOARD_VAR_<NAME>` | `FMC_LIVE_SDWAN_ONBOARD_VAR_INSIDEIP=...` | C4: template variable values for the onboarded spoke |

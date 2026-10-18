@@ -64,8 +64,9 @@ def hub_of(topology: str) -> str:
     return live_env(f"FMC_LIVE_SDWAN_{key}_HUB")
 
 
-def topo_name(topology: str, component: str) -> str:
-    return f"{prefix()}-{topology.lower()}-{component.lower()}"
+def topo_name(topology: str, component: str, overlay: str = "bgp") -> str:
+    suffix = "-ospf" if overlay == "ospf" else ""
+    return f"{prefix()}-{topology.lower()}-{component.lower()}{suffix}"
 
 
 def skip_reason(topology: str, component: str, writes: bool = True) -> str | None:
@@ -98,7 +99,7 @@ def create_args(
     topology: str, component: str, overlay: str = "bgp", spokes: list[str] | None = None
 ) -> dict[str, Any]:
     args: dict[str, Any] = {
-        "name": topo_name(topology, component),
+        "name": topo_name(topology, component, overlay),
         "hub": hub_of(topology),
         "hub_wan_interface": live_env("FMC_LIVE_SDWAN_WAN"),
         "hub_inside_interfaces": [live_env("FMC_LIVE_SDWAN_INSIDE")],
@@ -167,6 +168,7 @@ async def topology(client: Client[Any], request: pytest.FixtureRequest) -> Async
         yield {
             "topology": topo,
             "component": comp,
+            "overlay": overlay,
             "name": args["name"],
             "devices": devices,
             "spokes": spokes,
@@ -197,6 +199,18 @@ async def test_c1_build_deploy_teardown(client: Client[Any], topology: dict[str,
 
 
 # --- C2 overlay routing -----------------------------------------------------------------------------
+# FMC 10.0.1 refuses 'show bgp summary', 'show bgp neighbors', 'show policy-route' and
+# 'show path-monitoring' through its show-command API; 'show route bgp', 'show route ospf' and
+# 'show crypto ikev2 sa' work.
+
+
+async def ospf(client: Client[Any], devices: list[str], add: bool) -> None:
+    networks = [n.strip() for n in live_env("FMC_LIVE_SDWAN_OSPF_NETWORKS").split(",") if n.strip()]
+    for device in devices:
+        args: dict[str, Any] = {"device": device, "area": "0", **domain_args()}
+        args |= {"add_networks": networks} if add else {"remove_process": True}
+        await apply(client, "fmc_configure_ospf", args)
+    await deploy(client, devices, f"F53 C2 OSPF {'on' if add else 'off'}")
 
 
 @pytest.mark.parametrize(
@@ -204,15 +218,19 @@ async def test_c1_build_deploy_teardown(client: Client[Any], topology: dict[str,
 )
 async def test_c2_overlay_routing(client: Client[Any], topology: dict[str, Any]) -> None:
     hub = topology["devices"][0]
-    if topology["name"].endswith("c2") and live_env("FMC_LIVE_SDWAN_OSPF_ONLY") == "1":
-        pytest.skip("FMC_LIVE_SDWAN_OSPF_ONLY=1")
-    summary = await show(client, hub, "show bgp summary")
-    text = str(summary)
-    if "ospf" in str(topology):
-        route = await show(client, hub, "show route ospf")
-        assert " O " in str(route) or "O IA" in str(route), route
-    else:
-        assert "Neighbor" in text and "Active" not in text.split("Neighbor", 1)[-1], text
+    if topology["overlay"] != "ospf":
+        route = await show(client, hub, "show route bgp")
+        assert str(route).count("B ") >= len(topology["spokes"]), route
+        return
+    if not live_env("FMC_LIVE_SDWAN_OSPF_NETWORKS"):
+        pytest.skip("FMC_LIVE_SDWAN_OSPF_NETWORKS not set (docs/live-tests.md)")
+    await ospf(client, topology["devices"], add=True)
+    try:
+        for device in [hub, *topology["spokes"]]:
+            route = await show(client, device, "show route ospf")
+            assert "O " in str(route), f"{device} has no OSPF routes: {route}"
+    finally:
+        await ospf(client, topology["devices"], add=False)
 
 
 # --- C3 WAN interfaces and application routes -------------------------------------------------------
@@ -222,11 +240,18 @@ async def test_c2_overlay_routing(client: Client[Any], topology: dict[str, Any])
 async def test_c3_app_route(client: Client[Any], topology: dict[str, Any]) -> None:
     spoke = topology["spokes"][0]
     wans = [w for w in (live_env("FMC_LIVE_SDWAN_WAN"), live_env("FMC_LIVE_SDWAN_BACKUP_WAN")) if w]
+    monitoring = live_env("FMC_LIVE_SDWAN_PATH_MONITORING", "auto")
     for prio, wan in enumerate(wans, start=1):
         await apply(
             client,
             "fmc_configure_wan_interface",
-            {"device": spoke, "interface": wan, "priority": prio, "path_monitoring": "auto", **domain_args()},
+            {
+                "device": spoke,
+                "interface": wan,
+                "priority": prio,
+                "path_monitoring": monitoring,
+                **domain_args(),
+            },
         )
     route = f"{prefix()}-{topology['topology'].lower()}-c3-route"
     dest = live_env("FMC_LIVE_SDWAN_APP_DEST")
@@ -235,17 +260,29 @@ async def test_c3_app_route(client: Client[Any], topology: dict[str, Any]) -> No
         "name": route,
         "ingress_interfaces": [live_env("FMC_LIVE_SDWAN_INSIDE")],
         "egress_interfaces": wans,
-        "order_by": "rtt",
+        "order_by": "priority",
         **({"destinations": [dest]} if dest else {"applications": ["ICMP"]}),
         **domain_args(),
     }
     await apply(client, "fmc_create_app_route", args)
     try:
         await deploy(client, [spoke], "F53 C3 app route")
-        pbr = await show(client, spoke, "show policy-route")
-        assert route in str(pbr) or "route-map" in str(pbr), pbr
-        mon = await show(client, spoke, "show path-monitoring")
-        assert wans[0] in str(mon) or "RTT" in str(mon).upper(), mon
+        routing = await call(client, "fmc_get_routing", {"device": spoke, **domain_args()})
+        assert route in str(routing), routing
+        src, dst = live_env("FMC_LIVE_SDWAN_TRACE_SRC"), live_env("FMC_LIVE_SDWAN_TRACE_DST")
+        if src and dst:
+            trace = await call(
+                client,
+                "fmc_packet_tracer",
+                {
+                    "device": spoke,
+                    "protocol": "icmp",
+                    "source_ip": src,
+                    "destination_ip": dst,
+                    **domain_args(),
+                },
+            )
+            assert "PBR-LOOKUP" in str(trace), trace
     finally:
         await apply(client, "fmc_delete_app_route", {"device": spoke, "name": route, **domain_args()})
         await deploy(client, [spoke], "F53 C3 app route removed")
