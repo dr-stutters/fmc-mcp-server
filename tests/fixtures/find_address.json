@@ -1,0 +1,206 @@
+{
+ "_source": "object/dynamicobjects and policy/prefilterpolicies recorded from FMC 10.0.1 (2026-10-18, GETs); dynamic-object mappings, prefilter rules and VPN topology/endpoints in the FMC 10.0.1 spec example shapes (getDynamicObjectMappings, getAllPrefilterRule, getAllVpnEndpoint expanded) with the lab's mcp-test-* objects, since the lab had none of those at recording time",
+ "object/dynamicobjects": {
+  "items": [
+   {
+    "id": "00000000-0000-0ed3-0000-021474842550",
+    "name": "mcp-test-quarantine",
+    "description": "mcp live test",
+    "type": "DynamicObject",
+    "objectType": "IP",
+    "metadata": {
+     "readOnly": {
+      "state": true,
+      "reason": "DOMAIN"
+     },
+     "timestamp": 1792206291965,
+     "domain": {
+      "name": "Global",
+      "id": "e276abec-e0f2-11e3-8169-6d9ed49b625f",
+      "type": "Domain"
+     }
+    }
+   }
+  ],
+  "paging": {
+   "offset": 0,
+   "limit": 25,
+   "count": 1,
+   "pages": 1
+  }
+ },
+ "mappings": {
+  "items": [
+   {
+    "mapping": "10.10.10.80"
+   },
+   {
+    "mapping": "10.99.1.0/24"
+   }
+  ]
+ },
+ "policy/prefilterpolicies": {
+  "items": [
+   {
+    "type": "PrefilterPolicy",
+    "name": "Default Prefilter Policy",
+    "id": "4897c8f4-e211-4661-b0a4-25b0826cded9"
+   }
+  ],
+  "paging": {
+   "offset": 0,
+   "limit": 25,
+   "count": 1,
+   "pages": 1
+  }
+ },
+ "prefilterrules": {
+  "items": [
+   {
+    "metadata": {
+     "ruleIndex": 1,
+     "domain": {
+      "name": "Global",
+      "id": "e276abec-e0f2-11e3-8169-6d9ed49b625f",
+      "type": "Domain"
+     }
+    },
+    "action": "FASTPATH",
+    "enabled": true,
+    "type": "PrefilterRule",
+    "name": "mcp-test-fastpath-web",
+    "ruleType": "PREFILTER",
+    "bidirectional": true,
+    "id": "00000000-0000-0ed3-0000-021474899001",
+    "sourceNetworks": {
+     "objects": [
+      {
+       "type": "Host",
+       "overridable": false,
+       "name": "mcp-test-web",
+       "id": "00000000-0000-0ed3-0000-021474837185"
+      }
+     ]
+    },
+    "destinationNetworks": {
+     "literals": [
+      {
+       "type": "Network",
+       "value": "192.0.2.0/24"
+      }
+     ]
+    },
+    "logBegin": false,
+    "logEnd": false
+   },
+   {
+    "metadata": {
+     "ruleIndex": 2,
+     "domain": {
+      "name": "Global",
+      "id": "e276abec-e0f2-11e3-8169-6d9ed49b625f",
+      "type": "Domain"
+     }
+    },
+    "action": "BLOCK",
+    "enabled": true,
+    "type": "PrefilterRule",
+    "name": "mcp-test-block-any",
+    "ruleType": "PREFILTER",
+    "bidirectional": false,
+    "id": "00000000-0000-0ed3-0000-021474899002",
+    "sourceNetworks": {
+     "literals": [
+      {
+       "type": "Network",
+       "value": "0.0.0.0/0"
+      }
+     ]
+    }
+   }
+  ],
+  "paging": {
+   "offset": 0,
+   "limit": 25,
+   "count": 2,
+   "pages": 1
+  }
+ },
+ "policy/ftds2svpns": {
+  "items": [
+   {
+    "id": "00000000-0000-0ed3-0000-021474899100",
+    "name": "mcp-test-s2s",
+    "type": "FTDS2SVpn",
+    "topologyType": "POINT_TO_POINT",
+    "routeBased": false,
+    "ikeV1Enabled": false,
+    "ikeV2Enabled": true
+   }
+  ],
+  "paging": {
+   "offset": 0,
+   "limit": 25,
+   "count": 1,
+   "pages": 1
+  }
+ },
+ "endpoints": {
+  "items": [
+   {
+    "name": "mcp-ftd1",
+    "id": "00000000-0000-0ed3-0000-021474899101",
+    "type": "EndPoint",
+    "extranet": false,
+    "device": {
+     "name": "mcp-ftd1",
+     "id": "2c11eaca-c7e3-11f1-a7ce-a8b537b1b4bb",
+     "type": "Device"
+    },
+    "interface": {
+     "name": "outside",
+     "id": "00000000-0000-0ed3-0000-021474899102"
+    },
+    "protectedNetworks": {
+     "networks": [
+      {
+       "type": "Network",
+       "overridable": false,
+       "name": "mcp-test-dmz-net",
+       "id": "00000000-0000-0ed3-0000-021474837239"
+      }
+     ]
+    },
+    "connectionType": "BIDIRECTIONAL",
+    "peerType": "PEER"
+   },
+   {
+    "name": "mcp-test-peer",
+    "id": "00000000-0000-0ed3-0000-021474899103",
+    "type": "EndPoint",
+    "extranet": true,
+    "extranetInfo": {
+     "name": "mcp-test-peer",
+     "ipAddress": "192.0.2.20",
+     "isDynamicIP": false
+    },
+    "protectedNetworks": {
+     "networks": [
+      {
+       "name": "IPv4-Private-172.16.0.0-12",
+       "id": "b7a78a7d-20c5-47b2-b02f-86b4360112ac"
+      }
+     ]
+    },
+    "connectionType": "BIDIRECTIONAL",
+    "peerType": "PEER"
+   }
+  ],
+  "paging": {
+   "offset": 0,
+   "limit": 25,
+   "count": 2,
+   "pages": 1
+  }
+ }
+}
