@@ -185,6 +185,8 @@
       ],
       "references": [
         "fmc_rule_lookup",
+        "fmc_user_ip_lookup",
+        "fmc_get_identity_sources",
         "fmc_packet_tracer",
         "fmc_list_routes",
         "fmc_get_hit_counts",
@@ -526,6 +528,10 @@
       "tier": "read",
       "title": "Identity policies"
     },
+    "fmc_get_identity_sources": {
+      "tier": "read",
+      "title": "Identity sources (ISE/pxGrid, realms, sessions)"
+    },
     "fmc_get_intrusion_policy": {
       "tier": "read",
       "title": "Intrusion policy summary"
@@ -821,6 +827,10 @@
     "fmc_user_identity_sessions": {
       "tier": "read",
       "title": "User identity sessions"
+    },
+    "fmc_user_ip_lookup": {
+      "tier": "read",
+      "title": "Who is on an IP / where is a user"
     },
     "fmc_where_used": {
       "tier": "read",

@@ -71,6 +71,11 @@ gives a definite answer that the later steps cannot change. All steps before ste
    destination={dst}, protocol="{proto}"{port_arg}. {zone_note} If `device.egress` is null, no route
    covers {destination}. Note the first definite match, any earlier 'conditional' rules (application,
    URL or user conditions) and the default action. This is what FMC's configuration says.
+   When user or group rules are involved, `identity` shows the user FMC has on {source} and their
+   groups (an `error` there means FMC's identity sessions aren't readable: ask
+   {tool_ref("fmc_user_ip_lookup")} or ISE who is on {source} and pass identities=[user, groups]).
+   No user on {source} means user rules can't match it: {tool_ref("fmc_get_identity_sources")} says
+   whether ISE or another source reports users at all.
 
 2. Live verdict: {tool_ref("fmc_packet_tracer")} with device={dev}{iface_arg}, protocol="{proto}",
    source_ip={src}, destination_ip={dst}{tracer_port} (it picks the ingress interface from the source).
