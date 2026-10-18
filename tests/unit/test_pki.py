@@ -32,7 +32,9 @@ CA_PEM = (Path(__file__).resolve().parent.parent / "fixtures" / "test-ca-cert.tx
 DASH = "-" * 5
 KEY_BODY = "FAKE0KEY0BODY0FOR0TESTS0ONLY"  # not key material
 KEY = f"{DASH}BEGIN PRIVATE KEY{DASH}\n{KEY_BODY}\n{DASH}END PRIVATE KEY{DASH}\n"
-ENC_KEY = KEY.replace("BEGIN PRIVATE", "BEGIN ENCRYPTED PRIVATE").replace("END PRIVATE", "END ENCRYPTED PRIVATE")
+ENC_KEY = KEY.replace("BEGIN PRIVATE", "BEGIN ENCRYPTED PRIVATE").replace(
+    "END PRIVATE", "END ENCRYPTED PRIVATE"
+)
 
 
 def server(**kw: Any) -> Any:
@@ -82,17 +84,28 @@ async def test_list_hides_system_trusted_cas(fmc: respx.MockRouter) -> None:
     async with Client(server()) as c:
         out = await run(c, "fmc_get_certificate", {"response_format": "json"})
         names = {r["name"]: r for r in out["results"]}
-        assert set(names) == {"mcp-test-resign-ca", "mcp-test-csr-ca", "mcp-test-web-cert", "mcp-test-server-ca"}
+        assert set(names) == {
+            "mcp-test-resign-ca",
+            "mcp-test-csr-ca",
+            "mcp-test-web-cert",
+            "mcp-test-server-ca",
+        }
         assert names["mcp-test-csr-ca"]["csr_pending"] is True
         assert "privateKey" not in json.dumps(out) and "********" not in json.dumps(out)
-        both = await run(c, "fmc_get_certificate", {"kind": "trusted_ca", "include_system": True, "response_format": "json"})
+        both = await run(
+            c,
+            "fmc_get_certificate",
+            {"kind": "trusted_ca", "include_system": True, "response_format": "json"},
+        )
         assert {r["name"] for r in both["results"]} == {"Cisco-Licensing-Root-CA", "mcp-test-server-ca"}
 
 
 async def test_show_internal_ca_with_pem_and_usage(fmc: respx.MockRouter) -> None:
     mock_catalog(fmc)
     async with Client(server()) as c:
-        out = await run(c, "fmc_get_certificate", {"certificate": "mcp-test-resign-ca", "response_format": "json"})
+        out = await run(
+            c, "fmc_get_certificate", {"certificate": "mcp-test-resign-ca", "response_format": "json"}
+        )
     assert out["certificate_pem"].startswith("-----BEGIN CERTIFICATE-----")
     assert out["used_by"] == ["decryption rule mcp-test-tls/resign-outbound (resign CA)"]
     assert any("trusted root" in n for n in out["notes"])
@@ -104,16 +117,25 @@ async def test_show_trusted_ca_used_by_policy(fmc: respx.MockRouter) -> None:
     pol = {**POLICY, "trustedCAs": {"objects": [{"id": TRUSTED[1]["id"], "name": TRUSTED[1]["name"]}]}}
     fmc.get(DEC).mock(return_value=items([pol]))
     async with Client(server()) as c:
-        out = await run(c, "fmc_get_certificate", {"certificate": "mcp-test-server-ca", "response_format": "json"})
+        out = await run(
+            c, "fmc_get_certificate", {"certificate": "mcp-test-server-ca", "response_format": "json"}
+        )
     assert out["used_by"] == ["decryption policy mcp-test-tls (trusted CA)"]
 
 
 async def test_create_self_signed_internal_ca(fmc: respx.MockRouter) -> None:
     fmc.get(CAS).mock(return_value=items([CSR_CA]))
     new = {**CA, "name": "mcp-fw-resign-ca"}
-    post = fmc.post(CAS).mock(return_value=httpx.Response(201, json={"id": CA["id"], "name": "mcp-fw-resign-ca"}))
+    post = fmc.post(CAS).mock(
+        return_value=httpx.Response(201, json={"id": CA["id"], "name": "mcp-fw-resign-ca"})
+    )
     fmc.get(f"{CAS}/{CA['id']}").mock(return_value=httpx.Response(200, json=new))
-    args = {"name": "mcp-fw-resign-ca", "common_name": "MCP FW Resign CA", "organization": "Example", "country": "us"}
+    args = {
+        "name": "mcp-fw-resign-ca",
+        "common_name": "MCP FW Resign CA",
+        "organization": "Example",
+        "country": "us",
+    }
     async with Client(server()) as c:
         p = await run(c, "fmc_create_internal_ca", args)
         assert p["status"] == "preview" and p["preview"]["method"] == "self_signed"
@@ -187,7 +209,9 @@ async def test_import_files_never_shows_the_key(fmc: respx.MockRouter, tmp_path:
     async with Client(server(pki_dir=d)) as c:
         p = await run(c, "fmc_import_certificate_files", args)
         assert p["status"] == "preview"
-        assert p["preview"]["sha1_fingerprint"] == CA["certFingerprint"] and p["preview"]["key"] == "PRIVATE KEY"
+        assert (
+            p["preview"]["sha1_fingerprint"] == CA["certFingerprint"] and p["preview"]["key"] == "PRIVATE KEY"
+        )
         assert KEY_BODY not in json.dumps(p)
         out = await run(c, "fmc_import_certificate_files", {**args, "confirm": p["confirm"]})
     assert KEY_BODY not in json.dumps(out)
@@ -198,7 +222,9 @@ async def test_import_files_never_shows_the_key(fmc: respx.MockRouter, tmp_path:
     assert out["result"]["name"] == "mcp-test-resign-ca"
 
 
-async def test_import_internal_cert_with_passphrase_and_changed_file(fmc: respx.MockRouter, tmp_path: Path) -> None:
+async def test_import_internal_cert_with_passphrase_and_changed_file(
+    fmc: respx.MockRouter, tmp_path: Path
+) -> None:
     d = pki_dir(tmp_path, ENC_KEY)
     os.chmod(d / "ca.pass", 0o644)
     fmc.get(CERTS).mock(return_value=items([]))
@@ -255,5 +281,9 @@ async def test_delete_certificate_blocked_while_used(fmc: respx.MockRouter) -> N
         system = await run(c, "fmc_delete_certificate", {"certificate": "Cisco-Licensing-Root-CA"})
         assert "Read-only system certificate." in system["blockers"]
         p = await run(c, "fmc_delete_certificate", {"certificate": "mcp-test-csr-ca", "kind": "internal_ca"})
-        await run(c, "fmc_delete_certificate", {"certificate": "mcp-test-csr-ca", "kind": "internal_ca", "confirm": p["confirm"]})
+        await run(
+            c,
+            "fmc_delete_certificate",
+            {"certificate": "mcp-test-csr-ca", "kind": "internal_ca", "confirm": p["confirm"]},
+        )
     assert delete.called

@@ -156,21 +156,31 @@ async def test_resign_rule_with_ca_and_position(fmc: respx.MockRouter) -> None:
 
 async def test_resign_rule_blockers(fmc: respx.MockRouter) -> None:
     mock_tls(fmc)
-    base = {"policy": "mcp-test-tls", "name": "r", "action": "DECRYPT_RESIGN", "destination_ports": ["tcp/443"]}
+    base = {
+        "policy": "mcp-test-tls",
+        "name": "r",
+        "action": "DECRYPT_RESIGN",
+        "destination_ports": ["tcp/443"],
+    }
     async with Client(server()) as c:
         no_ca = await run(c, "fmc_create_decryption_rule", base)
         assert no_ca["status"] == "blocked" and "needs internal_ca" in no_ca["blockers"][0]
         csr = await run(c, "fmc_create_decryption_rule", {**base, "internal_ca": "mcp-test-csr-ca"})
         assert csr["status"] == "blocked" and "still a CSR" in csr["blockers"][0]
         everything = await run(
-            c, "fmc_create_decryption_rule", {**base, "internal_ca": "mcp-test-resign-ca", "destination_ports": None}
+            c,
+            "fmc_create_decryption_rule",
+            {**base, "internal_ca": "mcp-test-resign-ca", "destination_ports": None},
         )
         assert any("match all TLS traffic" in b for b in everything["blockers"])
         too_far = await run(
             c, "fmc_create_decryption_rule", {**base, "internal_ca": "mcp-test-resign-ca", "insert_before": 9}
         )
         assert any("insert_before=9" in b for b in too_far["blockers"])
-        for bad in ({"action": "DO_NOT_DECRYPT", "internal_ca": "x"}, {"replace_key_only": True, "action": "BLOCK"}):
+        for bad in (
+            {"action": "DO_NOT_DECRYPT", "internal_ca": "x"},
+            {"replace_key_only": True, "action": "BLOCK"},
+        ):
             with pytest.raises(ToolError):
                 await run(c, "fmc_create_decryption_rule", {**base, **bad})
         with pytest.raises(ToolError, match="internal_certificates"):
@@ -221,7 +231,10 @@ async def test_create_policy_with_trusted_cas_and_tls13(fmc: respx.MockRouter) -
         assert p["preview"]["advanced"] == {"tls13Decryption": True}
         await run(c, "fmc_create_decryption_policy", {**args, "confirm": p["confirm"]})
     body = json.loads(post.calls.last.request.content)
-    assert [r["name"] for r in body["trustedCAs"]["objects"]] == ["Cisco-Trusted-Authorities", "mcp-test-server-ca"]
+    assert [r["name"] for r in body["trustedCAs"]["objects"]] == [
+        "Cisco-Trusted-Authorities",
+        "mcp-test-server-ca",
+    ]
     sent = json.loads(put.calls.last.request.content)
     assert sent["advancedOptions"]["tls13Decryption"] is True
     assert sent["advancedOptions"]["adaptiveProbe"] is True  # FMC's other defaults are kept
@@ -243,18 +256,26 @@ async def test_update_policy_settings(fmc: respx.MockRouter) -> None:
         changes = p["preview"]["changes"]
         assert changes["tls13_decryption"] == {"from": False, "to": True}
         assert "propagate_untrusted_certs" not in changes  # already true
-        assert changes["trusted_cas"]["to"] == ["mcp-test-server-ca", "Cisco-Trusted-Authorities"]
+        assert changes["trusted_cas"]["to"] == ["Cisco-Trusted-Authorities", "mcp-test-server-ca"]
         await run(c, "fmc_update_decryption_policy", {**args, "confirm": p["confirm"]})
-        same = await run(c, "fmc_update_decryption_policy", {"policy": "mcp-test-tls", "tls13_decryption": False})
+        same = await run(
+            c, "fmc_update_decryption_policy", {"policy": "mcp-test-tls", "tls13_decryption": False}
+        )
         assert same["status"] == "blocked" and same["blockers"] == ["Nothing to change."]
         empty = await run(
-            c, "fmc_update_decryption_policy", {"policy": "mcp-test-tls", "remove_trusted_cas": ["Cisco-Trusted-Authorities"]}
+            c,
+            "fmc_update_decryption_policy",
+            {"policy": "mcp-test-tls", "remove_trusted_cas": ["Cisco-Trusted-Authorities"]},
         )
         assert "no trusted CAs" in empty["blockers"][0]
     sent = json.loads(put.calls.last.request.content)
     assert sent["advancedOptions"]["tls13Decryption"] is True
-    assert sent["trustedCAs"]["groups"][0]["name"] == "Cisco-Trusted-Authorities"
-    assert sent["trustedCAs"]["objects"][0]["name"] == "mcp-test-server-ca"
+    # FMC's request schema has only `objects` (CA groups included), though its answers split out `groups`
+    assert set(sent["trustedCAs"]) == {"objects"}
+    assert [(r["name"], r["type"]) for r in sent["trustedCAs"]["objects"]] == [
+        ("Cisco-Trusted-Authorities", "ExternalCACertificateGroup"),
+        ("mcp-test-server-ca", "ExternalCACertificate"),
+    ]
 
 
 async def test_get_policy_shows_settings_and_readiness(fmc: respx.MockRouter) -> None:
