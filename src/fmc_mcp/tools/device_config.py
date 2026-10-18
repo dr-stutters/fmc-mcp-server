@@ -42,6 +42,10 @@ from fmc_mcp.tools.policies import POLICY_KINDS
 NAMED_KINDS = ["physical", "subinterface", "etherchannel", "vlan", "vti", "loopback", "bridge_group"]
 # Kinds that fmc_delete_interface may remove (physical interfaces can only be reset).
 DELETABLE_KINDS = {"subinterface", "etherchannel", "vlan", "vti", "loopback", "bridge_group"}
+# Fields FMC returns in an interface GET but refuses in the PUT body for that kind. FMC 10.0.1 answers
+# a VTI PUT that echoes managementOnly with 400 "Fields: { managementOnly } must be excluded from json
+# payload" (seen live on an SD-WAN spoke's static VTI, 2026-10-18).
+GET_ONLY_FIELDS: dict[str, tuple[str, ...]] = {"vti": ("managementOnly",)}
 ASSIGNABLE = {
     "access": "AccessPolicy",
     "nat": "FTDNatPolicy",
@@ -143,6 +147,15 @@ async def zone_ref(res: RefResolver, value: str) -> dict[str, Any]:
 def iface_summary(kind: str, i: dict[str, Any]) -> dict[str, Any]:
     row = interface_row(kind, i)
     return {k: v for k, v in row.items() if v not in (None, "") and k not in ("id",)}
+
+
+def interface_put_body(kind: str, obj: dict[str, Any]) -> dict[str, Any]:
+    """An interface as FMC accepts it back in a PUT: no metadata/links, and none of the fields that
+    kind only returns (GET_ONLY_FIELDS)."""
+    body = editable(obj)
+    for name in GET_ONLY_FIELDS.get(kind, ()):
+        body.pop(name, None)
+    return body
 
 
 def diff_rows(before: dict[str, Any], after: dict[str, Any]) -> dict[str, dict[str, Any]]:
@@ -366,7 +379,7 @@ def register(reg: ToolRegistrar) -> None:
             f"{DEVICES}/{dev['id']}/{INTERFACE_KINDS[kind]}/{current['id']}", domain
         )
         current = await app.api.get(item_path)
-        desired = editable(current)
+        desired = interface_put_body(kind, current)
         if logical_name is not None:
             if logical_name.strip().lower() == "none":
                 desired.pop("ifname", None)

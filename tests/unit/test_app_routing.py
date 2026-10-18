@@ -117,6 +117,97 @@ async def test_wan_interface_monitored_ip_keeps_the_rest(sd: respx.MockRouter) -
     assert sent["ifname"] == "wan2" and sent["ipv4"] == WAN2["ipv4"] and "metadata" not in sent
 
 
+# A spoke's static VTI as the FMC 10.0.1 GET returns it (spec-shaped: FTDVTIInterface), including
+# managementOnly, which FMC refuses back in a VTI PUT.
+SPOKE_VTI = {
+    "metadata": {"timestamp": 1792212000000, "domain": {"name": "mcp-test-leaf", "type": "Domain"}},
+    "links": {"self": "https://fmc/api/.../virtualtunnelinterfaces/vti-sp1"},
+    "id": "00000000-0000-0ed3-0000-021474851101",
+    "type": "VTIInterface",
+    "name": "Tunnel1",
+    "ifname": "mpls_static_vti_1",
+    "tunnelType": "STATIC",
+    "tunnelId": 1,
+    "enabled": True,
+    "managementOnly": False,
+    "MTU": 1500,
+    "priority": 0,
+    "pathMonitoring": {"enable": False},
+    "tunnelSource": {"id": WAN1["id"], "name": "Ethernet0/0", "type": "PhysicalInterface"},
+    "ipv4": {"static": {"address": "10.255.1.2", "netmask": "255.255.255.0"}},
+    "ipsecMode": "ipv4",
+}
+
+
+def vti_put_mock(sd: respx.MockRouter) -> respx.Route:
+    """Mock FMC 10.0.1: a VTI PUT that echoes managementOnly gets the live 400."""
+    sd.get(f"{D}/virtualtunnelinterfaces").mock(return_value=items([SPOKE_VTI]))
+    sd.get(f"{D}/virtualtunnelinterfaces/{SPOKE_VTI['id']}").mock(
+        return_value=httpx.Response(200, json=SPOKE_VTI)
+    )
+
+    def put(request: httpx.Request) -> httpx.Response:
+        if "managementOnly" in json.loads(request.content):
+            return httpx.Response(
+                400,
+                json={
+                    "error": {
+                        "category": "FRAMEWORK",
+                        "messages": [
+                            {"description": "Fields: { managementOnly } must be excluded from json payload."}
+                        ],
+                        "severity": "ERROR",
+                    }
+                },
+            )
+        return httpx.Response(200, json={})
+
+    return sd.put(f"{D}/virtualtunnelinterfaces/{SPOKE_VTI['id']}").mock(side_effect=put)
+
+
+async def test_wan_interface_on_a_vti_drops_management_only(sd: respx.MockRouter) -> None:
+    put = vti_put_mock(sd)
+    args = {
+        "device": DEV["name"],
+        "interface": "mpls_static_vti_1",
+        "priority": 1,
+        "path_monitoring": "ip",
+        "monitored_ip": "10.255.1.1",
+    }
+    async with Client(server()) as c:
+        preview = await run(c, "fmc_configure_wan_interface", args)
+        assert preview["status"] == "preview", preview
+        await run(c, "fmc_configure_wan_interface", {**args, "confirm": preview["confirm"]})
+    sent = body(put)
+    assert "managementOnly" not in sent and "metadata" not in sent and "links" not in sent
+    assert sent["pathMonitoring"] == {"enable": True, "type": "PEER_IPV4", "monitoredIp": "10.255.1.1"}
+    assert sent["priority"] == 1
+    assert sent["tunnelSource"] == SPOKE_VTI["tunnelSource"] and sent["ipv4"] == SPOKE_VTI["ipv4"]
+
+
+async def test_update_interface_on_a_vti_drops_management_only(sd: respx.MockRouter) -> None:
+    put = vti_put_mock(sd)
+    for extra in (f"{D}/loopbackinterfaces", f"{D}/bridgegroupinterfaces", f"{CFG}/object/securityzones"):
+        sd.get(extra).mock(return_value=empty())
+    args = {"device": DEV["name"], "interface": "mpls_static_vti_1", "mtu": 1400}
+    async with Client(server()) as c:
+        preview = await run(c, "fmc_update_interface", args)
+        assert preview["status"] == "preview", preview
+        await run(c, "fmc_update_interface", {**args, "confirm": preview["confirm"]})
+    sent = body(put)
+    assert "managementOnly" not in sent and sent["MTU"] == 1400
+
+
+async def test_physical_interface_put_keeps_management_only(sd: respx.MockRouter) -> None:
+    """Only VTIs refuse the field; a physical interface PUT still echoes it (FMC requires the full body)."""
+    put = sd.put(f"{D}/physicalinterfaces/{WAN2['id']}").mock(return_value=httpx.Response(200, json={}))
+    args = {"device": DEV["name"], "interface": "wan2", "priority": 5}
+    async with Client(server()) as c:
+        preview = await run(c, "fmc_configure_wan_interface", args)
+        await run(c, "fmc_configure_wan_interface", {**args, "confirm": preview["confirm"]})
+    assert body(put).get("managementOnly") == WAN2.get("managementOnly")
+
+
 async def test_wan_interface_http_monitoring_with_applications(sd: respx.MockRouter) -> None:
     put = sd.put(f"{D}/physicalinterfaces/{WAN1['id']}").mock(return_value=httpx.Response(200, json={}))
     args = {"device": DEV["name"], "interface": "Ethernet0/0", "monitored_applications": ["buffer"]}
