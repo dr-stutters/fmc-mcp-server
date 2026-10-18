@@ -637,6 +637,13 @@ def register(reg: ToolRegistrar) -> None:
                 f"{WEAK_IKE_POLICY} / {WEAK_IPSEC_PROPOSAL} (DES): fine for a lab, not for production. "
                 "FMC may also refuse SD-WAN topologies without it."
             )
+        if overlay == "bgp" and multipath and len(hubs) > 1:
+            side_effects.append(
+                "multipath is on with two hubs: spokes spread traffic over both hub tunnels (ECMP), so "
+                "return traffic that routes through one hub only (one DC gateway) is asymmetric and can "
+                "be dropped. Use multipath=False for primary/backup hubs unless both hubs return traffic "
+                "symmetrically (live on mcp-sdwan-t2)."
+            )
         if overlay == "ospf":
             side_effects.append(
                 "No overlay routing is generated: run OSPF over the tunnel and inside networks on every "

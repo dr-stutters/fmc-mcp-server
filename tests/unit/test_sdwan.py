@@ -184,6 +184,7 @@ async def test_create_reuses_dvti_and_pool_with_backup_hub(fmc: respx.MockRouter
         hubs = preview["preview"]["hubs"]
         assert hubs[0]["dvti"] == "Virtual-Template1" and hubs[0]["spoke_pool"] == "mcp-sdwan-t1-pool"
         assert hubs[1]["role"] == "backup hub" and "(new" in hubs[1]["dvti"]
+        assert any("asymmetric" in e for e in preview["side_effects"])
         await run(c, "fmc_create_sdwan_topology", {**args, "confirm": preview["confirm"]})
     order = [m for m, _ in log]
     assert order[:3] == [  # nothing created for the primary hub: its DVTI and pool exist
