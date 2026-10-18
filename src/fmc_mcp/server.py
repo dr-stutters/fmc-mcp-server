@@ -25,10 +25,15 @@ from fmc_mcp.tools import (
     devices,
     dns,
     dynamic_objects,
+    file_policy,
+    find_address,
     ha,
     hygiene,
     identity,
     intrusion,
+    live,
+    metrics,
+    network_analysis,
     object_import,
     object_writes,
     objects,
@@ -38,6 +43,7 @@ from fmc_mcp.tools import (
     policy_writes,
     prefilter,
     prompts,
+    prove,
     routing,
     rule_io,
     sdwan,
@@ -49,6 +55,7 @@ from fmc_mcp.tools import (
     tickets,
     troubleshoot,
     vpn,
+    vpn_status,
 )
 
 INSTRUCTIONS = """
@@ -73,7 +80,9 @@ Workflows:
   -> fmc_run_show_command / fmc_list_deployments; undo a bad deployment with fmc_rollback_deployment.
 - "Why is this traffic blocked?": fmc_packet_tracer (live verdict, drop reason and matching rule on
   the device) + fmc_rule_lookup (offline walk of the policy) + fmc_get_hit_counts (is the rule hit?).
-  The fmc_why_blocked prompt walks these steps in order.
+  The fmc_why_blocked prompt walks these steps in order. "Prove the policy": fmc_prove_policy traces a
+  table of flows with expected verdicts (pass/fail/mismatch and the deciding rule); user rules:
+  the fmc_prove_user_policy prompt.
 - Send FTD logs to the customer's syslog/SIEM: fmc_get_platform_settings -> fmc_configure_syslog
   (servers, level, facility, RFC 5424) -> fmc_assign_policy(kind='platform_settings') -> fmc_deploy;
   fmc_set_access_logging sends connection/intrusion events there too.
@@ -102,6 +111,11 @@ Workflows:
   fmc_set_intrusion_rule_state in a custom policy (fmc_create_intrusion_policy on top of a system one;
   fmc_update_access_rule intrusion_policy=... puts it on an ALLOW rule) -> fmc_deploy. Custom Snort 3
   rules: fmc_create_intrusion_rule.
+- Block files and malware: fmc_create_file_policy -> fmc_create_file_rule (e.g. BLOCK MSEXE downloads over
+  HTTP, BLOCK_MALWARE for a malware cloud lookup that blocks) -> fmc_update_access_rule file_policy=... on
+  ALLOW rules -> fmc_deploy; fmc_get_file_policy shows the rules. Network analysis (preprocessing):
+  fmc_get_network_analysis_policy, fmc_create_network_analysis_policy (linking it to an access policy is
+  UI-only).
 - Users and groups in access rules (AD/LDAP): fmc_create_trusted_ca (LDAPS) -> fmc_create_realm ->
   fmc_test_realm -> fmc_download_realm -> fmc_create_identity_policy + fmc_create_identity_rule (PASSIVE
   needs ISE/pxGrid or an agent for user-IP mappings) -> select the identity policy in the access policy
@@ -109,15 +123,26 @@ Workflows:
   fmc_rule_lookup identities=[user, groups] evaluates such rules.
 - PoC to production / domain to domain: fmc_export_policy_bundle -> fmc_plan_policy_bundle_import (target
   domain) -> fmc_import_policy_bundle -> fmc_diff_policy_bundle against live -> assign + fmc_deploy.
+- "Where does 10.1.2.3 appear?": fmc_find_address (objects and groups, dynamic-object mappings, access,
+  prefilter and NAT rules, static routes, VPN endpoints in one ranked call) -> fmc_where_used on an object.
 - Policy review: fmc_policy_audit ranks shadowed, permissive, unlogged, uninspected, unused and mergeable
   rules, expired time ranges and duplicate objects, each with a fix to preview; then fmc_pending_changes
   -> fmc_deploy. Threat-defense posture (intrusion and file policies, TRUST/fastpath bypasses, SI and DNS
   coverage, decryption, licences): fmc_threat_posture; the fmc_threat_defense_review prompt combines both.
   Prompts: fmc_policy_cleanup (findings -> approved cleanup -> diff + re-audit) and fmc_rule_change_review
   (one rule change with before/after flows, shadowing check and a deploy plan with rollback).
+- Site-to-site VPN: fmc_create_s2s_vpn -> fmc_deploy both peers -> fmc_vpn_status (every topology's
+  tunnels with what each device says: IKE and IPsec SAs, traffic each way, routes over the VTIs;
+  degraded tunnels first). "The VPN to X is down": the fmc_vpn_troubleshoot prompt (IKE, IPsec,
+  routing over the tunnel, NAT exemption, access rules, then one previewed fix).
+- "What is this host talking to right now, and who is it?": fmc_live_connections (device, host/user/port;
+  from the device's syslog buffer because FMC 10.0.1 refuses 'show conn') -> fmc_user_identity_sessions
+  (user <-> IP from FMC's identity view) -> fmc_packet_tracer for the verdict.
 - Health: fmc_list_devices, fmc_device_health, fmc_list_vpn_tunnels; "what changed or broke in the
   last hour?": fmc_recent_activity (health alerts + audit + deployments), fmc_list_health_alerts.
   A full ranked review of the estate: the fmc_firewall_health_review prompt.
+- Load over time ("was the branch firewall busy at 09:40?"): fmc_device_metrics (CPU, memory,
+  throughput, connections and drops over a window, with peaks and dips).
 - Day-2 admin: fmc_upgrade_status (versions), fmc_list_backups / fmc_backup_devices,
   fmc_get_health_policy / fmc_update_health_policy, fmc_list_users, fmc_list_object_overrides /
   fmc_set_object_override (per-device values).
@@ -185,6 +210,7 @@ def create_server(
             policies.register,
             objects.register,
             analysis.register,
+            find_address.register,
             hygiene.register,
             threat_posture.register,
             deploy.register,
@@ -194,6 +220,9 @@ def create_server(
             policy_writes.register,
             dangerous.register,
             troubleshoot.register,
+            metrics.register,
+            live.register,
+            prove.register,
             dynamic_objects.register,
             containment.register,
             ha.register,
@@ -201,12 +230,15 @@ def create_server(
             sdwan.register,
             templates.register,
             sdwan_status.register,
+            vpn_status.register,
             activity.register,
             platform_settings.register,
             platform_access.register,
             routing.register,
             app_routing.register,
             intrusion.register,
+            file_policy.register,
+            network_analysis.register,
             admin.register,
             prefilter.register,
             security_intel.register,

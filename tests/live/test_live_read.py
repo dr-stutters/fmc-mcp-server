@@ -108,3 +108,14 @@ async def test_audit_window_reaches_past_fmcs_100_record_cap(client: Client[Any]
     assert data["records_read"] > 100
     times = [r["time"] for r in data["results"]]
     assert times == sorted(times, reverse=True)
+
+
+async def test_file_and_network_analysis_reads(client: Client[Any]) -> None:
+    """F43: the file type catalog, file policies and network analysis policies read without writes."""
+    cats = await call(client, "fmc_get_file_policy", {"catalog": True, "response_format": "json"})
+    exe = next(r for r in cats["results"] if r["category"] == "Executables")
+    assert {"MSEXE", "EICAR"} <= set(exe["file_types"])
+    policies = await call(client, "fmc_get_file_policy", {"response_format": "json"})
+    assert isinstance(policies["results"], list)
+    naps = await call(client, "fmc_get_network_analysis_policy", {"response_format": "json"})
+    assert "Balanced Security and Connectivity" in {r["name"] for r in naps["results"]}
