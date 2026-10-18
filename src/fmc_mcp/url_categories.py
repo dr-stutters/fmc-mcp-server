@@ -13,9 +13,7 @@ one. '*_AND_UNKNOWN' also matches sites without a reputation; ANY_AND_UNKNOWN is
 
 from __future__ import annotations
 
-import asyncio
 import difflib
-import logging
 import re
 from typing import Any
 
@@ -23,12 +21,10 @@ from pydantic import BaseModel, Field
 
 from fmc_mcp._core import InvalidRequest, NotFound
 from fmc_mcp.client import FmcApp
-
-log = logging.getLogger(__name__)
+from fmc_mcp.spec_index import spec_index
 
 URL_CATEGORIES = "object/urlcategories"
 REPUTATION_SCHEMA = "IUrlCategoryAndReputation"
-SPEC_WAIT_S = 15.0
 DEFAULT_REPUTATION = "ANY_AND_UNKNOWN"
 # FMC 10.0.1's spec, IUrlCategoryAndReputation.reputation (verbatim order).
 FALLBACK_REPUTATIONS = (
@@ -69,25 +65,9 @@ class UrlCategoryCondition(BaseModel):
 
 async def reputation_levels(ctx: Any) -> tuple[list[str], str]:
     """The reputation enum from the FMC spec index ('spec'), or FMC 10.0.1's ('built-in')."""
-    store = None
-    try:
-        store = ctx.lifespan_context.get("specs")
-    except Exception:  # noqa: BLE001 - no lifespan (used outside a tool call)
-        store = None
-    if store is None:
-        return list(FALLBACK_REPUTATIONS), "built-in"
-    task = asyncio.ensure_future(store.get())
-    try:
-        index = await asyncio.wait_for(asyncio.shield(task), SPEC_WAIT_S)
-    except TimeoutError:
-        task.add_done_callback(lambda t: t.cancelled() or t.exception())  # keep loading; no warning
-        return list(FALLBACK_REPUTATIONS), "built-in"
-    except Exception as e:  # noqa: BLE001 - a broken spec must not break rule writes
-        log.warning("FMC spec unavailable for URL reputation levels: %s", e)
-        return list(FALLBACK_REPUTATIONS), "built-in"
-    levels = enum_of(
-        getattr(index, "schemas", {}).get(REPUTATION_SCHEMA, {}).get("fields", {}).get("reputation")
-    )
+    index = await spec_index(ctx, "URL reputation levels")
+    schema = getattr(index, "schemas", {}).get(REPUTATION_SCHEMA, {}) if index is not None else {}
+    levels = enum_of(schema.get("fields", {}).get("reputation"))
     return (levels, "spec") if levels else (list(FALLBACK_REPUTATIONS), "built-in")
 
 
