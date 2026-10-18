@@ -80,6 +80,18 @@ def test_parse_log_buffer_pairs_built_teardown_and_snort_events() -> None:
     assert len(conns) == 5  # the NAT translation line (305011) is not a connection
 
 
+def test_parse_log_buffer_snort_icmp_event_joins_the_icmp_connection() -> None:
+    text = LIVE["show logging (buffer on)"]["items"][0]["commandOutput"]
+    text += (
+        "Oct 18 2026 14:01:22: %FTD-1-430003: SrcIP: 10.99.1.10, DstIP: 192.0.2.80, SrcPort: 8, DstPort: 0, "
+        "Protocol: icmp, AccessControlRuleAction: Allow, AccessControlRuleName: mcp-fw-lab-extra, "
+        "InitiatorBytes: 84, ResponderBytes: 84\n"
+    )
+    conns, _ = parse_log_buffer(text)
+    icmp = [c for c in conns if c.protocol.upper().startswith("ICMP")]
+    assert len(icmp) == 1 and icmp[0].rule == "mcp-fw-lab-extra" and icmp[0].bytes == 168
+
+
 def test_parse_log_buffer_off() -> None:
     conns, enabled = parse_log_buffer(LIVE["show logging (buffer off)"]["items"][0]["commandOutput"])
     assert (conns, enabled) == ([], False)

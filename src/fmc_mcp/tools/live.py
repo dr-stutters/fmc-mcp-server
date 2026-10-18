@@ -242,14 +242,16 @@ def _merge_snort(ev: dict[str, str], conns: list[Conn]) -> None:
     if not src or not dst:
         return
     sport, dport = _int(ev.get("SrcPort")), _int(ev.get("DstPort"))
-    match = next(
-        (
-            c
-            for c in reversed(conns)
-            if {c.a_ip, c.b_ip} == {src, dst} and {c.a_port, c.b_port} == {sport, dport}
-        ),
-        None,
-    )
+    icmp = str(ev.get("Protocol") or "").lower().startswith("icmp")  # its 'ports' are type and code
+
+    def same(c: Conn) -> bool:
+        if {c.a_ip, c.b_ip} != {src, dst}:
+            return False
+        if icmp:
+            return c.protocol.upper().startswith("ICMP")
+        return {c.a_port, c.b_port} == {sport, dport}
+
+    match = next((c for c in reversed(conns) if same(c)), None)
     if match is None:
         proto = str(ev.get("Protocol") or "").upper() or "IP"
         match = Conn(
