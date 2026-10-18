@@ -24,8 +24,9 @@ LIMITS = (
     "Offline, best-effort evaluation of the access control policy only: prefilter rules, NAT, "
     "security intelligence, decryption and inherited parent-policy rules are not evaluated. "
     "Applications, URLs, SGTs, VLAN tags and time ranges can't be known from addresses and ports, so "
-    "rules using them are reported as 'conditional' (they may match); users too, unless you pass "
-    "`identities` (the flow's user and its groups). Dynamic objects are "
+    "rules using them are reported as 'conditional' (they may match); users too, unless FMC's identity "
+    "sessions name the user on the source IP (see `identity`) or you pass `identities` (the flow's user "
+    "and its groups). Dynamic objects are "
     "checked against their current IP mappings. FQDN objects can't be resolved offline. Zones are "
     "only checked when you pass them or a device (then they come from its interfaces and routes)."
 )
@@ -188,7 +189,8 @@ def register(reg: ToolRegistrar) -> None:
             list[str] | None,
             Field(
                 description="The flow's AD/LDAP user and its groups (e.g. ['mcp-bob', 'mcp-contractors']) to "
-                "evaluate user/group rules; [] = no identified user; omit and such rules stay conditional"
+                "evaluate user/group rules; [] = no identified user; omit to use the user FMC has on the "
+                "source IP (resolve_user); if that can't be read, such rules stay conditional"
             ),
         ] = None,
         policy: Annotated[
