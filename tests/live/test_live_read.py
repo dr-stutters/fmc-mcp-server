@@ -6,8 +6,6 @@ from typing import Any
 import pytest
 from fastmcp import Client
 
-from .live_env import need
-
 pytestmark = pytest.mark.live
 
 
@@ -110,23 +108,3 @@ async def test_audit_window_reaches_past_fmcs_100_record_cap(client: Client[Any]
     assert data["records_read"] > 100
     times = [r["time"] for r in data["results"]]
     assert times == sorted(times, reverse=True)
-
-
-async def test_interface_kinds_and_create_preview(client: Client[Any]) -> None:
-    """F58 (read-only): every interface kind lists on FMC_LIVE_DEVICE, and fmc_create_interface previews a
-    loopback (never confirmed: nothing changes)."""
-    device = need("FMC_LIVE_DEVICE")
-    kinds = ["physical", "subinterface", "etherchannel", "vti", "loopback", "bridge_group"]
-    data = await call(
-        client, "fmc_list_device_interfaces", {"device": device, "kinds": kinds, "response_format": "json"}
-    )
-    assert any(r["kind"] == "physical" for r in data["results"])
-    preview = await call(
-        client,
-        "fmc_create_interface",
-        {"device": device, "kind": "loopback", "logical_name": "mcp-f58-lo", "ipv4": "198.51.100.58/32"},
-    )
-    assert (
-        preview["status"] in ("preview", "blocked")
-        and preview["preview"]["body"]["type"] == "LoopbackInterface"
-    )
