@@ -372,3 +372,68 @@ async def test_fmc_tunnel_monitor_lag_is_flagged(fmc: respx.MockRouter) -> None:
         out = await run(c, "fmc_sdwan_status", {"branch": "mcp-sdwan-t1-spoke1"})
     lag = [d for d in out["degraded"] if "lags" in d["reasons"][0]]
     assert lag and lag[0]["severity"] == "warning" and "2 tunnel(s) up" in lag[0]["reasons"][0]
+
+
+# --- HA pair as hub (SD-WAN matrix R7) ------------------------------------------------------------
+
+# Spec-shaped FTDHAPair GET (expanded). The topology endpoint is the pair; FMC names the pair's tunnel
+# end "<pair>[<active unit>]" (live on mcp-sdwan-t3).
+HA = {
+    "id": "ha-1",
+    "type": "DeviceHAPair",
+    "name": "mcp-sdwan-t3-hub-ha",
+    "primary": {"id": "d-hub", "name": "mcp-sdwan-t1-hub", "type": "Device"},
+    "secondary": {"id": "d-hub2", "name": "mcp-sdwan-t1-hub2", "type": "Device"},
+}
+
+
+def ha_lab(fmc: respx.MockRouter, primary: str, secondary: str) -> list[str]:
+    ran = lab(fmc, refused=FMC10_REFUSES)
+    pair = {
+        **HA,
+        "metadata": {
+            "primaryStatus": {"currentStatus": primary},
+            "secondaryStatus": {"currentStatus": secondary},
+        },
+    }
+    fmc.get(f"{CFG}/devicehapairs/ftddevicehapairs").mock(return_value=items([pair]))
+    fmc.get(f"{CFG}/devicehapairs/ftddevicehapairs/ha-1").mock(return_value=httpx.Response(200, json=pair))
+    eps = json.loads(json.dumps(LAB["policy/ftds2svpns/topo-t1/endpoints"]))
+    eps["items"][0]["device"] = {"id": "ha-1", "name": HA["name"], "type": "DeviceHAPair"}
+    eps["items"][0]["name"] = HA["name"]
+    fmc.get(f"{CFG}/policy/ftds2svpns/topo-t1/endpoints").mock(return_value=httpx.Response(200, json=eps))
+    active = HA["primary" if primary.lower() == "active" else "secondary"]["name"]
+    tun = json.loads(json.dumps(LAB["health/tunnelstatuses"]))
+    for t in tun["items"]:
+        t["peerA"]["device"]["name"] = f"{HA['name']}[{active}]"
+    fmc.get(f"{CFG}/health/tunnelstatuses").mock(return_value=httpx.Response(200, json=tun))
+    return ran
+
+
+async def test_ha_hub_row_matches_the_pair_and_reports_a_failed_unit(fmc: respx.MockRouter) -> None:
+    ran = ha_lab(fmc, primary="Failed", secondary="Active")
+    async with Client(server()) as c:
+        out = await run(c, "fmc_sdwan_status", {"topology": "mcp-sdwan-t1"})
+    hub = next(b for b in out["topologies"][0]["branches"] if b["device"] == HA["name"])
+    assert len(hub["tunnels"]) == 3 and hub["tunnels_up"] == 2  # '<pair>[<unit>]' tunnel ends match
+    assert [w["logical_name"] for w in hub["wan_links"]] == ["outside1"]  # the members' WAN links
+    assert hub["ha"]["units"] == [
+        {"role": "primary", "device": "mcp-sdwan-t1-hub", "state": "Failed"},
+        {"role": "secondary", "device": "mcp-sdwan-t1-hub2", "state": "Active"},
+    ]
+    assert {r.split(" ", 1)[0] for r in ran} >= {"d-hub2"} and not any(r.startswith("d-hub ") for r in ran)
+    ha = [d for d in out["degraded"] if d["interface"] == "HA pair"]
+    assert (
+        len(ha) == 1
+        and ha[0]["severity"] == "warning"
+        and "mcp-sdwan-t1-hub (primary) is Failed" in ha[0]["reasons"][0]
+    )
+
+
+async def test_branch_given_as_an_ha_member_resolves_to_the_pair(fmc: respx.MockRouter) -> None:
+    ha_lab(fmc, primary="Active", secondary="Standby")
+    async with Client(server()) as c:
+        out = await run(c, "fmc_sdwan_status", {"branch": "mcp-sdwan-t1-hub2"})
+    rows = out["topologies"][0]["branches"]
+    assert [b["device"] for b in rows] == [HA["name"]] and rows[0]["role"] == "hub"
+    assert not [d for d in out["degraded"] if d["interface"] == "HA pair"]  # active + standby is healthy
