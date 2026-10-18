@@ -617,8 +617,9 @@ async def test_unreachable_per_fmc_is_pending_and_still_degraded(fmc: respx.Mock
     data = json.loads(json.dumps(PATHMETRICS["brownout"]))
     prom = json.loads(data["items"][0]["response"])
     prom["data"]["result"] = [
-        r for r in prom["data"]["result"] if r["metric"]["interface_name"] != "mpls_static_vti_1"
-        or r["metric"]["rechability"] == "No"
+        r
+        for r in prom["data"]["result"]
+        if r["metric"]["interface_name"] != "mpls_static_vti_1" or r["metric"]["rechability"] == "No"
     ]
     data["items"][0]["response"] = json.dumps(prom)
     fmc.get(f"{CFG}/health/metrics").mock(return_value=httpx.Response(200, json=data))

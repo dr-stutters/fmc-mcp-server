@@ -115,6 +115,16 @@ LoopbackArg = Annotated[
         "from; omit to create one with the pool subnet's first address"
     ),
 ]
+SpokeLoopbacksArg = Annotated[
+    str | list[str] | None,
+    Field(
+        description="overlay='ospf': the /32 loopback each spoke's tunnel borrows its address from, so both "
+        "tunnel ends are unnumbered (needed for OSPF routes on the spokes, FMC 10.0.1). A subnet outside "
+        "the spoke pools (e.g. 10.255.9.0/24: the spokes get its addresses in order, from the first), or "
+        "one address per spoke in the order of the spokes. A spoke loopback that already has the address "
+        "is reused"
+    ),
+]
 
 
 # --- planning -----------------------------------------------------------------------------------
@@ -317,6 +327,12 @@ class SpokePlan:
     backup: dict[str, Any] | None
     inside: list[dict[str, Any]]
     blockers: list[str]
+    iface_device: str = ""  # the device record whose interfaces are used (an HA pair's primary)
+    loopbacks: list[tuple[Any, dict[str, Any]]] = field(default_factory=list)  # the spoke's, at planning
+    vti_ids: set[str] = field(default_factory=set)  # the spoke's VTIs before the topology
+    loopback_ip: str | None = None  # overlay='ospf': the /32 its tunnel borrows
+    loopback: dict[str, Any] | None = None  # an existing loopback with that address
+    loopback_body: dict[str, Any] | None = None  # or one to create
 
     def endpoint(self, wan: dict[str, Any] | None = None) -> dict[str, Any]:
         """The spoke endpoint on its WAN interface (or on `wan`: the backup WAN's endpoint in the
@@ -345,6 +361,9 @@ class SpokePlan:
             "backup_wan": ref_label(self.backup) if self.backup else None,
             "inside": [ref_label(i) for i in self.inside] or None,
         }
+        if self.loopback_ip:
+            name = ref_label(self.loopback) if self.loopback else f"{OSPF_LOOPBACK} (new)"
+            out["tunnel_borrows"] = f"{name} {self.loopback_ip}/32"
         return {k: v for k, v in out.items() if v is not None}
 
 
@@ -369,7 +388,85 @@ async def plan_spoke(app: FmcApp, spec: SpokeSpec, domain: str | None) -> SpokeP
     if backup and backup["id"] == wan["id"]:
         raise InvalidRequest(f"{dev['name']}: backup_wan_interface must differ from wan_interface.")
     inside = [iref(pick_interface(others, i, dev["name"])[1]) for i in spec.inside_interfaces]
-    return SpokePlan(dev, wan, backup, inside, blockers)
+    return SpokePlan(dev, wan, backup, inside, blockers, iface_dev)
+
+
+OSPF_LOOPBACK = "sdwan-ospf-lo"
+
+
+def spoke_loopback_addresses(spec: str | list[str], count: int) -> list[ipaddress.IPv4Address]:
+    """spoke_loopbacks -> one address per spoke: a subnet's addresses in order (its hosts, or the
+    address itself for a /32), or the listed addresses ('/32' optional)."""
+    items = [spec] if isinstance(spec, str) else list(spec)
+    if len(items) == 1 and "/" in items[0]:
+        try:
+            net = ipaddress.IPv4Network(items[0].strip(), strict=False)
+        except ValueError:
+            raise InvalidRequest(f"spoke_loopbacks {items[0]!r} is not an IPv4 subnet or address.") from None
+        hosts = [net.network_address] if net.prefixlen == 32 else list(net.hosts())
+        if len(hosts) < count:
+            raise InvalidRequest(f"spoke_loopbacks {net} has {len(hosts)} address(es) for {count} spoke(s).")
+        return hosts[:count]
+    out = []
+    for raw in items:
+        text = raw.strip().removesuffix("/32")
+        try:
+            out.append(ipaddress.IPv4Address(text))
+        except ValueError:
+            raise InvalidRequest(
+                f"spoke_loopbacks: {raw!r} is not an IPv4 address (give one /32 per spoke, or one subnet)."
+            ) from None
+    if len(out) != count:
+        raise InvalidRequest(f"spoke_loopbacks lists {len(out)} address(es) for {count} spoke(s).")
+    if len(set(out)) != len(out):
+        raise InvalidRequest("spoke_loopbacks lists an address twice; each spoke needs its own.")
+    return out
+
+
+async def plan_spoke_loopbacks(
+    app: FmcApp,
+    spokes: list[SpokePlan],
+    spec: str | list[str],
+    pools: list[ipaddress.IPv4Network],
+    domain: str | None,
+) -> list[str]:
+    """Give each spoke its /32 loopback (an existing one with the address, or one to create); returns
+    blockers. The addresses must stay out of the spoke pools: the hub hands those to tunnels."""
+    blockers: list[str] = []
+    for sp, ip in zip(spokes, spoke_loopback_addresses(spec, len(spokes)), strict=True):
+        sp.loopback_ip = str(ip)
+        for net in pools:
+            if ip in net:
+                blockers.append(
+                    f"{sp.device['name']}: loopback {ip} is in the spoke pool {net}; take spoke_loopbacks "
+                    "from another block."
+                )
+        sp.loopbacks = await device_interfaces(app, sp.iface_device, domain, ["loopback"])
+        vtis = await device_interfaces(app, sp.iface_device, domain, ["vti"])
+        sp.vti_ids = {str(i.get("id")) for _, i in vtis}
+        loops = [i for _, i in sp.loopbacks]
+        same = [i for i in loops if ((i.get("ipv4") or {}).get("static") or {}).get("address") == str(ip)]
+        if same:
+            sp.loopback = iref(same[0])
+            continue
+        named = [i for i in loops if str(i.get("ifname") or "").lower() == OSPF_LOOPBACK]
+        if named:
+            have = ((named[0].get("ipv4") or {}).get("static") or {}).get("address")
+            blockers.append(
+                f"{sp.device['name']} already has loopback {OSPF_LOOPBACK!r} ({have}); give that address "
+                "in spoke_loopbacks to reuse it, or remove it."
+            )
+            continue
+        sp.loopback_body = {
+            "type": "LoopbackInterface",
+            "loopbackId": _free_id({int(i.get("loopbackId") or 0) for i in loops}, MAX_LOOPBACK_ID),
+            "enabled": True,
+            "ifname": OSPF_LOOPBACK,
+            "ipv4": {"static": {"address": str(ip), "netmask": "255.255.255.255"}},
+            "description": "SD-WAN OSPF overlay: the spoke tunnel borrows this address "
+            "(fmc_create_sdwan_topology)",
+        }
+    return blockers
 
 
 WAN2_SUFFIX = "-wan2"
@@ -467,6 +564,57 @@ class Builder:
         )
         return {"id": made["id"], "type": made.get("type") or "VTIInterface", "name": made.get("name")}
 
+    async def spoke_loopback(self, sp: SpokePlan) -> dict[str, Any]:
+        """The /32 loopback a spoke's tunnel borrows (created before the topology, so an undo deletes
+        the topology and its VTIs first)."""
+        if sp.loopback:
+            return sp.loopback
+        assert sp.loopback_body is not None
+        base = await self.app.config_path(f"{DEVICES}/{sp.iface_device}", self.domain)
+        made = await self.post(
+            f"{base}/{INTERFACE_KINDS['loopback']}",
+            sp.loopback_body,
+            f"loopback {sp.loopback_body['ifname']!r} {sp.loopback_ip}/32 on {sp.device['name']}",
+        )
+        sp.loopback = {"id": made["id"], "type": "LoopbackInterface", "name": made.get("name")}
+        return sp.loopback
+
+    async def borrow(self, sp: SpokePlan, endpoints: str, made: dict[str, Any]) -> None:
+        """Make the VTI FMC generated for a spoke endpoint borrow the spoke's loopback (unnumbered)."""
+        assert sp.loopback is not None
+        base = await self.app.config_path(
+            f"{DEVICES}/{sp.iface_device}/{INTERFACE_KINDS['vti']}", self.domain
+        )
+        ep = await self.app.api.get(f"{endpoints}/{made['id']}") if made.get("id") else {}
+        meta = ((ep or {}).get("metadata") or {}).get("vtiInterfaceMetadataList") or []
+        ids = [
+            str((m.get("vtiInterface") or {}).get("id"))
+            for m in meta
+            if (m.get("vtiInterface") or {}).get("id")
+        ]
+        if not ids:  # no metadata: the spoke's static VTIs on its WAN that the topology added
+            page = await self.app.all(base, expanded=True, cap=500)
+            ids = [
+                str(v["id"])
+                for v in page.items
+                if str(v.get("id")) not in sp.vti_ids
+                and str(v.get("tunnelType") or "STATIC").upper() == "STATIC"
+                and (v.get("tunnelSource") or {}).get("id") == sp.wan["id"]
+            ]
+        if not ids:
+            raise UpstreamError(
+                f"FMC created no tunnel interface for spoke {sp.device['name']} to borrow into."
+            )
+        for vid in ids:
+            vti = await self.app.api.get(f"{base}/{vid}")
+            body = {k: v for k, v in vti.items() if k not in ("links", "metadata", "managementOnly", "ipv4")}
+            body |= {"ipAddressAssignmentType": "BORROW_IP_FROM_INTERFACE", "borrowIPfrom": sp.loopback}
+            await self.app.api.put(f"{base}/{vid}", body)
+            self.done.append(
+                f"tunnel {vti.get('ifname') or vti.get('name')} on {sp.device['name']} borrows "
+                f"{sp.loopback_ip}/32"
+            )
+
     async def run(self, what: str, steps: Callable[[], Awaitable[Any]]) -> Any:
         try:
             return await steps()
@@ -515,13 +663,18 @@ def _route_settings(overlay: str, bgp_as: int, community: int, multipath: bool) 
     return rs
 
 
-OSPF_OVERLAY_WARNING = (
-    "overlay='ospf' did not carry traffic on FMC 10.0.1 (live, mcp-sdwan-t1 and -t2): the hub's DVTI is "
-    "unnumbered (it borrows the loopback's /32) while each spoke VTI is numbered from the pool, so OSPF "
-    "reaches FULL and the hub learns the spoke networks, but the spokes install no OSPF routes (their "
-    "SPF reports the hub's router LSA 'Adv Router is not-reachable'). fmc_configure_ospf and FMC "
-    "10.0.1's ospfinterface API have no OSPF network-type setting to change that. Use overlay='bgp' "
-    "unless the tunnels' OSPF network type is set another way."
+OSPF_OVERLAY_NOTE = (
+    "overlay='ospf': FMC generates no overlay routing. Each spoke's tunnel borrows its /32 loopback "
+    "(spoke_loopbacks), so both tunnel ends are unnumbered like the hub's DVTI: that is how an OSPF overlay "
+    "carried traffic on FMC 10.0.1 (live, mcp-sdwan-t1, 2026-10-18: FULL adjacencies on the hub's "
+    "virtual-access interfaces, OSPF routes on every spoke, all hosts reachable). With numbered spoke "
+    "tunnels the spokes installed no OSPF routes. Then run fmc_configure_ospf in one area on the hub "
+    "(networks: the spoke pool and the hub's inside networks) and on every spoke (its loopback /32 or the "
+    "spoke_loopbacks block, and its inside networks), and deploy."
+)
+OSPF_UNVERIFIED = (
+    "overlay='ospf' with {what} is not supported yet (the unnumbered OSPF overlay was verified with one hub "
+    "and one WAN tunnel per spoke); build without it or use overlay='bgp'."
 )
 
 
@@ -591,11 +744,12 @@ def register(reg: ToolRegistrar) -> None:
             Literal["bgp", "ospf"],
             Field(
                 description="Overlay routing: bgp (FMC generates iBGP over the tunnels, community-tagged, "
-                "inside networks redistributed) or ospf (no generated BGP; you run OSPF over the "
-                "tunnel and inside networks with fmc_configure_ospf). On FMC 10.0.1 an OSPF overlay "
-                "forms adjacencies but the spokes install no routes (see the preview warning); use bgp"
+                "inside networks redistributed) or ospf (no generated BGP: each spoke tunnel borrows a /32 "
+                "loopback from spoke_loopbacks, then you run OSPF over the tunnel and inside networks with "
+                "fmc_configure_ospf)"
             ),
         ] = "bgp",
+        spoke_loopbacks: SpokeLoopbacksArg = None,
         bgp_as: Annotated[int, Field(ge=1, le=4294967295, description="iBGP AS number")] = DEFAULT_AS,
         community: Annotated[
             int, Field(ge=1, le=65535, description="BGP community tagging the overlay's routes")
@@ -625,7 +779,8 @@ def register(reg: ToolRegistrar) -> None:
         dynamic VTI on the hub (created from its WAN interface and a loopback when it doesn't exist), a
         spoke tunnel address pool, the spokes on their WAN interfaces (FMC builds each spoke's VTI and
         addresses it from the pool), an optional backup hub with its own DVTI and pool, IKEv2, and iBGP
-        overlay routing generated by FMC (or OSPF, configured separately). The preview shows every
+        overlay routing generated by FMC (or OSPF: each spoke tunnel then borrows a /32 loopback created
+        from spoke_loopbacks, and you configure OSPF with fmc_configure_ospf). The preview shows every
         object, interface and endpoint in creation order; a failed step deletes what was created.
         Interfaces must have logical names and WAN interfaces a security zone. Then deploy the hubs and
         spokes (fmc_deploy) and check fmc_get_vpn_topology and fmc_run_show_command('show route bgp')."""
@@ -648,6 +803,14 @@ def register(reg: ToolRegistrar) -> None:
             )
         if wan2_wanted and hub_backup_dvti.strip().lower() == hub_dvti.strip().lower():
             raise InvalidRequest("hub_backup_dvti must differ from hub_dvti.")
+        if overlay == "bgp" and spoke_loopbacks:
+            raise InvalidRequest("spoke_loopbacks is for overlay='ospf' (iBGP runs over numbered tunnels).")
+        if overlay == "ospf" and spokes and not spoke_loopbacks:
+            raise InvalidRequest(
+                "overlay='ospf' needs spoke_loopbacks (a subnet outside the spoke pools, or one address per "
+                "spoke): each spoke tunnel borrows a /32 loopback, without which the spokes install no OSPF "
+                "routes (FMC 10.0.1)."
+            )
         companion = companion_name(name)
         blockers: list[str] = []
         try:
@@ -733,6 +896,14 @@ def register(reg: ToolRegistrar) -> None:
         for sp in planned:
             blockers += sp.blockers
         blockers += overlap_blockers(hubs + ([wan2] if wan2 else []))
+        if overlay == "ospf":
+            if backup_hub:
+                blockers.append(OSPF_UNVERIFIED.format(what="a backup hub"))
+            if wan2:
+                blockers.append(OSPF_UNVERIFIED.format(what="backup_wan_interface"))
+            if planned and spoke_loopbacks:
+                nets = [h.pool.network for h in hubs + ([wan2] if wan2 else []) if h.pool.network]
+                blockers += await plan_spoke_loopbacks(app, planned, spoke_loopbacks, nets, domain)
         if wan2 and wan2.dvti and hubs[0].dvti and wan2.dvti["id"] == hubs[0].dvti["id"]:
             blockers.append(
                 "hub_backup_dvti is the same interface as hub_dvti; the second WAN needs its own DVTI."
@@ -757,10 +928,7 @@ def register(reg: ToolRegistrar) -> None:
                 "symmetrically (live on mcp-sdwan-t2)."
             )
         if overlay == "ospf":
-            side_effects.append(
-                "No overlay routing is generated: run OSPF over the tunnel and inside networks on every "
-                "hub and spoke (fmc_configure_ospf) before traffic can cross the overlay."
-            )
+            side_effects.append(OSPF_OVERLAY_NOTE)
         policies = await _named(
             app,
             "object/ikev2policies",
@@ -780,8 +948,6 @@ def register(reg: ToolRegistrar) -> None:
                 f"FMC has no strong-crypto licence, so it won't deploy {', '.join(strong)}; use DES ones "
                 f"such as {WEAK_IKE_POLICY} and {WEAK_IPSEC_PROPOSAL}."
             )
-        warnings = [OSPF_OVERLAY_WARNING] if overlay == "ospf" else []
-        side_effects += warnings
         zone_ref = {"id": zone["id"], "type": "SecurityZone", "name": zone.get("name")}
         topo_body = {
             "name": name,
@@ -822,9 +988,20 @@ def register(reg: ToolRegistrar) -> None:
                 )
             if h.dvti_body:
                 steps.append(f"create DVTI {h.dvti_body['ifname']!r} on {h.device['name']}")
+        steps += [
+            f"create loopback {OSPF_LOOPBACK!r} {s.loopback_ip}/32 on {s.device['name']}"
+            for s in planned
+            if s.loopback_body
+        ]
         steps += ["create AUTO_VPN topology", "set IKEv2 and IPsec"]
         steps += [f"add {h.role} {h.device['name']}" for h in hubs]
         steps += [f"add spoke {s.device['name']}" for s in planned]
+        steps += [
+            f"set the tunnel FMC generates on {s.device['name']} to borrow {s.loopback_ip}/32 "
+            "(BORROW_IP_FROM_INTERFACE)"
+            for s in planned
+            if s.loopback_ip
+        ]
         if wan2:
             steps += [f"create AUTO_VPN topology {companion!r}", f"set IKEv2 and IPsec on {companion!r}"]
             steps += [f"add hub {wan2.device['name']} on its second-WAN DVTI to {companion!r}"]
@@ -874,7 +1051,13 @@ def register(reg: ToolRegistrar) -> None:
                 if wan2:
                     pool2 = await b.pool(wan2.pool)  # pool, loopback, DVTI: as for the primary
                     wan2_ep = hub_endpoint(wan2, await b.hub_dvti(wan2), pool2)
+                unnumbered = [sp for sp in planned if sp.loopback_ip]
+                for sp in unnumbered:
+                    await b.spoke_loopback(sp)
                 topo, made = await topology(name, hub_eps + [sp.endpoint() for sp in planned], "")
+                for sp, m in zip(planned, made[len(hub_eps) :], strict=True):
+                    if sp.loopback_ip:
+                        await b.borrow(sp, f"{path}/{topo['id']}/endpoints", m)
                 out: dict[str, Any] = {
                     "topology": topology_row(topo),
                     "endpoints": [endpoint_row(m) for m in made],
@@ -888,12 +1071,18 @@ def register(reg: ToolRegistrar) -> None:
                         "endpoints": [endpoint_row(m) for m in made2],
                     }
                     deleting = f"fmc_delete_s2s_vpn on {name!r} and {companion!r}"
+                check = "show route bgp" if overlay == "bgp" else "show route ospf"
+                first = (
+                    "Configure OSPF on the hubs and spokes (fmc_configure_ospf; see the preview note), then "
+                    if overlay == "ospf"
+                    else ""
+                )
                 return {
                     **out,
                     "created": b.done,
-                    "next": "Deploy the hubs and spokes (fmc_deploy), then check fmc_get_vpn_topology, "
-                    "fmc_list_vpn_tunnels and fmc_run_show_command('show route bgp'). To remove it: "
-                    f"{deleting}, then fmc_delete_interface for a DVTI/loopback created here.",
+                    "next": f"{first}Deploy the hubs and spokes (fmc_deploy), then check "
+                    f"fmc_get_vpn_topology, fmc_list_vpn_tunnels and fmc_run_show_command('{check}'). "
+                    f"To remove it: {deleting}, then fmc_delete_interface for a DVTI/loopback created here.",
                 }
 
             return await b.run(f"Building SD-WAN topology {name!r}", steps_)
@@ -923,6 +1112,7 @@ def register(reg: ToolRegistrar) -> None:
                 "backup_spoke_pool": backup_spoke_pool,
                 "backup_hub_inside_interfaces": backup_hub_inside_interfaces,
                 "overlay": overlay,
+                "spoke_loopbacks": spoke_loopbacks,
                 "bgp_as": bgp_as,
                 "community": community,
                 "multipath": multipath,
@@ -937,7 +1127,6 @@ def register(reg: ToolRegistrar) -> None:
                 + (f", backup hub {hubs[1].device['name']}" if len(hubs) > 1 else "")
                 + f", {len(planned)} spoke(s), overlay {overlay}",
                 details={
-                    **({"warnings": warnings} if warnings else {}),
                     "steps": steps,
                     "topology": topo_body,
                     "hubs": [h.summary() for h in hubs],
@@ -959,6 +1148,7 @@ def register(reg: ToolRegistrar) -> None:
                 fingerprint={
                     "hubs": [h.summary() for h in hubs],
                     "spokes": [s.endpoint() for s in planned],
+                    "spoke_loopbacks": [s.summary().get("tunnel_borrows") for s in planned],
                     "backup_wan": (
                         [wan2.summary(), [s.backup_endpoint() for s in planned if s.backup]] if wan2 else None
                     ),
@@ -999,11 +1189,13 @@ def register(reg: ToolRegistrar) -> None:
         multipath: Annotated[
             bool | None, Field(description="Turn ECMP over several tunnels on or off (BGP overlay)")
         ] = None,
+        spoke_loopbacks: SpokeLoopbacksArg = None,
         domain: Domain = None,
         confirm: Confirm = None,
     ) -> dict[str, Any]:
         """Change an SD-WAN (AUTO_VPN) topology: add or remove spokes, add or remove a backup hub (with
-        its own DVTI and spoke pool, created as in fmc_create_sdwan_topology), or switch ECMP. The
+        its own DVTI and spoke pool, created as in fmc_create_sdwan_topology), or switch ECMP. Spokes
+        added to an OSPF overlay get a /32 loopback from spoke_loopbacks that their tunnel borrows. The
         preview lists the endpoints before and after and the devices to deploy: adding or removing a
         spoke changes the hubs' configuration too, and a hub change reaches every spoke. The primary
         hub can't be removed (delete the topology with fmc_delete_s2s_vpn instead)."""
@@ -1095,6 +1287,30 @@ def register(reg: ToolRegistrar) -> None:
                         existing_nets.append(n)
             blockers += overlap_blockers([new_hub], existing_nets)
         adding = [await plan_spoke(app, s, domain) for s in add_spokes]
+        # an OSPF overlay: FMC generates no BGP (enableBgp false); a missing setting is not taken for one
+        ospf = (((t.get("autoVpnSettings") or {}).get("routeSettings")) or {}).get("enableBgp") is False
+        if spoke_loopbacks and not (ospf and adding):
+            raise InvalidRequest("spoke_loopbacks is for spokes added to an OSPF overlay (add_spokes).")
+        if ospf and adding and not spoke_loopbacks:
+            raise InvalidRequest(
+                f"{t.get('name')!r} runs an OSPF overlay: give spoke_loopbacks (one address per added "
+                "spoke, or a subnet outside the spoke pools) so the new tunnels borrow a /32 loopback."
+            )
+        if ospf and new_hub:
+            blockers.append(OSPF_UNVERIFIED.format(what="a backup hub"))
+        if ospf and adding and spoke_loopbacks:
+            if any(sp.backup for sp in adding):
+                blockers.append(OSPF_UNVERIFIED.format(what="backup_wan_interface"))
+            pool_nets = []
+            for e in hubs_now:
+                for p in e.get("ipv4PoolsForSpokeVti") or []:
+                    try:
+                        pool = await app.api.get(f"{await app.config_path(POOLS, domain)}/{p['id']}")
+                    except (NotFound, UpstreamError):
+                        continue
+                    if (n := pool_network(pool)) is not None:
+                        pool_nets.append(n)
+            blockers += await plan_spoke_loopbacks(app, adding, spoke_loopbacks, pool_nets, domain)
         for sp in adding:
             if sp.device["id"] in by_dev and by_dev[sp.device["id"]] not in removing:
                 raise InvalidRequest(f"{sp.device['name']} is already in {t.get('name')!r}.")
@@ -1163,6 +1379,11 @@ def register(reg: ToolRegistrar) -> None:
             side_effects.append(f"Removed spokes also leave the second-WAN topology {companion!r}.")
         if c_new_topo is not None:
             side_effects.append(f"multipath is set on {companion!r} too (both feed the same iBGP).")
+        if ospf and adding:
+            side_effects.append(
+                "The added spokes' tunnels borrow their /32 loopback (unnumbered, as OSPF needs on FMC "
+                "10.0.1); add each loopback and inside network to the spoke's OSPF area (fmc_configure_ospf)."
+            )
 
         async def apply() -> Any:
             b = Builder(app, domain)
@@ -1187,9 +1408,15 @@ def register(reg: ToolRegistrar) -> None:
                     ep = hub_endpoint(new_hub, dvti, pool)
                     made.append(await b.post(f"{path}/endpoints", ep, f"backup hub {ep['name']}"))
                 for sp in adding:
+                    if (
+                        sp.loopback_ip
+                    ):  # before the endpoint: an undo deletes the endpoint (and its VTI) first
+                        await b.spoke_loopback(sp)
                     made.append(
                         await b.post(f"{path}/endpoints", sp.endpoint(), f"spoke {sp.device['name']}")
                     )
+                    if sp.loopback_ip:
+                        await b.borrow(sp, f"{path}/endpoints", made[-1])
                     if sp.backup:
                         made.append(
                             await b.post(
@@ -1224,6 +1451,7 @@ def register(reg: ToolRegistrar) -> None:
                 "backup_hub_inside_interfaces": backup_hub_inside_interfaces,
                 "remove_backup_hub": remove_backup_hub,
                 "multipath": multipath,
+                "spoke_loopbacks": spoke_loopbacks,
                 "domain": domain,
             },
             confirm=confirm,
@@ -1253,6 +1481,7 @@ def register(reg: ToolRegistrar) -> None:
                     "endpoints": sorted(str(e.get("id")) for e in endpoints),
                     "companion": sorted(str(e.get("id")) for e in c_by_dev.values()) if c_topo else None,
                     "add": [s.endpoint() for s in adding],
+                    "add_loopbacks": [s.summary().get("tunnel_borrows") for s in adding],
                     "add_backup": [s.backup_endpoint() for s in adding if s.backup],
                     "hub": new_hub.summary() if new_hub else None,
                 },
