@@ -156,6 +156,25 @@ Notes from the run:
 - `fmc_delete_s2s_vpn`'s preview names the companion topology, and both deletes plus the DVTI, loopback and pool
   cleanup left 0 topologies and no SAs.
 
+## OSPF overlay with the tool on main (2026-10-18, 12:15-12:45 UTC)
+
+`fmc_create_sdwan_topology(overlay='ospf', spoke_loopbacks=...)` and `fmc_update_sdwan_topology(add_spokes=...,
+spoke_loopbacks=...)` from #143 were run live on `mcp-sdwan-t1` (main 25d1ae7, core 0.14.2) in `Global/mcp-test-leaf`,
+with the tools only (no `fmc_api_call` for the overlay). Everything was torn down afterwards.
+
+| Cell | Result | Evidence |
+|---|---|---|
+| T1 C2 OSPF, build with `spoke_loopbacks` (R5) | **pass** | one call (spoke_loopbacks `10.255.9.8/29`, 3 spokes on `mpls`) created the pool, hub DVTI and loopback, `sdwan-ospf-lo` 10.255.9.9-.11/32 on the spokes and the endpoints, then switched each FMC-generated `Tunnel1` to `BORROW_IP_FROM_INTERFACE` from that loopback |
+| T1 C2 OSPF, routes and traffic | **pass** | after `fmc_configure_ospf` area 0 and one deploy: every spoke installs O routes via 10.255.1.1 (hub inside, the other spokes' insides and /32 loopbacks); the hub has the 3 spoke networks via the loopbacks; all 12 host pairs ping (4-8 ms) |
+| T1 C2 OSPF, `fmc_update_sdwan_topology` remove and re-add a spoke | **pass** | remove spoke3: its tunnel and routes go; re-add with spoke_loopbacks `10.255.9.11`: the tool reuses the loopback left on spoke3, the new tunnel borrows it, and spoke3 has its 5 O routes and reaches every host again |
+
+The matrix's T1 C2 OSPF is now **pass with the tool alone**. Notes:
+- `fmc_sdwan_status` works on an OSPF overlay but has no OSPF view: it runs `show route bgp` (empty `bgp_routes`) and
+  shows no OSPF routes. Tunnel states from FMC's monitor lagged (one tunnel UNKNOWN while its SA was up), which the
+  status ranks as a `degraded` warning.
+- Removing a spoke from an OSPF overlay keeps its `sdwan-ospf-lo` loopback (delete it with `fmc_delete_interface`, or
+  give its address again when re-adding the spoke).
+
 ## FMC-side setup before the cells
 
 The recipes leave the data interfaces unconfigured, so the T1 underlay is built with the MCP tools first (kept
@@ -348,7 +367,7 @@ reports nothing: `degraded` is empty, the hub row has no WAN links and no tunnel
   (no `managementOnly`); run OSPF over the hub's pool network, the spokes' loopback block and the inside networks. Both
   tunnel ends are then unnumbered, and the spokes install the OSPF routes. **Tool:** `overlay='ospf'` with
   `spoke_loopbacks` now creates the spoke loopbacks and switches the spoke VTIs after the endpoints exist (also for
-  spokes added with `fmc_update_sdwan_topology`); not yet run live.
+  spokes added with `fmc_update_sdwan_topology`); live pass on main 25d1ae7 (see "OSPF overlay with the tool on main").
 - **R6 `fmc_update_sdwan_topology(multipath=...)`.** The tool PUTs `policy/ftds2svpns/{id}` with the whole GET body
   minus `links`/`metadata`, so `ipsecSettings`, `ikeSettings`, `advancedSettings` and `endpoints` go along as nested
   references -> FMC 422 "Invalid value 'either need to be mapped to concrete types, have custom deserializer, or
