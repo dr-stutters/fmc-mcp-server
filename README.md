@@ -106,7 +106,7 @@ Changes made in FMC reach the firewalls only after a **deployment** (`fmc_deploy
 
 ## Tools
 
-There are 157 tools when every tier is enabled (66 read, 80 write, 11 dangerous; the dangerous tier turns `fmc_api_call` into a raw call), and six workflow prompts (`fmc_why_blocked`, `fmc_firewall_health_review`, `fmc_sdwan_troubleshoot`; `fmc_rule_change_review` and `fmc_policy_cleanup`, write tier; `fmc_onboard_ftd`, dangerous tier).
+There are 153 tools when every tier is enabled (66 read, 76 write, 11 dangerous; the dangerous tier turns `fmc_api_call` into a raw call), and seven workflow prompts (`fmc_why_blocked`, `fmc_firewall_health_review`, `fmc_sdwan_troubleshoot`, `fmc_vpn_troubleshoot`; `fmc_rule_change_review` and `fmc_policy_cleanup`, write tier; `fmc_onboard_ftd`, dangerous tier).
 
 **Read**
 
@@ -115,15 +115,16 @@ There are 157 tools when every tier is enabled (66 read, 80 write, 11 dangerous;
 | System | `fmc_status`, `fmc_list_domains`, `fmc_list_audit_records`, `fmc_get_task`, `fmc_license_status` |
 | Activity (on demand) | `fmc_list_health_alerts`, `fmc_recent_activity` |
 | Devices | `fmc_list_devices`, `fmc_get_device`, `fmc_list_device_interfaces`, `fmc_list_routes`, `fmc_get_routing`, `fmc_get_platform_settings`, `fmc_list_ha_pairs`, `fmc_get_ha_status`, `fmc_list_clusters` |
-| VPN | `fmc_list_vpn_topologies` (incl. SD-WAN), `fmc_get_vpn_topology`, `fmc_get_ravpn`, `fmc_sdwan_status` (per branch: WAN links with path metrics, the path each app route takes now and why, tunnels and iBGP, ranked degraded links) |
+| VPN | `fmc_list_vpn_topologies` (incl. SD-WAN), `fmc_get_vpn_topology`, `fmc_get_ravpn`, `fmc_vpn_status` (every site-to-site topology's tunnels with each device's IKE and IPsec SAs, traffic each way, last rekey and the routes over the VTIs; degraded tunnels first), `fmc_sdwan_status` (per branch: WAN links with path metrics, the path each app route takes now and why, tunnels and iBGP, ranked degraded links) |
 | Device templates (FMC 7.6+) | `fmc_list_device_templates`, `fmc_get_device_template` (interfaces, variables, model mappings, VPN/SD-WAN settings, overridable objects, devices it was applied to; passwords masked) |
-| Troubleshooting | `fmc_packet_tracer`, `fmc_run_show_command`, `fmc_get_hit_counts`, `fmc_device_health`, `fmc_list_vpn_tunnels` |
+| Troubleshooting | `fmc_packet_tracer`, `fmc_run_show_command`, `fmc_get_hit_counts`, `fmc_device_health`, `fmc_device_metrics` (CPU, memory, throughput, connections and drops over a window: min/avg/max, peaks, dips and a compact series), `fmc_list_vpn_tunnels`, `fmc_live_connections` (a host's or user's connections on one FTD: peers, state, bytes, duration, rule, user), `fmc_user_identity_sessions` (who is on an IP, where a user is logged in), `fmc_prove_policy` (a table of flows with expected verdicts, each packet-traced on the FTD it crosses: pass / fail / mismatch with the deciding rule and the user the device saw) |
 | Policies | `fmc_list_policies`, `fmc_get_access_policy`, `fmc_list_access_rules`, `fmc_get_access_rule`, `fmc_list_nat_rules`, `fmc_list_prefilter_rules`, `fmc_list_policy_assignments` |
-| Objects | `fmc_list_objects`, `fmc_get_object`, `fmc_find_object`, `fmc_where_used`, `fmc_unused_objects`, `fmc_list_dynamic_objects` |
+| Objects | `fmc_list_objects`, `fmc_get_object`, `fmc_find_object`, `fmc_where_used`, `fmc_unused_objects`, `fmc_list_dynamic_objects`, `fmc_find_address` (one IP, network or range across objects and groups, dynamic-object mappings, access, prefilter and NAT rules, static routes and VPN endpoints, ranked) |
 | Security Intelligence | `fmc_get_security_intelligence` (block and do-not-block lists, the DNS policy's rules, and each feed's and custom list's entries, last update and status; without a policy: every SI feed and custom list) |
 | Decryption / DNS | `fmc_get_decryption_policy`, `fmc_get_dns_policy` |
 | Identity (AD/LDAP) | `fmc_get_realm` (directories, downloaded users and groups), `fmc_test_realm` (bind test from FMC; needs `FMC_UI_USERNAME`), `fmc_get_identity_policy` (rules, access policies using it) |
 | Intrusion (Snort 3) | `fmc_get_intrusion_policy` (base, mode, usage, overridden rules), `fmc_find_intrusion_rules` (gid:sid, SID or text; per-policy state) |
+| File / malware, network analysis | `fmc_get_file_policy` (settings and file rules; `catalog=true` lists file categories and types), `fmc_get_network_analysis_policy` (base, mode, access policies using it, inspector overrides) |
 | Change management | `fmc_change_tickets` (status, tickets, a ticket's changes and validation) |
 | Admin | `fmc_upgrade_status` (versions, upgrade history, packages), `fmc_list_backups`, `fmc_get_health_policy`, `fmc_list_users`, `fmc_list_object_overrides` |
 | Analysis | `fmc_rule_lookup`, `fmc_shadowed_rules`, `fmc_policy_audit` (ranked hygiene findings with a fix each), `fmc_export_access_rules` (rows or CSV, re-importable) |
@@ -135,7 +136,11 @@ Notes on some read tools:
 
 - `fmc_list_policies` covers access, NAT, prefilter, intrusion, file, platform settings, DNS,
   identity, decryption, health, FlexConfig and VPN policies.
-- `fmc_find_object` finds objects by IP address, subnet or port.
+- `fmc_find_object` finds objects by IP address, subnet or port. `fmc_find_address` answers "where does
+  10.1.2.3 appear?" in one call: objects and the groups that hold it, dynamic-object mappings, access and
+  prefilter rules (either side; literal, object, nested group or dynamic object), NAT rules, static routes
+  (destination or gateway) and VPN protected networks and extranet peers, exact matches first, each with the
+  object chain it was found through. Narrow it with `device`, `access_policy` or `nat_policy`.
 - `fmc_rule_lookup` works out, offline, which access rule handles traffic from a source to a
   destination and port. `fmc_packet_tracer` asks the device itself (FMC runs packet-tracer; nothing
   is transmitted) and names the rule that allowed or dropped the packet and why.
@@ -145,6 +150,18 @@ Notes on some read tools:
   FMC as parameters. Anything else (`show bgp`, `show ospf`, `show path-monitoring`, `show policy-route`,
   `show conn`, `show nat`) is refused before FMC is called, with the alternatives.
 - `fmc_get_hit_counts` refreshes the counters from the device first (packet-tracer packets count too).
+- `fmc_live_connections` answers "what is this host talking to right now?". FMC 10.0.1 refuses `show conn`
+  over its API, so it reads the device's syslog buffer (`show logging`: connection built/teardown messages and
+  Snort connection events with the rule, user and application); the device's platform settings must log to the
+  internal buffer at level informational (the tool says so when they don't). Where FMC's spec lists `show conn`,
+  the live connection table is used instead. `fmc_user_identity_sessions` reads FMC's identity view
+  (`analysis/activesessions`, `analysis/useractivity`; the FTD has no `show user-identity`): the account's role
+  needs Events & Logs > Analysis > Users.
+- `fmc_prove_policy` proves a policy in one call: each flow (source, destination, port, protocol, optional user,
+  device and expected rule) is traced on its device (given, or the one whose connected subnets and routes carry
+  it) and judged `pass`, `fail`, `mismatch` (right verdict for the wrong reason: another rule, a non-policy drop
+  such as no route or ARP, or another user on the source IP) or `error`. The `fmc_prove_user_policy` prompt
+  builds on it for user rules (alice allowed, bob blocked).
 - `fmc_list_health_alerts` and `fmc_recent_activity` query FMC when called (no background collection):
   health alerts over a window with repeats collapsed, and one timeline of health alerts, audit records
   and deployments. The server never receives syslog or eStreamer; traffic events stay in the FMC UI or
@@ -155,7 +172,7 @@ Notes on some read tools:
 | Area | Tools |
 |---|---|
 | Objects | `fmc_create_object`, `fmc_update_object`, `fmc_delete_object`, `fmc_create_group`, `fmc_update_group`, `fmc_create_security_zone`, `fmc_import_objects` (bulk, validated) |
-| Access control | `fmc_create_access_policy`, `fmc_create_access_rule`, `fmc_update_access_rule`, `fmc_delete_access_rule`, `fmc_import_access_rules` (bulk, validated) |
+| Access control | `fmc_create_access_policy`, `fmc_create_access_rule`, `fmc_update_access_rule` (both take URL categories with a reputation level: `url_categories=[{category, reputation}]`), `fmc_delete_access_rule`, `fmc_import_access_rules` (bulk, validated) |
 | Prefilter | `fmc_create_prefilter_policy`, `fmc_set_prefilter_policy` (link to an access policy), `fmc_create_prefilter_rule`, `fmc_update_prefilter_rule`, `fmc_delete_prefilter_rule` (FASTPATH / ANALYZE / BLOCK) |
 | NAT | `fmc_create_nat_policy`, `fmc_create_nat_rule`, `fmc_update_nat_rule`, `fmc_delete_nat_rule` |
 | Device configuration | `fmc_update_interface`, `fmc_create_subinterface`, `fmc_delete_interface`, `fmc_create_static_route`, `fmc_delete_static_route`, `fmc_assign_policy` |
@@ -163,6 +180,8 @@ Notes on some read tools:
 | SD-WAN application-aware routing | `fmc_configure_wan_interface` (priority, ICMP path monitoring to the next hop or an IP, HTTP application monitoring), `fmc_configure_ecmp_zone`, `fmc_create_app_route` (applications, networks, ports or users out of the WAN link picked by order, priority, or lowest jitter / loss / RTT or highest MOS), `fmc_delete_app_route`; `fmc_get_routing` shows the routes and WAN settings |
 | Platform settings / logging | `fmc_create_platform_settings_policy`, `fmc_configure_syslog`, `fmc_set_access_logging`, `fmc_configure_ntp`, `fmc_configure_snmp` (v2c; community write-only), `fmc_configure_ssh_access` |
 | Dynamic objects | `fmc_create_dynamic_object`, `fmc_delete_dynamic_object`, `fmc_map_dynamic_object` |
+| File / malware | `fmc_create_file_policy`, `fmc_create_file_rule` (DETECT, BLOCK, MALWARE_CLOUD_LOOKUP, BLOCK_MALWARE, with or without reset; by protocol, direction, file type and category), `fmc_delete_file_rule`; on ALLOW rules: `fmc_create_access_rule` / `fmc_update_access_rule(file_policy=...)` |
+| Network analysis | `fmc_create_network_analysis_policy` (on a base policy; an access policy selects it in the UI, FMC's REST API has no field for that) |
 | Intrusion tuning | `fmc_set_intrusion_rule_state` (ALERT/BLOCK/DROP/REJECT/PASS/DISABLE/DEFAULT per policy), `fmc_create_intrusion_policy`, `fmc_create_intrusion_rule` / `fmc_delete_intrusion_rule` (custom Snort 3 rules); `fmc_update_access_rule(intrusion_policy=...)` |
 | Change management | `fmc_ticket` (open / submit / discard / release; an open ticket is sent as `ticket-id` with every change) |
 | Decryption | `fmc_create_decryption_policy`, `fmc_create_decryption_rule` (DO_NOT_DECRYPT, BLOCK, MONITOR), `fmc_delete_decryption_rule`, `fmc_set_decryption_policy` |
@@ -210,6 +229,9 @@ MD5 password, because FMC returns it masked and a PUT would replace it, unless y
 - **Why is this traffic blocked?** The `fmc_why_blocked` prompt runs `fmc_rule_lookup` ->
   `fmc_packet_tracer` -> `fmc_get_hit_counts` -> `fmc_pending_changes` / `fmc_list_deployments` ->
   `fmc_list_audit_records`, then proposes a preview-first fix.
+- **Prove a user-based policy:** the `fmc_prove_user_policy` prompt checks each user offline
+  (`fmc_rule_lookup` with identities), who ISE sees on the client, then has each user log in and proves the live
+  verdict with `fmc_prove_policy` (deciding rule and the user the firewall saw), ending in a pass/fail table.
 - **Block a host now:** `fmc_contain_host(ip, reason)` maps it into the quarantine dynamic object
   (`FMC_QUARANTINE_OBJECT`); the first call proposes the BLOCK rules and one deploy, later calls need no
   deployment. `fmc_release_host(ip)` undoes it. ise-mcp-server's `ise_quarantine_host` calls these.
@@ -221,15 +243,21 @@ MD5 password, because FMC returns it masked and a PUT would replace it, unless y
   and its hub(s) -> `fmc_get_vpn_topology`. Templates apply to standalone devices only.
 - **HA:** `fmc_create_ha_pair` -> `fmc_configure_ha_monitoring` (standby IPs) -> `fmc_deploy` (the pair's
   name) -> `fmc_get_ha_status` / `show failover`; `fmc_ha_action` switch, break or delete.
-- **Site-to-site VPN:** `fmc_create_s2s_vpn` -> `fmc_deploy` both peers -> `fmc_list_vpn_tunnels`. In FMC
+- **Site-to-site VPN:** `fmc_create_s2s_vpn` -> `fmc_deploy` both peers -> `fmc_vpn_status` (tunnels, SAs and
+  routes over the VTIs per device, degraded first) or `fmc_list_vpn_tunnels`. In FMC
   evaluation mode only DES crypto deploys; the tool picks it and says so.
 - **SD-WAN branches:** zone the WAN and inside interfaces (`fmc_update_interface`) -> `fmc_create_sdwan_topology`
   (creates the hub's loopback, DVTI and spoke pool when missing, then the AUTO_VPN topology, IKEv2 and the
   endpoints; a failed step deletes what it created) -> `fmc_deploy` hubs and spokes -> `fmc_get_vpn_topology`,
   `show route bgp`. New branch: `fmc_update_sdwan_topology add_spokes=[...]`, then deploy the spoke and the hubs.
+- **"The VPN to X is down":** the `fmc_vpn_troubleshoot` prompt starts from `fmc_vpn_status` and walks IKE (key
+  mismatch vs dead path), IPsec (one-way traffic), routing over the tunnel, NAT exemption and access rules
+  (`fmc_packet_tracer`, `fmc_rule_lookup`), then proposes one previewed fix.
 - **"Teams is slow at branch Y":** the `fmc_sdwan_troubleshoot` prompt walks `fmc_sdwan_status` (path metrics,
   degraded links) -> the app-route rule and the interface it picks now -> the overlay tunnels and BGP ->
   `fmc_packet_tracer`, then proposes one previewed fix.
+- **Was the branch firewall busy during the outage?** `fmc_device_metrics(device, since='2026-10-18T09:30:00Z',
+  until='2026-10-18T10:00:00Z')`: CPU, memory, throughput, connections and drops with their peaks.
 - **What changed or broke in the last hour?** `fmc_recent_activity`.
 - **Is everything healthy?** The `fmc_firewall_health_review` prompt checks devices, HA, deployments,
   licences, content versions, backups, VPN and recent alerts, and ranks the findings (critical, warning,
