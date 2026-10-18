@@ -107,8 +107,8 @@ def same_link_for_state(boot: dict[str, Any]) -> bool | None:
     useSameLinkForFailovers on GET, so compare the two links' interfaces."""
     if boot.get("useSameLinkForFailovers") is not None:
         return bool(boot.get("useSameLinkForFailovers"))
-    lan = ref_label((boot.get("lanFailover") or {}).get("interfaceObject") or {})
-    state = ref_label((boot.get("statefulFailover") or {}).get("interfaceObject") or {})
+    lan = ((boot.get("lanFailover") or {}).get("interfaceObject") or {}).get("name")
+    state = ((boot.get("statefulFailover") or {}).get("interfaceObject") or {}).get("name")
     if not lan or not state:
         return None
     return str(lan).lower() == str(state).lower()
@@ -401,12 +401,10 @@ def failover_checks(status: dict[str, Any], live: dict[str, Any] | None) -> list
         )
     else:
         ready = [r for r in others if str(units[r].get("device_state") or "").lower() == "standby ready"]
+        seen = [r for r in others if units[r].get("device_state")]
         stby = ", ".join(f"{units[r]['device']} {units[r].get('device_state') or 'unknown'}" for r in others)
-        checks.append(
-            _check(
-                "standby_ready", _BLOCKER, bool(others) and len(ready) == len(others), stby or "no standby"
-            )
-        )
+        ok = None if others and not seen else bool(others) and len(ready) == len(others)
+        checks.append(_check("standby_ready", _BLOCKER, ok, stby or "no standby"))
     if live is not None:
         lan = sf.get("failover_link") or {}
         checks.append(
