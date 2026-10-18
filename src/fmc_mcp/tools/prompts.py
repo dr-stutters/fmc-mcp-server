@@ -835,7 +835,7 @@ Stop and report when a step fails; keep notes of what each step returned.
    a. Zones: the WAN interface must be in a security zone (the topology builds the spoke's VTI on it).
       Reuse the zones the other spokes' WAN and inside interfaces are in
       ({tool_ref("fmc_list_device_interfaces")} on a spoke); create one only if it's missing
-      ({tool_ref("fmc_create_security_zone")}, interface_mode='ROUTED').
+      ({tool_ref("fmc_create_security_zone")} name=<zone name>, interface_mode='ROUTED').
    b. Interfaces: {tool_ref("fmc_update_interface")} device={dev}:
       - interface={wan_if}, logical_name=<the other spokes' WAN name, e.g. outside>, enabled=true,
         security_zone=<WAN zone>, ipv4={wan};
@@ -844,13 +844,15 @@ Stop and report when a step fails; keep notes of what each step returned.
       networks=['any-ipv4'], gateway={gw}. It must cover the hubs' WAN addresses (step 0); when they sit
       behind a carrier network instead, route that network (a network object) via {gw} as well.
    d. NAT for local internet breakout, if the other spokes have it: their NAT policy
-      ({tool_ref("fmc_assign_policy")} kind='nat') when it isn't tied to their addresses, else
-      {tool_ref("fmc_create_nat_policy")} and {tool_ref("fmc_create_nat_rule")} kind='auto',
+      ({tool_ref("fmc_assign_policy")} kind='nat', policy=<their NAT policy>, devices=[{dev}]) when it
+      isn't tied to their addresses, else {tool_ref("fmc_create_nat_policy")} name=<a new NAT policy> and
+      {tool_ref("fmc_create_nat_rule")} policy=<that policy>, kind='auto',
       original_source=<a network object for {inside_net}>, translated_source='interface',
       nat_type='DYNAMIC', source_interface=<inside zone>, destination_interface=<WAN zone>, then
-      {tool_ref("fmc_assign_policy")}. Keep the PAT on the WAN zone, never 'any': overlay traffic leaves
-      through the VTI and must keep its addresses. Platform settings: the other spokes' policy
-      ({tool_ref("fmc_assign_policy")} kind='platform_settings').
+      {tool_ref("fmc_assign_policy")} kind='nat', policy=<that policy>, devices=[{dev}]. Keep the PAT on
+      the WAN zone, never 'any': overlay traffic leaves through the VTI and must keep its addresses.
+      Platform settings: the other spokes' policy ({tool_ref("fmc_assign_policy")}
+      kind='platform_settings', policy=<their platform settings policy>, devices=[{dev}]).
    e. Access policy {acp}: it must allow the inside zone to and from the overlay zone (branch to hub
       networks and back) and inside to WAN for breakout. Check offline with {tool_ref("fmc_rule_lookup")}
       policy={acp}, source={src}, destination={dst}, protocol='icmp', source_zone=<inside zone>,
@@ -864,9 +866,10 @@ Stop and report when a step fails; keep notes of what each step returned.
       on the hub (preview; a hub change).
    g. Deploy the branch alone: {tool_ref("fmc_pending_changes")} device={dev}, then {tool_ref("fmc_deploy")}
       devices=[{dev}], wait=true. Underlay check: {tool_ref("fmc_run_show_command")} device={dev},
-      'show interface ip brief' (both interfaces up with their addresses) and 'show route' (the route via
-      {gw}); with CML, {tool_ref("cml_run_commands")} on the branch FTD node: 'ping <a hub WAN address>'. A
-      tunnel can't come up over an underlay that doesn't work: fix this before step 5.
+      command='show interface ip brief' (both interfaces up with their addresses), then command='show
+      route' (the route via {gw}); with CML, {tool_ref("cml_run_commands")} on the branch FTD node:
+      'ping <a hub WAN address>'. A tunnel can't come up over an underlay that doesn't work: fix this
+      before step 5.
 
 5. Join the topology: {tool_ref("fmc_update_sdwan_topology")} topology={topo},
    add_spokes=[{{"device": {dev}, "wan_interface": <the WAN logical name>, "inside_interfaces": ["inside"]}}]
@@ -883,8 +886,8 @@ Stop and report when a step fails; keep notes of what each step returned.
    a tunnel down.
    a. Tunnel: {tool_ref("fmc_sdwan_status")} topology={topo}, branch={dev}: the WAN link, the tunnel to
       every hub up, the overlay neighbours established, `degraded` empty. {tool_ref("fmc_list_vpn_tunnels")}
-      device={dev}: TUNNEL_UP. Detail: {tool_ref("fmc_run_show_command")} device={dev}, 'show crypto ikev2
-      sa' (READY) and 'show crypto ipsec sa' (encaps and decaps both counting).
+      device={dev}: TUNNEL_UP. Detail: {tool_ref("fmc_run_show_command")} device={dev}, command='show
+      crypto ikev2 sa' (READY), then command='show crypto ipsec sa' (encaps and decaps both counting).
    b. Routes: {tool_ref("fmc_run_show_command")} device={dev}, command='show route bgp' ('show route ospf'
       for an OSPF overlay): the hubs' and the other branches' inside networks over the tunnel. On each
       hub the same command shows {inside_net} via the branch's tunnel address.
