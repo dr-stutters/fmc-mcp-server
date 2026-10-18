@@ -1,0 +1,800 @@
+{
+ "items": [
+  {
+   "malwareCount": 25,
+   "fileTypes": [
+    {
+     "id": "11",
+     "type": "FileType",
+     "name": "RTF"
+    },
+    {
+     "id": "13",
+     "type": "FileType",
+     "name": "MSCHM"
+    },
+    {
+     "id": "15",
+     "type": "FileType",
+     "name": "MSOLE2"
+    },
+    {
+     "id": "32",
+     "type": "FileType",
+     "name": "MAIL"
+    },
+    {
+     "id": "33",
+     "type": "FileType",
+     "name": "TNEF"
+    },
+    {
+     "id": "200",
+     "type": "FileType",
+     "name": "XLW"
+    },
+    {
+     "id": "226",
+     "type": "FileType",
+     "name": "MSWORD_MAC5"
+    },
+    {
+     "id": "228",
+     "type": "FileType",
+     "name": "WP"
+    },
+    {
+     "id": "230",
+     "type": "FileType",
+     "name": "MWL"
+    },
+    {
+     "id": "231",
+     "type": "FileType",
+     "name": "MDB"
+    },
+    {
+     "id": "232",
+     "type": "FileType",
+     "name": "ACCDB"
+    },
+    {
+     "id": "233",
+     "type": "FileType",
+     "name": "MNY"
+    },
+    {
+     "id": "236",
+     "type": "FileType",
+     "name": "WAB"
+    },
+    {
+     "id": "248",
+     "type": "FileType",
+     "name": "NEW_OFFICE"
+    },
+    {
+     "id": "285",
+     "type": "FileType",
+     "name": "PPTX"
+    },
+    {
+     "id": "286",
+     "type": "FileType",
+     "name": "DOCX"
+    },
+    {
+     "id": "287",
+     "type": "FileType",
+     "name": "XLSX"
+    },
+    {
+     "id": "251",
+     "type": "FileType",
+     "name": "MDI"
+    },
+    {
+     "id": "257",
+     "type": "FileType",
+     "name": "WRI"
+    },
+    {
+     "id": "259",
+     "type": "FileType",
+     "name": "ONE"
+    },
+    {
+     "id": "267",
+     "type": "FileType",
+     "name": "PST"
+    },
+    {
+     "id": "268",
+     "type": "FileType",
+     "name": "HLP"
+    },
+    {
+     "id": "274",
+     "type": "FileType",
+     "name": "XPS"
+    },
+    {
+     "id": "277",
+     "type": "FileType",
+     "name": "MSHTML"
+    },
+    {
+     "id": "284",
+     "type": "FileType",
+     "name": "HWP"
+    }
+   ],
+   "id": "1",
+   "type": "FileCategory",
+   "name": "Office Documents"
+  },
+  {
+   "malwareCount": 8,
+   "fileTypes": [
+    {
+     "id": "1",
+     "type": "FileType",
+     "name": "MSEXE"
+    },
+    {
+     "id": "9",
+     "type": "FileType",
+     "name": "PDF"
+    },
+    {
+     "id": "15",
+     "type": "FileType",
+     "name": "MSOLE2"
+    },
+    {
+     "id": "41",
+     "type": "FileType",
+     "name": "MACHO"
+    },
+    {
+     "id": "248",
+     "type": "FileType",
+     "name": "NEW_OFFICE"
+    },
+    {
+     "id": "285",
+     "type": "FileType",
+     "name": "PPTX"
+    },
+    {
+     "id": "286",
+     "type": "FileType",
+     "name": "DOCX"
+    },
+    {
+     "id": "287",
+     "type": "FileType",
+     "name": "XLSX"
+    }
+   ],
+   "id": "10",
+   "type": "FileCategory",
+   "name": "Local Malware Analysis Capable"
+  },
+  {
+   "malwareCount": 20,
+   "fileTypes": [
+    {
+     "id": "14",
+     "type": "FileType",
+     "name": "MSCAB"
+    },
+    {
+     "id": "16",
+     "type": "FileType",
+     "name": "MSSZDD"
+    },
+    {
+     "id": "17",
+     "type": "FileType",
+     "name": "ZIP"
+    },
+    {
+     "id": "18",
+     "type": "FileType",
+     "name": "RAR"
+    },
+    {
+     "id": "19",
+     "type": "FileType",
+     "name": "7Z"
+    },
+    {
+     "id": "20",
+     "type": "FileType",
+     "name": "BZ"
+    },
+    {
+     "id": "21",
+     "type": "FileType",
+     "name": "GZ"
+    },
+    {
+     "id": "22",
+     "type": "FileType",
+     "name": "ARJ"
+    },
+    {
+     "id": "38",
+     "type": "FileType",
+     "name": "POSIX_TAR"
+    },
+    {
+     "id": "39",
+     "type": "FileType",
+     "name": "OLD_TAR"
+    },
+    {
+     "id": "43",
+     "type": "FileType",
+     "name": "SIS"
+    },
+    {
+     "id": "45",
+     "type": "FileType",
+     "name": "CPIO_ODC"
+    },
+    {
+     "id": "46",
+     "type": "FileType",
+     "name": "CPIO_NEWC"
+    },
+    {
+     "id": "47",
+     "type": "FileType",
+     "name": "CPIO_CRC"
+    },
+    {
+     "id": "202",
+     "type": "FileType",
+     "name": "LHA"
+    },
+    {
+     "id": "215",
+     "type": "FileType",
+     "name": "JAR"
+    },
+    {
+     "id": "266",
+     "type": "FileType",
+     "name": "SIT"
+    },
+    {
+     "id": "272",
+     "type": "FileType",
+     "name": "ZIP_ENC"
+    },
+    {
+     "id": "282",
+     "type": "FileType",
+     "name": "ALZ"
+    },
+    {
+     "id": "283",
+     "type": "FileType",
+     "name": "EGG"
+    }
+   ],
+   "id": "2",
+   "type": "FileCategory",
+   "name": "Archive"
+  },
+  {
+   "malwareCount": 37,
+   "fileTypes": [
+    {
+     "id": "12",
+     "type": "FileType",
+     "name": "RIFF"
+    },
+    {
+     "id": "44",
+     "type": "FileType",
+     "name": "SWF"
+    },
+    {
+     "id": "201",
+     "type": "FileType",
+     "name": "MOV"
+    },
+    {
+     "id": "203",
+     "type": "FileType",
+     "name": "MPEG"
+    },
+    {
+     "id": "205",
+     "type": "FileType",
+     "name": "RMF"
+    },
+    {
+     "id": "207",
+     "type": "FileType",
+     "name": "MP3"
+    },
+    {
+     "id": "208",
+     "type": "FileType",
+     "name": "OGG"
+    },
+    {
+     "id": "209",
+     "type": "FileType",
+     "name": "RIFX"
+    },
+    {
+     "id": "216",
+     "type": "FileType",
+     "name": "FLV"
+    },
+    {
+     "id": "217",
+     "type": "FileType",
+     "name": "WAV"
+    },
+    {
+     "id": "218",
+     "type": "FileType",
+     "name": "FFMPEG"
+    },
+    {
+     "id": "220",
+     "type": "FileType",
+     "name": "IVR"
+    },
+    {
+     "id": "221",
+     "type": "FileType",
+     "name": "RA"
+    },
+    {
+     "id": "223",
+     "type": "FileType",
+     "name": "FLAC"
+    },
+    {
+     "id": "224",
+     "type": "FileType",
+     "name": "S3M"
+    },
+    {
+     "id": "225",
+     "type": "FileType",
+     "name": "ASF"
+    },
+    {
+     "id": "234",
+     "type": "FileType",
+     "name": "REC"
+    },
+    {
+     "id": "235",
+     "type": "FileType",
+     "name": "R1M"
+    },
+    {
+     "id": "237",
+     "type": "FileType",
+     "name": "M3U"
+    },
+    {
+     "id": "238",
+     "type": "FileType",
+     "name": "MKV"
+    },
+    {
+     "id": "240",
+     "type": "FileType",
+     "name": "AMF"
+    },
+    {
+     "id": "241",
+     "type": "FileType",
+     "name": "WEBM"
+    },
+    {
+     "id": "243",
+     "type": "FileType",
+     "name": "MIDI"
+    },
+    {
+     "id": "244",
+     "type": "FileType",
+     "name": "PLS"
+    },
+    {
+     "id": "245",
+     "type": "FileType",
+     "name": "SMIL"
+    },
+    {
+     "id": "246",
+     "type": "FileType",
+     "name": "FLIC"
+    },
+    {
+     "id": "247",
+     "type": "FileType",
+     "name": "SAMI"
+    },
+    {
+     "id": "260",
+     "type": "FileType",
+     "name": "MP4"
+    },
+    {
+     "id": "265",
+     "type": "FileType",
+     "name": "AMR"
+    },
+    {
+     "id": "271",
+     "type": "FileType",
+     "name": "DICM"
+    },
+    {
+     "id": "288",
+     "type": "FileType",
+     "name": "AIF"
+    },
+    {
+     "id": "295",
+     "type": "FileType",
+     "name": "AVI"
+    },
+    {
+     "id": "296",
+     "type": "FileType",
+     "name": "SND"
+    },
+    {
+     "id": "297",
+     "type": "FileType",
+     "name": "M4A"
+    },
+    {
+     "id": "298",
+     "type": "FileType",
+     "name": "VOB"
+    },
+    {
+     "id": "299",
+     "type": "FileType",
+     "name": "WMV"
+    },
+    {
+     "id": "300",
+     "type": "FileType",
+     "name": "M4V"
+    }
+   ],
+   "id": "3",
+   "type": "FileCategory",
+   "name": "Multimedia"
+  },
+  {
+   "malwareCount": 14,
+   "fileTypes": [
+    {
+     "id": "1",
+     "type": "FileType",
+     "name": "MSEXE"
+    },
+    {
+     "id": "29",
+     "type": "FileType",
+     "name": "ISHIELD_MSI"
+    },
+    {
+     "id": "31",
+     "type": "FileType",
+     "name": "BINHEX"
+    },
+    {
+     "id": "34",
+     "type": "FileType",
+     "name": "BINARY_DATA"
+    },
+    {
+     "id": "40",
+     "type": "FileType",
+     "name": "ELF"
+    },
+    {
+     "id": "41",
+     "type": "FileType",
+     "name": "MACHO"
+    },
+    {
+     "id": "214",
+     "type": "FileType",
+     "name": "JARPACK"
+    },
+    {
+     "id": "258",
+     "type": "FileType",
+     "name": "RPM"
+    },
+    {
+     "id": "264",
+     "type": "FileType",
+     "name": "TORRENT"
+    },
+    {
+     "id": "269",
+     "type": "FileType",
+     "name": "AUTORUN"
+    },
+    {
+     "id": "273",
+     "type": "FileType",
+     "name": "EICAR"
+    },
+    {
+     "id": "280",
+     "type": "FileType",
+     "name": "LNK"
+    },
+    {
+     "id": "281",
+     "type": "FileType",
+     "name": "SCR"
+    },
+    {
+     "id": "301",
+     "type": "FileType",
+     "name": "UNIX_SCRIPT"
+    }
+   ],
+   "id": "4",
+   "type": "FileCategory",
+   "name": "Executables"
+  },
+  {
+   "malwareCount": 2,
+   "fileTypes": [
+    {
+     "id": "9",
+     "type": "FileType",
+     "name": "PDF"
+    },
+    {
+     "id": "204",
+     "type": "FileType",
+     "name": "EPS"
+    }
+   ],
+   "id": "5",
+   "type": "FileCategory",
+   "name": "PDF files"
+  },
+  {
+   "malwareCount": 2,
+   "fileTypes": [
+    {
+     "id": "36",
+     "type": "FileType",
+     "name": "UUENCODED"
+    },
+    {
+     "id": "37",
+     "type": "FileType",
+     "name": "SCRENC"
+    }
+   ],
+   "id": "6",
+   "type": "FileCategory",
+   "name": "Encoded"
+  },
+  {
+   "malwareCount": 11,
+   "fileTypes": [
+    {
+     "id": "206",
+     "type": "FileType",
+     "name": "GIF"
+    },
+    {
+     "id": "211",
+     "type": "FileType",
+     "name": "PNG"
+    },
+    {
+     "id": "212",
+     "type": "FileType",
+     "name": "JPEG"
+    },
+    {
+     "id": "229",
+     "type": "FileType",
+     "name": "TIFF"
+    },
+    {
+     "id": "239",
+     "type": "FileType",
+     "name": "IMG_PICT"
+    },
+    {
+     "id": "242",
+     "type": "FileType",
+     "name": "MAYA"
+    },
+    {
+     "id": "249",
+     "type": "FileType",
+     "name": "DWG"
+    },
+    {
+     "id": "253",
+     "type": "FileType",
+     "name": "PSD"
+    },
+    {
+     "id": "256",
+     "type": "FileType",
+     "name": "WMF"
+    },
+    {
+     "id": "262",
+     "type": "FileType",
+     "name": "BMP"
+    },
+    {
+     "id": "263",
+     "type": "FileType",
+     "name": "ICO"
+    }
+   ],
+   "id": "7",
+   "type": "FileCategory",
+   "name": "Graphics"
+  },
+  {
+   "malwareCount": 15,
+   "fileTypes": [
+    {
+     "id": "210",
+     "type": "FileType",
+     "name": "SYMANTEC"
+    },
+    {
+     "id": "219",
+     "type": "FileType",
+     "name": "DMG"
+    },
+    {
+     "id": "222",
+     "type": "FileType",
+     "name": "VMDK"
+    },
+    {
+     "id": "227",
+     "type": "FileType",
+     "name": "SYLKc"
+    },
+    {
+     "id": "250",
+     "type": "FileType",
+     "name": "ISO"
+    },
+    {
+     "id": "252",
+     "type": "FileType",
+     "name": "PGD"
+    },
+    {
+     "id": "254",
+     "type": "FileType",
+     "name": "9XHIVE"
+    },
+    {
+     "id": "255",
+     "type": "FileType",
+     "name": "REG"
+    },
+    {
+     "id": "261",
+     "type": "FileType",
+     "name": "PCAP"
+    },
+    {
+     "id": "270",
+     "type": "FileType",
+     "name": "NTHIVE"
+    },
+    {
+     "id": "275",
+     "type": "FileType",
+     "name": "DMP"
+    },
+    {
+     "id": "276",
+     "type": "FileType",
+     "name": "IntelHEX"
+    },
+    {
+     "id": "278",
+     "type": "FileType",
+     "name": "VB"
+    },
+    {
+     "id": "289",
+     "type": "FileType",
+     "name": "DEB"
+    },
+    {
+     "id": "293",
+     "type": "FileType",
+     "name": "CUR"
+    }
+   ],
+   "id": "8",
+   "type": "FileCategory",
+   "name": "System files"
+  },
+  {
+   "malwareCount": 8,
+   "fileTypes": [
+    {
+     "id": "1",
+     "type": "FileType",
+     "name": "MSEXE"
+    },
+    {
+     "id": "9",
+     "type": "FileType",
+     "name": "PDF"
+    },
+    {
+     "id": "11",
+     "type": "FileType",
+     "name": "RTF"
+    },
+    {
+     "id": "15",
+     "type": "FileType",
+     "name": "MSOLE2"
+    },
+    {
+     "id": "248",
+     "type": "FileType",
+     "name": "NEW_OFFICE"
+    },
+    {
+     "id": "285",
+     "type": "FileType",
+     "name": "PPTX"
+    },
+    {
+     "id": "286",
+     "type": "FileType",
+     "name": "DOCX"
+    },
+    {
+     "id": "287",
+     "type": "FileType",
+     "name": "XLSX"
+    }
+   ],
+   "id": "9",
+   "type": "FileCategory",
+   "name": "Dynamic Analysis Capable"
+  }
+ ],
+ "paging": {
+  "offset": 0,
+  "limit": 100,
+  "count": 10,
+  "pages": 1
+ }
+}
