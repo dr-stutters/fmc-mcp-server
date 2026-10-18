@@ -634,14 +634,11 @@ def register(reg: ToolRegistrar) -> None:
                 f"{WEAK_IKE_POLICY} / {WEAK_IPSEC_PROPOSAL} (DES): fine for a lab, not for production. "
                 "FMC may also refuse SD-WAN topologies without it."
             )
-        warnings: list[str] = []
         if overlay == "ospf":
             side_effects.append(
                 "No overlay routing is generated: run OSPF over the tunnel and inside networks on every "
                 "hub and spoke (fmc_configure_ospf) before traffic can cross the overlay."
             )
-            warnings.append(OSPF_OVERLAY_WARNING)
-            side_effects.append(OSPF_OVERLAY_WARNING)
         policies = await _named(
             app,
             "object/ikev2policies",
@@ -661,6 +658,8 @@ def register(reg: ToolRegistrar) -> None:
                 f"FMC has no strong-crypto licence, so it won't deploy {', '.join(strong)}; use DES ones "
                 f"such as {WEAK_IKE_POLICY} and {WEAK_IPSEC_PROPOSAL}."
             )
+        warnings = [OSPF_OVERLAY_WARNING] if overlay == "ospf" else []
+        side_effects += warnings
         zone_ref = {"id": zone["id"], "type": "SecurityZone", "name": zone.get("name")}
         topo_body = {
             "name": name,
