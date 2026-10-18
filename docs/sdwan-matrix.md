@@ -44,6 +44,89 @@ and C3 fail. The T3 cluster attempt is
 B2. Every fail has a root cause below. Tunnels, iBGP, the backup hub and HA failover all work on the devices; the gaps
 are in what the tools send or read (R1-R3, R6, R7) and in OSPF over FMC's AUTO_VPN addressing (R5).
 
+## Re-run on v0.13.0 (2026-10-18, 08:00-08:45 UTC)
+
+The cells the 0.13.0 fixes target, re-run by the `rerun` agent with the released fmc-mcp 0.13.0 (R1-R3, R5-R7 in it)
+and cml-mcp main, in `Global/mcp-test-leaf`. The `mcp-sdwan-health` policy (path monitoring on) was assigned to
+the 12 SD-WAN FTDs. Every topology was torn down afterwards.
+
+| Cell | Result | Root cause |
+|---|---|---|
+| T1 C3, VTI WAN settings (`fmc_configure_wan_interface` on a spoke tunnel) | **pass** | R3 fixed |
+| T1 C3, dead WAN, second WAN tunnel built as a companion topology | **pass** | R1 payload (#138) |
+| T1 C3, app route by RTT over the two tunnels follows WAN health | **fail** | R9 (new) |
+| T4 C3 (spoke-to-spoke over the same app route and tunnels) | failover **pass**, metric routing **fail** | R9 |
+| T1 C5, wrong PSK told apart from a dead WAN | **pass** | R2 fixed |
+| T1 C5, brownout detected by `fmc_sdwan_status` | **fail** on 0.13.0 | R2 rest, fixed in #137 (not live) |
+| T2 C2, `fmc_update_sdwan_topology(multipath=False)` + backup-hub takeover | **pass** | R6 fixed |
+| T3 C1, C2, C5 on a rebuilt HA pair | **blocked** | B3 (new) |
+| T1 C2 OSPF with unnumbered spoke VTIs | **pass** | R5: working addressing found |
+
+Matrix after the re-run (cells not re-run keep their first-run result):
+
+| | C1 | C2 | C3 | C4 | C5 |
+|---|---|---|---|---|---|
+| T1 | **pass** | iBGP **pass**, OSPF **pass** (unnumbered spoke VTIs) | **fail** (R9); R1, R3 fixed | **blocked** (B1) | **fail** (brownout, #137); PSK and dead WAN **pass** |
+| T2 | **pass** | iBGP **pass** (R6 fixed, backup hub takes over), OSPF not re-run | **fail** (not re-run; R9 expected) | **blocked** (B1) | **fail** (not re-run) |
+| T3 | **pass** (first run) | **pass** (first run) | **fail** (not re-run) | **blocked** (B1) | **fail** (R7 fix not verified live: B3) |
+| T4 | n/a (T1) | through hub **pass** | failover **pass**, metric routing **fail** (R9) | n/a (T1) | covered by T1 C5 |
+
+Counts over T1-T3 x C1-C5 (15 cells): **pass 5** (C1 on T1, T2, T3; C2 on T1, T3), **split 1** (T2 C2: iBGP pass,
+OSPF not re-run), **fail 6** (C3 on T1, T2, T3; C5 on T1, T2, T3), **blocked 3** (C4: B1). The failures left are R9
+(the FTD's metric-based app routing doesn't override the routing table over VTIs), the brownout part of C5 (fixed in
+#137, waiting for a release) and the cells B3 kept from re-running.
+
+**T1 C3 and T4 C3.** `fmc_create_sdwan_topology` built `mcp-sdwan-t1` (hub DVTI on `mpls`, 3 spokes) and a companion
+`mcp-sdwan-t1-wan2` (a second hub DVTI on `inet` with its own loopback and pool, spoke1 on `inet`, same AS and community),
+which is the second-WAN payload from #138. 0.13.0's create tool built the companion directly: its loopback and tunnel
+ids didn't collide with the first topology's because the first one existed already. One deploy: spoke1 had tunnels on
+`mpls` and `inet` and ECMP routes over both hubs' tunnel addresses.
+- `fmc_configure_wan_interface` on both spoke1 tunnels (priority 1 and 2, path monitoring `ip` to each hub tunnel
+  address) applied and deployed: **R3 is fixed**. `show path-monitoring` on the device lists both tunnels.
+- `fmc_create_app_route(order_by='rtt')` over the two tunnels (to the hub and spoke2 networks) passed its checks and
+  deployed: `set adaptive-interface rtt mpls_static_vti_1 inet_static_vti_2`.
+- Brownout on spoke1's `inet` link: `show route-map` shows the measured RTTs (`mpls` tunnel about 3 ms, `inet` tunnel
+  about 311 ms), but `fmc_packet_tracer` (PBR-LOOKUP phase) and the tunnel counters (`show traffic`: about 130 more
+  packets out of the `inet` tunnel during a 100-ping burst) show the traffic still leaving through the `inet` tunnel.
+  With the brownout on `mpls` instead, the path stayed on `inet` too. With `multipath=False` (one BGP best path, via
+  the `mpls` tunnel) and the brownout on `mpls`, the route still picked `mpls` (RTT about 306 ms against 3 ms), and the
+  host saw about 300 ms and 32-42% loss to the hub and to spoke2. The PBR result always matches the routing table's
+  choice (the ECMP hash or the best path): see R9.
+- Dead WAN (spoke1's `mpls` cable pulled) with `multipath=False`: traffic moved to the `inet` tunnel after about
+  21-25 s (the ping started a few seconds after the pull; its first 41 pings at 0.5 s intervals were lost, then none). With ECMP (the backup-wan run) no ping was lost.
+  Spoke-to-spoke traffic uses the same tunnels.
+
+**T1 C5.** `fmc_sdwan_status` on 0.13.0:
+- dead WAN: the tunnel is critical `TUNNEL_DOWN` with the reason "IKEv2 exchanges time out with no authentication
+  failures: the peer doesn't answer (dead WAN path or UDP 500/4500 blocked)".
+- wrong PSK (the companion topology's automatic key length changed, which makes FMC generate a new key; deployed to the
+  hub only, and spoke1's `inet` link bounced to force a new IKE exchange): about 3 minutes later the tunnel is critical
+  with "IKEv2 authentication failures rose by 6 in the last 168 s: a pre-shared key (or certificate) mismatch, not a dead
+  path". **R2 is fixed** for this case. No key was typed: FMC generated it.
+- brownout: `wan_links` health is "not available" with the reason (no longer `unknown`), and `degraded` is empty. 0.13.0
+  can't see a brownout; #137 reads FMC's `pathmonitoring` health metric, which showed it in the metrics run.
+- Still in 0.13.0: the status sends `show path-monitoring`, `show policy-route` and `show bgp summary` and gets 400s
+  (#136 stops that), and `app_routes[].path_now` names the `mpls` tunnel ("first usable interface in order") while that
+  tunnel is down.
+
+**T2 C2.** `fmc_create_sdwan_topology` with `backup_hub`, then `fmc_update_sdwan_topology(multipath=False)` on 0.13.0:
+applied without the 422, **R6 is fixed**. After a deploy of the 4 devices every spoke routes the DC and the other spoke
+via the primary hub, and all 6 host pairs ping. Primary hub down (its `mpls` and `inside` links down, the DC host's
+gateway moved to hub2): the spokes route via hub2 and every pair answers again within about 33 s. Links and the
+gateway were restored afterwards.
+
+**T3 (blocked, B3).** The T3 HA pair could not be rebuilt; see B3.
+
+**OSPF (bounded attempt, about 15 minutes): pass.** Topology `mcp-sdwan-t1-ospf` (`overlay='ospf'`, reusing the hub
+DVTI, loopback and pool; spoke1 and spoke2 on `mpls`). Then, with `fmc_api_call`, a /32 loopback on each spoke (POST
+`loopbackinterfaces`, from a block outside the spoke pool) and a PUT of each FMC-generated spoke VTI with
+`ipAddressAssignmentType: BORROW_IP_FROM_INTERFACE` and `borrowIPfrom` set to that loopback (without
+`managementOnly`; FMC accepted it on a VTI the topology owns). `fmc_configure_ospf` area 0: hub with the overlay pool
+network and the inside networks, spokes with the loopback block and the inside networks. After one deploy both ends are
+unnumbered: the hub has two FULL neighbours on its virtual-access interfaces, each spoke has one, and **the spokes
+install OSPF routes** to the hub's network, the other spoke's network and its loopback. Every pair of the hub and spoke hosts
+pings (5-10 ms).
+
 ## FMC-side setup before the cells
 
 The recipes leave the data interfaces unconfigured, so the T1 underlay is built with the MCP tools first (kept
@@ -231,6 +314,11 @@ reports nothing: `degraded` is empty, the hub row has no WAN links and no tunnel
   (`routing/ospfinterface`) has no network-type field in the 10.0.1 spec. Fix: `overlay='ospf'` should refuse (or warn
   in the preview) until a working addressing is found, e.g. unnumbered spoke VTIs or point-to-multipoint on both ends;
   BGP is the overlay FMC's AUTO_VPN supports.
+  **Re-run (pass):** unnumbered spoke VTIs work. With `fmc_api_call`, POST a /32 loopback on each spoke and PUT the
+  FMC-generated spoke VTI with `ipAddressAssignmentType: BORROW_IP_FROM_INTERFACE` and `borrowIPfrom: <loopback ref>`
+  (no `managementOnly`); run OSPF over the hub's pool network, the spokes' loopback block and the inside networks. Both
+  tunnel ends are then unnumbered, and the spokes install the OSPF routes. Tool follow-up: `overlay='ospf'` can create
+  the spoke loopbacks and switch the spoke VTIs after the endpoints exist (not done in this PR).
 - **R6 `fmc_update_sdwan_topology(multipath=...)`.** The tool PUTs `policy/ftds2svpns/{id}` with the whole GET body
   minus `links`/`metadata`, so `ipsecSettings`, `ikeSettings`, `advancedSettings` and `endpoints` go along as nested
   references -> FMC 422 "Invalid value 'either need to be mapped to concrete types, have custom deserializer, or
@@ -245,6 +333,15 @@ reports nothing: `degraded` is empty, the hub row has no WAN links and no tunnel
 - **R8 minor.** `fmc_api_call` timed out on the cluster POST although FMC had answered 202 Accepted (audit log) and
   went on to create the cluster; one `fmc_configure_wan_interface` preview hit a transient FMC 500 on GET
   `subinterfaces` ("Batch update returned unexpected row count") and worked on the retry.
+
+- **R9 app routes ordered by a metric over VTIs (device behaviour, FTDv 10.0).** `fmc_create_app_route(order_by='rtt')`
+  over two spoke tunnels deploys `set adaptive-interface rtt <tunnel1> <tunnel2>` and `show route-map` shows the live
+  RTT of each tunnel, but the PBR lookup always returns the routing table's next hop: the ECMP hash with `multipath` on,
+  the BGP best path with it off, even when that tunnel measures about 100 times the RTT of the other. FMC generated
+  this line itself from the tool's request, so no tool payload bug has been found so far. Check it on a physical FTD
+  or with TAC. Until then, failover on these labs comes from BGP over the second WAN
+  tunnel (R1 payload), not from the app route. `fmc_sdwan_status`'s `path_now` should not claim an egress the device
+  doesn't use (it names the first listed tunnel when metrics are missing, even while it is down).
 
 ## Blockers
 
@@ -264,5 +361,12 @@ reports nothing: `degraded` is empty, the hub row has no WAN links and no tunnel
   for KVM in CML. Left behind: the cluster record (DELETE was not tried, since it may unregister both hubs) and the
   hub's data interfaces without addresses; clean up in the FMC UI (Devices > the cluster > Break) or once the job
   times out.
+- **B3 T3 HA pair can't be rebuilt (re-run, 2026-10-18).** The B2 cluster-create job (Deploy_Job_68, System) is still
+  DEPLOYING, so FMC refuses every way out over REST: DELETE `deviceclusters/ftddevicecluster/<id>` -> 500 "Unable to
+  delete cluster as FTD CLUSTER CREATE is in progress for device mcp-sdwan-t3-hub ... mcp-sdwan-t3-hub2", and
+  `fmc_delete_device` on hub2 -> 400 "Cluster node ... cannot be unregistered because a deployment task is in progress
+  for cluster 'mcp-sdwan-t3-cluster'" (the earlier PUT BREAK, PUT DELETE_CLUSTER and job abort also failed). The HA pair,
+  and with it T3 C1/C2/C5 and the live check of the R7 fix, needs the cluster removed in the FMC UI or the job cleared
+  by an FMC restart, which this run may not do.
 - **Lab:** the IOL carriers' consoles are silent on this controller (they forward traffic fine), so carrier-side
   checks run from the FTDs.
