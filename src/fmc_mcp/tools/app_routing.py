@@ -34,6 +34,7 @@ from fmc_mcp.tools.device_config import (
     InterfaceRef,
     device_interfaces,
     diff_rows,
+    interface_put_body,
     pick_interface,
     resolve_device,
     routing_base,
@@ -305,7 +306,7 @@ def register(reg: ToolRegistrar) -> None:
             f"{DEVICES}/{dev['id']}/{INTERFACE_KINDS[kind]}/{current['id']}", domain
         )
         current = await app.api.get(item_path)  # FMC's PUT replaces the whole interface
-        desired = editable(current)
+        desired = interface_put_body(kind, current)
         if priority is not None:
             desired["priority"] = priority
         pm = dict(desired.get("pathMonitoring") or {})
