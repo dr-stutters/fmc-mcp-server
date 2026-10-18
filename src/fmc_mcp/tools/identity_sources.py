@@ -79,6 +79,11 @@ ISE_UI_STEP = (
     "Save. Then approve FMC's pxGrid client in ISE (ise_list_pxgrid_clients / ise_approve_pxgrid_client) "
     "unless ISE auto-approves certificate-based clients."
 )
+SETTINGS_NOTE = (
+    "The pxGrid host, server CAs, FMC client certificate and topics are visible only in the FMC UI "
+    "(Integrations > Other Integrations > Identity Sources): FMC 10.0.1's REST API has no identity-source "
+    "object. ISE's side: ise_pxgrid_status / ise_list_pxgrid_clients on the ISE MCP server."
+)
 _VAL = re.compile(r"<(?P<tag>\w+loop)>\s*<val>(?P<val>[^<]*)</val>\s*</(?P=tag)>")
 
 
@@ -493,6 +498,7 @@ def register(reg: ToolRegistrar) -> None:
         ise: dict[str, Any] = {"state": state}
         if ise_alert is not None:
             ise.update(module_row(ise_alert))
+        ise["settings"] = SETTINGS_NOTE
 
         # SGTs over pxGrid
         try:
@@ -677,7 +683,7 @@ def register(reg: ToolRegistrar) -> None:
         sessions (fed by ISE/pxGrid, the passive identity agent, captive portal or RA VPN) plus the user's
         AD/LDAP groups from the realm download. Returns the sessions (user, realm, IP, source, login and
         last seen) and, for one IP, `identities`: the user and groups ready for
-        fmc_rule_lookup(identities=...). Use it for "who is 10.1.2.3?", "which IP is alice on?", or before
+        fmc_rule_lookup(identities=...). Use it for "who is 192.0.2.57?", "which IP is alice on?", or before
         explaining a user-based block (fmc_rule_lookup already does this lookup itself when you omit
         `identities`). The FMC account's role needs Events & Logs > Analysis > Users; without it the user's
         realm groups still come back. If no source reports users, see fmc_get_identity_sources."""
