@@ -38,6 +38,7 @@ from fmc_mcp.tools import (
     policy_writes,
     prefilter,
     prompts,
+    prove,
     routing,
     rule_io,
     sdwan,
@@ -72,7 +73,9 @@ Workflows:
   -> fmc_run_show_command / fmc_list_deployments; undo a bad deployment with fmc_rollback_deployment.
 - "Why is this traffic blocked?": fmc_packet_tracer (live verdict, drop reason and matching rule on
   the device) + fmc_rule_lookup (offline walk of the policy) + fmc_get_hit_counts (is the rule hit?).
-  The fmc_why_blocked prompt walks these steps in order.
+  The fmc_why_blocked prompt walks these steps in order. "Prove the policy": fmc_prove_policy traces a
+  table of flows with expected verdicts (pass/fail/mismatch and the deciding rule); user rules:
+  the fmc_prove_user_policy prompt.
 - Send FTD logs to the customer's syslog/SIEM: fmc_get_platform_settings -> fmc_configure_syslog
   (servers, level, facility, RFC 5424) -> fmc_assign_policy(kind='platform_settings') -> fmc_deploy;
   fmc_set_access_logging sends connection/intrusion events there too.
@@ -187,6 +190,7 @@ def create_server(
             policy_writes.register,
             dangerous.register,
             troubleshoot.register,
+            prove.register,
             dynamic_objects.register,
             containment.register,
             ha.register,
