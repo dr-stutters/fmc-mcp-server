@@ -234,6 +234,11 @@ MD5 password, because FMC returns it masked and a PUT would replace it, unless y
   (creates the hub's loopback, DVTI and spoke pool when missing, then the AUTO_VPN topology, IKEv2 and the
   endpoints; a failed step deletes what it created) -> `fmc_deploy` hubs and spokes -> `fmc_get_vpn_topology`,
   `show route bgp`. New branch: `fmc_update_sdwan_topology add_spokes=[...]`, then deploy the spoke and the hubs.
+- **Onboard an SD-WAN branch, end to end:** the `fmc_onboard_branch` prompt (dangerous tier) registers the FTD
+  (the key comes from the server's `FMC_FTD_REG_KEY`, never from the conversation), configures it from a device
+  template when one fits or by hand (interfaces and zones, underlay route, NAT, access policy, the hubs' return
+  path), adds it with `fmc_update_sdwan_topology`, deploys the hubs and the branch by name, verifies the tunnel,
+  overlay routes and a policy flow, and ends with a hand-off record of flows for `fmc_prove_policy`.
 - **"Teams is slow at branch Y":** the `fmc_sdwan_troubleshoot` prompt walks `fmc_sdwan_status` (path metrics,
   degraded links) -> the app-route rule and the interface it picks now -> the overlay tunnels and BGP ->
   `fmc_packet_tracer`, then proposes one previewed fix.
