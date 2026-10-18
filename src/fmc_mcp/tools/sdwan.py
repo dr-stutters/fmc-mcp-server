@@ -642,14 +642,14 @@ def register(reg: ToolRegistrar) -> None:
         strong_ok = await strong_crypto_allowed(app)
         weak = strong_ok is False
         side_effects = [_deploy_note([h.device["name"] for h in hubs] + [s.device["name"] for s in planned])]
+        if any(sp.backup for sp in planned):
+            side_effects.append(BACKUP_WAN_NOTE)
         if weak and not ike_policies and not ipsec_proposals:
             side_effects.append(
                 "FMC has no strong-crypto (export-controlled) licence, so the defaults are "
                 f"{WEAK_IKE_POLICY} / {WEAK_IPSEC_PROPOSAL} (DES): fine for a lab, not for production. "
                 "FMC may also refuse SD-WAN topologies without it."
             )
-        if any(sp.backup for sp in planned):
-            side_effects.append(BACKUP_WAN_NOTE)
         if overlay == "ospf":
             side_effects.append(
                 "No overlay routing is generated: run OSPF over the tunnel and inside networks on every "
