@@ -40,6 +40,7 @@ def world(lab: respx.MockRouter) -> respx.MockRouter:
     lab.get(f"{CFG}/policy/prefilterpolicies/{PF['id']}").mock(return_value=httpx.Response(200, json=PF))
     lab.get(f"{CFG}/policy/prefilterpolicies/{PF['id']}/prefilterrules").mock(return_value=empty())
     lab.get(f"{CFG}/policy/ftds2svpns").mock(return_value=empty())
+    lab.get(f"{CFG}/analysis/activesessions").mock(return_value=empty())  # nobody logged in
     return lab
 
 
@@ -84,7 +85,7 @@ async def test_host_ranked_across_objects_rules_and_nat(world: respx.MockRouter)
     contains = [r for r in data["results"] if r["match"] == "contains"]
     assert contains[-1]["value"] == "10.0.0.0/8"
     assert data["by_area"]["access_rules"] == 3 and data["searched"]["access_policies"] == 1
-    assert data["not_checked"][0].startswith("identity: no user-to-IP source")
+    assert "not_checked" not in data and not rows_by(data, "identity")
     assert "hidden_broad_matches" not in data
 
 
@@ -263,6 +264,30 @@ async def test_identity_hook_rows_rank_first(
     assert "not_checked" not in data
     data = await call({"address": "10.10.10.0/24", "areas": ["identity"]})
     assert data["not_checked"] == ["identity: user sessions are looked up for a single address only"]
+
+
+async def test_identity_rows_come_from_fmc_sessions(world: respx.MockRouter) -> None:
+    """The wired-in lookup (identity_sources.users_on_ip): FMC's identity sessions for the one IP."""
+    session = {
+        "currentIP": "10.10.10.80",
+        "username": "alice",
+        "realmName": "corp",
+        "authenticationType": "Passive Authentication",
+        "lastSeen": 1792334300,
+    }
+    route = world.get(f"{CFG}/analysis/activesessions").mock(return_value=items([session]))
+    data = await call({"address": "10.10.10.80", "areas": ["identity", "objects"]})
+    first = data["results"][0]
+    assert (first["area"], first["where"], first["value"]) == ("identity", "user corp\\alice", "10.10.10.80")
+    assert first["via"] == "identity session (Passive Authentication)"
+    assert route.calls.last.request.url.params["currentIP"] == "10.10.10.80"
+    # the lab's API role today: 403 becomes a warning that names the permission, the rest still answers
+    world.get(f"{CFG}/analysis/activesessions").mock(
+        return_value=httpx.Response(403, json={"error": {"messages": [{"description": "not authorized"}]}})
+    )
+    data = await call({"address": "10.10.10.80", "areas": ["identity", "objects"]})
+    assert data["results"][0]["area"] == "objects"
+    assert "Identity lookup failed (FMC refused" in data["warning"] and "Analysis > Users" in data["warning"]
 
 
 @pytest.mark.parametrize("bad", ["any", "0.0.0.0/0", "www.example.com", "10.1.1.300"])
