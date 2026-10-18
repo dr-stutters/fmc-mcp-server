@@ -48,7 +48,11 @@ ALTERNATIVES: dict[str, str] = {
     "show path-monitoring": "fmc_sdwan_status (WAN links and tunnels per branch) and fmc_device_health",
     "show policy-route": "fmc_get_routing (policy-based routes), fmc_sdwan_status (app routes) and "
     "'show route' for the routing table",
-    "show conn": "fmc_packet_tracer for a verdict, or the device CLI (SSH / cml_run_commands)",
+    "show conn": "fmc_live_connections (connections from the device's syslog buffer), fmc_packet_tracer for "
+    "a verdict, or the device CLI (SSH / cml_run_commands)",
+    "show local-host": "fmc_live_connections(host=...) for a host's connections",
+    "show user-identity": "fmc_user_identity_sessions (FMC's active identity sessions: user <-> IP); the FTD "
+    "CLI has no 'show user-identity'",
     "show xlate": "fmc_list_nat_rules, or the device CLI (SSH / cml_run_commands)",
     "show nat": "fmc_list_nat_rules or 'show running-config nat'",
     "show arp": "the device CLI (SSH / cml_run_commands)",
