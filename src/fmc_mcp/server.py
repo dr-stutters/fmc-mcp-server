@@ -25,10 +25,12 @@ from fmc_mcp.tools import (
     devices,
     dns,
     dynamic_objects,
+    find_address,
     ha,
     hygiene,
     identity,
     intrusion,
+    metrics,
     object_import,
     object_writes,
     objects,
@@ -105,6 +107,8 @@ Workflows:
   fmc_rule_lookup identities=[user, groups] evaluates such rules.
 - PoC to production / domain to domain: fmc_export_policy_bundle -> fmc_plan_policy_bundle_import (target
   domain) -> fmc_import_policy_bundle -> fmc_diff_policy_bundle against live -> assign + fmc_deploy.
+- "Where does 10.1.2.3 appear?": fmc_find_address (objects and groups, dynamic-object mappings, access,
+  prefilter and NAT rules, static routes, VPN endpoints in one ranked call) -> fmc_where_used on an object.
 - Policy review: fmc_policy_audit ranks shadowed, permissive, unlogged, uninspected, unused and mergeable
   rules, expired time ranges and duplicate objects, each with a fix to preview; then fmc_pending_changes
   -> fmc_deploy.
@@ -116,6 +120,8 @@ Workflows:
 - Health: fmc_list_devices, fmc_device_health, fmc_list_vpn_tunnels; "what changed or broke in the
   last hour?": fmc_recent_activity (health alerts + audit + deployments), fmc_list_health_alerts.
   A full ranked review of the estate: the fmc_firewall_health_review prompt.
+- Load over time ("was the branch firewall busy at 09:40?"): fmc_device_metrics (CPU, memory,
+  throughput, connections and drops over a window, with peaks and dips).
 - Day-2 admin: fmc_upgrade_status (versions), fmc_list_backups / fmc_backup_devices,
   fmc_get_health_policy / fmc_update_health_policy, fmc_list_users, fmc_list_object_overrides /
   fmc_set_object_override (per-device values).
@@ -183,6 +189,7 @@ def create_server(
             policies.register,
             objects.register,
             analysis.register,
+            find_address.register,
             hygiene.register,
             deploy.register,
             device_config.register,
@@ -191,6 +198,7 @@ def create_server(
             policy_writes.register,
             dangerous.register,
             troubleshoot.register,
+            metrics.register,
             dynamic_objects.register,
             containment.register,
             ha.register,
