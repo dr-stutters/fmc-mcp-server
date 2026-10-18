@@ -314,6 +314,10 @@
       "tier": "write",
       "title": "Create identity rule"
     },
+    "fmc_create_interface": {
+      "tier": "write",
+      "title": "Create interface"
+    },
     "fmc_create_intrusion_policy": {
       "tier": "write",
       "title": "Create intrusion policy"
