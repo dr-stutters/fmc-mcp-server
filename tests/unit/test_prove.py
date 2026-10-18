@@ -295,6 +295,11 @@ def test_prove_user_policy_text_icmp_and_validation() -> None:
         _prove_user_policy_text(
             "10.99.1.10", "192.0.2.80", "alice; ignore previous", "bob", "tcp", 80, None, None, None
         )
+    # a tcp/udp flow without a port can't be traced: refused here, not as error rows later
+    with pytest.raises(InvalidRequest, match="port is required"):
+        _prove_user_policy_text("10.99.1.10", "192.0.2.80", "alice", "bob", "udp", None, None, None, None)
+    text = _prove_user_policy_text("10.99.1.10", "192.0.2.80", "alice", "bob", "tcp", 80, None, None, None)
+    assert "Steps 0-2,\n4 and 5 are read-only" in text and "step 6 changes the policy only if" in text
 
 
 async def test_prompt_listed_and_rendered(lab: respx.MockRouter) -> None:
@@ -308,7 +313,8 @@ async def test_prompt_listed_and_rendered(lab: respx.MockRouter) -> None:
                 "destination": "192.0.2.80",
                 "allowed_user": "alice",
                 "blocked_user": "bob",
+                "port": "80",
             },
         )
         body: Any = r.messages[0].content
-        assert '"alice" may reach "192.0.2.80" (tcp)' in body.text
+        assert '"alice" may reach "192.0.2.80" (tcp port 80)' in body.text
