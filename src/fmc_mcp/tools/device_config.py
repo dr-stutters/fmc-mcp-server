@@ -5,6 +5,7 @@ These change FMC's copy of the device configuration only; nothing reaches the FT
 
 # No `from __future__ import annotations`: FastMCP inspects signatures at runtime.
 import ipaddress
+from dataclasses import dataclass
 from typing import Annotated, Any, Literal
 
 from fastmcp import Context
@@ -235,6 +236,286 @@ def route_key(r: dict[str, Any]) -> tuple[str, frozenset[str], str]:
     return str(r.get("interfaceName", "")).lower(), nets, gateway
 
 
+# --- logical interfaces (fmc_create_interface) ----------------------------------------------------
+
+CreateKind = Literal["loopback", "vti", "etherchannel", "bvi"]
+
+
+@dataclass(frozen=True)
+class LogicalKind:
+    """How FMC 10.0.1 models one logical interface kind (spec: FTDLoopbackInterface, FTDVTIInterface,
+    FTDEtherChannelInterface, FTDBridgeGroupInterface)."""
+
+    collection: str  # INTERFACE_KINDS key
+    type: str
+    id_field: str
+    low: int
+    high: int
+    prefix: str  # FMC's hardware name: <prefix><id>
+
+
+LOGICAL_KINDS: dict[str, LogicalKind] = {
+    "loopback": LogicalKind("loopback", "LoopbackInterface", "loopbackId", 1, 1024, "Loopback"),
+    "vti": LogicalKind("vti", "VTIInterface", "tunnelId", 0, 10413, "Tunnel"),
+    "etherchannel": LogicalKind(
+        "etherchannel", "EtherChannelInterface", "etherChannelId", 1, 48, "Port-channel"
+    ),
+    "bvi": LogicalKind("bridge_group", "BridgeGroupInterface", "bridgeGroupId", 1, 250, "BVI"),
+}
+MAX_MEMBERS = {"etherchannel": 16, "bvi": 64}  # 8 active + 8 standby LACP links; 64 per bridge group
+MEMBER_KINDS = {"etherchannel": ("physical",), "bvi": ("physical", "subinterface", "etherchannel")}
+# FMC's loopback and bridge-group (BVI) interfaces carry no security zone (none in the UI or in the
+# FMC 10.0.1 spec examples): a BVI's traffic is zoned on its member interfaces.
+NO_ZONE_KINDS = {"loopback", "bridge_group"}
+NO_DHCP_KINDS = {"loopback", "vti"}
+
+
+def iref(i: dict[str, Any]) -> dict[str, Any]:
+    """An interface reference for a request body."""
+    return {"id": i["id"], "type": i.get("type"), "name": i.get("name")}
+
+
+def static_network(i: dict[str, Any]) -> ipaddress.IPv4Interface | None:
+    st = (i.get("ipv4") or {}).get("static") or {}
+    if not st.get("address"):
+        return None
+    try:
+        return ipaddress.IPv4Interface(f"{st['address']}/{st.get('netmask') or 32}")
+    except ValueError:
+        return None
+
+
+def logical_members(items: list[tuple[str, dict[str, Any]]]) -> dict[str, str]:
+    """Interface id -> the EtherChannel or BVI it already belongs to."""
+    out: dict[str, str] = {}
+    for kind, i in items:
+        if kind in ("etherchannel", "bridge_group"):
+            for m in i.get("selectedInterfaces") or []:
+                if m.get("id"):
+                    out[str(m["id"])] = str(i.get("name") or i.get("ifname") or i.get("id"))
+    return out
+
+
+@dataclass
+class LogicalPlan:
+    body: dict[str, Any]  # the POST body
+    hardware_name: str  # what FMC will call it (Loopback1, Tunnel2, Virtual-Template1, Port-channel1, BVI1)
+    blockers: list[str]
+    side_effects: list[str]
+
+
+def free_number(used: set[int], lk: LogicalKind) -> int:
+    for n in range(max(lk.low, 1), lk.high + 1):
+        if n not in used:
+            return n
+    raise InvalidRequest(f"No free {lk.prefix} id between {lk.low} and {lk.high} on this device.")
+
+
+def plan_logical_interface(
+    kind: str,
+    device: dict[str, Any],
+    items: list[tuple[str, dict[str, Any]]],
+    *,
+    logical_name: str | None,
+    number: int | None,
+    members: list[str],
+    zone: dict[str, Any] | None,
+    ipv4: str | None,
+    tunnel_source: str | None,
+    tunnel_type: str,
+    borrow_ip_from: str | None,
+    lacp_mode: str,
+    mtu: int | None,
+    description: str | None,
+    enabled: bool,
+) -> LogicalPlan:
+    """The POST body, name, blockers and side effects for one new logical interface. Arguments that don't
+    fit the kind raise InvalidRequest; problems in the device's current configuration become blockers."""
+    lk = LOGICAL_KINDS[kind]
+    dname = str(device.get("name"))
+    name = (logical_name or "").strip() or None
+    block = ipv4_block(ipv4) if ipv4 else None
+    dynamic = tunnel_type == "dynamic"
+    a = f"{'an' if kind[0] in 'aeiou' else 'a'} {kind}"  # "a loopback", "an etherchannel"
+    wrong: list[str] = []
+    if members and kind not in MEMBER_KINDS:
+        wrong.append("members are for etherchannel and bvi")
+    if kind != "vti" and (tunnel_source or borrow_ip_from or dynamic):
+        wrong.append("tunnel_source, borrow_ip_from and tunnel_type are for vti")
+    if kind != "etherchannel" and lacp_mode != "active":
+        wrong.append("lacp_mode is for etherchannel")
+    if zone and lk.collection in NO_ZONE_KINDS:
+        wrong.append(
+            f"{a} takes no security zone in FMC"
+            + (": zone its member interfaces instead (fmc_update_interface)" if kind == "bvi" else "")
+        )
+    if block and "dhcp" in block and lk.collection in NO_DHCP_KINDS:
+        wrong.append(f"{a} takes a static address only, not dhcp")
+    if mtu is not None and kind == "loopback":
+        wrong.append("a loopback has no MTU setting")
+    if kind in ("loopback", "vti") and not name:
+        wrong.append(f"{a} needs a logical_name")
+    if kind in MEMBER_KINDS and not members:
+        wrong.append(f"{a} needs members (its member interfaces)")
+    if kind in MEMBER_KINDS and len(members) > MAX_MEMBERS[kind]:
+        wrong.append(f"at most {MAX_MEMBERS[kind]} members for {a}")
+    if kind == "vti":
+        if not tunnel_source:
+            wrong.append("a vti needs tunnel_source (the interface the tunnel leaves from, usually the WAN)")
+        if dynamic and (ipv4 or not borrow_ip_from):
+            wrong.append("a dynamic vti borrows its address: give borrow_ip_from (a loopback), not ipv4")
+        if not dynamic and bool(ipv4) == bool(borrow_ip_from):
+            wrong.append("a static vti needs exactly one of ipv4 (e.g. a /30) or borrow_ip_from")
+    if number is not None and not lk.low <= number <= lk.high:
+        wrong.append(f"{kind} ids run {lk.low}-{lk.high}")
+    if wrong:
+        raise InvalidRequest(f"kind={kind!r}: " + "; ".join(wrong) + ".")
+
+    blockers: list[str] = []
+    side: list[str] = []
+    mode = str(device.get("ftdMode") or "ROUTED").upper()
+    if mode != "ROUTED" and kind in ("loopback", "vti"):
+        blockers.append(f"{dname} is in {mode.lower()} mode; loopbacks and VTIs need routed mode.")
+    same_kind = [i for k, i in items if k == lk.collection]
+    used = {int(i.get(lk.id_field) or 0) for i in same_kind}
+    n = number if number is not None else free_number(used, lk)
+    if number is not None and number in used:
+        owner = next(i for i in same_kind if int(i.get(lk.id_field) or 0) == number)
+        blockers.append(f"{lk.type} id {number} is already {owner.get('name')} on {dname}.")
+    if name:
+        for k, i in items:
+            if str(i.get("ifname") or "").lower() == name.lower():
+                blockers.append(f"Logical name {name!r} is already used by {interface_row(k, i)['name']}.")
+    if (zone or block) and not name:
+        blockers.append(
+            f"{a[0].upper()}{a[1:]} needs a logical_name before it can take a zone or an address."
+        )
+    hw = f"Virtual-Template{n}" if kind == "vti" and dynamic else f"{lk.prefix}{n}"
+    body: dict[str, Any] = {"type": lk.type, lk.id_field: n, "enabled": enabled}
+    if name:
+        body["ifname"] = name
+    owners = logical_members(items)
+
+    def pick(
+        ref: str, pool: list[tuple[str, dict[str, Any]]], what: str
+    ) -> tuple[str, dict[str, Any]] | None:
+        try:
+            return pick_interface(pool, ref, dname)
+        except (NotFound, InvalidRequest) as e:
+            blockers.append(f"{what}: {e}")
+            return None
+
+    if kind == "vti":
+        src = pick(str(tunnel_source), [x for x in items if x[0] != "vti"], "tunnel_source")
+        if src:
+            s = src[1]
+            if s.get("managementOnly") or str(s.get("name", "")).lower().startswith("management"):
+                blockers.append(
+                    f"{s.get('name')} is a management interface; source the tunnel from a data interface."
+                )
+            elif not s.get("ifname"):
+                blockers.append(
+                    f"Tunnel source {s.get('name')} has no logical name; set one with "
+                    "fmc_update_interface first."
+                )
+            body["tunnelSource"] = iref(s)
+        body["tunnelType"] = "DYNAMIC" if dynamic else "STATIC"
+        body["ipsecMode"] = "ipv4"
+        if borrow_ip_from:
+            b = pick(borrow_ip_from, [x for x in items if x[0] != "vti"], "borrow_ip_from")
+            if b:
+                if static_network(b[1]) is None:
+                    blockers.append(
+                        f"{b[1].get('name')} has no static IPv4 address for the tunnel to borrow."
+                    )
+                body["ipAddressAssignmentType"] = "BORROW_IP_FROM_INTERFACE"
+                body["borrowIPfrom"] = iref(b[1])
+        side.append(
+            "A VTI carries traffic once a route-based VPN uses it (fmc_create_s2s_vpn route_based, or an "
+            "SD-WAN topology) and routes point at it."
+        )
+        if not zone:
+            side.append(
+                "No security zone: access rules can't match the tunnel's traffic by zone until it has one "
+                "(fmc_update_interface security_zone=...)."
+            )
+    if kind in MEMBER_KINDS:
+        pool = [x for x in items if x[0] in MEMBER_KINDS[kind]]
+        picked: list[dict[str, Any]] = []
+        for ref in members:
+            got = pick(ref, pool, "member")
+            if not got:
+                continue
+            mk, m = got
+            label = m.get("name") if mk != "subinterface" else interface_row(mk, m)["name"]
+            if any(p["id"] == m["id"] for p in picked):
+                blockers.append(f"Member {label} is listed twice.")
+                continue
+            picked.append(m)
+            if m.get("managementOnly") or str(m.get("name", "")).lower().startswith("management"):
+                blockers.append(f"{label} is a management interface and can't be a member.")
+            if str(m.get("id")) in owners:
+                blockers.append(f"{label} is already a member of {owners[str(m['id'])]}.")
+            if kind == "etherchannel":
+                if m.get("ifname") or m.get("ipv4") or m.get("securityZone"):
+                    blockers.append(
+                        f"{label} is configured (logical name, address or zone); EtherChannel members "
+                        "inherit the channel's settings: clear it first (fmc_update_interface "
+                        "logical_name='none', ipv4='none', security_zone='none')."
+                    )
+                subs = [i for k, i in items if k == "subinterface" and i.get("name") == m.get("name")]
+                if subs:
+                    names = ", ".join(str(interface_row("subinterface", i)["name"]) for i in subs)
+                    blockers.append(
+                        f"{label} has subinterfaces ({names}); delete them first or create them on the "
+                        "EtherChannel afterwards."
+                    )
+                if not m.get("enabled"):
+                    side.append(
+                        f"Member {label} is disabled; enable it (fmc_update_interface) or the link "
+                        "stays down."
+                    )
+            else:
+                if static_network(m) or (m.get("ipv4") or {}).get("dhcp"):
+                    blockers.append(
+                        f"{label} has its own IPv4 address; bridge-group members can't: clear it first "
+                        "(fmc_update_interface ipv4='none'). The address goes on the BVI."
+                    )
+                if not m.get("ifname"):
+                    side.append(
+                        f"Member {label} has no logical name: give it one and a security zone "
+                        "(fmc_update_interface) before it passes traffic."
+                    )
+        body["selectedInterfaces"] = [iref(m) for m in picked]
+        if kind == "etherchannel":
+            body["mode"] = "NONE"
+            body["lacpMode"] = lacp_mode.upper()
+            side.append(
+                "The peer switch needs a matching port-channel "
+                + ("(LACP)." if lacp_mode != "on" else "(static, mode on).")
+            )
+    if zone:
+        body["securityZone"] = zone
+    if block:
+        body["ipv4"] = block
+        mine = static_network(body)
+        if mine is not None:
+            if kind == "bvi":
+                body["ipAddress"] = str(mine.ip)  # the spec's examples mirror the address here
+            for k, i in items:
+                other = static_network(i)
+                if other is not None and other.network.overlaps(mine.network):
+                    blockers.append(
+                        f"{mine} overlaps {interface_row(k, i)['name']} ({other}); routed interfaces need "
+                        "separate subnets."
+                    )
+    if mtu is not None:
+        body["MTU"] = mtu
+    if description:
+        body["description"] = description
+    return LogicalPlan(body, hw, list(dict.fromkeys(blockers)), side)
+
+
 LicenseCap = Literal["ESSENTIALS", "IPS", "MALWARE_DEFENSE", "URL", "CARRIER"]
 
 
@@ -363,10 +644,12 @@ def register(reg: ToolRegistrar) -> None:
         domain: Domain = None,
         confirm: Confirm = None,
     ) -> dict[str, Any]:
-        """Configure an existing device interface (physical, subinterface, EtherChannel, VLAN, VTI or
-        loopback): logical name, admin state, security zone, IPv4 (static or DHCP), MTU and
+        """Configure an existing device interface (physical, subinterface, EtherChannel, VLAN, VTI,
+        loopback or BVI): logical name, admin state, security zone, IPv4 (static or DHCP), MTU and
         description. Only the fields you pass change. A routed data interface needs a logical name to
-        carry traffic or join a zone. Preview shows the before/after; deploy with fmc_deploy."""
+        carry traffic or join a zone; loopbacks and BVIs take no zone, loopbacks and VTIs no DHCP, and
+        an address on a VTI replaces the one it borrowed. Preview shows the before/after; deploy with
+        fmc_deploy. New loopbacks, VTIs, EtherChannels and BVIs: fmc_create_interface."""
         app: FmcApp = get_client(ctx)
         dev = await resolve_device(app, device, domain)
         kind, current = pick_interface(
@@ -398,6 +681,15 @@ def register(reg: ToolRegistrar) -> None:
                 desired.pop("ipv4", None)
             else:
                 desired["ipv4"] = block
+                if kind == "vti" and desired.get("borrowIPfrom"):  # its own address replaces the borrowed one
+                    desired.pop("borrowIPfrom", None)
+                    desired["ipAddressAssignmentType"] = "MANUAL_IP"
+            if kind == "bridge_group":  # FMC mirrors a BVI's static address in ipAddress
+                own = static_network(desired)
+                if own is not None:
+                    desired["ipAddress"] = str(own.ip)
+                else:
+                    desired.pop("ipAddress", None)
         if mtu is not None:
             desired["MTU"] = mtu
         if description is not None:
@@ -414,6 +706,15 @@ def register(reg: ToolRegistrar) -> None:
         blockers = [] if changes else ["Nothing to change: the interface already has these settings."]
         if (desired.get("securityZone") or desired.get("ipv4")) and not desired.get("ifname"):
             blockers.append("An interface needs a logical_name before it can take a zone or an address.")
+        if kind in NO_ZONE_KINDS and security_zone and security_zone.strip().lower() != "none":
+            blockers.append(
+                f"A {kind.replace('_', ' ')} interface takes no security zone in FMC"
+                + ("; zone the bridge group's members instead." if kind == "bridge_group" else ".")
+            )
+        if kind in NO_DHCP_KINDS and ipv4 and ipv4.strip().lower() == "dhcp":
+            blockers.append(f"A {kind} interface takes a static address only, not dhcp.")
+        if kind == "loopback" and mtu is not None:
+            blockers.append("A loopback has no MTU setting.")
         if current.get("managementOnly") or str(current.get("name", "")).lower().startswith("management"):
             blockers.append(
                 "Management interfaces are configured on the device (configure network), not here."
@@ -531,6 +832,154 @@ def register(reg: ToolRegistrar) -> None:
             apply=lambda: applied(app, lambda: app.api.post(path, body)),
         )
 
+    @reg.write(title="Create interface")
+    async def fmc_create_interface(
+        ctx: Context,
+        device: DeviceRef,
+        kind: Annotated[
+            CreateKind,
+            Field(
+                description="loopback, vti (static or dynamic virtual tunnel interface), etherchannel "
+                "(port-channel of physical members) or bvi (bridge group virtual interface over members)"
+            ),
+        ],
+        logical_name: Annotated[
+            str | None,
+            Field(
+                description="Logical name (nameif), e.g. bgp-lo or s2s-tunnel; required for loopback and "
+                "vti, and for an etherchannel or bvi that takes an address or zone"
+            ),
+        ] = None,
+        number: Annotated[
+            int | None,
+            Field(
+                ge=0,
+                le=10413,
+                description="Loopback id (1-1024), tunnel id (0-10413), EtherChannel id (1-48) or bridge "
+                "group id (1-250); default: the lowest free one",
+            ),
+        ] = None,
+        members: Annotated[
+            list[str] | None,
+            Field(
+                description="etherchannel / bvi: member interfaces (hardware or logical name, or UUID). "
+                "EtherChannel members are unconfigured physical interfaces; BVI members are physical, "
+                "subinterface or EtherChannel interfaces without an address"
+            ),
+        ] = None,
+        security_zone: Annotated[
+            str | None,
+            Field(description="Security zone name/UUID (vti, etherchannel; a bvi is zoned on its members)"),
+        ] = None,
+        ipv4: Annotated[
+            str | None,
+            Field(
+                description="'address/prefix' (a loopback usually /32, a static vti /30) or 'dhcp' "
+                "(etherchannel, bvi)"
+            ),
+        ] = None,
+        tunnel_source: Annotated[
+            str | None,
+            Field(
+                description="vti: the interface the tunnel leaves from (usually the WAN; needs a "
+                "logical name)"
+            ),
+        ] = None,
+        tunnel_type: Annotated[
+            Literal["static", "dynamic"],
+            Field(
+                description="vti: static (one peer: route-based VPN, SD-WAN spoke) or dynamic (DVTI on a "
+                "hub/headend; needs borrow_ip_from)"
+            ),
+        ] = "static",
+        borrow_ip_from: Annotated[
+            str | None,
+            Field(description="vti: borrow this interface's address (usually a loopback) instead of ipv4"),
+        ] = None,
+        lacp_mode: Annotated[
+            Literal["active", "passive", "on"],
+            Field(description="etherchannel: LACP mode (on = static channel, no LACP)"),
+        ] = "active",
+        mtu: Annotated[
+            int | None, Field(ge=64, le=9198, description="MTU (vti, etherchannel, bvi; default 1500)")
+        ] = None,
+        description: Annotated[str | None, Field(description="Description")] = None,
+        enabled: Annotated[bool, Field(description="Admin state")] = True,
+        domain: Domain = None,
+        confirm: Confirm = None,
+    ) -> dict[str, Any]:
+        """Create a logical interface on a device: a loopback (router id, routing source, the address a
+        VTI borrows), a static or dynamic VTI for route-based VPN and SD-WAN (sourced from the WAN, with
+        its own address or a borrowed loopback one), an EtherChannel (port-channel of physical members,
+        LACP or static) or a bridge group virtual interface (BVI) over member interfaces, with logical
+        name, zone and IPv4. The id defaults to the lowest free one. The preview shows the interface,
+        its members and what blocks it (used names or ids, configured or taken members, overlapping
+        subnets). Change it with fmc_update_interface, remove it with fmc_delete_interface; list it with
+        fmc_list_device_interfaces(kinds=[...]). Takes effect after fmc_deploy."""
+        app: FmcApp = get_client(ctx)
+        dev = await resolve_device(app, device, domain)
+        items = await device_interfaces(app, dev["id"], domain)
+        zone = await zone_ref(RefResolver(app, domain), security_zone) if security_zone else None
+        plan = plan_logical_interface(
+            kind,
+            dev,
+            items,
+            logical_name=logical_name,
+            number=number,
+            members=[m for m in members or [] if m.strip()],
+            zone=zone,
+            ipv4=ipv4,
+            tunnel_source=tunnel_source,
+            tunnel_type=tunnel_type,
+            borrow_ip_from=borrow_ip_from,
+            lacp_mode=lacp_mode,
+            mtu=mtu,
+            description=description,
+            enabled=enabled,
+        )
+        lk = LOGICAL_KINDS[kind]
+        summary = iface_summary(lk.collection, {**plan.body, "name": plan.hardware_name})
+        if zone:
+            summary["zone"] = zone.get("name") or summary.get("zone")
+        path = await app.config_path(f"{DEVICES}/{dev['id']}/{INTERFACE_KINDS[lk.collection]}", domain)
+        label = f" ({plan.body['ifname']})" if plan.body.get("ifname") else ""
+        return await fmc_preview(
+            ctx,
+            tool="fmc_create_interface",
+            args={
+                "device": device,
+                "kind": kind,
+                "logical_name": logical_name,
+                "number": number,
+                "members": members,
+                "security_zone": security_zone,
+                "ipv4": ipv4,
+                "tunnel_source": tunnel_source,
+                "tunnel_type": tunnel_type,
+                "borrow_ip_from": borrow_ip_from,
+                "lacp_mode": lacp_mode,
+                "mtu": mtu,
+                "description": description,
+                "enabled": enabled,
+                "domain": domain,
+            },
+            confirm=confirm,
+            plan=Plan(
+                f"Create {kind} {plan.hardware_name}{label} on {dev.get('name')}",
+                details={"interface": summary, "body": plan.body},
+                fingerprint={
+                    "device": dev["id"],
+                    "interfaces": sorted(
+                        (str(i.get("id")), str(i.get("ifname") or ""), str(i.get(lk.id_field) or ""))
+                        for _, i in items
+                    ),
+                },
+                blockers=plan.blockers,
+                side_effects=[*plan.side_effects, "Takes effect on the device after the next deployment."],
+            ),
+            apply=lambda: applied(app, lambda: app.api.post(path, plan.body)),
+        )
+
     @reg.write(title="Delete interface", destructive=True)
     async def fmc_delete_interface(
         ctx: Context,
@@ -541,18 +990,48 @@ def register(reg: ToolRegistrar) -> None:
     ) -> dict[str, Any]:
         """Delete a logical interface (subinterface, EtherChannel, VLAN, VTI, loopback or bridge
         group) from a device. Physical interfaces can't be deleted: clear them with
-        fmc_update_interface. The preview lists static routes that use the interface; FMC refuses
-        the delete while NAT, routes or other config still reference it."""
+        fmc_update_interface. The preview blocks while static routes, a VTI (borrowed address or tunnel
+        source), a VPN topology, a bridge group or subinterfaces still use it, and lists the members an
+        EtherChannel or BVI releases; FMC also refuses while NAT or other config references it."""
         app: FmcApp = get_client(ctx)
         dev = await resolve_device(app, device, domain)
-        kind, current = pick_interface(
-            await device_interfaces(app, dev["id"], domain), interface, dev["name"]
-        )
+        items = await device_interfaces(app, dev["id"], domain)
+        kind, current = pick_interface(items, interface, dev["name"])
         blockers = []
+        side: list[str] = []
         if kind not in DELETABLE_KINDS or current.get("type") == "PhysicalInterface":
             blockers.append(
                 f"{current.get('name')} is a {kind} interface; only logical interfaces can be deleted."
             )
+        cid, label = str(current.get("id")), interface_row(kind, current)["name"]
+        for k, i in items:
+            if k != "vti" or str(i.get("id")) == cid:
+                continue
+            vti = i.get("ifname") or i.get("name")
+            if (i.get("borrowIPfrom") or {}).get("id") == cid:
+                blockers.append(
+                    f"VTI {vti} borrows {label}'s address: delete it, or give it its own address first "
+                    "(fmc_update_interface ipv4=...)."
+                )
+            if (i.get("tunnelSource") or {}).get("id") == cid:
+                blockers.append(f"VTI {vti} is sourced from {label}: delete it first.")
+        topology = (current.get("metadata") or {}).get("vpnTopologyName")
+        if topology:
+            blockers.append(
+                f"{label} belongs to VPN topology {topology!r}: take the device out of it first "
+                "(fmc_update_sdwan_topology remove_spokes, or fmc_delete_s2s_vpn)."
+            )
+        owner = logical_members(items).get(cid)
+        if owner:
+            blockers.append(f"{label} is a member of {owner}: remove it from there first.")
+        if kind == "etherchannel":
+            subs = [i for k, i in items if k == "subinterface" and i.get("name") == current.get("name")]
+            if subs:
+                names = ", ".join(str(interface_row("subinterface", i)["name"]) for i in subs)
+                blockers.append(f"{label} still has subinterfaces ({names}): delete them first.")
+        if current.get("selectedInterfaces"):
+            names = ", ".join(ref_label(m) for m in current["selectedInterfaces"])
+            side.append(f"Its members ({names}) are released as unconfigured interfaces.")
         users: list[str] = []
         ifname = current.get("ifname")
         if ifname:
@@ -576,8 +1055,8 @@ def register(reg: ToolRegistrar) -> None:
                 f"Delete {kind} interface {current.get('name')} on {dev.get('name')}",
                 details={"interface": iface_summary(kind, current)},
                 fingerprint=editable(current),
-                blockers=blockers,
-                side_effects=["Removed from the device on the next deployment."],
+                blockers=list(dict.fromkeys(blockers)),
+                side_effects=[*side, "Removed from the device on the next deployment."],
             ),
             apply=lambda: applied(app, lambda: app.api.delete(path)),
         )

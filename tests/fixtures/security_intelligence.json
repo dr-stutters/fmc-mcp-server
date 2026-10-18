@@ -1,0 +1,527 @@
+{
+  "_source": "FMC 10.0.1, domain Global/mcp-test-leaf, read-only GETs through fmc-mcp (2026-10-18): the SI policy of mcp-fw-threat-acp, SI list catalogs (object/sinetworklists|siurllists|sidnslists, not expanded; URL and DNS trimmed to a few categories), and FMC's Default DNS Policy with its rules. No custom feeds or lists existed; their shapes come from the 10.0.1 spec examples in tests/unit/test_si_feeds.py.",
+  "si_policy": {
+    "items": [
+      {
+        "id": "00000000-0000-0ed3-0000-021474901902",
+        "type": "SecurityIntelligencePolicy",
+        "urls": {
+          "allowlist": [
+            {
+              "url": {
+                "name": "Domain-Do-Not-Block-List-for-URL-mcp-test-leaf",
+                "id": "916cc1ba-c9d7-11f1-b4f6-cdbc6f180443",
+                "type": "SIURLList"
+              }
+            },
+            {
+              "url": {
+                "name": "Global Do-Not-Block List for URL",
+                "id": "5915d129-0d33-4e9c-969a-eab3cde32156",
+                "type": "SIURLList"
+              }
+            }
+          ],
+          "blocklist": [
+            {
+              "url": {
+                "name": "Domain-Block-List-for-URL-mcp-test-leaf",
+                "id": "9236e33c-c9d7-11f1-b4f6-cdbc6f180443",
+                "type": "SIURLList"
+              }
+            },
+            {
+              "url": {
+                "name": "Global Block List for URL",
+                "id": "127dc4a2-1ea3-4423-a02d-1f02069828ac",
+                "type": "SIURLList"
+              }
+            }
+          ],
+          "blocklistLogging": {
+            "enableLogging": true,
+            "sendLogsToSyslogServer": false,
+            "sendLogsToEventViewer": true
+          }
+        },
+        "networks": {
+          "allowlist": [
+            {
+              "network": {
+                "name": "Domain-Do-Not-Block-List-mcp-test-leaf",
+                "id": "8f05bd1e-c9d7-11f1-b4f6-cdbc6f180443",
+                "type": "SINetworkList"
+              }
+            },
+            {
+              "network": {
+                "name": "Global Do-Not-Block List",
+                "id": "d8eea83e-6167-11e1-a154-589de99bfdf1",
+                "type": "SINetworkList"
+              }
+            }
+          ],
+          "blocklist": [
+            {
+              "network": {
+                "name": "Domain-Block-List-mcp-test-leaf",
+                "id": "8f3e82fc-c9d7-11f1-b4f6-cdbc6f180443",
+                "type": "SINetworkList"
+              }
+            },
+            {
+              "network": {
+                "name": "Global Block List",
+                "id": "c76556bc-6167-11e1-88e8-479de99bfdf1",
+                "type": "SINetworkList"
+              }
+            }
+          ],
+          "blocklistLogging": {
+            "enableLogging": true,
+            "sendLogsToSyslogServer": false,
+            "sendLogsToEventViewer": true
+          }
+        },
+        "metadata": {
+          "timestamp": 1792330616435
+        },
+        "dnsPolicy": {
+          "blocklistLogging": {
+            "enableLogging": true,
+            "sendLogsToSyslogServer": false,
+            "sendLogsToEventViewer": true
+          },
+          "id": "dc906e6e-69ed-11e4-82ce-87dc73eef419",
+          "name": "DNS Block List Policy",
+          "type": "DNSPolicy"
+        }
+      }
+    ],
+    "paging": {
+      "offset": 0,
+      "limit": 25,
+      "count": 1,
+      "pages": 1
+    }
+  },
+  "catalog": {
+    "ip": [
+      {
+        "type": "SINetworkList",
+        "id": "02213098-6d94-4680-8ce8-2d0816389f56",
+        "name": "High_risk"
+      },
+      {
+        "type": "SINetworkList",
+        "id": "032ba433-c295-11e4-a919-d4ae5275a468",
+        "name": "Response"
+      },
+      {
+        "type": "SINetworkList",
+        "id": "03709ed4-faab-47af-bade-4435f8daee27",
+        "name": "Spyware"
+      },
+      {
+        "type": "SINetworkList",
+        "id": "1b117672-7453-478c-be31-b72e89ca1acb",
+        "name": "Open_proxy"
+      },
+      {
+        "type": "SINetworkList",
+        "id": "23f2a124-8278-4c03-8c9d-d28fe08b5e98",
+        "name": "Malware"
+      },
+      {
+        "type": "SINetworkList",
+        "id": "2b15cb6f-a3fc-4e0e-a342-ccc5e5803263",
+        "name": "Tor_exit_node"
+      },
+      {
+        "type": "SINetworkList",
+        "id": "2CCDA18E-DDFF-4F5C-AF9A-F009852183F4",
+        "name": "Suspicious"
+      },
+      {
+        "type": "SINetworkList",
+        "id": "30f9e69c-d64c-479c-821d-0e4edab8217a",
+        "name": "Open_relay"
+      },
+      {
+        "type": "SINetworkList",
+        "id": "3e2af68e-5fc8-4b1c-b5bc-b4e7cab598ba",
+        "name": "Spam"
+      },
+      {
+        "type": "SINetworkList",
+        "id": "5a0b6d6b-e2c3-436f-b4a1-48248b330a26",
+        "name": "Attackers"
+      },
+      {
+        "type": "SINetworkList",
+        "id": "5f8148f1-e5e4-427a-aa3b-ee1c2745c350",
+        "name": "Bogon"
+      },
+      {
+        "type": "SINetworkList",
+        "id": "60f4e2ab-d96c-44a0-bd38-830252b63f46",
+        "name": "CnC"
+      },
+      {
+        "type": "SINetworkList",
+        "id": "6ba968f4-7a25-4793-a2c8-7cc77f1ff437",
+        "name": "Bots"
+      },
+      {
+        "type": "SINetworkList",
+        "id": "8af156ca-8020-4608-9278-01b87458ea46",
+        "name": "Newly_seen"
+      },
+      {
+        "type": "SINetworkList",
+        "id": "8c3e31be-ca41-43c8-87cb-82a35b0f20e2",
+        "name": "Malicious"
+      },
+      {
+        "type": "SINetworkList",
+        "id": "8f05bd1e-c9d7-11f1-b4f6-cdbc6f180443",
+        "name": "Domain-Do-Not-Block-List-mcp-test-leaf"
+      },
+      {
+        "type": "SINetworkList",
+        "id": "8f3e82fc-c9d7-11f1-b4f6-cdbc6f180443",
+        "name": "Domain-Block-List-mcp-test-leaf"
+      },
+      {
+        "type": "SINetworkList",
+        "id": "937cf5e8-76d1-4ba2-a83c-475dc80c3845",
+        "name": "Ioc"
+      },
+      {
+        "type": "SINetworkList",
+        "id": "A27C6AAE-8E52-4174-A81A-47C59FECC092",
+        "name": "Exploitkit"
+      },
+      {
+        "type": "SINetworkList",
+        "id": "abdc925f-4f85-4504-90a7-c891979ac517",
+        "name": "Cryptomining"
+      },
+      {
+        "type": "SINetworkList",
+        "id": "b1df3aa8-2841-4c88-8e64-bfaacec7fedd",
+        "name": "Dga"
+      },
+      {
+        "type": "SINetworkList",
+        "id": "bde824fd-36dd-4a7c-9cc1-80e40ac7aa35",
+        "name": "Banking_fraud"
+      },
+      {
+        "type": "SINetworkList",
+        "id": "c76556bc-6167-11e1-88e8-479de99bfdf1",
+        "name": "Global-Block-List"
+      },
+      {
+        "type": "SINetworkList",
+        "id": "d3899830-d481-4773-b4e2-7daa7acf5e44",
+        "name": "Link_sharing"
+      },
+      {
+        "type": "SINetworkList",
+        "id": "d7d996a6-6b92-4a56-8f10-e8506e431ca5",
+        "name": "Phishing"
+      },
+      {
+        "type": "SINetworkList",
+        "id": "d8eea83e-6167-11e1-a154-589de99bfdf1",
+        "name": "Global-Do-Not-Block-List"
+      },
+      {
+        "type": "SINetworkList",
+        "id": "e3615ab0-2eca-11f1-95d1-a4c259adb5f3",
+        "name": "TID IPv4 Block"
+      },
+      {
+        "type": "SINetworkList",
+        "id": "e364abfc-2eca-11f1-95d1-a4c259adb5f3",
+        "name": "TID IPv4 Monitor"
+      },
+      {
+        "type": "SINetworkList",
+        "id": "e366745a-2eca-11f1-95d1-a4c259adb5f3",
+        "name": "TID IPv6 Block"
+      },
+      {
+        "type": "SINetworkList",
+        "id": "e367dbb0-2eca-11f1-95d1-a4c259adb5f3",
+        "name": "TID IPv6 Monitor"
+      }
+    ],
+    "url": [
+      {
+        "type": "SIURLList",
+        "id": "02213098-6d94-4680-8ce8-2d081638d087",
+        "name": "URL High_risk"
+      },
+      {
+        "type": "SIURLList",
+        "id": "127dc4a2-1ea3-4423-a02d-1f02069828ac",
+        "name": "Global-Block-List-for-URL"
+      },
+      {
+        "type": "SIURLList",
+        "id": "23f2a124-8278-4c03-8c9d-d28fe08b8fc9",
+        "name": "URL Malware"
+      },
+      {
+        "type": "SIURLList",
+        "id": "5915d129-0d33-4e9c-969a-eab3cde32156",
+        "name": "Global-Do-Not-Block-List-for-URL"
+      },
+      {
+        "type": "SIURLList",
+        "id": "60f4e2ab-d96c-44a0-bd38-830252b67077",
+        "name": "URL CnC"
+      },
+      {
+        "type": "SIURLList",
+        "id": "916cc1ba-c9d7-11f1-b4f6-cdbc6f180443",
+        "name": "Domain-Do-Not-Block-List-for-URL-mcp-test-leaf"
+      },
+      {
+        "type": "SIURLList",
+        "id": "9236e33c-c9d7-11f1-b4f6-cdbc6f180443",
+        "name": "Domain-Block-List-for-URL-mcp-test-leaf"
+      },
+      {
+        "type": "SIURLList",
+        "id": "d7d996a6-6b92-4a56-8f10-e8506e434dd6",
+        "name": "URL Phishing"
+      },
+      {
+        "type": "SIURLList",
+        "id": "e36f1aba-2eca-11f1-95d1-a4c259adb5f3",
+        "name": "TID URL Block"
+      },
+      {
+        "type": "SIURLList",
+        "id": "e3710988-2eca-11f1-95d1-a4c259adb5f3",
+        "name": "TID URL Monitor"
+      }
+    ],
+    "dns": [
+      {
+        "type": "SIDNSList",
+        "id": "23f2a124-8278-4c03-8c9d-d28fe08b71ab",
+        "name": "DNS Malware"
+      },
+      {
+        "type": "SIDNSList",
+        "id": "60f4e2ab-d96c-44a0-bd38-830252b65259",
+        "name": "DNS CnC"
+      },
+      {
+        "type": "SIDNSList",
+        "id": "663da2e4-32f4-44d2-ad1f-8d6182720d32",
+        "name": "Global-Do-Not-Block-List-for-DNS"
+      },
+      {
+        "type": "SIDNSList",
+        "id": "9134721a-c9d7-11f1-b4f6-cdbc6f180443",
+        "name": "Domain-Do-Not-Block-List-for-DNS-mcp-test-leaf"
+      },
+      {
+        "type": "SIDNSList",
+        "id": "914ef270-c9d7-11f1-b4f6-cdbc6f180443",
+        "name": "Domain-Block-List-for-DNS-mcp-test-leaf"
+      },
+      {
+        "type": "SIDNSList",
+        "id": "d7d996a6-6b92-4a56-8f10-e8506e432fb8",
+        "name": "DNS Phishing"
+      },
+      {
+        "type": "SIDNSList",
+        "id": "ded9848d-3580-4ca1-9d3c-04113549f129",
+        "name": "Global-Block-List-for-DNS"
+      }
+    ]
+  },
+  "dns_policy": {
+    "metadata": {
+      "readOnly": {
+        "state": true
+      },
+      "timestamp": 1775158277,
+      "lastUser": {
+        "name": "admin",
+        "id": "68d03c42-d9bd-11dc-89f2-b7961d42c462",
+        "type": "user"
+      },
+      "domain": {
+        "name": "Global",
+        "id": "e276abec-e0f2-11e3-8169-6d9ed49b625f",
+        "type": "Domain"
+      }
+    },
+    "id": "dc906e6e-69ed-11e4-82ce-87dc73eef419",
+    "name": "Default DNS Policy",
+    "description": "Default DNS Policy with Global Block List and Global Do-Not-Block List",
+    "type": "DNSPolicy"
+  },
+  "dns_rules": {
+    "items": [
+      {
+        "metadata": {
+          "readOnly": {
+            "state": true
+          },
+          "ruleIndex": 1,
+          "timestamp": 1775158277,
+          "lastUser": {
+            "name": "admin",
+            "id": "68d03c42-d9bd-11dc-89f2-b7961d42c462",
+            "type": "user"
+          },
+          "domain": {
+            "name": "Global",
+            "id": "e276abec-e0f2-11e3-8169-6d9ed49b625f",
+            "type": "Domain"
+          }
+        },
+        "enabled": true,
+        "systemDefault": true,
+        "action": "ALLOW",
+        "sourceZones": [],
+        "dnsLists": {
+          "objects": [
+            {
+              "name": "Global-Do-Not-Block-List-for-DNS",
+              "id": "663da2e4-32f4-44d2-ad1f-8d6182720d32",
+              "type": "SIDNSList"
+            }
+          ]
+        },
+        "networks": {},
+        "vlanTags": {},
+        "name": "Global Do-Not-Block List for DNS",
+        "type": "DNSRule"
+      },
+      {
+        "metadata": {
+          "readOnly": {
+            "state": true
+          },
+          "ruleIndex": 2,
+          "timestamp": 1775158277,
+          "lastUser": {
+            "name": "admin",
+            "id": "68d03c42-d9bd-11dc-89f2-b7961d42c462",
+            "type": "user"
+          },
+          "domain": {
+            "name": "Global",
+            "id": "e276abec-e0f2-11e3-8169-6d9ed49b625f",
+            "type": "Domain"
+          }
+        },
+        "enabled": false,
+        "systemDefault": true,
+        "action": "ALLOW",
+        "sourceZones": [],
+        "dnsLists": {
+          "objects": [
+            {
+              "name": "Descendant-Do-Not-Block-Lists-for-DNS_-_Global",
+              "id": "17a11eb0-ff56-11e4-9081-764afb0f5dcb",
+              "type": "SIDNSList"
+            }
+          ]
+        },
+        "networks": {},
+        "vlanTags": {},
+        "name": "Descendant Do-Not-Block Lists for DNS - Global",
+        "type": "DNSRule"
+      },
+      {
+        "metadata": {
+          "readOnly": {
+            "state": true
+          },
+          "ruleIndex": 3,
+          "timestamp": 1775158277,
+          "lastUser": {
+            "name": "admin",
+            "id": "68d03c42-d9bd-11dc-89f2-b7961d42c462",
+            "type": "user"
+          },
+          "domain": {
+            "name": "Global",
+            "id": "e276abec-e0f2-11e3-8169-6d9ed49b625f",
+            "type": "Domain"
+          }
+        },
+        "enabled": true,
+        "systemDefault": true,
+        "action": "NXDOMAIN",
+        "sourceZones": [],
+        "dnsLists": {
+          "objects": [
+            {
+              "name": "Global-Block-List-for-DNS",
+              "id": "ded9848d-3580-4ca1-9d3c-04113549f129",
+              "type": "SIDNSList"
+            }
+          ]
+        },
+        "networks": {},
+        "vlanTags": {},
+        "name": "Global Block List for DNS",
+        "type": "DNSRule"
+      },
+      {
+        "metadata": {
+          "readOnly": {
+            "state": true
+          },
+          "ruleIndex": 4,
+          "timestamp": 1775158277,
+          "lastUser": {
+            "name": "admin",
+            "id": "68d03c42-d9bd-11dc-89f2-b7961d42c462",
+            "type": "user"
+          },
+          "domain": {
+            "name": "Global",
+            "id": "e276abec-e0f2-11e3-8169-6d9ed49b625f",
+            "type": "Domain"
+          }
+        },
+        "enabled": false,
+        "systemDefault": true,
+        "action": "NXDOMAIN",
+        "sourceZones": [],
+        "dnsLists": {
+          "objects": [
+            {
+              "name": "Descendant-Block-Lists-for-DNS_-_Global",
+              "id": "1fca9c10-ff56-11e4-866e-ad4afb0f5dcb",
+              "type": "SIDNSList"
+            }
+          ]
+        },
+        "networks": {},
+        "vlanTags": {},
+        "name": "Descendant Block Lists for DNS - Global",
+        "type": "DNSRule"
+      }
+    ],
+    "paging": {
+      "offset": 0,
+      "limit": 25,
+      "count": 4,
+      "pages": 1
+    }
+  }
+}

@@ -922,7 +922,12 @@ def register(reg: ToolRegistrar) -> None:
         app: FmcApp = get_client(ctx)
         p = await resolve_in(app, POLICY_KINDS[kind], policy, f"{kind} policy", domain)
         details: dict[str, Any] = {"policy": p.get("name"), "id": p["id"]}
-        sub = {"access": "accessrules", "nat": "natrules", "prefilter": "prefilterrules"}.get(kind)
+        sub = {
+            "access": "accessrules",
+            "nat": "natrules",
+            "prefilter": "prefilterrules",
+            "file": "filerules",
+        }.get(kind)
         if sub:
             rules = await all_rules(
                 app, await app.config_path(f"{POLICY_KINDS[kind]}/{p['id']}/{sub}", domain)

@@ -1,0 +1,292 @@
+{
+ "_source": "trusted_cas[0] and trusted_ca_groups are real FMC 10.0.1 responses (Global/mcp-test-leaf, 2026-10-18; links dropped, the group trimmed to 3 of its 107 members). FMC had no internal CAs, internal certificates or decryption policies to record, so those follow FMC 10.0.1's own API spec examples (fields, value formats, masked keys) with test certificates (tests/fixtures/test-ca-cert.txt, a generated www.example.com certificate and CSR) and RFC 5737 addresses.",
+ "trusted_cas": [
+  {
+   "metadata": {
+    "readOnly": {
+     "state": true
+    },
+    "timestamp": 1775158285,
+    "lastUser": {
+     "name": "admin"
+    },
+    "domain": {
+     "name": "Global",
+     "id": "e276abec-e0f2-11e3-8169-6d9ed49b625f",
+     "type": "Domain"
+    }
+   },
+   "cert": "-----BEGIN CERTIFICATE-----\nMIIDITCCAgmgAwIBAgIBATANBgkqhkiG9w0BAQsFADAyMQ4wDAYDVQQKEwVDaXNj\nbzEgMB4GA1UEAxMXQ2lzY28gTGljZW5zaW5nIFJvb3QgQ0EwHhcNMTMwNTMwMTk0\nODQ3WhcNMzgwNTMwMTk0ODQ3WjAyMQ4wDAYDVQQKEwVDaXNjbzEgMB4GA1UEAxMX\nQ2lzY28gTGljZW5zaW5nIFJvb3QgQ0EwggEiMA0GCSqGSIb3DQEBAQUAA4IBDwAw\nggEKAoIBAQCmvL2WEx4F9xRepyws1obmFyIuofHv9k3LtMeYISqhR8ZV2NeUcTgN\nhxFEHhqvBxqcrmOIijjlIBw5TXhGLvI5xln3FbmMCllbu1y9DP6+o3AKi/fY8lbu\nSqToDdtv0clgsf0Y/8aclm+miVeiYX3nEE/cX+opVqxzkKPrK1Q2rchHosXatVPr\naamlNVjp8+PAvSPPWL1xiGjmlJEg8yDnlI5x1647zITxBoTHS8jgD1ObpCtCxou3\nx0eQlrTLLWLqL1Bdx7BipGgR2VvoJQ/EXV1fuI8n0ZHFXw12YfmkzT2ZIyeouwO9\nTm1waXy634vfX0NolRNeRN/Hxs8E3X/RAgMBAAGjQjBAMA4GA1UdDwEB/wQEAwIB\nBjAPBgNVHRMBAf8EBTADAQH/MB0GA1UdDgQWBBRJ3IVLPTHlGz5qF2Bq8zM9O0xz\n6DANBgkqhkiG9w0BAQsFAAOCAQEAUH8k05MqZoYCXZ/oOK5cbU32sEljHHgkDakF\nYE7c3v9P7St3/EYOzWNv291EaB46VnOrkJPTsWyePYvZiYe/5Ay9nhrsoMIhibtc\nj6hWhs2YtkZVdbFGjfxmqEZ6PfRNVlcAat8PDc+DUBU8BP98Ieh4rBG6nNJVqSMs\nfKe35sGvdPYVLpm3sfz5u+lz3n9b3euGxx47SRdlMItfsNoGuSr+f0lOip4HuFc3\n86WL4RpIoinDfB5pOfCGeIDdzRbWus7K7rx8+YQoeHs1ICzcYORharYjzb0jDjr7\nQYYWqUCT4ElNEKt1J+hvc5MuNbWIYv2uAnUVb3GbsvDWl99/KA==\n-----END CERTIFICATE-----\n",
+   "subjectOrganization": "Cisco",
+   "subjectOrganizationUnit": "",
+   "subjectCommonName": "Cisco Licensing Root CA",
+   "issuerCommonName": "Cisco Licensing Root CA",
+   "issuerOrganization": "Cisco",
+   "issuerOrganizationUnit": "",
+   "validityStartDate": "May 30 19:48:47 2013 GMT",
+   "validityEndDate": "May 30 19:48:47 2038 GMT",
+   "crlSerials": [],
+   "serialNumber": "1 (0x1)",
+   "certFingerprint": "5C:A9:5F:B6:E2:98:0E:C1:5A:FB:68:1B:BB:7E:62:B5:AD:3F:A8:B8",
+   "publicKeyFingerprint": "23882e8b7db5982ec8519bb85e75d733f7b22407",
+   "id": "02205930-fcd0-386f-bceb-196f54583d0b",
+   "type": "ExternalCACertificate",
+   "name": "Cisco-Licensing-Root-CA"
+  },
+  {
+   "metadata": {
+    "timestamp": 1792330616,
+    "lastUser": {
+     "name": "mcp-api-svc"
+    },
+    "domain": {
+     "name": "Global",
+     "id": "e276abec-e0f2-11e3-8169-6d9ed49b625f",
+     "type": "Domain"
+    }
+   },
+   "cert": "-----BEGIN CERTIFICATE-----\nMIIDXzCCAkegAwIBAgIUPOl3hzWweM8N8aBWY3SnxR+gOnMwDQYJKoZIhvcNAQEL\nBQAwMTEVMBMGA1UECgwMRXhhbXBsZSBDb3JwMRgwFgYDVQQDDA93d3cuZXhhbXBs\nZS5jb20wHhcNMjYxMDE4MTQ0ODE5WhcNMzYxMDE1MTQ0ODE5WjAxMRUwEwYDVQQK\nDAxFeGFtcGxlIENvcnAxGDAWBgNVBAMMD3d3dy5leGFtcGxlLmNvbTCCASIwDQYJ\nKoZIhvcNAQEBBQADggEPADCCAQoCggEBAK73yc6wABwb5qErDWYSkZGUU3Mr2HOx\nrnfQD7u1PWUc7uTzzHTkmBBEEb4AjFwIDcySd+krNUH0kRqO9QsfSK/zvIFRXj2M\n4Bzs4KUuJCk2BVV0BmYPkEZBB+vTzqtbI8OLOMrGGKICgi9eq5BFoSY1jElXfL0u\nsjE3S5Z6tiNBXHIU/aKcCm1TV17XSd8x8OzkBUFf01t3638Md3A/UZCsra712mCB\nZUOKcNgLuZqNLcWnMDaYj6bryTJThzfcPhgQjO1lOZMCjm4Rq93WN2qkgFSMFBRz\nqpXLpIkG1dDYgu1qQYXnNuG2MySc1IEmzrxPwDWJ87J+If9msDg1leMCAwEAAaNv\nMG0wHQYDVR0OBBYEFK/ajLgW0LOUiImdOLVbXG1ScB4TMB8GA1UdIwQYMBaAFK/a\njLgW0LOUiImdOLVbXG1ScB4TMA8GA1UdEwEB/wQFMAMBAf8wGgYDVR0RBBMwEYIP\nd3d3LmV4YW1wbGUuY29tMA0GCSqGSIb3DQEBCwUAA4IBAQCtluLtcoo/CgSepdat\nXTWhCklptuXg8TN5IXogoU/OTcqMAVGKyS+0VuAf4iKH+3S+Kcd2BF3S3HnQUHUO\n3COwVe3rEWWSiQInrKz9zjjReh4w0twGXzlIzmN7lXCwobfxNV2FJx6FUu5y9t6i\n4uTr+t2+qEuxR0DepK6nExbUwJ1Wu3jWF7Jj18zg2sOQ1/PpNnpq/lgq4Ezg5Bb6\nbp/pn4b96WEFG4hJKBwJKU6y4mpVG4ZJvrq7kVvnpGLV0pl8nM8N6ok15X7BK7TB\n9jUKRDkIp4nmev0z3zS0G6sUOb40yR2vomlOKyAGNXJgIVwKdDEYVI4bemkebJ/H\ndcLG\n-----END CERTIFICATE-----\n",
+   "subjectOrganization": "Example Corp",
+   "subjectOrganizationUnit": "",
+   "subjectCommonName": "www.example.com",
+   "issuerCommonName": "www.example.com",
+   "issuerOrganization": "Example Corp",
+   "issuerOrganizationUnit": "",
+   "validityStartDate": "Oct 18 14:48:19 2026 GMT",
+   "validityEndDate": "Oct 15 14:48:19 2036 GMT",
+   "crlSerials": [],
+   "certFingerprint": "7B:C5:F1:A6:92:85:46:B2:57:7B:AE:FA:38:B7:A8:A7:3D:A6:8D:D2",
+   "id": "00000000-0000-0ed3-0000-000000000c01",
+   "type": "ExternalCACertificate",
+   "name": "mcp-test-server-ca"
+  }
+ ],
+ "trusted_ca_groups": [
+  {
+   "metadata": {
+    "readOnly": {
+     "state": true
+    },
+    "timestamp": 1775158285,
+    "lastUser": {
+     "name": "admin"
+    },
+    "domain": {
+     "name": "Global",
+     "id": "e276abec-e0f2-11e3-8169-6d9ed49b625f",
+     "type": "Domain"
+    }
+   },
+   "objects": [
+    {
+     "id": "c1525814-68b9-3271-a70c-ac52c6ad195a",
+     "type": "ExternalCACertificate",
+     "name": "ACCVRAIZ1"
+    },
+    {
+     "id": "02205930-fcd0-386f-bceb-196f54583d0b",
+     "type": "ExternalCACertificate",
+     "name": "Cisco-Licensing-Root-CA"
+    },
+    {
+     "id": "bd1f104e-6aef-3fcb-963a-9abb77739e5f",
+     "type": "ExternalCACertificate",
+     "name": "ISRG-Root-X1"
+    }
+   ],
+   "name": "Cisco-Trusted-Authorities",
+   "id": "d3856136-b65c-49e6-ac4c-0daf5be98bc1",
+   "type": "ExternalCACertificateGroup"
+  }
+ ],
+ "internal_ca": {
+  "metadata": {
+   "timestamp": 1792330616,
+   "lastUser": {
+    "name": "mcp-api-svc"
+   },
+   "domain": {
+    "name": "Global",
+    "id": "e276abec-e0f2-11e3-8169-6d9ed49b625f",
+    "type": "Domain"
+   }
+  },
+  "cert": "-----BEGIN CERTIFICATE-----\nMIIDFTCCAf2gAwIBAgIUNZfA3P4Xr7Byoam53NbVVn1dqkMwDQYJKoZIhvcNAQEL\nBQAwGjEYMBYGA1UEAwwPZm1jLW1jcC10ZXN0LUNBMB4XDTI2MTAxNjAxMzExNVoX\nDTM2MTAxMzAxMzExNVowGjEYMBYGA1UEAwwPZm1jLW1jcC10ZXN0LUNBMIIBIjAN\nBgkqhkiG9w0BAQEFAAOCAQ8AMIIBCgKCAQEAuAUZamhaxbQLxAOK2BNu6HmU8lj+\n5sjaK0BJhn/PjW196eZXRX+PecSqEztdWSciAz4XENJylKjNP5evMgjzH3KmBibw\nRMb+xPEJbXEtReNQfYakHK7Rntwe3Yd1snwXavVFOhSW0dNYs5vXOPDskayqO+ri\n1RhuQ2d/C0APoGFNiiVLJOVGb5BTosZD3r6sRc2xvZBUDZDybsM+fJR4R7IWZ1tf\nLE4T1aKUFHaZS3LRyW1TcQ35XEERauRPYMbjyRbyCn5X3hBD6gzk3XoG3c9UeAWg\nBL9AoDRfLEsMLGOiCwL19NEL5d4mI/qDmweGXak9Y9MAsJ3Y1gMHAHc5CQIDAQAB\no1MwUTAdBgNVHQ4EFgQUUMCEiMXptJpNPiMb9+TpPOKUf74wHwYDVR0jBBgwFoAU\nUMCEiMXptJpNPiMb9+TpPOKUf74wDwYDVR0TAQH/BAUwAwEB/zANBgkqhkiG9w0B\nAQsFAAOCAQEAfzXDh2woFYBPDSTlzD1t+0LOFBEwQBKDe/l8FntqkyIUrWaD65XE\nVvCRWWTfztaZcfb41HxlQXTeOZolJnbpzEI5kupiBJJ+qASZJecdzqZDNJErmsv0\njg753GIMTvBm/+JsgxO4O+k5kRvbrqE79nZLVPPvC/pp1VYTPG/53rQSQDkclBCD\nDEQQnC0i+/NfdYj+gplQmf8eRVP5cwjT5t9DEcYDSFDpUPT0pkMOImfUYxYyQtOb\nkt1+k+hZpY3ZsdBeMR9yWtFaufKOcNVQaA+Zli3bNDJAUZ/I5UvyL/qeMX+GL5Pc\nBXizh5ejhzH/FknLXTHGREQNkWQY7SS6Fw==\n-----END CERTIFICATE-----\n",
+  "privateKey": "********",
+  "passPhrase": "********",
+  "subjectCommonName": "fmc-mcp-test-CA",
+  "issuerCommonName": "fmc-mcp-test-CA",
+  "validityStartDate": "2026-10-16T01:31:15Z",
+  "validityEndDate": "2036-10-13T01:31:15Z",
+  "serialNumber": "35:97:c0:dc:fe:17:af:b0:72:a1:a9:b9:dc:d6:d5:56:7d:5d:aa:43",
+  "certFingerprint": "FF:68:66:23:EC:0A:EC:07:F9:D5:39:84:67:56:68:06:A6:57:36:BA",
+  "publicKeyFingerprint": "e0b59499234dc2ba4efabf43620378ce3e5a5f71",
+  "id": "00000000-0000-0ed3-0000-000000000ca1",
+  "name": "mcp-test-resign-ca",
+  "type": "InternalCA"
+ },
+ "internal_ca_csr": {
+  "metadata": {
+   "timestamp": 1792330616,
+   "lastUser": {
+    "name": "mcp-api-svc"
+   },
+   "domain": {
+    "name": "Global",
+    "id": "e276abec-e0f2-11e3-8169-6d9ed49b625f",
+    "type": "Domain"
+   }
+  },
+  "csr": "-----BEGIN CERTIFICATE REQUEST-----\nMIICjTCCAXUCAQAwSDELMAkGA1UEBhMCVVMxFTATBgNVBAoMDEV4YW1wbGUgQ29y\ncDEiMCAGA1UEAwwZRXhhbXBsZSBUTFMgSW5zcGVjdGlvbiBDQTCCASIwDQYJKoZI\nhvcNAQEBBQADggEPADCCAQoCggEBAMIM2z7pol6TM3Ibe5e9CWy3nc8ERHRoPSf6\n0rOYGUJ4H31h+pntbRPCRQ1imBeOd/IIwFpLJS4yTvV0Fb+dgvTaJ0Q/ZzGRk+xo\nrA4/llv8tHBllrIkEKoq/9cXsW4noUvUxlLP6UGqODTz8q2L/541xGmW7ApzW21B\n58dopGmhIAube+nBQ5uPJMFLHSAnDtMG0pAO9mhyiF9aEJvSkJEZWdnGfXP+qaxZ\nok6FrtrfhcEs4hRLUDVoeskbhxkQHPzetUxyd055pG+Z5pAwkvxOuQc169X4mXoS\nO2npiJnpo3iy8004QBbrxFtNWhSiX6ESucuTurDMGeKroVJx/+MCAwEAAaAAMA0G\nCSqGSIb3DQEBCwUAA4IBAQBuBI0EFt8/gQbMExhEFT1EiXN5B19OhsYSb+fsqSPz\nuxFvUiJb5SDrJnrha7SyHOFnxr0NQ83wtRl6jvWMSzDLSyRwZfH5NbV2DaFsDpf+\nWC61OLdYcRP/0G1cA+qPWQvWGX3BTO3joDczKwRWdFuX1sdkhqWDQH+v4u/MatMg\neSQr+7TVONgHD54S/Xl5QzgvqU9OmF6pMHrvsGFir+9MXGnHtRw9S4PaYGL0lkSf\ngwILi2BlRdZRRUSlwFzL9/XRvdqXk1iTDrwIMb3ec/A56kgubpbLdiHHE6VlN19b\nokBRSbhT3MXWRlUb9QdqOR5HF7tVBeo9Kl/VKQ9J1wAz\n-----END CERTIFICATE REQUEST-----\n",
+  "privateKey": "********",
+  "passPhrase": "********",
+  "subjectCountry": "US",
+  "subjectOrganization": "Example Corp",
+  "subjectCommonName": "Example TLS Inspection CA",
+  "id": "00000000-0000-0ed3-0000-000000000ca2",
+  "name": "mcp-test-csr-ca",
+  "type": "InternalCA"
+ },
+ "internal_cert": {
+  "metadata": {
+   "timestamp": 1792330616,
+   "lastUser": {
+    "name": "mcp-api-svc"
+   },
+   "domain": {
+    "name": "Global",
+    "id": "e276abec-e0f2-11e3-8169-6d9ed49b625f",
+    "type": "Domain"
+   }
+  },
+  "cert": "-----BEGIN CERTIFICATE-----\nMIIDXzCCAkegAwIBAgIUPOl3hzWweM8N8aBWY3SnxR+gOnMwDQYJKoZIhvcNAQEL\nBQAwMTEVMBMGA1UECgwMRXhhbXBsZSBDb3JwMRgwFgYDVQQDDA93d3cuZXhhbXBs\nZS5jb20wHhcNMjYxMDE4MTQ0ODE5WhcNMzYxMDE1MTQ0ODE5WjAxMRUwEwYDVQQK\nDAxFeGFtcGxlIENvcnAxGDAWBgNVBAMMD3d3dy5leGFtcGxlLmNvbTCCASIwDQYJ\nKoZIhvcNAQEBBQADggEPADCCAQoCggEBAK73yc6wABwb5qErDWYSkZGUU3Mr2HOx\nrnfQD7u1PWUc7uTzzHTkmBBEEb4AjFwIDcySd+krNUH0kRqO9QsfSK/zvIFRXj2M\n4Bzs4KUuJCk2BVV0BmYPkEZBB+vTzqtbI8OLOMrGGKICgi9eq5BFoSY1jElXfL0u\nsjE3S5Z6tiNBXHIU/aKcCm1TV17XSd8x8OzkBUFf01t3638Md3A/UZCsra712mCB\nZUOKcNgLuZqNLcWnMDaYj6bryTJThzfcPhgQjO1lOZMCjm4Rq93WN2qkgFSMFBRz\nqpXLpIkG1dDYgu1qQYXnNuG2MySc1IEmzrxPwDWJ87J+If9msDg1leMCAwEAAaNv\nMG0wHQYDVR0OBBYEFK/ajLgW0LOUiImdOLVbXG1ScB4TMB8GA1UdIwQYMBaAFK/a\njLgW0LOUiImdOLVbXG1ScB4TMA8GA1UdEwEB/wQFMAMBAf8wGgYDVR0RBBMwEYIP\nd3d3LmV4YW1wbGUuY29tMA0GCSqGSIb3DQEBCwUAA4IBAQCtluLtcoo/CgSepdat\nXTWhCklptuXg8TN5IXogoU/OTcqMAVGKyS+0VuAf4iKH+3S+Kcd2BF3S3HnQUHUO\n3COwVe3rEWWSiQInrKz9zjjReh4w0twGXzlIzmN7lXCwobfxNV2FJx6FUu5y9t6i\n4uTr+t2+qEuxR0DepK6nExbUwJ1Wu3jWF7Jj18zg2sOQ1/PpNnpq/lgq4Ezg5Bb6\nbp/pn4b96WEFG4hJKBwJKU6y4mpVG4ZJvrq7kVvnpGLV0pl8nM8N6ok15X7BK7TB\n9jUKRDkIp4nmev0z3zS0G6sUOb40yR2vomlOKyAGNXJgIVwKdDEYVI4bemkebJ/H\ndcLG\n-----END CERTIFICATE-----\n",
+  "privateKey": "********",
+  "passPhrase": "********",
+  "subjectOrganization": "Example Corp",
+  "subjectCommonName": "www.example.com",
+  "issuerOrganization": "Example Corp",
+  "issuerCommonName": "www.example.com",
+  "validityStartDate": "2026-10-18T14:48:19Z",
+  "validityEndDate": "2036-10-15T14:48:19Z",
+  "certFingerprint": "7B:C5:F1:A6:92:85:46:B2:57:7B:AE:FA:38:B7:A8:A7:3D:A6:8D:D2",
+  "id": "00000000-0000-0ed3-0000-000000000ce1",
+  "name": "mcp-test-web-cert",
+  "type": "InternalCertificate"
+ },
+ "decryption_policy": {
+  "metadata": {
+   "timestamp": 1792330616,
+   "lastUser": {
+    "name": "mcp-api-svc"
+   },
+   "domain": {
+    "name": "Global",
+    "id": "e276abec-e0f2-11e3-8169-6d9ed49b625f",
+    "type": "Domain"
+   }
+  },
+  "undecryptableActions": {
+   "compressedSession": "INHERIT_DEFAULT_ACTION",
+   "sslV2Session": "INHERIT_DEFAULT_ACTION",
+   "unknownCipherSuite": "INHERIT_DEFAULT_ACTION",
+   "unsupportedCipherSuite": "INHERIT_DEFAULT_ACTION",
+   "sessionNotCached": "INHERIT_DEFAULT_ACTION",
+   "handshakeErrors": "INHERIT_DEFAULT_ACTION",
+   "decryptionErrors": "BLOCK"
+  },
+  "defaultAction": {
+   "policyAction": "DO_NOT_DECRYPT",
+   "eventLogAction": "LOG_NONE"
+  },
+  "advancedOptions": {
+   "disallowUntrustedIssuerResign": true,
+   "stripHTTP3": false,
+   "blockExtensions": [],
+   "tls13Decryption": false,
+   "quicDecryption": false,
+   "adaptiveProbe": true
+  },
+  "logging": {
+   "logEnd": false,
+   "sendEvents": false
+  },
+  "trustedCAs": {
+   "objects": [],
+   "groups": [
+    {
+     "name": "Cisco-Trusted-Authorities",
+     "id": "d3856136-b65c-49e6-ac4c-0daf5be98bc1",
+     "type": "ExternalCACertificateGroup"
+    }
+   ],
+   "literals": []
+  },
+  "id": "00000000-0000-0ed3-0000-000000000d01",
+  "name": "mcp-test-tls",
+  "type": "DecryptionPolicy",
+  "mode": "EXPERT"
+ },
+ "decryption_rules": [
+  {
+   "metadata": {
+    "ruleIndex": 1
+   },
+   "ruleIndex": 1,
+   "name": "dnd-bank",
+   "ruleAction": "DO_NOT_DECRYPT",
+   "enabled": true,
+   "destinationNetworks": {
+    "literals": [
+     {
+      "type": "Host",
+      "value": "203.0.113.66"
+     }
+    ]
+   },
+   "id": "00000000-0000-0ed3-0000-000000000b01",
+   "type": "DecryptionPolicyRule"
+  },
+  {
+   "metadata": {
+    "ruleIndex": 2
+   },
+   "ruleIndex": 2,
+   "name": "resign-outbound",
+   "ruleAction": "DECRYPT_RESIGN",
+   "enabled": true,
+   "sourceNetworks": {
+    "literals": [
+     {
+      "type": "Network",
+      "value": "192.0.2.0/24"
+     }
+    ]
+   },
+   "destinationPorts": {
+    "literals": [
+     {
+      "type": "PortLiteral",
+      "port": "443",
+      "protocol": "6"
+     }
+    ]
+   },
+   "decryptionCerts": {
+    "objects": [
+     {
+      "id": "00000000-0000-0ed3-0000-000000000ca1",
+      "name": "mcp-test-resign-ca",
+      "type": "InternalCA"
+     }
+    ]
+   },
+   "replacePublicKey": false,
+   "logging": {
+    "logEnd": true,
+    "sendEvents": true
+   },
+   "id": "00000000-0000-0ed3-0000-000000000b02",
+   "type": "DecryptionPolicyRule"
+  }
+ ]
+}
