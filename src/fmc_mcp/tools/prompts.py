@@ -664,6 +664,260 @@ table of what each step shows.
 """
 
 
+# Device template variable names as FMC shows them (fmc_get_device_template): insideIp, bgp_as, wan.ip.
+_VAR_NAME = re.compile(r"^[A-Za-z_][\w.-]{0,63}$")
+MAX_TEMPLATE_VARIABLES = 50
+_SECRET_VAR = re.compile(r"pass(word|wd|phrase)?|secret|psk|private", re.I)
+
+
+def _ip(value: str | None, what: str) -> ipaddress.IPv4Address | ipaddress.IPv6Address | None:
+    if not value:
+        return None
+    try:
+        return ipaddress.ip_address(value.strip())
+    except ValueError:
+        raise InvalidRequest(f"{what} {value!r} is not an IP address.") from None
+
+
+def _ip_iface(value: str | None, what: str) -> ipaddress.IPv4Interface | ipaddress.IPv6Interface | None:
+    if not value:
+        return None
+    v = value.strip()
+    try:
+        iface = ipaddress.ip_interface(v)
+    except ValueError:
+        raise InvalidRequest(f"{what} {value!r} is not an address/prefix such as 10.10.14.1/24.") from None
+    if "/" not in v:
+        raise InvalidRequest(f"{what} {value!r} needs a prefix length, e.g. {v}/24.")
+    return iface
+
+
+def _template_variables(variables: dict[str, str] | None) -> str | None:
+    """The template variables as a JSON literal for the instructions, each name and value checked."""
+    if not variables:
+        return None
+    if len(variables) > MAX_TEMPLATE_VARIABLES:
+        raise InvalidRequest(f"At most {MAX_TEMPLATE_VARIABLES} template variables, not {len(variables)}.")
+    out: dict[str, str] = {}
+    for k, v in variables.items():
+        name = str(k).strip()
+        if not _VAR_NAME.match(name):
+            raise InvalidRequest(f"Template variable name {k!r} has characters that aren't allowed here.")
+        if _SECRET_VAR.search(name):
+            raise InvalidRequest(
+                f"Template variable {name!r} looks like a secret: keep it out of the conversation (the "
+                "template default applies)."
+            )
+        out[name] = json.loads(_q(str(v), f"template variable {name}"))
+    return json.dumps(out)
+
+
+def _onboard_branch_text(
+    name: str,
+    host: str,
+    topology: str,
+    variables: dict[str, str] | None = None,
+    template: str | None = None,
+    access_policy: str | None = None,
+    wan_interface: str = "Ethernet0/0",
+    wan_ip: str | None = None,
+    wan_gateway: str | None = None,
+    inside_interface: str = "Ethernet0/1",
+    inside_ip: str | None = None,
+    inside_host: str | None = None,
+    test_destination: str | None = None,
+    domain: str | None = None,
+) -> str:
+    """The fmc_onboard_branch instructions: register -> template or manual configuration -> join the
+    SD-WAN topology -> deploy hubs and branch -> verify tunnel, routes, a flow -> prove-policy record."""
+    wan_if_addr = _ip_iface(wan_ip, "wan_ip")
+    in_if_addr = _ip_iface(inside_ip, "inside_ip")
+    gw_addr = _ip(wan_gateway, "wan_gateway")
+    host_addr = _ip(inside_host, "inside_host")
+    _ip(test_destination, "test_destination")
+    if wan_if_addr and gw_addr and gw_addr not in wan_if_addr.network:
+        raise InvalidRequest(f"wan_gateway {wan_gateway} is not on the WAN subnet {wan_if_addr.network}.")
+    if in_if_addr and host_addr and host_addr not in in_if_addr.network:
+        raise InvalidRequest(f"inside_host {inside_host} is not on the inside subnet {in_if_addr.network}.")
+    dev, hst, topo = _q(name, "name"), _q(host, "host"), _q(topology, "topology")
+    wan_if, in_if = _q(wan_interface, "wan_interface"), _q(inside_interface, "inside_interface")
+    tvars = _template_variables(variables)
+    acp = (
+        _q(access_policy, "access_policy")
+        if access_policy
+        else "<the access policy the other spokes use (step 0)>"
+    )
+    wan = _q(wan_ip, "wan_ip") if wan_ip else "<the branch's WAN address/prefix: ask the user>"
+    gw = _q(wan_gateway, "wan_gateway") if wan_gateway else "<the WAN next hop: ask the user>"
+    inside = _q(inside_ip, "inside_ip") if inside_ip else "<the branch's inside address/prefix: ask the user>"
+    inside_net = json.dumps(str(in_if_addr.network)) if in_if_addr else "<the branch's inside network>"
+    src = _q(inside_host, "inside_host") if inside_host else '"<a host on the branch inside network>"'
+    dst = (
+        _q(test_destination, "test_destination") if test_destination else '"<a host on a hub inside network>"'
+    )
+    dst_plain = json.loads(dst)
+    wan_addr = str(wan_if_addr.ip) if wan_if_addr else "<the branch WAN address>"
+    dom = f"Pass domain={_q(domain, 'domain')} on every FMC call.\n" if domain else ""
+    hints = [f"WAN {wan}" if wan_ip else "", f"inside {inside}" if inside_ip else ""]
+    known = ", ".join(h for h in hints if h)
+    tvars_arg = (
+        f"variables={tvars}"
+        if tvars
+        else "variables={<name>: <value>} for every variable without a default (the branch's addresses"
+        + (f": {known}" if known else "")
+        + "; AS number, router id; ask the user for any value you don't have)"
+    )
+    if template:
+        tpl = _q(template, "template")
+        pick = (
+            f"{tool_ref('fmc_get_device_template')} template={tpl}: firewall mode,\n   model mapping, "
+            "variables (type, default) and VPN/SD-WAN settings. It fits when its SD-WAN settings make the\n"
+            f"   device a spoke of {topo} and its model and firewall mode match {dev} (step 2)."
+        )
+    else:
+        tpl = "<the template>"
+        pick = (
+            f"{tool_ref('fmc_list_device_templates')}, then\n   {tool_ref('fmc_get_device_template')} for "
+            "each candidate (the one the existing spokes were built from first). A\n   template fits when "
+            f"its SD-WAN settings make the device a spoke of {topo} and its model and\n   firewall mode "
+            f"match {dev} (step 2). None fits: manual path."
+        )
+    return f"""Onboard the branch FTD {dev} (management {hst}) into the SD-WAN topology {topo} and prove it
+works: register it, configure it from a device template or by hand, add it as a spoke, deploy the hubs
+and the branch, verify the tunnel, the overlay routes and a policy flow, and end with a hand-off record
+for {tool_ref("fmc_prove_policy")}.
+{dom}Every write is preview-first: show each preview and wait for the user's approval before confirming.
+Deployments name their devices (the branch and this topology's hubs), never every deployable device.
+Stop and report when a step fails; keep notes of what each step returned.
+
+0. Preconditions (read-only).
+   - {tool_ref("fmc_status")} and {tool_ref("fmc_license_status")}: registration needs Smart Licensing or
+     evaluation mode.
+   - {tool_ref("fmc_list_devices")}: {dev} must not be registered yet. If it is, connected and in no
+     topology, skip step 2; otherwise stop and ask the user.
+   - {tool_ref("fmc_get_vpn_topology")} topology={topo}: it must be an SD-WAN (AUTO_VPN) topology. Note
+     the hubs (primary and backup) and the WAN address each hub's DVTI listens on (the branch's WAN
+     must reach it), the spokes and their WAN interface names, the overlay zone and
+     routing (`sdwan`: iBGP or OSPF; an OSPF overlay needs spoke_loopbacks for a new spoke) and the spoke
+     tunnel pool. A companion topology '<name>-wan2' means the spokes also have a second WAN tunnel.
+   - {tool_ref("fmc_get_device")} on one existing spoke: model, version, licences, access, NAT and
+     platform settings policies. The new branch should match it; {dev} gets the same access policy
+     unless the user named one.
+   - {tool_ref("fmc_sdwan_status")} topology={topo}: the hubs must be healthy before a branch joins.
+
+1. The FTD must point at this FMC: `show managers` on its CLI lists the FMC as pending (CML:
+   {tool_ref("cml_run_commands")} on the FTD node, 'show managers'). If it doesn't, the operator sets the
+   manager on the device (day-0 or `configure manager add`) with the site's registration key. Never ask
+   for the key and never put it in a tool argument.
+
+2. Register: {tool_ref("fmc_register_device")} with name={dev}, host={hst}, access_policy={acp},
+   license_caps and performance_tier like the other spokes, wait=true, and NO reg_key: the server uses
+   FMC_FTD_REG_KEY (the preview says where the key comes from). If the preview says the server has no
+   key, stop: the operator sets FMC_FTD_REG_KEY on the server. The call waits for the registration task
+   and FMC's initial deployment (5-10 minutes). Then {tool_ref("fmc_get_device")} name={dev}: connected,
+   with model and version. "Unreachable" or a key error means the FTD's manager setting doesn't match
+   (step 1).
+
+3. Device template, when one fits: {pick}
+   Apply it: {tool_ref("fmc_apply_device_template")} template={tpl}, device={dev}, {tvars_arg},
+   overrides={{<object>: <value>}} for the branch's own objects (its inside network {inside_net}). It is
+   dangerous-tier and replaces the device's interfaces, routing, policies and VPN membership: check every
+   variable in the preview against the branch's values, wait for approval, then confirm. Keep PASSWORD
+   variables out of this conversation: their template default applies. Afterwards
+   {tool_ref("fmc_pending_changes")} device={dev} shows what the template set; fill only the gaps (step 4
+   items it doesn't carry). If its SD-WAN settings already joined {topo}, step 5 only checks that.
+   FMC 10.0.1 can't generate a template from an FTDv for KVM ("The version or model of the device is not
+   supported") and a template made from parameters alone can't be applied (blocker B1 of the SD-WAN
+   runs). When no template fits, or the preview or the apply task fails, take the manual path (step 4)
+   and say why in the report.
+
+4. Manual path (no template).
+   a. Zones: the WAN interface must be in a security zone (the topology builds the spoke's VTI on it).
+      Reuse the zones the other spokes' WAN and inside interfaces are in
+      ({tool_ref("fmc_list_device_interfaces")} on a spoke); create one only if it's missing
+      ({tool_ref("fmc_create_security_zone")}, interface_mode='ROUTED').
+   b. Interfaces: {tool_ref("fmc_update_interface")} device={dev}:
+      - interface={wan_if}, logical_name=<the other spokes' WAN name, e.g. outside>, enabled=true,
+        security_zone=<WAN zone>, ipv4={wan};
+      - interface={in_if}, logical_name='inside', enabled=true, security_zone=<inside zone>, ipv4={inside}.
+   c. Underlay route: {tool_ref("fmc_create_static_route")} device={dev}, interface=<WAN logical name>,
+      networks=['any-ipv4'], gateway={gw}. It must cover the hubs' WAN addresses (step 0); when they sit
+      behind a carrier network instead, route that network (a network object) via {gw} as well.
+   d. NAT for local internet breakout, if the other spokes have it: their NAT policy
+      ({tool_ref("fmc_assign_policy")} kind='nat') when it isn't tied to their addresses, else
+      {tool_ref("fmc_create_nat_policy")} and {tool_ref("fmc_create_nat_rule")} kind='auto',
+      original_source=<a network object for {inside_net}>, translated_source='interface',
+      nat_type='DYNAMIC', source_interface=<inside zone>, destination_interface=<WAN zone>, then
+      {tool_ref("fmc_assign_policy")}. Keep the PAT on the WAN zone, never 'any': overlay traffic leaves
+      through the VTI and must keep its addresses. Platform settings: the other spokes' policy
+      ({tool_ref("fmc_assign_policy")} kind='platform_settings').
+   e. Access policy {acp}: it must allow the inside zone to and from the overlay zone (branch to hub
+      networks and back) and inside to WAN for breakout. Check offline with {tool_ref("fmc_rule_lookup")}
+      policy={acp}, source={src}, destination={dst}, protocol='icmp', source_zone=<inside zone>,
+      destination_zone=<overlay zone>, and the reverse flow. Missing: add the zones to an allow rule
+      ({tool_ref("fmc_update_access_rule")}) or create one ({tool_ref("fmc_create_access_rule")}). The policy
+      is shared, so its other devices get the change on their next deployment: say so in the preview
+      summary.
+   f. Hub return path: every hub must reach {wan_addr} over its WAN. {tool_ref("fmc_run_show_command")}
+      device=<hub>, command='show route {wan_addr}' must show a route out of the hub's WAN (a default
+      route counts); "% Network not in table" means the hub can't answer the branch: add a static route
+      on the hub (preview; a hub change).
+   g. Deploy the branch alone: {tool_ref("fmc_pending_changes")} device={dev}, then {tool_ref("fmc_deploy")}
+      devices=[{dev}], wait=true. Underlay check: {tool_ref("fmc_run_show_command")} device={dev},
+      'show interface ip brief' (both interfaces up with their addresses) and 'show route' (the route via
+      {gw}); with CML, {tool_ref("cml_run_commands")} on the branch FTD node: 'ping <a hub WAN address>'. A
+      tunnel can't come up over an underlay that doesn't work: fix this before step 5.
+
+5. Join the topology: {tool_ref("fmc_update_sdwan_topology")} topology={topo},
+   add_spokes=[{{"device": {dev}, "wan_interface": <the WAN logical name>, "inside_interfaces": ["inside"]}}]
+   (add backup_wan_interface when the other spokes have a second WAN tunnel, and spoke_loopbacks for an
+   OSPF overlay). The preview lists the endpoints before and after, the tunnel address from the spoke
+   pool and the devices to deploy (the hubs and {dev}); a pool without free addresses blocks it.
+
+6. Deploy the hubs and the branch: {tool_ref("fmc_pending_changes")} for each hub and for {dev}: expect the
+   topology change only. A hub with someone else's pending changes: stop and ask, they would go out too.
+   Then {tool_ref("fmc_deploy")} devices=[<the hubs>, {dev}], wait=true, and
+   {tool_ref("fmc_list_deployments")} device={dev}: every job succeeded.
+
+7. Verify (read-only). FMC's tunnel states trail the device by a few minutes: call again before calling
+   a tunnel down.
+   a. Tunnel: {tool_ref("fmc_sdwan_status")} topology={topo}, branch={dev}: the WAN link, the tunnel to
+      every hub up, the overlay neighbours established, `degraded` empty. {tool_ref("fmc_list_vpn_tunnels")}
+      device={dev}: TUNNEL_UP. Detail: {tool_ref("fmc_run_show_command")} device={dev}, 'show crypto ikev2
+      sa' (READY) and 'show crypto ipsec sa' (encaps and decaps both counting).
+   b. Routes: {tool_ref("fmc_run_show_command")} device={dev}, command='show route bgp' ('show route ospf'
+      for an OSPF overlay): the hubs' and the other branches' inside networks over the tunnel. On each
+      hub the same command shows {inside_net} via the branch's tunnel address.
+   c. Policy flow: real traffic first with CML ({tool_ref("cml_run_commands")} on a branch inside host,
+      'ping -c 3 {dst_plain}'), then {tool_ref("fmc_packet_tracer")} device={dev}, input_interface='inside',
+      protocol='icmp', source_ip={src}, destination_ip={dst}: allow, out through the tunnel (VTI), no NAT
+      translation. A drop: the {tool_ref("fmc_why_blocked")} prompt walks it.
+   d. Application routes: if the other branches have app routes (`app_routes` in step 7a), {dev} doesn't
+      inherit them; list them as follow-up ({tool_ref("fmc_configure_wan_interface")},
+      {tool_ref("fmc_create_app_route")}), each its own previewed change.
+
+8. Report and hand-off. The report: device (model, version, how it was registered), the path taken
+   (template name, or manual and why), interfaces, zones, routes, NAT and policies, topology membership
+   (hubs, tunnel address), deployments (job, result) and the evidence of step 7. Then the hand-off record,
+   verbatim, so the branch can be proven now and after every later change:
+
+   branch {dev} | topology {topo} | hubs <names> | WAN {wan_if} {wan} via {gw} |
+   inside {inside_net} | overlay zone <zone> | access policy {acp}
+   {tool_ref("fmc_prove_policy")} flows=[
+     {{"name": "branch to hub LAN", "source": {src}, "destination": {dst},
+       "protocol": "icmp", "device": {dev}, "expect": "allow"}},
+     {{"name": "hub LAN to branch", "source": {dst}, "destination": {src},
+       "protocol": "icmp", "device": "<the primary hub>", "expect": "allow"}},
+     {{"name": "<a flow the policy blocks>", "source": {src}, "destination": "<address>",
+       "protocol": "tcp", "port": <port>, "device": {dev}, "expect": "block"}}
+   ]
+   The third flow is one the access policy must block between the sites (from step 4e); leave it out
+   and say so when the policy allows everything. Run {tool_ref("fmc_prove_policy")} with these flows once
+   now (read-only): every row `pass` proves the branch; put its table in the report. For user-based rules
+   at the branch, {tool_ref("fmc_prove_user_policy")} takes over.
+"""
+
+
 def register(reg: ToolRegistrar) -> None:
     @reg.prompt(
         title="Why is this traffic blocked?",
@@ -913,4 +1167,89 @@ def register(reg: ToolRegistrar) -> None:
         reports a pass/fail table with the cause of any failure."""
         return _prove_user_policy_text(
             client_ip, destination, allowed_user, blocked_user, protocol, port, device, allow_rule, block_rule
+        )
+
+    @reg.prompt(
+        title="Onboard an SD-WAN branch",
+        uses=["fmc", "cml"],
+        tier=Tier.DANGEROUS,
+        example={
+            "name": "mcp-fw-branch1",
+            "host": "192.0.2.13",
+            "topology": "mcp-fw-t1",
+            "variables": '{"wanIp": "198.51.100.14/24", "insideIp": "10.10.14.1/24"}',
+            "access_policy": "mcp-fw-base-acp",
+            "wan_interface": "Ethernet0/0",
+            "wan_ip": "198.51.100.14/24",
+            "wan_gateway": "198.51.100.1",
+            "inside_interface": "Ethernet0/1",
+            "inside_ip": "10.10.14.1/24",
+            "inside_host": "10.10.14.10",
+            "test_destination": "10.10.10.10",
+            "domain": "Global/mcp-test-leaf",
+        },
+    )
+    def fmc_onboard_branch(
+        name: Annotated[str, Field(description="FMC display name for the branch FTD, e.g. branch7-ftd")],
+        host: Annotated[str, Field(description="The branch FTD's management IP (or DNS name)")],
+        topology: Annotated[str, Field(description="SD-WAN topology the branch joins as a spoke")],
+        variables: Annotated[
+            dict[str, str] | None,
+            Field(
+                description="Device template variable values for this branch, by name (as "
+                'fmc_get_device_template lists them), e.g. {"insideIp": "10.10.14.1/24"}'
+            ),
+        ] = None,
+        template: Annotated[
+            str | None,
+            Field(description="Device template to apply; omit to look for one that fits the topology"),
+        ] = None,
+        access_policy: Annotated[
+            str | None,
+            Field(description="Access control policy to register with; default: the other spokes' policy"),
+        ] = None,
+        wan_interface: Annotated[
+            str, Field(description="WAN (underlay) interface for the manual path")
+        ] = "Ethernet0/0",
+        wan_ip: Annotated[
+            str | None, Field(description="WAN address/prefix for the manual path, e.g. 198.51.100.14/24")
+        ] = None,
+        wan_gateway: Annotated[str | None, Field(description="WAN next hop, e.g. 198.51.100.1")] = None,
+        inside_interface: Annotated[
+            str, Field(description="Inside (LAN) interface for the manual path")
+        ] = "Ethernet0/1",
+        inside_ip: Annotated[
+            str | None, Field(description="Inside address/prefix, e.g. 10.10.14.1/24")
+        ] = None,
+        inside_host: Annotated[
+            str | None, Field(description="A host on the branch inside network, for the policy flow")
+        ] = None,
+        test_destination: Annotated[
+            str | None, Field(description="A host behind the hub the branch must reach, e.g. 10.10.10.10")
+        ] = None,
+        domain: Annotated[
+            str | None, Field(description="FMC domain for every call; the server's default if omitted")
+        ] = None,
+    ) -> str:
+        """Onboard a branch FTD into an SD-WAN topology end to end: register it (the key comes from the
+        server's FMC_FTD_REG_KEY, never from the conversation), configure it from a device template when
+        one fits or by hand (interfaces and zones, underlay route, NAT, access policy, hub return path),
+        add it as a spoke with fmc_update_sdwan_topology, deploy the hubs and the branch, verify the
+        tunnel, the overlay routes and a policy flow (packet tracer and real traffic), and end with a
+        hand-off record of flows for fmc_prove_policy. Every write is previewed and approved first."""
+        return _onboard_branch_text(
+            name,
+            host,
+            topology,
+            variables,
+            template,
+            access_policy,
+            wan_interface,
+            wan_ip,
+            wan_gateway,
+            inside_interface,
+            inside_ip,
+            inside_host,
+            test_destination,
+            domain,
         )
