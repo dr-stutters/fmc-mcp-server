@@ -1,10 +1,14 @@
 """FMC's show-command allowlist (operational/commands): parsed from the API spec, built-in FMC 10.0.1
 fallback, two-word command + parameters split, and refusals with alternatives before any call."""
 
+import re
+
 import pytest
+from fastmcp import Client
 
 from fmc_mcp._core import InvalidRequest
 from fmc_mcp._core.spec.index import build_index
+from fmc_mcp.server import create_server
 from fmc_mcp.tools import show_commands
 from fmc_mcp.tools.show_commands import (
     COMMANDS_OP,
@@ -15,6 +19,8 @@ from fmc_mcp.tools.show_commands import (
     from_index,
     parse_clis,
 )
+
+from .conftest import make_settings
 
 # The `command` parameter's description as FMC 10.0.1's API Explorer has it (HTML included).
 SPEC_DESCRIPTION = (
@@ -138,3 +144,25 @@ def test_allowlist_from_the_spec_index() -> None:
         check_command("show bgp summary", sup)
     assert from_index(build_index(spec_doc("Show commands."))) is FALLBACK
     assert from_index(build_index({"swagger": "2.0", "info": {"version": "1"}, "paths": {}})) is FALLBACK
+
+
+async def test_tool_description_matches_the_allowlist() -> None:
+    """fmc_run_show_command's description: every example passes the built-in (FMC 10.0.1) allowlist and
+    every command it names as refused is refused (the 0.13.0 text offered 'show nat detail' and
+    'show conn count' as examples)."""
+
+    async with Client(create_server(make_settings())) as c:
+        tool = next(t for t in await c.list_tools() if t.name == "fmc_run_show_command")
+    examples = re.findall(r"'(show [^']+)'", tool.input_schema["properties"]["command"]["description"])
+    assert len(examples) >= 4
+    for cmd in examples:
+        check_command(cmd, FALLBACK)
+    doc = " ".join((tool.description or "").split())
+    refused = re.search(r"Anything else \(([^)]+)\) is refused", doc)
+    assert refused
+    for cmd in refused.group(1).split(", "):
+        cmd = cmd.removeprefix("plain ")
+        with pytest.raises(InvalidRequest):
+            check_command(cmd, FALLBACK)
+    assert "access-list <name>" in doc  # allowed with a name (spec: show access-list <?-option>)
+    check_command("show access-list mcp-acl", FALLBACK)

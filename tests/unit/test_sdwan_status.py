@@ -28,6 +28,7 @@ from .conftest import CFG, fixture, items, make_settings
 LAB = fixture("sdwan_lab")
 SHOW = fixture("ftd_sdwan_show")  # recorded FMC 10.0.1 outputs and refusal
 FMC10_REFUSES = {"show path-monitoring", "show policy-route", "show bgp summary"}
+BACKUP_WAN = fixture("sdwan_backup_wan")  # recorded second-WAN tunnel (device outputs under "device")
 PATHMETRICS = fixture("ftd_sdwan_pathmetrics")  # recorded health/metrics metric=pathmonitoring (d-sp1)
 NO_PATH_SAMPLES = {
     "items": [
@@ -282,10 +283,29 @@ def test_parse_ikev2_stats_recorded() -> None:
 
 def test_parse_route_bgp() -> None:
     assert parse_route_bgp(SHOW["show route bgp"]) == [
-        {"prefix": "10.20.1.0/255.255.255.0", "via": "10.255.20.1"},
-        {"prefix": "10.20.3.0/255.255.255.0", "via": "10.255.20.3"},
+        {"prefix": "10.20.1.0/255.255.255.0", "via": ["10.255.20.1"]},
+        {"prefix": "10.20.3.0/255.255.255.0", "via": ["10.255.20.3"]},
     ]
     assert parse_route_bgp("\n\n") == []
+
+
+def test_parse_route_bgp_keeps_every_ecmp_next_hop() -> None:
+    """A backup-WAN spoke has ECMP routes over both hub tunnels; the second next hop is an indented line."""
+    recorded = "\n".join(BACKUP_WAN["device"]["spoke1 show route bgp"])
+    assert parse_route_bgp(recorded) == [
+        {"prefix": "10.101.0.0/255.255.255.0", "via": ["10.255.254.1", "10.255.255.1"]}
+    ]
+    text = (
+        "B        10.30.1.0 255.255.255.0 [200/0] via 10.255.1.1, 00:04:10\n"
+        "                                 [200/0] via 10.255.2.1, 00:04:10\n"
+        "B        10.30.3.0 255.255.255.0 [200/0] via 10.255.1.1, 00:04:09\n"
+        "\n"
+        "                                 [200/0] via 10.255.9.9, 00:04:09\n"  # not after a route: ignored
+    )
+    assert parse_route_bgp(text) == [
+        {"prefix": "10.30.1.0/255.255.255.0", "via": ["10.255.1.1", "10.255.2.1"]},
+        {"prefix": "10.30.3.0/255.255.255.0", "via": ["10.255.1.1"]},
+    ]
 
 
 async def test_fmc10_unsupported_commands_are_never_sent(fmc: respx.MockRouter) -> None:
@@ -296,7 +316,7 @@ async def test_fmc10_unsupported_commands_are_never_sent(fmc: respx.MockRouter) 
     assert ran and {r.split(" ", 1)[1] for r in ran} == {"show crypto ikev2 stats", "show route bgp"}
     branches = {b["device"]: b for b in out["topologies"][0]["branches"]}
     sp1 = branches["mcp-sdwan-t1-spoke1"]
-    assert sp1["bgp_routes"][0] == {"prefix": "10.20.1.0/255.255.255.0", "via": "10.255.20.1"}
+    assert sp1["bgp_routes"][0] == {"prefix": "10.20.1.0/255.255.255.0", "via": ["10.255.20.1"]}
     hub = branches["mcp-sdwan-t1-hub"]
     assert hub["evidence"]["show bgp summary"].startswith("not available: FMC doesn't pass")
     assert "not sent" in hub["evidence"]["show path-monitoring"]
@@ -497,7 +517,7 @@ def test_parse_path_metrics_recorded() -> None:
         "reachable": True,
         "peer": "10.11.11.1",
         "interface": "Ethernet0/0",
-        "sampled_at": "2026-10-18T06:50:16Z",
+        "unchanged_since": "2026-10-18T06:48:16Z",  # the same value at every step of the range
     }
     brown = parse_path_metrics(PATHMETRICS["brownout"])["d-sp1"]
     assert brown["mpls"]["rtt_ms"] == 307.5 and brown["mpls"]["loss_pct"] == 33.0
@@ -505,6 +525,9 @@ def test_parse_path_metrics_recorded() -> None:
     assert brown["inet"]["rtt_ms"] == 2.74 and brown["inet"]["mos"] == 4.4
     # the tunnel's series went from rechability No to Yes: the newer one wins
     assert brown["mpls_static_vti_1"]["reachable"] is True and brown["mpls_static_vti_1"]["loss_pct"] == 57.0
+    # the brownout's values first appeared at 1792306524 and FMC repeated them up to 1792306704
+    assert brown["mpls"]["changed_at"] == "2026-10-18T06:55:24Z" and "unchanged_since" not in brown["mpls"]
+    assert brown["mpls_static_vti_1"]["changed_at"] == "2026-10-18T06:55:24Z"  # the new (Yes) series
     assert parse_path_metrics(NO_PATH_SAMPLES) == {} and parse_path_metrics({}) == {}
     assert parse_path_metrics({"items": [{"response": "not json"}]}) == {}
 
@@ -517,7 +540,39 @@ def test_unreachable_peer_has_no_numbers_and_is_critical() -> None:
     vti = parse_path_metrics(data)["d-sp1"]["mpls_static_vti_1"]
     assert vti["reachable"] is False and not {"rtt_ms", "loss_pct", "mos", "jitter_ms"} & set(vti)
     level, reasons = link_severity(vti)
-    assert level == "critical" and "10.255.1.1 does not answer" in reasons[0]
+    assert level == "critical" and "probe to 10.255.1.1 as unreachable with zero values" in reasons[0]
+    assert "metrics pending or the peer unreachable per FMC" in reasons[0]
+    assert "does not answer" not in reasons[0]
+
+
+def test_values_repeated_at_every_step_are_not_reported_as_current() -> None:
+    """FMC repeats a stale value at every step: the change time is the newest sample that differs."""
+
+    def series(desc: str, values: list[list[Any]], reach: str = "Yes") -> dict[str, Any]:
+        labels = {"description": desc, "interface_name": "mpls", "rechability": reach, "uuid": "d-sp1"}
+        return {"metric": labels, "values": values}
+
+    def parse(result: list[dict[str, Any]]) -> dict[str, Any]:
+        prom = {"status": "success", "data": {"resultType": "matrix", "result": result}}
+        return parse_path_metrics({"items": [{"response": json.dumps(prom)}]})["d-sp1"]["mpls"]
+
+    steady = parse([series("rtt_average", [[100, "1500"], [220, "1500"], [340, "1500"]])])
+    assert steady["unchanged_since"] == "1970-01-01T00:01:40Z" and "changed_at" not in steady
+    moved = parse(
+        [
+            series("rtt_average", [[100, "1500"], [220, "300000"], [340, "300000"]]),
+            series("packet_loss", [[100, "0"], [220, "0"], [340, "30"]]),
+        ]
+    )
+    assert moved["changed_at"] == "1970-01-01T00:05:40Z"  # the newest change of any value
+    # reachability flipped inside the range: the No series' first sample is the change
+    flipped = parse(
+        [
+            series("rtt_average", [[100, "1500"], [220, "1500"]]),
+            series("rtt_average", [[340, "0"], [460, "0"]], reach="No"),
+        ]
+    )
+    assert flipped["reachable"] is False and flipped["changed_at"] == "1970-01-01T00:05:40Z"
 
 
 def metrics_lab(fmc: respx.MockRouter, sample: str) -> list[httpx.Request]:
@@ -547,11 +602,37 @@ async def test_brownout_seen_through_the_health_monitor(fmc: respx.MockRouter) -
     assert {"rtt_ms 307.5 >= 300", "loss_pct 33 >= 5", "MOS 0 <= 3.1"} <= set(wan["mpls"]["reasons"])
     assert wan["inet"]["health"] == "ok" and wan["inet"]["monitoring"] == "PEER_IPV4 10.12.11.1"
     assert wan["mpls_static_vti_1"]["health"] == "critical"
-    assert "mpls: rtt_ms 307.5" in " ".join(br["evidence"]["health/metrics pathmonitoring"])
+    ev = " ".join(br["evidence"]["health/metrics pathmonitoring"])
+    assert "mpls: rtt_ms 307.5" in ev and "(changed at 2026-10-18T06:55:24Z)" in ev
     deg = {(d["device"], d["interface"]) for d in out["degraded"]}
     assert ("mcp-sdwan-t1-spoke1", "mpls") in deg and ("mcp-sdwan-t1-spoke1", "inet") not in deg
     assert any("health monitor" in n for n in out["notes"])
     assert not any("are not available" in n for n in out["notes"])  # refused show path-monitoring
+
+
+async def test_unreachable_per_fmc_is_pending_and_still_degraded(fmc: respx.MockRouter) -> None:
+    """The first minutes of a brownout: FMC's series say rechability No with zeros (the device still
+    reaches the peer). The link stays critical, but the status doesn't claim the peer is dead."""
+    asked = metrics_lab(fmc, "brownout")
+    data = json.loads(json.dumps(PATHMETRICS["brownout"]))
+    prom = json.loads(data["items"][0]["response"])
+    prom["data"]["result"] = [
+        r for r in prom["data"]["result"] if r["metric"]["interface_name"] != "mpls_static_vti_1"
+        or r["metric"]["rechability"] == "No"
+    ]
+    data["items"][0]["response"] = json.dumps(prom)
+    fmc.get(f"{CFG}/health/metrics").mock(return_value=httpx.Response(200, json=data))
+    async with Client(server()) as c:
+        out = await run(c, "fmc_sdwan_status", {"branch": "mcp-sdwan-t1-spoke1"})
+    assert not asked  # the override answered
+    br = out["topologies"][0]["branches"][0]
+    vti = {w.get("logical_name"): w for w in br["wan_links"]}["mpls_static_vti_1"]
+    assert vti["health"] == "critical" and "rtt_ms" not in vti
+    assert "metrics pending or the peer unreachable per FMC" in vti["reasons"][0]
+    deg = [d for d in out["degraded"] if d["interface"] == "mpls_static_vti_1"]
+    assert deg and deg[0]["severity"] == "critical"
+    ev = " ".join(br["evidence"]["health/metrics pathmonitoring"])
+    assert "mpls_static_vti_1: peer unreachable per FMC, metrics pending" in ev
 
 
 async def test_clean_links_from_the_health_monitor_are_ok(fmc: respx.MockRouter) -> None:

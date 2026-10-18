@@ -137,9 +137,12 @@ H/M/L. **Built** = new curated tool in this phase.
   syslog, and the rule's UUID ends with it (`...-000268434474`). Packet tracer packets count as hits.
 - Packet tracer POST needs `name` in both the device and the interface references ("Device value is
   missing" otherwise); `interface.name` is the logical name.
-- The show-command API runs an allowlist of mostly configuration commands (`show version`, `show route`,
-  `show interface ip brief`, `show failover`, `show running-config <section>`) and refuses `show conn`,
-  `show xlate`, `show nat`, `show arp`, `show access-list`, `show access-control-config` and plain
+- The show-command API runs the allowlist its API spec lists for `operational/commands` ("Supported CLIs":
+  `show version`, `show route <option>`, `show crypto <option>`, `show failover`, `show access-list <name>`,
+  ...; `fmc_run_show_command` reads it from the spec). `show interface ip brief` and
+  `show running-config <section>` work on 10.0.1 although the list doesn't name them. It refuses `show conn`,
+  `show xlate`, `show nat`, `show arp`, `show bgp`, `show ospf`, `show path-monitoring`,
+  `show policy-route`, `show access-control-config`, a bare `show access-list` and plain
   `show running-config`. At most two words in `command`; the rest go in `parameters`.
 - Rollback to the registration deployment is refused ("Cannot rollback the device ... to
   deploymentJobId provided"); rolling back to a later deployment works and shows as `Rollback_Job_N`.

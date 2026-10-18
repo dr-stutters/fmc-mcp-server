@@ -59,10 +59,20 @@ NO_PATH_METRICS = (
     "up can't be seen here; wan_links show the path-monitoring status only."
 )
 
+PM_WINDOW = 600  # seconds of history asked for; the newest sample per interface wins
+PM_STEP = 120
 HEALTH_METRICS_LAG = (
     "Path metrics come from FMC's health monitor (health/metrics, metric pathmonitoring); its samples "
-    "trailed the device by up to ~5 minutes on FMC 10.0.1 ('sampled_at' per link), so a brownout shows "
-    "a few minutes after it starts and clears a few minutes after it ends."
+    "trailed the device by up to ~5 minutes on FMC 10.0.1, so a brownout shows a few minutes after it "
+    "starts and clears a few minutes after it ends. FMC repeats the last value at every step, so each link "
+    "says when its values last changed ('changed_at') or that they haven't changed in the last "
+    f"{PM_WINDOW // 60} minutes ('unchanged_since')."
+)
+PENDING_PER_FMC = (
+    "FMC's health monitor has the probe to{peer} as unreachable with zero values (pathmonitoring "
+    "rechability No): metrics pending or the peer unreachable per FMC, not necessarily on the device. "
+    "In the first ~5 minutes of a brownout FMC 10.0.1 reports this while the device itself still reaches "
+    "the peer; the next samples (or a down tunnel) tell a brownout from a dead path"
 )
 # health/metrics metric=pathmonitoring: description -> (link field, divisor to the field's unit)
 PM_FIELDS = {
@@ -71,8 +81,6 @@ PM_FIELDS = {
     "packet_loss": ("loss_pct", 1.0),
     "mos": ("mos", 1.0),
 }
-PM_WINDOW = 600  # seconds of history asked for; the newest sample per interface wins
-PM_STEP = 120
 
 _METRICS = {
     "rtt_ms": re.compile(r"(?:\bRTT|\bDelay|round[- ]trip)[^0-9\n]{0,24}?([\d.]+)", re.I),
@@ -105,15 +113,33 @@ def parse_path_monitoring(text: str) -> dict[str, dict[str, float]]:
     return out
 
 
+def _utc(ts: float) -> str:
+    return datetime.fromtimestamp(ts, UTC).strftime("%Y-%m-%dT%H:%M:%SZ")
+
+
+def _changed_at(values: list[Any], started_inside: bool) -> float | None:
+    """When a series' newest value first appeared: the newest sample that differs from the one before it,
+    or the series' first sample when the series itself started inside the window (a reachability flip
+    starts a new series). None when the value is the same at every step."""
+    for n in range(len(values) - 1, 0, -1):
+        if values[n][1] != values[n - 1][1]:
+            return float(values[n][0])
+    return float(values[0][0]) if started_inside else None
+
+
 def parse_path_metrics(data: Any) -> dict[str, dict[str, dict[str, Any]]]:
     """health/metrics (metric=pathmonitoring) -> {device UUID: {interface logical name (lower case):
-    {rtt_ms, jitter_ms, loss_pct, mos, reachable, peer, interface, sampled_at}}}.
+    {rtt_ms, jitter_ms, loss_pct, mos, reachable, peer, interface, changed_at | unchanged_since}}}.
 
     FMC wraps one Prometheus matrix per device in `items[].response` (a JSON string). Each series is one
     value (`description`) of one interface; a change of the peer's reachability (label `rechability`)
     starts a new series, so the newest sample per interface and value wins. An unreachable peer reports
-    zeros, which are dropped (they are not measurements)."""
-    best: dict[tuple[str, str, str], tuple[float, Any, dict[str, Any]]] = {}
+    zeros, which are dropped (they are not measurements). FMC repeats the last value at every step of the
+    range, so the newest step says nothing about how fresh a value is: `changed_at` is the newest sample
+    whose value changed (any of the interface's values), and `unchanged_since` the start of the range when
+    none changed in it (the values are at least that old)."""
+    series_by_key: list[tuple[tuple[str, str, str], list[Any], dict[str, Any]]] = []
+    first_seen: dict[tuple[str, str], float] = {}
     for item in (data or {}).get("items") or []:
         try:
             prom = json.loads(item.get("response") or "{}")
@@ -126,27 +152,42 @@ def parse_path_metrics(data: Any) -> dict[str, dict[str, dict[str, Any]]]:
             if desc not in PM_FIELDS or not values or not ifname:
                 continue
             try:
-                ts, val = float(values[-1][0]), values[-1][1]
-            except (TypeError, ValueError, IndexError):
+                values = sorted(((float(ts), val) for ts, val in values), key=lambda v: v[0])
+            except (TypeError, ValueError):
                 continue
             key = (str(m.get("uuid") or item.get("deviceUUID")), ifname, str(desc))
-            if key not in best or ts >= best[key][0]:
-                best[key] = (ts, val, m)
+            series_by_key.append((key, values, m))
+            dev_if = key[:2]
+            first_seen[dev_if] = min(first_seen.get(dev_if, values[0][0]), values[0][0])
+    best: dict[tuple[str, str, str], tuple[float, Any, dict[str, Any], float | None, float]] = {}
+    for key, values, m in series_by_key:
+        ts, val = values[-1]
+        changed = _changed_at(values, values[0][0] > first_seen[key[:2]])
+        if key not in best or ts >= best[key][0]:
+            best[key] = (ts, val, m, changed, values[0][0])
     out: dict[str, dict[str, dict[str, Any]]] = {}
     newest: dict[tuple[str, str], float] = {}
-    for (dev, ifname, desc), (ts, val, m) in sorted(best.items(), key=lambda kv: kv[1][0]):
+    changes: dict[tuple[str, str], list[tuple[float | None, float]]] = {}
+    for (dev, ifname, desc), (ts, val, m, changed, first) in sorted(best.items(), key=lambda kv: kv[1][0]):
         row = out.setdefault(dev, {}).setdefault(ifname, {"logical_name": ifname})
         field, div = PM_FIELDS[desc]
         try:
             row[field] = round(float(val) / div, 2)
         except (TypeError, ValueError):
             continue
+        changes.setdefault((dev, ifname), []).append((changed, first))
         if ts >= newest.get((dev, ifname), 0.0):
             newest[(dev, ifname)] = ts
             row["reachable"] = str(m.get("rechability") or "").lower() == "yes"
             row["peer"] = m.get("domain")
             row["interface"] = m.get("interface")
-            row["sampled_at"] = datetime.fromtimestamp(ts, UTC).strftime("%Y-%m-%dT%H:%M:%SZ")
+    for (dev, ifname), seen in changes.items():
+        row = out[dev][ifname]
+        moved = [changed for changed, _ in seen if changed is not None]
+        if moved:
+            row["changed_at"] = _utc(max(moved))
+        else:  # every value is the same at every step: at least as old as the range
+            row["unchanged_since"] = _utc(min(first for _, first in seen))
     for links in out.values():
         for row in links.values():
             if row.get("reachable") is False:
@@ -224,11 +265,25 @@ def parse_ikev2_stats(text: str) -> dict[str, Any]:
     return out
 
 
-def parse_route_bgp(text: str) -> list[dict[str, str]]:
-    """BGP routes of `show route bgp`: 'B  10.20.1.0 255.255.255.0 [200/0] via 10.255.20.1, 00:10:00'."""
-    rows = []
-    for m in re.finditer(r"^\s*B\S*\s+(\d[\d.]+)\s+(\d[\d.]+)\s+\[[\d/]+\]\s+via\s+([\d.]+)", text, re.M):
-        rows.append({"prefix": f"{m.group(1)}/{m.group(2)}", "via": m.group(3)})
+_ROUTE_B = re.compile(r"^\s*B\S*\s+(\d[\d.]+)\s+(\d[\d.]+)\s+\[[\d/]+\]\s+via\s+([\d.]+)")
+_ROUTE_MORE = re.compile(r"^\s+\[[\d/]+\]\s+via\s+([\d.]+)")  # an ECMP route's further next hops
+
+
+def parse_route_bgp(text: str) -> list[dict[str, Any]]:
+    """BGP routes of `show route bgp` with every next hop: 'B  10.20.1.0 255.255.255.0 [200/0] via
+    10.255.1.1, 00:10:00' and, for an ECMP route, one indented '[200/0] via 10.255.2.1, ...' line per
+    further next hop -> {"prefix": "10.20.1.0/255.255.255.0", "via": ["10.255.1.1", "10.255.2.1"]}."""
+    rows: list[dict[str, Any]] = []
+    current: dict[str, Any] | None = None
+    for line in text.splitlines():
+        if m := _ROUTE_B.match(line):
+            current = {"prefix": f"{m.group(1)}/{m.group(2)}", "via": [m.group(3)]}
+            rows.append(current)
+        elif current is not None and (m := _ROUTE_MORE.match(line)):
+            if m.group(1) not in current["via"]:
+                current["via"].append(m.group(1))
+        else:
+            current = None
     return rows
 
 
@@ -310,9 +365,9 @@ def link_severity(link: dict[str, Any]) -> tuple[str, list[str]]:
         bump("critical", f"path monitoring reports {status}")
     elif status == "IDLE":
         bump("warning", "path monitoring is IDLE (no probe answers)")
-    if link.get("reachable") is False:  # the health monitor's view of the probe target
-        peer = f" {link['peer']}" if link.get("peer") else ""
-        bump("critical", f"path monitoring peer{peer} does not answer")
+    if link.get("reachable") is False:  # the health monitor's view of the probe target, not the device's
+        peer = f" {link['peer']}" if link.get("peer") else " the peer"
+        bump("critical", PENDING_PER_FMC.format(peer=peer))
     for key, (warn, crit) in THRESHOLDS.items():
         v = link.get(key)
         if v is None:
@@ -537,7 +592,7 @@ async def branch_status(
     notes: list[str] = []
     evidence: dict[str, Any] = {}
     bgp: list[dict[str, Any]] | None = None
-    bgp_routes: list[dict[str, str]] | None = None
+    bgp_routes: list[dict[str, Any]] | None = None
     ike: dict[str, Any] | None = None
     metrics = False
     findings: list[dict[str, Any]] = []
@@ -606,11 +661,15 @@ async def branch_status(
         evidence["health/metrics pathmonitoring"] = [
             f"{n}: "
             + (
-                "peer not reachable"
+                "peer unreachable per FMC, metrics pending (rechability No, zero values)"
                 if v.get("reachable") is False
                 else ", ".join(f"{k} {v[k]:g}" for k in ("rtt_ms", "jitter_ms", "loss_pct", "mos") if k in v)
             )
-            + f" ({v.get('sampled_at')})"
+            + (
+                f" (changed at {v['changed_at']})"
+                if v.get("changed_at")
+                else f" (value unchanged since {v.get('unchanged_since')})"
+            )
             for n, v in sorted(hm.items())
         ]
     peers = ("peerA", "peerB")
