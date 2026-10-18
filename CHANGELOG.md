@@ -1,6 +1,12 @@
 # Changelog
 
-## Unreleased
+## 0.13.1 (2026-10-18)
+
+SD-WAN follow-up to 0.13.0, from the live matrix re-run on FMC 10.0.1 ([docs/sdwan-matrix.md](docs/sdwan-matrix.md)):
+a spoke's second WAN tunnel now works (built as a companion AUTO_VPN topology on the same hub; a dead first WAN
+fails over without a lost ping), `fmc_sdwan_status` gets path metrics from FMC's health monitor, show commands are
+checked against the supported CLIs in FMC's API spec, and raw `fmc_api_call` previews mask secrets (core v0.14.2).
+153 tools (66 read, 76 write, 11 dangerous), six prompts.
 
 ### Changed
 - Bundled stutters-mcp-core v0.14.0 -> v0.14.2: raw `fmc_api_call` writes mask secret fields (`manualPreSharedKey`,
@@ -37,6 +43,16 @@
   without a lost ping. `fmc_update_sdwan_topology` adds a spoke's backup WAN to the companion, removes removed
   spokes from it too, and sets `multipath` on both. A backup WAN with a backup hub is blocked (not verified).
   The read-back-and-undo from 0.13.0 is gone with the field it checked.
+
+### Notes
+- Path metrics need the health monitor's path-monitoring module (`hm_pathmonitoring`) enabled in the devices'
+  health policy and path monitoring on the WAN interfaces (`fmc_configure_wan_interface`); FMC's samples trail
+  the device by about 5 minutes.
+- The OSPF-overlay warning from 0.13.0 (R5) is conservative: the re-run got spokes to install OSPF routes with
+  unnumbered spoke VTIs (each borrowing a /32 loopback), set by `fmc_api_call`. The tools don't automate that yet.
+- Not re-proven live on 0.13.1: the companion-topology build through `fmc_create_sdwan_topology`, and brownout
+  ranking in `fmc_sdwan_status` (both live-proven by API calls, unit-tested on recorded responses). The HA-hub
+  cells stay blocked by a stuck cluster record on the lab FMC.
 
 ## 0.13.0 (2026-10-18)
 

@@ -27,7 +27,7 @@ sessions, so never the GUI `admin` or another integration's user.
 has a wheel with stutters-mcp-core bundled in; it needs only PyPI dependencies.
 
 ```bash
-WHEEL=https://github.com/dr-stutters/fmc-mcp-server/releases/download/v0.13.0/fmc_mcp_server-0.13.0-py3-none-any.whl
+WHEEL=https://github.com/dr-stutters/fmc-mcp-server/releases/download/v0.13.1/fmc_mcp_server-0.13.1-py3-none-any.whl
 export FMC_URL=https://fmc.example.com FMC_USERNAME=mcp-api-ro FMC_PASSWORD='...'
 uvx --from "$WHEEL" fmc-mcp-server check            # preflight: TLS, token, domains, role, version, rate limit
 claude mcp add fmc -e FMC_URL=$FMC_URL -e FMC_USERNAME=$FMC_USERNAME -e FMC_PASSWORD="$FMC_PASSWORD" \
@@ -41,7 +41,7 @@ Claude Desktop (`claude_desktop_config.json`), same idea:
   "mcpServers": {
     "fmc": {
       "command": "uvx",
-      "args": ["--from", "https://github.com/dr-stutters/fmc-mcp-server/releases/download/v0.13.0/fmc_mcp_server-0.13.0-py3-none-any.whl", "fmc-mcp-server"],
+      "args": ["--from", "https://github.com/dr-stutters/fmc-mcp-server/releases/download/v0.13.1/fmc_mcp_server-0.13.1-py3-none-any.whl", "fmc-mcp-server"],
       "env": {"FMC_URL": "https://fmc.example.com", "FMC_USERNAME": "mcp-api-ro", "FMC_PASSWORD": "..."}
     }
   }
