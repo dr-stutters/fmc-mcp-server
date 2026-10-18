@@ -184,6 +184,7 @@ async def test_create_reuses_dvti_and_pool_with_backup_hub(fmc: respx.MockRouter
         hubs = preview["preview"]["hubs"]
         assert hubs[0]["dvti"] == "Virtual-Template1" and hubs[0]["spoke_pool"] == "mcp-sdwan-t1-pool"
         assert hubs[1]["role"] == "backup hub" and "(new" in hubs[1]["dvti"]
+        assert any("asymmetric" in e for e in preview["side_effects"])
         await run(c, "fmc_create_sdwan_topology", {**args, "confirm": preview["confirm"]})
     order = [m for m, _ in log]
     assert order[:3] == [  # nothing created for the primary hub: its DVTI and pool exist
@@ -334,6 +335,44 @@ async def test_update_multipath_and_guards(fmc: respx.MockRouter) -> None:
     assert body["autoVpnSettings"]["routeSettings"]["autonomousSystemNumber"] == 65000
     assert primary.is_error and "primary hub" in primary.content[0].text  # type: ignore[union-attr]
     assert nothing.is_error and not_spoke.is_error
+
+
+async def test_update_multipath_puts_only_top_level_fields(fmc: respx.MockRouter) -> None:
+    """FMC 10.0.1 returns the sub-resource references in the topology GET but answers a PUT that echoes
+    them with 422 "Invalid value ... for field 'ipsecSettings'" (live, mcp-sdwan-t2, 2026-10-18). The
+    PUT that works carries the top-level fields and autoVpnSettings only."""
+    log = lab(fmc)
+    live = {  # spec-shaped FTDS2SVpnModel GET (expanded) of an AUTO_VPN topology
+        **LAB["policy/ftds2svpns"]["items"][0],
+        "metadata": {"domain": {"name": "mcp-test-leaf", "type": "Domain"}},
+        "links": {"self": "https://fmc/api/.../ftds2svpns/topo-t1"},
+        "description": "T1 overlay",
+        "ikeSettings": [{"id": "ike-1", "type": "IkeSetting"}],
+        "ipsecSettings": [{"id": "ips-1", "type": "IPSecSetting"}],
+        "advancedSettings": [{"id": "adv-1", "type": "AdvancedSetting"}],
+        "endpoints": [{"id": "ep-1", "type": "EndPoint"}],
+    }
+    fmc.get(S2S).mock(return_value=items([live]))  # replaces the lab's route for the same path
+    args = {"topology": "mcp-sdwan-t1", "multipath": False}
+    async with Client(server()) as c:
+        preview = await run(c, "fmc_update_sdwan_topology", args)
+        out = await run(c, "fmc_update_sdwan_topology", {**args, "confirm": preview["confirm"]})
+    assert out["result"]["changed"] == ["multipath off"], out
+    puts = [b for m, b in log if m == "PUT policy/ftds2svpns/topo-t1"]
+    assert len(puts) == 1
+    assert set(puts[0]) == {
+        "id",
+        "name",
+        "type",
+        "description",
+        "topologyType",
+        "routeBased",
+        "ikeV1Enabled",
+        "ikeV2Enabled",
+        "autoVpnSettings",
+    }
+    assert puts[0]["autoVpnSettings"]["routeSettings"]["enableMultiPath"] is False
+    assert puts[0]["autoVpnSettings"]["spokeSvtiSecurityZone"]["id"] == "zone-overlay"
 
 
 async def test_update_refuses_classic_topology(fmc: respx.MockRouter) -> None:
