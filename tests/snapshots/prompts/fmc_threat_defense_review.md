@@ -24,8 +24,8 @@ carry on.
 1. Posture: `fmc_threat_posture` with policy="mcp-fw-threat-acp", domain="Global/mcp-test-leaf". It returns the default action, every
    ALLOW rule's intrusion policy, file policy and logging, the intrusion policies in use (base policy,
    PREVENTION or DETECTION), TRUST rules and prefilter FASTPATH rules, Security Intelligence and DNS
-   coverage, decryption, the network analysis policies that exist, the licences of the devices the
-   policy is assigned to, and ranked findings, each with a fix as a tool call. Keep them all.
+   coverage, decryption, the network analysis policy it uses and its mode, the licences of the devices
+   the policy is assigned to, and ranked findings, each with a fix as a tool call. Keep them all.
 
 2. Rule hygiene that weakens inspection: `fmc_policy_audit` with policy="mcp-fw-threat-acp",
    checks=["no_intrusion", "no_logging", "permissive", "shadowed"], refresh_hits=false, domain="Global/mcp-test-leaf". ALLOW rules
@@ -45,8 +45,12 @@ carry on.
    Active" is info. When the user cares about a specific threat (e.g. Log4j),
    `fmc_find_intrusion_rules` with query=<text>, policy=<name>, domain="Global/mcp-test-leaf" shows whether it drops.
 
-5. Network analysis: `fmc_list_policies` with kind="network_analysis", domain="Global/mcp-test-leaf". FMC's API does not
-   say which one the access policy uses: report what exists and the FMC UI path from step 1.
+5. Network analysis: step 1's network_analysis_policy is the one the access policy uses (FMC names
+   its users in each network analysis policy's record); in DETECTION mode its preprocessors only report
+   malformed or evasive traffic. `fmc_list_policies` with kind="network_analysis", domain="Global/mcp-test-leaf" lists the
+   others. FMC's API can't change which one the access policy uses and doesn't show the intrusion policy
+   used before a rule is determined: give the UI path (access policy editor > Advanced > Network Analysis
+   and Intrusion Policies).
 
 6. Report. First a posture summary in a few lines: default action; how many ALLOW rules have an
    intrusion policy, a file policy and logging; intrusion policies and modes; Talos categories in the
