@@ -19,7 +19,8 @@ what REST does show:
 
 fmc_user_ip_lookup answers "who is on this IP / where is this user logged in" from FMC's identity
 sessions and adds the user's realm groups: the identity a user/group access rule matches. fmc_rule_lookup
-uses the same lookup (resolve_ip_identity) when no `identities` are given.
+uses the same lookup (resolve_ip_identity) when no `identities` are given. The sessions are read with
+live.session_items, the reader behind fmc_user_identity_sessions (F55), which lists them paged.
 
 Hooks for the other user-aware tools (register once they are on main):
 - find_address.IDENTITY_LOOKUPS.append(identity_sources.users_on_ip)
@@ -45,11 +46,10 @@ from fmc_mcp.tools.common import Domain
 from fmc_mcp.tools.device_config import resolve_device
 from fmc_mcp.tools.devices import DEVICES
 from fmc_mcp.tools.identity import IDENTITY, REALMS, identity_rule_row, policies_using
+from fmc_mcp.tools.live import ACTIVITY, activity_row, session_items, session_row
 from fmc_mcp.tools.policies import all_rules
 from fmc_mcp.tools.system import iso
 
-SESSIONS = "analysis/activesessions"
-ACTIVITY = "analysis/useractivity"
 SGTS = "object/isesecuritygrouptags"
 INTERNAL_CERTS = "object/internalcertificates"
 
@@ -60,7 +60,6 @@ FMC_MODULES = {
     "UNRESOLVED_GROUPS_MONITOR": "unresolved_groups",
 }
 DEVICE_MODULES = ("SNORT_IDENTITY_MEMORY_USAGE", "IDENTITY_PROCESS_STATUS")
-SESSION_CAP = 1000  # sessions read for the per-source summary
 POLICY_CAP = 10  # identity policies whose rules are read
 REALM_CAP = 5  # realms whose users/groups are counted
 USER_CAP = 3  # realm users whose groups are looked up per call
@@ -127,7 +126,7 @@ def ise_state(alert: dict[str, Any] | None) -> str:
         return "failed"
     if status == "YELLOW":
         return "degraded"
-    if status == "GREEN":
+    if status in ("GREEN", "RECOVERED"):  # RECOVERED: FMC's marker for a return to normal
         return "connected"
     return "unknown"
 
@@ -183,36 +182,6 @@ def cert_row(c: dict[str, Any], now: float | None = None) -> dict[str, Any]:
     return {k: v for k, v in row.items() if v is not None}
 
 
-def session_row(s: dict[str, Any]) -> dict[str, Any]:
-    row = {
-        "user": s.get("username") or s.get("user"),
-        "realm": s.get("realmName"),
-        "ip": s.get("currentIP"),
-        "device": s.get("device"),
-        "authentication": s.get("authenticationType"),
-        "source": s.get("discoveryApplication"),
-        "login": iso(s.get("loginTime")),
-        "last_seen": iso(s.get("lastSeen")),
-        "vpn_profile": s.get("vpnConnectionProfile") or None,
-    }
-    return {k: v for k, v in row.items() if v not in (None, "")}
-
-
-def activity_row(a: dict[str, Any]) -> dict[str, Any]:
-    row = {
-        "time": iso(a.get("time")),
-        "event": a.get("event"),
-        "user": a.get("username"),
-        "realm": a.get("realmName"),
-        "ip": a.get("ipAddress"),
-        "sgt": a.get("securityGroupTag") or None,
-        "endpoint_profile": a.get("endpointProfile") or None,
-        "authentication": a.get("authenticationType"),
-        "device": a.get("device"),
-    }
-    return {k: v for k, v in row.items() if v not in (None, "")}
-
-
 def split_identity(name: str) -> tuple[str | None, str]:
     """'corp\\alice' -> ('corp', 'alice'); 'alice' -> (None, 'alice')."""
     realm, _, user = name.strip().rpartition("\\")
@@ -224,26 +193,6 @@ def qualified(realm: str | None, name: str) -> str:
 
 
 # --- lookups ------------------------------------------------------------------------------------------
-
-
-async def active_sessions(
-    app: FmcApp,
-    domain: str | None,
-    *,
-    ip: str | None = None,
-    user: str | None = None,
-    device: str | None = None,
-) -> list[dict[str, Any]]:
-    """FMC's active identity sessions, newest first (raw items). AuthError (403) without the role."""
-    params: dict[str, Any] = {}
-    if ip:
-        params["currentIP"] = ip
-    if user:
-        params["username"] = user
-    if device:
-        params["device"] = device
-    page = await app.all(await app.config_path(SESSIONS, domain), params, cap=SESSION_CAP)
-    return sorted(page.items, key=lambda s: float(s.get("lastSeen") or s.get("loginTime") or 0), reverse=True)
 
 
 async def realm_users(app: FmcApp, name: str, domain: str | None) -> list[dict[str, Any]]:
@@ -325,7 +274,7 @@ async def resolve_ip_identity(app: FmcApp, ip: str, domain: str | None) -> Resol
     groups. Errors (403 without the role) come back in `error`, never raised."""
     res = Resolution(ip=ip)
     try:
-        rows = await active_sessions(app, domain, ip=ip)
+        rows = await session_items(app, domain, ip=ip)
     except AuthError as e:
         res.error = ROLE_HINT if e.status_code == 403 else str(e)
         return res
@@ -413,7 +362,7 @@ async def users_on_ip(
     `ip`. A 403 (role without Analysis > Users) raises AuthError with the permission to add, which
     fmc_find_address reports as a warning."""
     try:
-        rows = await active_sessions(app, domain, ip=str(ip))
+        rows = await session_items(app, domain, ip=str(ip))
     except AuthError as e:
         raise role_error(e) from None
     return [
@@ -434,7 +383,7 @@ async def user_ips(app: FmcApp, user: str, domain: str | None) -> list[str]:
     if not name:
         return []
     try:
-        rows = await active_sessions(app, domain, user=name)
+        rows = await session_items(app, domain, user=name)
     except AuthError as e:
         raise role_error(e) from None
     out: list[str] = []
@@ -582,7 +531,7 @@ def register(reg: ToolRegistrar) -> None:
 
         # sessions known to FMC
         try:
-            sessions = await active_sessions(app, domain)
+            sessions = await session_items(app, domain)
             by: dict[str, int] = {}
             for s in sessions:
                 k = f"{s.get('authenticationType') or '?'} / {s.get('discoveryApplication') or '?'}"
@@ -686,7 +635,8 @@ def register(reg: ToolRegistrar) -> None:
         fmc_rule_lookup(identities=...). Use it for "who is 192.0.2.57?", "which IP is alice on?", or before
         explaining a user-based block (fmc_rule_lookup already does this lookup itself when you omit
         `identities`). The FMC account's role needs Events & Logs > Analysis > Users; without it the user's
-        realm groups still come back. If no source reports users, see fmc_get_identity_sources."""
+        realm groups still come back. If no source reports users, see fmc_get_identity_sources; to page
+        through every session a device reports, fmc_user_identity_sessions."""
         app: FmcApp = get_client(ctx)
         if not ip and not user:
             raise InvalidRequest("Give an ip or a user.")
@@ -698,7 +648,7 @@ def register(reg: ToolRegistrar) -> None:
         }
         sessions: list[dict[str, Any]] | None
         try:
-            sessions = await active_sessions(app, domain, ip=query, user=name or None, device=dev_name)
+            sessions = await session_items(app, domain, ip=query, user=name or None, device=dev_name)
         except AuthError as e:
             if e.status_code != 403:
                 raise

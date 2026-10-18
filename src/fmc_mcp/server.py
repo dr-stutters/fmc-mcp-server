@@ -106,7 +106,8 @@ Workflows:
   fmc_rule_lookup evaluates such rules with the user FMC has on the source IP (or identities=[...]).
 - ISE as identity source (pxGrid): fmc_get_identity_sources (ISE connection, SGT download, realms, identity
   policies, sessions, per-device user-IP bindings, certificates, what to fix); the ISE connection itself is
-  set in the FMC UI (REST can't). "Who is on 192.0.2.57 / where is alice?": fmc_user_ip_lookup.
+  set in the FMC UI (REST can't). "Who is on 192.0.2.57 / where is alice?" with the user's AD groups as
+  rules see them: fmc_user_ip_lookup (every session a device reports, paged: fmc_user_identity_sessions).
 - PoC to production / domain to domain: fmc_export_policy_bundle -> fmc_plan_policy_bundle_import (target
   domain) -> fmc_import_policy_bundle -> fmc_diff_policy_bundle against live -> assign + fmc_deploy.
 - Policy review: fmc_policy_audit ranks shadowed, permissive, unlogged, uninspected, unused and mergeable
