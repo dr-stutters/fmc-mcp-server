@@ -13,9 +13,10 @@ reports a pass/fail table with the cause of any failure.
 
 Prove the user-based policy for one client: "alice" may reach "192.0.2.80" (tcp port 80) and "bob"
 may not, from client "10.99.1.10". The firewall applies user rules from its live user-to-IP mapping (ISE/pxGrid,
-passive AD or captive portal), so each user has to be logged in on "10.99.1.10" when their flow is traced. Steps 1-2
-and 4-6 are read-only; step 3 needs the users to log in and out (ask the operator, or in the lab run the
-login/logoff actions). Keep a table of what each step shows.
+passive AD or captive portal), so each user has to be logged in on "10.99.1.10" when their flow is traced. Steps 0-2,
+4 and 5 are read-only; step 3 needs the users to log in and out (ask the operator, or in the lab run the
+login/logoff actions); step 6 changes the policy only if the user asks and approves the preview. Keep a
+table of what each step shows.
 
 0. Context. The firewall is "mcp-ftd-identity". Note its access control policy (from `fmc_get_device`) and the
    identity policy linked to it (`fmc_get_identity_policy`): the identity rule must cover

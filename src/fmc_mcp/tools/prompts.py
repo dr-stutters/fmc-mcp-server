@@ -592,6 +592,11 @@ def _prove_user_policy_text(
         raise InvalidRequest(f"client_ip and destination must be IP addresses ({e}).") from None
     if proto == "icmp":
         port = None
+    elif port is None:
+        raise InvalidRequest(
+            f"port is required for {proto} (fmc_prove_policy can't trace a {proto} flow without one), "
+            "e.g. 80; use protocol='icmp' for a ping test."
+        )
     ip, dst = _q(client_ip, "client_ip"), _q(destination, "destination")
     ok, no = _qu(allowed_user, "allowed_user"), _qu(blocked_user, "blocked_user")
     dev = _q(device, "device") if device else None
@@ -618,9 +623,10 @@ def _prove_user_policy_text(
     service = f"{proto} port {port}" if port is not None else proto
     return f"""Prove the user-based policy for one client: {ok} may reach {dst} ({service}) and {no}
 may not, from client {ip}. The firewall applies user rules from its live user-to-IP mapping (ISE/pxGrid,
-passive AD or captive portal), so each user has to be logged in on {ip} when their flow is traced. Steps 1-2
-and 4-6 are read-only; step 3 needs the users to log in and out (ask the operator, or in the lab run the
-login/logoff actions). Keep a table of what each step shows.
+passive AD or captive portal), so each user has to be logged in on {ip} when their flow is traced. Steps 0-2,
+4 and 5 are read-only; step 3 needs the users to log in and out (ask the operator, or in the lab run the
+login/logoff actions); step 6 changes the policy only if the user asks and approves the preview. Keep a
+table of what each step shows.
 
 0. Context. {find_dev} Note its access control policy (from {tool_ref("fmc_get_device")}) and the
    identity policy linked to it ({tool_ref("fmc_get_identity_policy")}): the identity rule must cover
@@ -888,7 +894,7 @@ def register(reg: ToolRegistrar) -> None:
         blocked_user: Annotated[str, Field(description="The user who should be blocked, e.g. bob")],
         protocol: Annotated[Literal["tcp", "udp", "icmp"], Field(description="tcp, udp or icmp")] = "tcp",
         port: Annotated[
-            int | None, Field(ge=1, le=65535, description="Destination port for tcp/udp, e.g. 80")
+            int | None, Field(ge=1, le=65535, description="Destination port (required for tcp/udp), e.g. 80")
         ] = None,
         device: Annotated[
             str | None, Field(description="The FTD between client and destination; found if omitted")
