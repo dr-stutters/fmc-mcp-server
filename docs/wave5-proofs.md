@@ -24,9 +24,9 @@ Status: **pass**, **fail** (a tool bug; root cause given), **blocked** (a lab, l
 | 1 | F59 `fmc_find_address` | blocked | seeds in place (host, group, access rule, unassigned NAT policy, dynamic-object mapping); the tool was not callable (B0) |
 | 2 | F55 `fmc_live_connections` / `fmc_user_identity_sessions` | blocked | buffer logging live on the device with real built/teardown lines for the client's long-lived flow; tool not callable (B0); identity sessions 403 (B1) |
 | 3 | F57 `fmc_device_metrics` | blocked | a 3-minute burst is visible in FMC's raw `health/metrics` (bytes, packets, data-plane CPU); tool not callable (B0) |
-| 4 | F43 file policy | not run | |
-| 5 | F63 URL category in access rules | not run | |
-| 6 | F61 SI feeds + custom lists | not run | |
+| 4 | F43 file policy | blocked | every step needs the new file-policy tools (B0); the device can't reach the Cisco cloud, so EICAR needs a custom detection list |
+| 5 | F63 URL category in access rules | blocked | `url_categories` is a new argument (B0); no cloud category lookups from the device |
+| 6 | F61 SI feeds + custom lists | blocked | tools not callable (B0); FMC downloads a feed from `<feed-host>` at create time (probe), see the feed-status finding |
 | 7 | F62 IPS on traffic + `fmc_threat_defense_review` | split | IPS **pass** (Talos 1:498 and 1:58723 drop the client's requests, normal page loads); posture tool and prompt not callable (B0) |
 | 8 | F64 TLS decryption | not run | |
 | 9 | F41 + F49 VPN status / troubleshoot | not run | |
@@ -74,6 +74,17 @@ Burst: iperf from the HA inside host to `<feed-host>` through `mcp-fw-ha` (activ
 FMC's raw `health/metrics` for the active unit shows it: interface `all` input bytes rise ~1.1 GB per one-minute sample for four
 samples, average packet size goes from ~75 to ~1280 bytes, `lina_dp_avg` CPU peaks at 10.3 % (0 before), `snort_avg` stays ~0
 (no IPS on that policy). The samples trail the traffic by 60-90 s.
+
+### 4-6. F43, F63, F61 (blocked: B0)
+
+All three need tools or arguments the client could not call. Facts for the re-run:
+
+- `mcp-ftd-identity` has the MALWARE_DEFENSE, IPS and URL licences; its health reports "Unable to reach Cisco Cloud from the
+  device", so malware cloud lookups and URL category lookups get no verdict here (EICAR: use a custom detection list).
+- **F61 feed status (likely tool bug, see the run notes).** A probe feed created with `fmc_api_call` on `<feed-host>`: FMC fetched
+  it at create time (`metadata.validEntries` lists all 4 entries seconds later), but `metadata.entryCount` stays 0 and there is
+  no `feedUpdateTime`; only `metadata.timestamp` moves when the download lands. `fmc_get_security_intelligence`'s feed status reads
+  `feedUpdateTime`/`entryCount`, so it would report a downloaded feed as "not downloaded yet".
 
 ### 7. F62 IPS on traffic (pass) and the threat-defense review (blocked: B0)
 
