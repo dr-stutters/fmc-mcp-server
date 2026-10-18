@@ -117,7 +117,7 @@ There are 153 tools when every tier is enabled (66 read, 76 write, 11 dangerous;
 | Devices | `fmc_list_devices`, `fmc_get_device`, `fmc_list_device_interfaces`, `fmc_list_routes`, `fmc_get_routing`, `fmc_get_platform_settings`, `fmc_list_ha_pairs`, `fmc_get_ha_status`, `fmc_list_clusters` |
 | VPN | `fmc_list_vpn_topologies` (incl. SD-WAN), `fmc_get_vpn_topology`, `fmc_get_ravpn`, `fmc_sdwan_status` (per branch: WAN links with path metrics, the path each app route takes now and why, tunnels and iBGP, ranked degraded links) |
 | Device templates (FMC 7.6+) | `fmc_list_device_templates`, `fmc_get_device_template` (interfaces, variables, model mappings, VPN/SD-WAN settings, overridable objects, devices it was applied to; passwords masked) |
-| Troubleshooting | `fmc_packet_tracer`, `fmc_run_show_command`, `fmc_get_hit_counts`, `fmc_device_health`, `fmc_list_vpn_tunnels` |
+| Troubleshooting | `fmc_packet_tracer`, `fmc_run_show_command`, `fmc_get_hit_counts`, `fmc_device_health`, `fmc_list_vpn_tunnels`, `fmc_prove_policy` (a table of flows with expected verdicts, each packet-traced on the FTD it crosses: pass / fail / mismatch with the deciding rule and the user the device saw) |
 | Policies | `fmc_list_policies`, `fmc_get_access_policy`, `fmc_list_access_rules`, `fmc_get_access_rule`, `fmc_list_nat_rules`, `fmc_list_prefilter_rules`, `fmc_list_policy_assignments` |
 | Objects | `fmc_list_objects`, `fmc_get_object`, `fmc_find_object`, `fmc_where_used`, `fmc_unused_objects`, `fmc_list_dynamic_objects` |
 | Security Intelligence | `fmc_get_security_intelligence` |
@@ -145,6 +145,11 @@ Notes on some read tools:
   FMC as parameters. Anything else (`show bgp`, `show ospf`, `show path-monitoring`, `show policy-route`,
   `show conn`, `show nat`) is refused before FMC is called, with the alternatives.
 - `fmc_get_hit_counts` refreshes the counters from the device first (packet-tracer packets count too).
+- `fmc_prove_policy` proves a policy in one call: each flow (source, destination, port, protocol, optional user,
+  device and expected rule) is traced on its device (given, or the one whose connected subnets and routes carry
+  it) and judged `pass`, `fail`, `mismatch` (right verdict for the wrong reason: another rule, a non-policy drop
+  such as no route or ARP, or another user on the source IP) or `error`. The `fmc_prove_user_policy` prompt
+  builds on it for user rules (alice allowed, bob blocked).
 - `fmc_list_health_alerts` and `fmc_recent_activity` query FMC when called (no background collection):
   health alerts over a window with repeats collapsed, and one timeline of health alerts, audit records
   and deployments. The server never receives syslog or eStreamer; traffic events stay in the FMC UI or
@@ -209,6 +214,9 @@ MD5 password, because FMC returns it masked and a PUT would replace it, unless y
 - **Why is this traffic blocked?** The `fmc_why_blocked` prompt runs `fmc_rule_lookup` ->
   `fmc_packet_tracer` -> `fmc_get_hit_counts` -> `fmc_pending_changes` / `fmc_list_deployments` ->
   `fmc_list_audit_records`, then proposes a preview-first fix.
+- **Prove a user-based policy:** the `fmc_prove_user_policy` prompt checks each user offline
+  (`fmc_rule_lookup` with identities), who ISE sees on the client, then has each user log in and proves the live
+  verdict with `fmc_prove_policy` (deciding rule and the user the firewall saw), ending in a pass/fail table.
 - **Block a host now:** `fmc_contain_host(ip, reason)` maps it into the quarantine dynamic object
   (`FMC_QUARANTINE_OBJECT`); the first call proposes the BLOCK rules and one deploy, later calls need no
   deployment. `fmc_release_host(ip)` undoes it. ise-mcp-server's `ise_quarantine_host` calls these.

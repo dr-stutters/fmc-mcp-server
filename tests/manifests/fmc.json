@@ -113,6 +113,40 @@
         "fmc"
       ]
     },
+    "fmc_prove_user_policy": {
+      "arguments": [
+        "client_ip",
+        "destination",
+        "allowed_user",
+        "blocked_user",
+        "protocol",
+        "port",
+        "device",
+        "allow_rule",
+        "block_rule"
+      ],
+      "references": [
+        "fmc_get_device",
+        "fmc_get_identity_policy",
+        "fmc_rule_lookup",
+        "fmc_get_realm",
+        "ise_find_session",
+        "ise_list_active_sessions",
+        "fmc_prove_policy",
+        "fmc_packet_tracer",
+        "fmc_get_hit_counts",
+        "fmc_pending_changes",
+        "fmc_update_access_rule",
+        "fmc_create_access_rule",
+        "fmc_deploy"
+      ],
+      "rendered": true,
+      "tier": "read",
+      "uses": [
+        "fmc",
+        "ise"
+      ]
+    },
     "fmc_rule_change_review": {
       "arguments": [
         "policy",
@@ -693,6 +727,10 @@
     "fmc_policy_audit": {
       "tier": "read",
       "title": "Audit an access policy"
+    },
+    "fmc_prove_policy": {
+      "tier": "read",
+      "title": "Prove a policy with expected flows"
     },
     "fmc_recent_activity": {
       "tier": "read",
