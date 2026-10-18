@@ -12,6 +12,7 @@ from typing import Any
 
 import httpx
 
+from fmc_mcp import toolsets
 from fmc_mcp._core import AuthError, InvalidRequest, NotFound
 from fmc_mcp._core.http import (
     ApiClient,
@@ -376,6 +377,7 @@ class FmcApp:
         self._version = str(info.get("serverVersion", "unknown"))
         default = await self.domain_uuid(None)
         devices = await self.api.get(await self.config_path("devices/devicerecords"), {"limit": 1})
+        selected = toolsets.describe(toolsets.parse(getattr(self.settings, "toolsets", None)))
         return {
             "version": self._version,
             "hostname": info.get("hostname"),
@@ -391,6 +393,7 @@ class FmcApp:
                 "per_minute": self.limiter.per_minute,
                 "max_concurrency": self.limiter.max_concurrency,
             },
+            **({"toolsets": selected} if selected else {}),
         }
 
 
