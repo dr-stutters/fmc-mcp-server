@@ -53,14 +53,22 @@ SUGGESTED = {
 }
 BALANCED = "Balanced Security and Connectivity"
 NO_RULES = "No Rules Active"
+# DNS rule actions that stop a lookup (the 10.0.1 spec says BLOCK, FMC also answers DROP).
+DNS_BLOCKING = ("NXDOMAIN", "BLOCK", "DROP", "SINKHOLE")
 LICENCE_ALIASES = {"THREAT": "IPS", "MALWARE": "MALWARE_DEFENSE", "URLFILTER": "URL"}
 DEVICE_CAP = 10
 RULE_ROWS_CAP = 100
 
-NAP_NOTE = (
-    "FMC 10.0.1's REST API does not expose which network analysis policy an access policy uses (Advanced > "
-    "Network Analysis and Intrusion Policies in the access policy editor), nor the intrusion policy used "
-    "before a rule is determined; check them there."
+NAP_EDITOR = "the access policy editor (Advanced > Network Analysis and Intrusion Policies)"
+NAP_UI = NAP_EDITOR + "; FMC's REST API can't set it"
+# FMC 10.0.1 lists, in each network analysis policy's expanded record, the access policies that use it
+# (metadata.usage.asscoiatedAcPolicies, FMC's spelling); the intrusion policy used before a rule is
+# determined is not exposed at all.
+NAP_USAGE_KEYS = ("asscoiatedAcPolicies", "associatedAcPolicies")
+EARLY_IPS_NOTE = (
+    "The intrusion policy used before the access rule is determined is not in FMC's REST API; check it in "
+    + NAP_EDITOR
+    + "."
 )
 
 
@@ -343,11 +351,7 @@ async def threat_posture(app: FmcApp, policy: str, domain: str | None) -> dict[s
             except UpstreamError as e:
                 notes.append(f"DNS policy not readable: {e}")
                 dpol, drules = {}, []
-            blocking = [
-                r
-                for r in drules
-                if r.get("enabled", True) and str(r.get("action")) in ("NXDOMAIN", "DROP", "SINKHOLE")
-            ]
+            blocking = [r for r in drules if r.get("enabled", True) and str(r.get("action")) in DNS_BLOCKING]
             talos_dns = any(
                 talos_name(o.get("name"))
                 for r in blocking
@@ -389,12 +393,39 @@ async def threat_posture(app: FmcApp, policy: str, domain: str | None) -> dict[s
             )
         )
     nap_names: list[str] = []
+    nap: dict[str, Any] = {}
     try:
-        naps = await app.all(await app.config_path(POLICY_KINDS["network_analysis"], domain), expanded=False)
-        nap_names = [str(p.get("name")) for p in naps.items]
+        naps = await app.all(await app.config_path(POLICY_KINDS["network_analysis"], domain))
+        for n in naps.items:
+            nap_names.append(str(n.get("name")))
+            usage = (n.get("metadata") or {}).get("usage") or {}
+            refs: list[Any] = next((usage[k] for k in NAP_USAGE_KEYS if usage.get(k)), [])
+            if any(isinstance(r, dict) and str(r.get("id")) == str(acp["id"]) for r in refs):
+                nap = n
     except UpstreamError as e:
         notes.append(f"Network analysis policies not readable: {e}")
-    findings.append(_finding("network_analysis_policy", "info", NAP_NOTE, "Check it in the FMC UI."))
+    if not nap:
+        findings.append(
+            _finding(
+                "network_analysis_policy",
+                "info",
+                "No network analysis policy lists this access policy as a user, so the one it runs is "
+                "unknown.",
+                "Check it in " + NAP_UI + ".",
+            )
+        )
+    elif nap.get("inspectionMode") == "DETECTION":
+        findings.append(
+            _finding(
+                "nap_detection_only",
+                "medium",
+                f"Network analysis policy {nap.get('name')!r} is in DETECTION mode: the preprocessors report "
+                "malformed and evasive traffic but never drop it.",
+                "Select a network analysis policy in PREVENTION mode in " + NAP_UI + ".",
+                network_analysis_policy=nap.get("name"),
+            )
+        )
+    notes.append(EARLY_IPS_NOTE)
 
     # Licences on the assigned devices.
     devices, dev_notes = await _devices(app, str(acp["id"]), domain)
@@ -463,6 +494,16 @@ async def threat_posture(app: FmcApp, policy: str, domain: str | None) -> dict[s
         else None,
         "decryption_policy": decryption.get("name"),
         "identity_policy": (acp.get("identityPolicySetting") or {}).get("name"),
+        "network_analysis_policy": {
+            k: v
+            for k, v in (
+                ("name", nap.get("name")),
+                ("inspection_mode", nap.get("inspectionMode")),
+                ("system_defined", nap.get("isSystemDefined")),
+            )
+            if v is not None
+        }
+        or None,
         "network_analysis_policies_available": nap_names or None,
         "devices": devices or None,
         "findings": findings,
@@ -483,9 +524,9 @@ def register(reg: ToolRegistrar) -> None:
         the default action and every ALLOW rule (base policy, PREVENTION vs DETECTION, 'No Rules Active'),
         file policies, what skips inspection (TRUST rules, prefilter FASTPATH, a trusting default action),
         Security Intelligence (Talos categories in the block lists, logging) and DNS policy coverage,
-        decryption, available network analysis policies, and whether the assigned devices hold the IPS,
-        MALWARE_DEFENSE and URL licences the policy needs. Each finding carries a fix as a tool call to
-        preview. Rule-level hygiene (shadowing, logging, any-any) is fmc_policy_audit; the
+        decryption, the network analysis policy it uses (and its mode), and whether the assigned devices
+        hold the IPS, MALWARE_DEFENSE and URL licences the policy needs. Each finding carries a fix as a
+        tool call to preview. Rule-level hygiene (shadowing, logging, any-any) is fmc_policy_audit; the
         fmc_threat_defense_review prompt combines both. Nothing is changed."""
         app: FmcApp = get_client(ctx)
         return await threat_posture(app, policy, domain)

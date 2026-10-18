@@ -100,7 +100,6 @@ async def test_recorded_lab_policy(fmc: respx.MockRouter) -> None:
         "si_no_talos_url",
         "dns_no_talos",
         "no_decryption",
-        "network_analysis_policy",
     ]
     by = {f["check"]: f for f in out["findings"]}
     assert by["allow_no_file_policy"]["rules"] == ["mcp-fw-baseline", "mcp-fw-lab-extra"]
@@ -125,6 +124,13 @@ async def test_recorded_lab_policy(fmc: respx.MockRouter) -> None:
     ]
     assert out["security_intelligence"]["dns_policy_system"] is True
     assert "Balanced Security and Connectivity" in out["network_analysis_policies_available"]
+    # FMC names the access policies using each NAP in its expanded record (recorded on the lab FMC)
+    assert out["network_analysis_policy"] == {
+        "name": "Balanced Security and Connectivity",
+        "inspection_mode": "PREVENTION",
+        "system_defined": True,
+    }
+    assert any("before the access rule is determined" in n for n in out["notes"])
     assert "intrusion_policies" not in out  # nothing inspects yet
 
 
@@ -167,6 +173,57 @@ async def test_weak_policy_findings(fmc: respx.MockRouter) -> None:
         "mcp-fw-ips": "DETECTION",
     }
     assert out["prefilter"]["fastpath_rules"] == ["mcp-fw-fastpath"]
+
+
+async def test_network_analysis_policy_and_dns_block_action(fmc: respx.MockRouter) -> None:
+    mock_lab(fmc)
+    naps = copy.deepcopy(REC["network_analysis_policies"])
+    for n in naps["items"]:  # the lab ACP moves to a custom DETECTION-mode NAP
+        n["metadata"]["usage"] = {"accesspolicy": 0, "devices": 0}
+    naps["items"].append(
+        {
+            "name": "mcp-fw-nap",
+            "id": "00000000-0000-0ed3-0000-004294972222",
+            "type": "NetworkAnalysisPolicy",
+            "inspectionMode": "DETECTION",
+            "isSystemDefined": False,
+            "metadata": {
+                "usage": {
+                    "asscoiatedAcPolicies": [{"id": ACP["id"], "name": ACP["name"]}],
+                    "accesspolicy": 1,
+                }
+            },
+        }
+    )
+    fmc.get(f"{CFG}/policy/networkanalysispolicies").mock(return_value=httpx.Response(200, json=naps))
+    dns_rules = copy.deepcopy(SI["dns_rules"])
+    dns_rules["items"].append(
+        {
+            "name": "mcp-si-dns-block",
+            "type": "DNSRule",
+            "action": "BLOCK",  # the 10.0.1 spec's name for a dropped lookup
+            "enabled": True,
+            "dnsLists": {"objects": [{"name": "DNS Malware", "id": "dns-malware", "type": "SIDNSList"}]},
+        }
+    )
+    fmc.get(f"{CFG}/policy/dnspolicies/{DNS_ID}/dnsrules").mock(
+        return_value=httpx.Response(200, json=dns_rules)
+    )
+    out = await posture(fmc)
+    by = {f["check"]: f for f in out["findings"]}
+    assert out["network_analysis_policy"]["name"] == "mcp-fw-nap"
+    assert (
+        by["nap_detection_only"]["severity"] == "medium"
+        and "REST API can't set it" in by["nap_detection_only"]["fix"]
+    )
+    assert "network_analysis_policy" not in by and "dns_no_talos" not in by
+    assert out["security_intelligence"]["dns_blocking_rules"] >= 1
+
+    naps["items"] = naps["items"][:-1]  # no NAP lists the access policy: say so, don't guess
+    fmc.get(f"{CFG}/policy/networkanalysispolicies").mock(return_value=httpx.Response(200, json=naps))
+    out = await posture(fmc)
+    by = {f["check"]: f for f in out["findings"]}
+    assert by["network_analysis_policy"]["severity"] == "info" and "network_analysis_policy" not in out
 
 
 def test_review_prompt_text() -> None:
