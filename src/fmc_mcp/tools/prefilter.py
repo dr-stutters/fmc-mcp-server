@@ -136,7 +136,8 @@ def register(reg: ToolRegistrar) -> None:
         confirm: Confirm = None,
     ) -> dict[str, Any]:
         """Make an access control policy use a prefilter policy (each ACP has exactly one; the default is
-        'Default Prefilter Policy'). Takes effect on the next deploy of the devices using the ACP."""
+        'Default Prefilter Policy'; fmc_get_access_policy shows the current one). Takes effect on the next
+        deploy of the devices using the ACP."""
         app: FmcApp = get_client(ctx)
         acp = await resolve_in(app, ACCESS, access_policy, "access policy", domain)
         pf = await resolve_in(app, PREFILTER, prefilter_policy, "prefilter policy", domain)
@@ -296,7 +297,8 @@ def register(reg: ToolRegistrar) -> None:
         confirm: Confirm = None,
     ) -> dict[str, Any]:
         """Change a prefilter rule: action, enabled, name, logging, or replace a condition (a given list
-        replaces the old one; [] means any). The preview shows the field changes."""
+        replaces the old one; [] means any). The preview shows the field changes; the current rules:
+        fmc_list_prefilter_rules. Takes effect after a deploy."""
         app: FmcApp = get_client(ctx)
         p = await resolve_in(app, PREFILTER, policy, "prefilter policy", domain)
         current = await find_prefilter_rule(app, p, rule, domain)
@@ -381,8 +383,8 @@ def register(reg: ToolRegistrar) -> None:
         domain: Domain = None,
         confirm: Confirm = None,
     ) -> dict[str, Any]:
-        """Delete a prefilter rule. Matching traffic then goes to the access policy (or the prefilter
-        default action for tunnels) after the next deploy."""
+        """Delete a prefilter rule (fmc_list_prefilter_rules shows them). Matching traffic then goes to the
+        access policy (or the prefilter default action for tunnels) after the next deploy."""
         app: FmcApp = get_client(ctx)
         p = await resolve_in(app, PREFILTER, policy, "prefilter policy", domain)
         current = await find_prefilter_rule(app, p, rule, domain)

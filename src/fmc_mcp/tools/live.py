@@ -486,8 +486,11 @@ def register(reg: ToolRegistrar) -> None:
         connection events); if the buffer is off the answer says how to turn it on. Where FMC's API
         lists 'show conn' (read from its spec at run time) the live connection table is used instead.
         From the buffer, the most recently active connections come first; filter by host, user, port,
-        protocol or state. Pair with fmc_packet_tracer (why a
-        flow is allowed or dropped) and fmc_user_identity_sessions (who is on an IP)."""
+        protocol or state. The buffer needs the device's platform settings to log to the internal buffer
+        at informational, with the connection messages 302013-302021 enabled (FTD ships them off) and a
+        buffer larger than the 4 KiB default; fmc_get_platform_settings shows the destinations. Pair with
+        fmc_packet_tracer (why a flow is allowed or dropped) and fmc_user_identity_sessions (who is on an
+        IP)."""
         app: FmcApp = get_client(ctx)
         net = _host_filter(host)
         dev = await resolve_device(app, device, domain)

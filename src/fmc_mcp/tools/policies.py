@@ -429,7 +429,9 @@ def register(reg: ToolRegistrar) -> None:
     ) -> ToolResult:
         """List a prefilter policy's rules (evaluated before access control): type (PREFILTER or
         TUNNEL), action (FASTPATH, ANALYZE, BLOCK), interfaces, networks, ports, VLANs. Also shows the
-        policy's default action."""
+        policy's default action. FASTPATH skips Snort (fmc_threat_posture flags it); packet tracer's
+        PREFILTER phase shows which rule a flow hit. Change rules with fmc_create_prefilter_rule,
+        fmc_update_prefilter_rule, fmc_delete_prefilter_rule."""
         app: FmcApp = get_client(ctx)
         p = await resolve_policy(app, "prefilter", policy or "Default Prefilter Policy", domain)
         path = await app.config_path(f"{PREFILTER}/{p['id']}/prefilterrules", domain)
