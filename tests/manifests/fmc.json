@@ -674,6 +674,10 @@
       "tier": "read",
       "title": "Site-to-site VPN tunnel status"
     },
+    "fmc_live_connections": {
+      "tier": "read",
+      "title": "Live connections on a device"
+    },
     "fmc_map_dynamic_object": {
       "tier": "write",
       "title": "Map IPs to a dynamic object"
@@ -813,6 +817,10 @@
     "fmc_upgrade_status": {
       "tier": "read",
       "title": "Version and upgrade status"
+    },
+    "fmc_user_identity_sessions": {
+      "tier": "read",
+      "title": "User identity sessions"
     },
     "fmc_where_used": {
       "tier": "read",
