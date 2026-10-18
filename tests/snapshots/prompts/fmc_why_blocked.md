@@ -20,6 +20,11 @@ gives a definite answer that the later steps cannot change. All steps before ste
    destination="198.18.134.76", protocol="tcp", port=23. The ingress interface is "inside": pass its zone as source_zone. If `device.egress` is null, no route
    covers 198.18.134.76. Note the first definite match, any earlier 'conditional' rules (application,
    URL or user conditions) and the default action. This is what FMC's configuration says.
+   When user or group rules are involved, `identity` shows the user FMC has on 10.99.1.10 and their
+   groups (an `error` there means FMC's identity sessions aren't readable: ask
+   `fmc_user_ip_lookup` or ISE who is on 10.99.1.10 and pass identities=[user, groups]).
+   No user on 10.99.1.10 means user rules can't match it: `fmc_get_identity_sources` says
+   whether ISE or another source reports users at all.
 
 2. Live verdict: `fmc_packet_tracer` with device="mcp-ftd1", input_interface="inside", protocol="tcp",
    source_ip="10.99.1.10", destination_ip="198.18.134.76", destination_port=23 (it picks the ingress interface from the source).

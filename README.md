@@ -106,7 +106,7 @@ Changes made in FMC reach the firewalls only after a **deployment** (`fmc_deploy
 
 ## Tools
 
-There are 153 tools when every tier is enabled (66 read, 76 write, 11 dangerous; the dangerous tier turns `fmc_api_call` into a raw call), and six workflow prompts (`fmc_why_blocked`, `fmc_firewall_health_review`, `fmc_sdwan_troubleshoot`; `fmc_rule_change_review` and `fmc_policy_cleanup`, write tier; `fmc_onboard_ftd`, dangerous tier).
+There are 155 tools when every tier is enabled (68 read, 76 write, 11 dangerous; the dangerous tier turns `fmc_api_call` into a raw call), and six workflow prompts (`fmc_why_blocked`, `fmc_firewall_health_review`, `fmc_sdwan_troubleshoot`; `fmc_rule_change_review` and `fmc_policy_cleanup`, write tier; `fmc_onboard_ftd`, dangerous tier).
 
 **Read**
 
@@ -122,7 +122,7 @@ There are 153 tools when every tier is enabled (66 read, 76 write, 11 dangerous;
 | Objects | `fmc_list_objects`, `fmc_get_object`, `fmc_find_object`, `fmc_where_used`, `fmc_unused_objects`, `fmc_list_dynamic_objects` |
 | Security Intelligence | `fmc_get_security_intelligence` |
 | Decryption / DNS | `fmc_get_decryption_policy`, `fmc_get_dns_policy` |
-| Identity (AD/LDAP) | `fmc_get_realm` (directories, downloaded users and groups), `fmc_test_realm` (bind test from FMC; needs `FMC_UI_USERNAME`), `fmc_get_identity_policy` (rules, access policies using it) |
+| Identity (AD/LDAP, ISE) | `fmc_get_realm` (directories, downloaded users and groups), `fmc_test_realm` (bind test from FMC; needs `FMC_UI_USERNAME`), `fmc_get_identity_policy` (rules, access policies using it), `fmc_get_identity_sources` (ISE/pxGrid connection, SGT download, realms, identity policies, sessions by source, per-device user-IP bindings, certificate expiry, what to fix), `fmc_user_ip_lookup` (who is on an IP / where a user is, with the user's realm groups) |
 | Intrusion (Snort 3) | `fmc_get_intrusion_policy` (base, mode, usage, overridden rules), `fmc_find_intrusion_rules` (gid:sid, SID or text; per-policy state) |
 | Change management | `fmc_change_tickets` (status, tickets, a ticket's changes and validation) |
 | Admin | `fmc_upgrade_status` (versions, upgrade history, packages), `fmc_list_backups`, `fmc_get_health_policy`, `fmc_list_users`, `fmc_list_object_overrides` |
@@ -252,9 +252,16 @@ MD5 password, because FMC returns it masked and a PUT would replace it, unless y
   `fmc_test_realm` -> `fmc_download_realm` -> `fmc_create_identity_policy` + `fmc_create_identity_rule`
   (PASSIVE: user-IP mappings from ISE/pxGrid or an identity agent) -> select the identity policy in the
   access policy editor's Identity step (FMC 10.0's REST API silently ignores `identityPolicySetting`) ->
-  `fmc_create_access_rule(users=['group'])` -> `fmc_deploy`. `fmc_rule_lookup(identities=[user, groups])`
-  evaluates user/group rules offline. FMC's REST API has no AD/LDAP realm test or download, so those two
+  `fmc_create_access_rule(users=['group'])` -> `fmc_deploy`. `fmc_rule_lookup` evaluates user/group rules
+  offline with the user FMC has on the source IP and their groups (or `identities=[user, groups]`). FMC's REST API has no AD/LDAP realm test or download, so those two
   tools log in to FMC's web UI as `FMC_UI_USERNAME` (its own user, not the API user).
+- **ISE as the identity source (pxGrid):** FMC 10.0.1's REST API can't configure the ISE connection, so it is
+  set in the FMC UI (Integrations > Other Integrations > Identity Sources: pxGrid node, pxGrid and MNT server
+  CAs from `fmc_create_trusted_ca`, FMC's client certificate as an internal certificate), then FMC's pxGrid
+  client is approved in ISE. `fmc_get_identity_sources` shows whether it works end to end (FMC's ISE health
+  module, SGTs downloaded, sessions by source, user-IP bindings on each device, certificate expiry) and what
+  to fix; `fmc_user_ip_lookup` answers "who is on 10.1.2.3?" and "where is alice?". Reading FMC's identity
+  sessions needs Events & Logs > Analysis > Users in the account's role.
 - **Baseline a policy and see what changed:** `fmc_export_policy_bundle(policy)` returns one YAML bundle
   (schema 1): the access policy's settings and ordered rules, its prefilter, decryption, identity, NAT and
   intrusion policies (custom ones in full, built-in ones by name), and every object, group member, zone,

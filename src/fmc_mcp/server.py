@@ -28,6 +28,7 @@ from fmc_mcp.tools import (
     ha,
     hygiene,
     identity,
+    identity_sources,
     intrusion,
     live,
     object_import,
@@ -102,7 +103,10 @@ Workflows:
   fmc_test_realm -> fmc_download_realm -> fmc_create_identity_policy + fmc_create_identity_rule (PASSIVE
   needs ISE/pxGrid or an agent for user-IP mappings) -> select the identity policy in the access policy
   editor (FMC's REST API can't) -> fmc_create_access_rule users=[group] -> fmc_deploy;
-  fmc_rule_lookup identities=[user, groups] evaluates such rules.
+  fmc_rule_lookup evaluates such rules with the user FMC has on the source IP (or identities=[...]).
+- ISE as identity source (pxGrid): fmc_get_identity_sources (ISE connection, SGT download, realms, identity
+  policies, sessions, per-device user-IP bindings, certificates, what to fix); the ISE connection itself is
+  set in the FMC UI (REST can't). "Who is on 10.1.2.3 / where is alice?": fmc_user_ip_lookup.
 - PoC to production / domain to domain: fmc_export_policy_bundle -> fmc_plan_policy_bundle_import (target
   domain) -> fmc_import_policy_bundle -> fmc_diff_policy_bundle against live -> assign + fmc_deploy.
 - Policy review: fmc_policy_audit ranks shadowed, permissive, unlogged, uninspected, unused and mergeable
@@ -215,6 +219,7 @@ def create_server(
             decryption.register,
             dns.register,
             identity.register,
+            identity_sources.register,
             prompts.register,
         ],
         status=FmcApp.status,
