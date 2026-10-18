@@ -12,6 +12,7 @@
       "references": [
         "fmc_list_devices",
         "fmc_device_health",
+        "fmc_device_metrics",
         "fmc_list_ha_pairs",
         "fmc_list_clusters",
         "fmc_get_ha_status",
@@ -113,6 +114,40 @@
         "fmc"
       ]
     },
+    "fmc_prove_user_policy": {
+      "arguments": [
+        "client_ip",
+        "destination",
+        "allowed_user",
+        "blocked_user",
+        "protocol",
+        "port",
+        "device",
+        "allow_rule",
+        "block_rule"
+      ],
+      "references": [
+        "fmc_get_device",
+        "fmc_get_identity_policy",
+        "fmc_rule_lookup",
+        "fmc_get_realm",
+        "ise_find_session",
+        "ise_list_active_sessions",
+        "fmc_prove_policy",
+        "fmc_packet_tracer",
+        "fmc_get_hit_counts",
+        "fmc_pending_changes",
+        "fmc_update_access_rule",
+        "fmc_create_access_rule",
+        "fmc_deploy"
+      ],
+      "rendered": true,
+      "tier": "read",
+      "uses": [
+        "fmc",
+        "ise"
+      ]
+    },
     "fmc_rule_change_review": {
       "arguments": [
         "policy",
@@ -166,6 +201,44 @@
         "fmc_create_sdwan_topology",
         "fmc_pending_changes",
         "fmc_deploy"
+      ],
+      "rendered": true,
+      "tier": "read",
+      "uses": [
+        "fmc"
+      ]
+    },
+    "fmc_vpn_troubleshoot": {
+      "arguments": [
+        "symptom",
+        "device",
+        "topology",
+        "source",
+        "destination",
+        "protocol",
+        "port"
+      ],
+      "references": [
+        "fmc_vpn_status",
+        "fmc_pending_changes",
+        "fmc_list_deployments",
+        "fmc_get_ravpn",
+        "fmc_get_vpn_topology",
+        "fmc_run_show_command",
+        "fmc_list_health_alerts",
+        "fmc_get_routing",
+        "fmc_list_routes",
+        "fmc_list_nat_rules",
+        "fmc_packet_tracer",
+        "fmc_why_blocked",
+        "fmc_rule_lookup",
+        "fmc_api_call",
+        "fmc_deploy",
+        "fmc_create_static_route",
+        "fmc_configure_bgp",
+        "fmc_create_nat_rule",
+        "fmc_create_access_rule",
+        "fmc_sdwan_troubleshoot"
       ],
       "rendered": true,
       "tier": "read",
@@ -298,6 +371,14 @@
       "tier": "write",
       "title": "Create dynamic object"
     },
+    "fmc_create_file_policy": {
+      "tier": "write",
+      "title": "Create file policy"
+    },
+    "fmc_create_file_rule": {
+      "tier": "write",
+      "title": "Create file rule"
+    },
     "fmc_create_group": {
       "tier": "write",
       "title": "Create object group"
@@ -329,6 +410,10 @@
     "fmc_create_nat_rule": {
       "tier": "write",
       "title": "Create NAT rule"
+    },
+    "fmc_create_network_analysis_policy": {
+      "tier": "write",
+      "title": "Create network analysis policy"
     },
     "fmc_create_object": {
       "tier": "write",
@@ -406,6 +491,10 @@
       "tier": "write",
       "title": "Delete dynamic object"
     },
+    "fmc_delete_file_rule": {
+      "tier": "write",
+      "title": "Delete file rule"
+    },
     "fmc_delete_identity_rule": {
       "tier": "write",
       "title": "Delete identity rule"
@@ -462,6 +551,10 @@
       "tier": "read",
       "title": "Device health"
     },
+    "fmc_device_metrics": {
+      "tier": "read",
+      "title": "Device metrics over time"
+    },
     "fmc_diff_policy_bundle": {
       "tier": "read",
       "title": "Diff policy bundles"
@@ -481,6 +574,10 @@
     "fmc_export_policy_bundle": {
       "tier": "read",
       "title": "Export a policy bundle"
+    },
+    "fmc_find_address": {
+      "tier": "read",
+      "title": "Find where an address appears"
     },
     "fmc_find_intrusion_rules": {
       "tier": "read",
@@ -518,6 +615,10 @@
       "tier": "read",
       "title": "DNS policies"
     },
+    "fmc_get_file_policy": {
+      "tier": "read",
+      "title": "File policies"
+    },
     "fmc_get_ha_status": {
       "tier": "read",
       "title": "Get HA pair status"
@@ -537,6 +638,10 @@
     "fmc_get_intrusion_policy": {
       "tier": "read",
       "title": "Intrusion policy summary"
+    },
+    "fmc_get_network_analysis_policy": {
+      "tier": "read",
+      "title": "Network analysis policies"
     },
     "fmc_get_object": {
       "tier": "read",
@@ -682,6 +787,10 @@
       "tier": "read",
       "title": "Site-to-site VPN tunnel status"
     },
+    "fmc_live_connections": {
+      "tier": "read",
+      "title": "Live connections on a device"
+    },
     "fmc_map_dynamic_object": {
       "tier": "write",
       "title": "Map IPs to a dynamic object"
@@ -701,6 +810,10 @@
     "fmc_policy_audit": {
       "tier": "read",
       "title": "Audit an access policy"
+    },
+    "fmc_prove_policy": {
+      "tier": "read",
+      "title": "Prove a policy with expected flows"
     },
     "fmc_recent_activity": {
       "tier": "read",
@@ -829,6 +942,14 @@
     "fmc_upload_si_list": {
       "tier": "write",
       "title": "Upload Security Intelligence list"
+    },
+    "fmc_user_identity_sessions": {
+      "tier": "read",
+      "title": "User identity sessions"
+    },
+    "fmc_vpn_status": {
+      "tier": "read",
+      "title": "VPN status"
     },
     "fmc_where_used": {
       "tier": "read",
