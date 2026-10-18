@@ -305,8 +305,9 @@ def ike_growth(device_id: str, now: dict[str, Any]) -> dict[str, Any] | None:
     return {"seconds": round(time.monotonic() - then)} | {k: now.get(k, 0) - old.get(k, 0) for k in keys}
 
 
-def tunnel_down_cause(ike: dict[str, Any] | None) -> str | None:
-    """What the IKEv2 counters say about a down tunnel: a key mismatch or a peer that doesn't answer."""
+def tunnel_down_cause(ike: dict[str, Any] | None, tool: str = "fmc_sdwan_status") -> str | None:
+    """What the IKEv2 counters say about a down tunnel: a key mismatch or a peer that doesn't answer.
+    `tool` is the tool to call again for the growth between two calls."""
     if not ike:
         return None
     grew = ike.get("since_last_check")
@@ -325,7 +326,7 @@ def tunnel_down_cause(ike: dict[str, Any] | None) -> str | None:
     return (
         f"IKEv2 counters ({ike.get('counters_since', 'since the last clear')}): "
         f"Authentication Failures {ike.get('authentication_failures', '?')}, Retransmit limit exceeded "
-        f"{ike.get('retransmit_limit_exceeded', '?')}. Call fmc_sdwan_status again: authentication failures "
+        f"{ike.get('retransmit_limit_exceeded', '?')}. Call {tool} again: authentication failures "
         "growing means a key mismatch, retransmits growing alone means the peer doesn't answer"
     )
 
@@ -425,7 +426,40 @@ def choose_path(
     return usable[0][1], f"first usable interface in configured order{note}"
 
 
-async def _device_record(
+async def show_on_device(
+    app: FmcApp,
+    record: str,
+    cmd: str,
+    domain: str | None,
+    refused: dict[str, str],
+    supported: Supported | None,
+    evidence: dict[str, Any],
+    max_lines: int = 40,
+) -> str | None:
+    """Run one show command on a device record through FMC, secrets redacted, and note it in `evidence`
+    (its first lines, or why it is not available). A command FMC's allowlist doesn't have is not sent; one
+    FMC refuses goes into `refused`, so the next devices of the same call don't ask again. None when
+    there is no output to parse."""
+    if cmd not in refused:
+        try:
+            check_command(cmd, supported)
+        except InvalidRequest:
+            refused[cmd] = "FMC doesn't pass this command through (not in its supported list; not sent)"
+    if cmd in refused:
+        evidence[cmd] = f"{NOT_AVAILABLE}: {refused[cmd]}"
+        return None
+    try:
+        text, _ = redact(await run_show(app, record, cmd, domain, supported))
+    except (InvalidRequest, NotFound, UpstreamError) as err:
+        if REFUSED.search(str(err)):
+            refused[cmd] = "FMC doesn't pass this command through (not supported)"
+        evidence[cmd] = f"{NOT_AVAILABLE}: {err}"
+        return None
+    evidence[cmd] = [ln for ln in text.splitlines() if ln.strip()][:max_lines]
+    return text
+
+
+async def device_record(
     app: FmcApp, dev: dict[str, Any], domain: str | None, pair: dict[str, Any] | None = None
 ) -> tuple[str, str]:
     """(the record whose configuration to read, the record show commands run on): the device itself,
@@ -598,7 +632,7 @@ async def branch_status(
     findings: list[dict[str, Any]] = []
     units = ha_units(pair) if pair else []
     names = {name} | {str(u["device"]) for u in units if u.get("device")}
-    cfg, rec = await _device_record(app, dev, domain, pair)
+    cfg, rec = await device_record(app, dev, domain, pair)
     try:
         path = await app.config_path(f"{DEVICES}/{cfg}/routing/policybasedroutes", domain)
         pbr = (await app.all(path, cap=500)).items
@@ -607,23 +641,7 @@ async def branch_status(
         notes.append(f"app routes not read: {err}")
 
     async def show(cmd: str) -> str | None:
-        if cmd not in refused:
-            try:
-                check_command(cmd, supported)
-            except InvalidRequest:
-                refused[cmd] = "FMC doesn't pass this command through (not in its supported list; not sent)"
-        if cmd in refused:
-            evidence[cmd] = f"{NOT_AVAILABLE}: {refused[cmd]}"
-            return None
-        try:
-            text, _ = redact(await run_show(app, rec, cmd, domain, supported))
-        except (InvalidRequest, NotFound, UpstreamError) as err:
-            if REFUSED.search(str(err)):
-                refused[cmd] = "FMC doesn't pass this command through (not supported)"
-            evidence[cmd] = f"{NOT_AVAILABLE}: {err}"
-            return None
-        evidence[cmd] = [ln for ln in text.splitlines() if ln.strip()][:40]
-        return text
+        return await show_on_device(app, rec, cmd, domain, refused, supported, evidence)
 
     if commands:
         for cmd in COMMANDS:
@@ -824,7 +842,8 @@ def register(reg: ToolRegistrar) -> None:
         (they trail the device by up to ~5 minutes, and a link without path monitoring has none: 'not
         available'), and BGP comes from 'show route bgp'. Read-only; queried when called. Path metrics
         cost one FMC request per topology; show commands one per device each (a command FMC refuses is
-        tried once per call); limit them with branch or max_devices."""
+        tried once per call); limit them with branch or max_devices. Whether a branch firewall itself
+        was busy when a link degraded (CPU, throughput, drops over time): fmc_device_metrics."""
         app: FmcApp = get_client(ctx)
         if topology:
             t = await resolve_topology(app, topology, domain)
@@ -933,6 +952,11 @@ def register(reg: ToolRegistrar) -> None:
             notes.append(NO_PATH_METRICS)
         if any(r["interface"] in ("overlay tunnel", "hub") for r in ranked):
             notes.append(FMC_TUNNEL_LAG)
+        if ranked:
+            notes.append(
+                "Was a degraded branch's firewall itself busy (CPU, throughput, drops) when it degraded? "
+                "fmc_device_metrics with device=<the branch> and since=<before the problem began>."
+            )
         if skipped:
             notes.append(
                 f"Show commands skipped on {', '.join(skipped)} (max_devices={max_devices}): no path metrics "
