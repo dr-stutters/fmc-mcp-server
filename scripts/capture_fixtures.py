@@ -13,6 +13,9 @@
     uv run python scripts/capture_fixtures.py --ftd    # device fixtures from the managed FTD named by
                                                        # FMC_LIVE_DEVICE (after tests/live/test_live_ftd.py;
                                                        # also FMC_LIVE_TRACE_TARGET, docs/live-tests.md)
+    uv run python scripts/capture_fixtures.py --interfaces  # every interface collection of the FTD named
+                                                       # by FMC_LIVE_DEVICE (ftd_interface_kinds.json; F58;
+                                                       # keeps the file's `created` spec examples)
     uv run python scripts/capture_fixtures.py --sdwan-routing  # app-aware routing reads (F51b) from the
                                                        # SD-WAN branch named by FMC_LIVE_SDWAN_DEVICE: WAN
                                                        # interfaces, PBR, ECMP zones, the route's ACL
@@ -136,6 +139,41 @@ async def capture_ftd(app: FmcApp, host: str) -> None:
     data = await app.api.post(path, trace, timeout=180)
     (OUT / "ftd_packettracer_drop.json").write_text(json.dumps(scrub(data, host), indent=1) + "\n")
     print("captured ftd_packettracer_drop")
+
+
+INTERFACE_COLLECTIONS = (
+    "physicalinterfaces",
+    "subinterfaces",
+    "etherchannelinterfaces",
+    "bridgegroupinterfaces",
+    "loopbackinterfaces",
+    "virtualtunnelinterfaces",
+    "vlaninterfaces",
+)
+
+
+async def capture_interfaces(app: FmcApp, host: str) -> None:
+    """F58 (GETs only): every interface collection of one FTD, expanded; a collection the model doesn't
+    support is stored as its status and message (FTDv answers 405 for VLAN interfaces)."""
+    from fmc_mcp._core import UpstreamError
+
+    name = os.environ.get("FMC_LIVE_DEVICE") or sys.exit("--interfaces needs FMC_LIVE_DEVICE")
+    devs = await app.all(await app.config_path("devices/devicerecords"))
+    dev = next(d for d in devs.items if d.get("name") == name)
+    path = OUT / "ftd_interface_kinds.json"
+    out: dict[str, Any] = json.loads(path.read_text()) if path.exists() else {}
+    out["device"] = {
+        k: dev.get(k) for k in ("id", "name", "type", "ftdMode", "model", "sw_version") if dev.get(k)
+    }
+    for coll in INTERFACE_COLLECTIONS:
+        try:
+            out[coll] = await app.api.get(
+                await app.config_path(f"devices/devicerecords/{dev['id']}/{coll}"), {"expanded": "true"}
+            )
+        except UpstreamError as e:
+            out[coll] = {"status": e.status_code, "description": str(e).split(": ", 1)[-1]}
+    path.write_text(json.dumps(scrub(out, host), indent=1) + "\n")
+    print("captured ftd_interface_kinds")
 
 
 async def capture_sdwan_routing(app: FmcApp, host: str) -> None:
@@ -305,6 +343,13 @@ async def main() -> None:
         try:
             OUT.mkdir(parents=True, exist_ok=True)
             await capture_sdwan_metrics(app, host)
+        finally:
+            await app.aclose()
+        return
+    if "--interfaces" in sys.argv:
+        try:
+            OUT.mkdir(parents=True, exist_ok=True)
+            await capture_interfaces(app, host)
         finally:
             await app.aclose()
         return

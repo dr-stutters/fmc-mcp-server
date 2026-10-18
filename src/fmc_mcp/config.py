@@ -53,6 +53,13 @@ class Settings(BaseServerSettings):
         description="Directory fmc_export_policy_bundle also writes each bundle to (fmc_diff_policy_bundle "
         "reads bundle file names from). Unset: bundles are only returned inline, nothing is written.",
     )
+    pki_dir: Path | None = Field(
+        default=None,
+        description="Directory on the server host that fmc_import_certificate_files reads PEM certificate, "
+        "key and passphrase files from (an existing CA for decrypt-resign, a server certificate for "
+        "decrypt-known-key), so private keys never pass through MCP. Unset: file imports are off "
+        "(fmc_create_internal_ca still works: FMC generates the key).",
+    )
     allow_ignore_warning: bool = Field(
         default=False,
         description="Allow fmc_deploy(ignore_warning=true). Even then the preview must list the FMC "
