@@ -201,6 +201,11 @@ async def test_user_without_source(lab: respx.MockRouter, monkeypatch: pytest.Mo
     monkeypatch.setattr(prove, "USER_IP_RESOLVERS", [sessions])
     (row,) = (await call({"device": "mcp-ftd1", "flows": [flow]}))["results"]
     assert (row["result"], row["flow"]) == ("pass", "icmp 10.99.1.10 -> 192.0.2.10")
+    (row,) = (await call({"device": "mcp-ftd1", "flows": [{**flow, "user": "LAB\\carol"}]}))["results"]
+    assert row["result"] == "error" and "no active session" in row["note"]
+    tracer(lab, lambda b: with_user(ALLOW, "bob"))
+    (row,) = (await call({"device": "mcp-ftd1", "flows": [flow]}))["results"]
+    assert row["result"] == "mismatch" and "sees LAB\\bob on 10.99.1.10, not alice" in row["note"]
 
 
 async def test_non_policy_drops_are_mismatches(lab: respx.MockRouter) -> None:

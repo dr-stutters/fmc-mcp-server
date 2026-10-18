@@ -181,8 +181,8 @@ def _same_user(expected: str, seen: str | None) -> bool:
     return e == s or e.rpartition("\\")[2] == s.rpartition("\\")[2]
 
 
-def judge(exp: Expectation, trace: dict[str, Any]) -> dict[str, Any]:
-    """The row for one traced flow."""
+def judge(exp: Expectation, trace: dict[str, Any], source: str | None = None) -> dict[str, Any]:
+    """The row for one traced flow (`source`: the IP traced, when it came from a user lookup)."""
     verdict, delivery = policy_verdict(trace)
     rule = trace.get("verdict_rule")
     seen = user_seen(trace)
@@ -205,9 +205,10 @@ def judge(exp: Expectation, trace: dict[str, Any]) -> dict[str, Any]:
     if exp.user and not _same_user(exp.user, seen):
         if result == "pass":
             result = "mismatch"
+        ip = source or exp.source
+        whom = "that user" if seen else "an unidentified host"
         notes.append(
-            f"the device sees {seen or 'no user'} on {exp.source}, not {exp.user}: the verdict is for "
-            + ("that user" if seen else "an unidentified host")
+            f"the device sees {seen or 'no user'} on {ip}, not {exp.user}: the verdict is for {whom}"
         )
     row: dict[str, Any] = {
         "result": result,
@@ -319,7 +320,7 @@ def register(reg: ToolRegistrar) -> None:
                     }
                 )
                 continue
-            row = {**base, **judge(exp, traces[0]), "input_interface": out.get("input_interface")}
+            row = {**base, **judge(exp, traces[0], source), "input_interface": out.get("input_interface")}
             if len(traces) > 1:
                 row["units"] = len(traces)
             rows.append({k: v for k, v in row.items() if v is not None})
