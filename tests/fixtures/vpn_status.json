@@ -1,0 +1,485 @@
+{
+ "_source": "Synthesized 2026-10-18 for F41 (fmc_vpn_status) from the FMC 10.0.1 spec (FTDS2SVpnModel, VpnEndpoint, TunnelStatus with IVpnPeer vpnInterface/vtiInterface, TunnelDetail example verbatim) and the FTD 10.0 CLI formats of show crypto ikev2 sa / ipsec sa / vpn-sessiondb l2l / route (show crypto ikev2 stats is the recorded one from ftd_sdwan_show.json). The lab had no VPN topology during Stage 1 (0 in Global/mcp-test-leaf); re-record from mcp-fw-t1 in Stage 2. Documentation addresses only.",
+ "devices/devicerecords": {
+  "items": [
+   {
+    "id": "d-a",
+    "name": "branch-a",
+    "type": "Device",
+    "isConnected": true,
+    "healthStatus": "green"
+   },
+   {
+    "id": "d-b",
+    "name": "branch-b",
+    "type": "Device",
+    "isConnected": true,
+    "healthStatus": "green"
+   },
+   {
+    "id": "d-c",
+    "name": "branch-c",
+    "type": "Device",
+    "isConnected": false,
+    "healthStatus": "disabled"
+   }
+  ],
+  "paging": {
+   "count": 3
+  }
+ },
+ "devices/devicerecords/d-a/virtualtunnelinterfaces": {
+  "items": [
+   {
+    "id": "vti-a",
+    "name": "Tunnel1",
+    "ifname": "vti-to-b",
+    "type": "VTIInterface",
+    "tunnelType": "STATIC",
+    "tunnelId": 1,
+    "enabled": true,
+    "ipv4": {
+     "static": {
+      "address": "169.254.10.1",
+      "netmask": "255.255.255.252"
+     }
+    },
+    "ipsecMode": "ipv4"
+   }
+  ],
+  "paging": {
+   "count": 1
+  }
+ },
+ "devices/devicerecords/d-b/virtualtunnelinterfaces": {
+  "items": [
+   {
+    "id": "vti-b",
+    "name": "Tunnel1",
+    "ifname": "vti-to-a",
+    "type": "VTIInterface",
+    "tunnelType": "STATIC",
+    "tunnelId": 1,
+    "enabled": true,
+    "ipv4": {
+     "static": {
+      "address": "169.254.10.2",
+      "netmask": "255.255.255.252"
+     }
+    },
+    "ipsecMode": "ipv4"
+   }
+  ],
+  "paging": {
+   "count": 1
+  }
+ },
+ "policy/ftds2svpns": {
+  "items": [
+   {
+    "id": "topo-vti",
+    "name": "mcp-fw-vti",
+    "type": "FTDS2SVpn",
+    "topologyType": "POINT_TO_POINT",
+    "routeBased": true,
+    "ikeV1Enabled": false,
+    "ikeV2Enabled": true
+   },
+   {
+    "id": "topo-pb",
+    "name": "mcp-fw-pb",
+    "type": "FTDS2SVpn",
+    "topologyType": "POINT_TO_POINT",
+    "routeBased": false,
+    "ikeV1Enabled": false,
+    "ikeV2Enabled": true
+   },
+   {
+    "id": "topo-bc",
+    "name": "mcp-fw-bc",
+    "type": "FTDS2SVpn",
+    "topologyType": "POINT_TO_POINT",
+    "routeBased": false,
+    "ikeV1Enabled": false,
+    "ikeV2Enabled": true
+   }
+  ],
+  "paging": {
+   "count": 3
+  }
+ },
+ "policy/ftds2svpns/topo-vti/endpoints": {
+  "items": [
+   {
+    "id": "ep-va",
+    "name": "branch-a",
+    "type": "EndPoint",
+    "peerType": "PEER",
+    "extranet": false,
+    "device": {
+     "id": "d-a",
+     "name": "branch-a",
+     "type": "Device"
+    },
+    "interface": {
+     "id": "vti-a",
+     "name": "Tunnel1",
+     "type": "VTIInterface"
+    },
+    "connectionType": "BIDIRECTIONAL"
+   },
+   {
+    "id": "ep-vb",
+    "name": "branch-b",
+    "type": "EndPoint",
+    "peerType": "PEER",
+    "extranet": false,
+    "device": {
+     "id": "d-b",
+     "name": "branch-b",
+     "type": "Device"
+    },
+    "interface": {
+     "id": "vti-b",
+     "name": "Tunnel1",
+     "type": "VTIInterface"
+    },
+    "connectionType": "BIDIRECTIONAL"
+   }
+  ],
+  "paging": {
+   "count": 2
+  }
+ },
+ "policy/ftds2svpns/topo-pb/endpoints": {
+  "items": [
+   {
+    "id": "ep-pa",
+    "name": "branch-a",
+    "type": "EndPoint",
+    "peerType": "PEER",
+    "extranet": false,
+    "device": {
+     "id": "d-a",
+     "name": "branch-a",
+     "type": "Device"
+    },
+    "interface": {
+     "id": "d-a-e0",
+     "name": "GigabitEthernet0/0",
+     "type": "PhysicalInterface"
+    },
+    "connectionType": "BIDIRECTIONAL",
+    "protectedNetworks": {
+     "networks": [
+      {
+       "id": "net-a",
+       "name": "branch-a-lan",
+       "type": "Network"
+      }
+     ]
+    },
+    "enableNATExempt": true,
+    "insideInterface": [
+     {
+      "id": "z-in",
+      "name": "inside-zone",
+      "type": "SecurityZone"
+     }
+    ]
+   },
+   {
+    "id": "ep-px",
+    "name": "hq-asa",
+    "type": "EndPoint",
+    "peerType": "PEER",
+    "extranet": true,
+    "extranetInfo": {
+     "name": "hq-asa",
+     "ipAddress": "198.51.100.7",
+     "isDynamicIP": false
+    },
+    "protectedNetworks": {
+     "networks": [
+      {
+       "id": "net-hq",
+       "name": "hq-lan",
+       "type": "Network"
+      }
+     ]
+    }
+   }
+  ],
+  "paging": {
+   "count": 2
+  }
+ },
+ "policy/ftds2svpns/topo-bc/endpoints": {
+  "items": [
+   {
+    "id": "ep-cb",
+    "name": "branch-b",
+    "type": "EndPoint",
+    "peerType": "PEER",
+    "extranet": false,
+    "device": {
+     "id": "d-b",
+     "name": "branch-b",
+     "type": "Device"
+    },
+    "interface": {
+     "id": "d-b-e0",
+     "name": "GigabitEthernet0/0",
+     "type": "PhysicalInterface"
+    },
+    "connectionType": "BIDIRECTIONAL"
+   },
+   {
+    "id": "ep-cc",
+    "name": "branch-c",
+    "type": "EndPoint",
+    "peerType": "PEER",
+    "extranet": false,
+    "device": {
+     "id": "d-c",
+     "name": "branch-c",
+     "type": "Device"
+    },
+    "interface": {
+     "id": "d-c-e0",
+     "name": "GigabitEthernet0/0",
+     "type": "PhysicalInterface"
+    },
+    "connectionType": "BIDIRECTIONAL"
+   }
+  ],
+  "paging": {
+   "count": 2
+  }
+ },
+ "health/tunnelstatuses": {
+  "items": [
+   {
+    "id": "tun-ab",
+    "type": "TunnelStatus",
+    "vpnTopology": {
+     "id": "topo-vti",
+     "name": "mcp-fw-vti",
+     "type": "FTDS2SVPNTopology"
+    },
+    "peerA": {
+     "device": {
+      "id": "d-a",
+      "name": "branch-a",
+      "type": "Device"
+     },
+     "ipAddresses": {
+      "v4": [
+       "203.0.113.1"
+      ]
+     },
+     "peerType": "FTD",
+     "vpnInterface": {
+      "name": "outside",
+      "ipAddress": "203.0.113.1",
+      "interfaceType": "STATIC"
+     },
+     "vtiInterface": {
+      "name": "vti-to-b",
+      "interfaceType": "STATIC"
+     }
+    },
+    "peerB": {
+     "device": {
+      "id": "d-b",
+      "name": "branch-b",
+      "type": "Device"
+     },
+     "ipAddresses": {
+      "v4": [
+       "203.0.113.2"
+      ]
+     },
+     "peerType": "FTD",
+     "vpnInterface": {
+      "name": "outside",
+      "ipAddress": "203.0.113.2",
+      "interfaceType": "STATIC"
+     },
+     "vtiInterface": {
+      "name": "vti-to-a",
+      "interfaceType": "STATIC"
+     }
+    },
+    "state": "TUNNEL_UP",
+    "message": "Tunnel is up",
+    "lastChange": 1792226400
+   },
+   {
+    "id": "tun-ax",
+    "type": "TunnelStatus",
+    "vpnTopology": {
+     "id": "topo-pb",
+     "name": "mcp-fw-pb",
+     "type": "FTDS2SVPNTopology"
+    },
+    "peerA": {
+     "device": {
+      "id": "d-a",
+      "name": "branch-a",
+      "type": "Device"
+     },
+     "ipAddresses": {
+      "v4": [
+       "203.0.113.1"
+      ]
+     },
+     "peerType": "FTD",
+     "vpnInterface": {
+      "name": "outside",
+      "ipAddress": "203.0.113.1",
+      "interfaceType": "STATIC"
+     }
+    },
+    "peerB": {
+     "extranet": {
+      "name": "hq-asa"
+     },
+     "peerType": "EXTRANET",
+     "ipAddresses": {
+      "v4": [
+       "198.51.100.7"
+      ]
+     }
+    },
+    "state": "TUNNEL_DOWN",
+    "message": "Tunnel is down",
+    "lastChange": 1792226100
+   },
+   {
+    "id": "tun-bc",
+    "type": "TunnelStatus",
+    "vpnTopology": {
+     "id": "topo-bc",
+     "name": "mcp-fw-bc",
+     "type": "FTDS2SVPNTopology"
+    },
+    "peerA": {
+     "device": {
+      "id": "d-b",
+      "name": "branch-b",
+      "type": "Device"
+     },
+     "ipAddresses": {
+      "v4": [
+       "203.0.113.2"
+      ]
+     },
+     "peerType": "FTD",
+     "vpnInterface": {
+      "name": "outside",
+      "ipAddress": "203.0.113.2",
+      "interfaceType": "STATIC"
+     }
+    },
+    "peerB": {
+     "device": {
+      "id": "d-c",
+      "name": "branch-c",
+      "type": "Device"
+     },
+     "ipAddresses": {
+      "v4": [
+       "192.0.2.3"
+      ]
+     },
+     "peerType": "FTD",
+     "vpnInterface": {
+      "name": "outside",
+      "ipAddress": "192.0.2.3",
+      "interfaceType": "STATIC"
+     }
+    },
+    "state": "UNKNOWN"
+   }
+  ],
+  "paging": {
+   "count": 3
+  }
+ },
+ "show": {
+  "d-a": {
+   "show crypto ikev2 sa": "IKEv2 SAs:\n\nSession-id:7, Status:UP-ACTIVE, IKE count:1, CHILD count:1\n\nTunnel-id                 Local                                               Remote                                                  fvrf/ivrf            Status         Role\n 47380933          203.0.113.1/500                                       203.0.113.2/500                                     Global/Global         READY    INITIATOR\n      Encr: AES-GCM, keysize: 256, Hash: N/A, DH Grp:21, Auth sign: PSK, Auth verify: PSK\n      Life/Active Time: 86400/583 sec\nChild sa: local selector  0.0.0.0/0 - 255.255.255.255/65535\n          remote selector 0.0.0.0/0 - 255.255.255.255/65535\n          ESP spi in/out: 0xc25ab0b2/0x1d1c5b41\n",
+   "show crypto ipsec sa": "interface: vti-to-b\n    Crypto map tag: __vti-crypto-map-Tunnel1-0-1, seq num: 65280, local addr: 203.0.113.1\n\n      Protected vrf (ivrf): Global\n      local ident (addr/mask/prot/port): (0.0.0.0/0.0.0.0/0/0)\n      remote ident (addr/mask/prot/port): (0.0.0.0/0.0.0.0/0/0)\n      current_peer: 203.0.113.2\n\n\n      #pkts encaps: 120, #pkts encrypt: 120, #pkts digest: 120\n      #pkts decaps: 0, #pkts decrypt: 0, #pkts verify: 0\n      #pkts compressed: 0, #pkts decompressed: 0\n      #pkts not compressed: 120, #pkts comp failed: 0, #pkts decomp failed: 0\n      #pre-frag successes: 0, #pre-frag failures: 0, #fragments created: 0\n      #PMTUs sent: 0, #PMTUs rcvd: 0, #decapsulated frgs needing reassembly: 0\n      #TFC rcvd: 0, #TFC sent: 0\n      #Valid ICMP Errors rcvd: 0, #Invalid ICMP Errors rcvd: 0\n      #send errors: 0, #recv errors: 0\n\n      local crypto endpt.: 203.0.113.1/500, remote crypto endpt.: 203.0.113.2/500\n      path mtu 1500, ipsec overhead 55(36), media mtu 1500\n      PMTU time remaining (sec): 0, DF policy: copy-df\n      ICMP error validation: disabled, TFC packets: disabled\n      current outbound spi: 1D1C5B41\n      current inbound spi : C25AB0B2\n\n    inbound esp sas:\n      spi: 0xC25AB0B2 (3260723378)\n         SA State: active\n         transform: esp-aes-gcm-256 esp-null-hmac no compression\n         in use settings ={L2L, Tunnel, IKEv2, VTI, }\n         slot: 0, conn_id: 7, crypto-map: __vti-crypto-map-Tunnel1-0-1\n         sa timing: remaining key lifetime (kB/sec): (4373999/28215)\n         IV size: 8 bytes\n         replay detection support: Y\n         Anti replay bitmap:\n          0x00000000 0x00000001\n    outbound esp sas:\n      spi: 0x1D1C5B41 (488397633)\n         SA State: active\n         transform: esp-aes-gcm-256 esp-null-hmac no compression\n         in use settings ={L2L, Tunnel, IKEv2, VTI, }\n         slot: 0, conn_id: 7, crypto-map: __vti-crypto-map-Tunnel1-0-1\n         sa timing: remaining key lifetime (kB/sec): (4055039/28215)\n         IV size: 8 bytes\n         replay detection support: Y\n         Anti replay bitmap:\n          0x00000000 0x00000001\n",
+   "show vpn-sessiondb l2l": "\nSession Type: LAN-to-LAN\n\nConnection   : 203.0.113.2\nIndex        : 7                      IP Addr      : 203.0.113.2\nProtocol     : IKEv2 IPsec\nEncryption   : IKEv2: (1)AES-GCM-256  IPsec: (1)AES-GCM-256\nHashing      : IKEv2: (1)none  IPsec: (1)none\nBytes Tx     : 14400                  Bytes Rx     : 0\nLogin Time   : 09:41:12 UTC Sun Oct 18 2026\nDuration     : 0h:09m:43s\nTunnel Zone  : 0\n",
+   "show crypto ikev2 stats": "\nGlobal IKEv2 Statistics\n  Active Tunnels:                          0\n  Previous Tunnels:                       13\n  In Octets:                           25627\n  In Packets:                            250\n  In Drop Packets:                         0\n  In Drop Fragments:                       0\n  In Notifys:                            118\n  In P2 Exchange:                        208\n  In P2 Exchange Invalids:                 0\n  In P2 Exchange Rejects:                  0\n  In IPSEC Delete:                         0\n  In IKE Delete:                           0\n  Out Octets:                          63321\n  Out Packets:                           373\n  Out Drop Packets:                        0\n  Out Drop Fragments:                      0\n  Out Notifys:                           163\n  Out P2 Exchange:                       276\n  Out P2 Exchange Invalids:                0\n  Out P2 Exchange Rejects:                 8\n  Out IPSEC Delete:                        4\n  Out IKE Delete:                          4\n  SAs Locally Initiated:                  21\n  SAs Locally Initiated Failed:           12\n  SAs Remotely Initiated:                  0\n  SAs Remotely Initiated Failed:           0\n  System Capacity Failures:                0\n  Authentication Failures:                 8\n  Decrypt Failures:                        0\n  Hash Failures:                           0\n  Invalid SPI:                             0\n  In Configs:                             20\n  Out Configs:                            18\n  In Configs Rejects:                      0\n  Out Configs Rejects:                     0\n  Previous Tunnels:                       13\n  Previous Tunnels Wraps:                  0\n  In DPD Messages:                       180\n  Out DPD Messages:                      189\n  Out NAT Keepalives:                      0\n  IKE Rekey Locally Initiated:             0\n  IKE Rekey Remotely Initiated:            0\n  Locally Initiated IKE Rekey Rejected:    0\n  Remotely Initiated IKE Rekey Rejected:   0\n  CHILD Rekey Locally Initiated:           0\n  CHILD Rekey Remotely Initiated:          0\n  In Intermediate Exchange:                0\n  Out Intermediate Exchange:               0\n  In Followup KE Exchange:                 0\n  Out Followup KE Exchange:                0\n\nIKEV2 Call Admission Statistics\n  Max Active SAs:                   No Limit\n  Max In-Negotiation SAs:                252\n  Max Init Q Limit:                      100\n  Cookie Challenge Threshold:            126\n  Active SAs:                              0\n  In-Negotiation SAs:                      0\n  In-Negotiation SAs High water mark:      2\n  SA_INIT Queue High water mark:           1\n  Incoming Requests:                       0\n  Incoming Requests Accepted:              0\n  Incoming Requests Rejected:              0\n  Outgoing Requests:                      25\n  Outgoing Requests Accepted:             25\n  Outgoing Requests Rejected:              0\n  Rejected Requests:                       0\n  Rejected Over Max SA limit:              0\n  Rejected Low Resources:                  0\n  Rejected Reboot In Progress:             0\n  SA_INIT queue drops:                     0\n  Cookie Challenges:                       0\n  Cookie Challenges Passed:                0\n  Cookie Challenges Failed:                0\n\nIKEV2 error counter Statistics\n  Retransmitted packets:                   7\n  Neg. context currently in use:           8\n  Retransmit limit exceeded:              13\n  Initial exchange failed:                 4\n  Auth exchange failed:                    8\n\nLast clearing time: Never\nLast cleared: Never\n",
+   "show route": "\nGateway of last resort is 203.0.113.254 to network 0.0.0.0\n\nS*       0.0.0.0 0.0.0.0 [1/0] via 203.0.113.254, outside\nC        10.1.1.0 255.255.255.0 is directly connected, inside\nL        10.1.1.1 255.255.255.255 is directly connected, inside\nS        10.2.2.0 255.255.255.0 [1/0] via 169.254.10.2, vti-to-b\nB        10.2.3.0 255.255.255.0 [20/0] via 169.254.10.2, 00:09:12\nC        169.254.10.0 255.255.255.252 is directly connected, vti-to-b\nL        169.254.10.1 255.255.255.255 is directly connected, vti-to-b\nC        203.0.113.0 255.255.255.0 is directly connected, outside\nL        203.0.113.1 255.255.255.255 is directly connected, outside\n"
+  },
+  "d-b": {
+   "show crypto ikev2 sa": "IKEv2 SAs:\n\nSession-id:3, Status:UP-ACTIVE, IKE count:1, CHILD count:1\n\nTunnel-id Local                                               Remote                                                  Status         Role\n 88213412 203.0.113.2/500                                     203.0.113.1/500                                         READY    RESPONDER\n      Encr: AES-GCM, keysize: 256, Hash: N/A, DH Grp:21, Auth sign: PSK, Auth verify: PSK\n      Life/Active Time: 86400/581 sec\nChild sa: local selector  0.0.0.0/0 - 255.255.255.255/65535\n          remote selector 0.0.0.0/0 - 255.255.255.255/65535\n          ESP spi in/out: 0x1d1c5b41/0xc25ab0b2\n",
+   "show crypto ipsec sa": "interface: vti-to-a\n    Crypto map tag: __vti-crypto-map-Tunnel1-0-1, seq num: 65280, local addr: 203.0.113.2\n\n      Protected vrf (ivrf): Global\n      local ident (addr/mask/prot/port): (0.0.0.0/0.0.0.0/0/0)\n      remote ident (addr/mask/prot/port): (0.0.0.0/0.0.0.0/0/0)\n      current_peer: 203.0.113.1\n\n\n      #pkts encaps: 0, #pkts encrypt: 0, #pkts digest: 0\n      #pkts decaps: 120, #pkts decrypt: 120, #pkts verify: 120\n      #pkts compressed: 0, #pkts decompressed: 0\n      #pkts not compressed: 0, #pkts comp failed: 0, #pkts decomp failed: 0\n      #pre-frag successes: 0, #pre-frag failures: 0, #fragments created: 0\n      #PMTUs sent: 0, #PMTUs rcvd: 0, #decapsulated frgs needing reassembly: 0\n      #TFC rcvd: 0, #TFC sent: 0\n      #Valid ICMP Errors rcvd: 0, #Invalid ICMP Errors rcvd: 0\n      #send errors: 0, #recv errors: 0\n\n      local crypto endpt.: 203.0.113.2/500, remote crypto endpt.: 203.0.113.1/500\n      path mtu 1500, ipsec overhead 55(36), media mtu 1500\n      PMTU time remaining (sec): 0, DF policy: copy-df\n      ICMP error validation: disabled, TFC packets: disabled\n      current outbound spi: 1D1C5B41\n      current inbound spi : C25AB0B2\n\n    inbound esp sas:\n      spi: 0xC25AB0B2 (3260723378)\n         SA State: active\n         transform: esp-aes-gcm-256 esp-null-hmac no compression\n         in use settings ={L2L, Tunnel, IKEv2, VTI, }\n         slot: 0, conn_id: 7, crypto-map: __vti-crypto-map-Tunnel1-0-1\n         sa timing: remaining key lifetime (kB/sec): (4373999/28213)\n         IV size: 8 bytes\n         replay detection support: Y\n         Anti replay bitmap:\n          0x00000000 0x00000001\n    outbound esp sas:\n      spi: 0x1D1C5B41 (488397633)\n         SA State: active\n         transform: esp-aes-gcm-256 esp-null-hmac no compression\n         in use settings ={L2L, Tunnel, IKEv2, VTI, }\n         slot: 0, conn_id: 7, crypto-map: __vti-crypto-map-Tunnel1-0-1\n         sa timing: remaining key lifetime (kB/sec): (4055039/28213)\n         IV size: 8 bytes\n         replay detection support: Y\n         Anti replay bitmap:\n          0x00000000 0x00000001\n",
+   "show vpn-sessiondb l2l": "\nSession Type: LAN-to-LAN\n\nConnection   : 203.0.113.1\nIndex        : 7                      IP Addr      : 203.0.113.1\nProtocol     : IKEv2 IPsec\nEncryption   : IKEv2: (1)AES-GCM-256  IPsec: (1)AES-GCM-256\nHashing      : IKEv2: (1)none  IPsec: (1)none\nBytes Tx     : 0                  Bytes Rx     : 14400\nLogin Time   : 09:41:12 UTC Sun Oct 18 2026\nDuration     : 0h:09m:41s\nTunnel Zone  : 0\n",
+   "show crypto ikev2 stats": "\nGlobal IKEv2 Statistics\n  Active Tunnels:                          0\n  Previous Tunnels:                       13\n  In Octets:                           25627\n  In Packets:                            250\n  In Drop Packets:                         0\n  In Drop Fragments:                       0\n  In Notifys:                            118\n  In P2 Exchange:                        208\n  In P2 Exchange Invalids:                 0\n  In P2 Exchange Rejects:                  0\n  In IPSEC Delete:                         0\n  In IKE Delete:                           0\n  Out Octets:                          63321\n  Out Packets:                           373\n  Out Drop Packets:                        0\n  Out Drop Fragments:                      0\n  Out Notifys:                           163\n  Out P2 Exchange:                       276\n  Out P2 Exchange Invalids:                0\n  Out P2 Exchange Rejects:                 8\n  Out IPSEC Delete:                        4\n  Out IKE Delete:                          4\n  SAs Locally Initiated:                  21\n  SAs Locally Initiated Failed:           12\n  SAs Remotely Initiated:                  0\n  SAs Remotely Initiated Failed:           0\n  System Capacity Failures:                0\n  Authentication Failures:                 0\n  Decrypt Failures:                        0\n  Hash Failures:                           0\n  Invalid SPI:                             0\n  In Configs:                             20\n  Out Configs:                            18\n  In Configs Rejects:                      0\n  Out Configs Rejects:                     0\n  Previous Tunnels:                       13\n  Previous Tunnels Wraps:                  0\n  In DPD Messages:                       180\n  Out DPD Messages:                      189\n  Out NAT Keepalives:                      0\n  IKE Rekey Locally Initiated:             0\n  IKE Rekey Remotely Initiated:            0\n  Locally Initiated IKE Rekey Rejected:    0\n  Remotely Initiated IKE Rekey Rejected:   0\n  CHILD Rekey Locally Initiated:           0\n  CHILD Rekey Remotely Initiated:          0\n  In Intermediate Exchange:                0\n  Out Intermediate Exchange:               0\n  In Followup KE Exchange:                 0\n  Out Followup KE Exchange:                0\n\nIKEV2 Call Admission Statistics\n  Max Active SAs:                   No Limit\n  Max In-Negotiation SAs:                252\n  Max Init Q Limit:                      100\n  Cookie Challenge Threshold:            126\n  Active SAs:                              0\n  In-Negotiation SAs:                      0\n  In-Negotiation SAs High water mark:      2\n  SA_INIT Queue High water mark:           1\n  Incoming Requests:                       0\n  Incoming Requests Accepted:              0\n  Incoming Requests Rejected:              0\n  Outgoing Requests:                      25\n  Outgoing Requests Accepted:             25\n  Outgoing Requests Rejected:              0\n  Rejected Requests:                       0\n  Rejected Over Max SA limit:              0\n  Rejected Low Resources:                  0\n  Rejected Reboot In Progress:             0\n  SA_INIT queue drops:                     0\n  Cookie Challenges:                       0\n  Cookie Challenges Passed:                0\n  Cookie Challenges Failed:                0\n\nIKEV2 error counter Statistics\n  Retransmitted packets:                   7\n  Neg. context currently in use:           8\n  Retransmit limit exceeded:              13\n  Initial exchange failed:                 4\n  Auth exchange failed:                    8\n\nLast clearing time: Never\nLast cleared: Never\n",
+   "show route": "\nGateway of last resort is 203.0.113.254 to network 0.0.0.0\n\nS*       0.0.0.0 0.0.0.0 [1/0] via 203.0.113.254, outside\nC        10.2.2.0 255.255.255.0 is directly connected, inside\nL        10.2.2.1 255.255.255.255 is directly connected, inside\nC        169.254.10.0 255.255.255.252 is directly connected, vti-to-a\nL        169.254.10.2 255.255.255.255 is directly connected, vti-to-a\nC        203.0.113.0 255.255.255.0 is directly connected, outside\nL        203.0.113.2 255.255.255.255 is directly connected, outside\n"
+  }
+ },
+ "tunneldetails": {
+  "items": [
+   {
+    "peerA": {
+     "device": {
+      "id": "d-a",
+      "name": "branch-a",
+      "type": "Device"
+     },
+     "bytesTx": 14400,
+     "bytesRx": 0,
+     "errorsTx": 0,
+     "errorsRx": 0,
+     "port": 500,
+     "authMode": "PRESHARED_KEY",
+     "vpnInterfaceIp": "203.0.113.1",
+     "securityAssociations": [
+      {
+       "protectedNetwork": "0.0.0.0/0.0.0.0/0/0",
+       "inUseSettings": "L2L, Tunnel, IKEv2",
+       "packetEncaps": 120,
+       "packetDcaps": 0,
+       "packetEncrypt": 120,
+       "packetDecrypt": 0,
+       "inboundSpi": {
+        "id": "0xC25AB0B2",
+        "secondsRemaining": 28215,
+        "bytesRemaining": 4373999
+       },
+       "outboundSpi": {
+        "id": "0x1D1C5B41",
+        "secondsRemaining": 28215,
+        "bytesRemaining": 4055039
+       }
+      }
+     ]
+    },
+    "peerB": {
+     "device": {
+      "id": "d-b",
+      "name": "branch-b",
+      "type": "Device"
+     },
+     "bytesTx": 0,
+     "bytesRx": 14400,
+     "errorsTx": 0,
+     "errorsRx": 0,
+     "port": 500,
+     "authMode": "PRESHARED_KEY",
+     "vpnInterfaceIp": "203.0.113.2",
+     "securityAssociations": []
+    },
+    "type": "TunnelDetail"
+   }
+  ],
+  "paging": {
+   "count": 1
+  }
+ }
+}

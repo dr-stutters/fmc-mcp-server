@@ -48,6 +48,7 @@ from fmc_mcp.tools import (
     tickets,
     troubleshoot,
     vpn,
+    vpn_status,
 )
 
 INSTRUCTIONS = """
@@ -109,6 +110,9 @@ Workflows:
   -> fmc_deploy.
   Prompts: fmc_policy_cleanup (findings -> approved cleanup -> diff + re-audit) and fmc_rule_change_review
   (one rule change with before/after flows, shadowing check and a deploy plan with rollback).
+- Site-to-site VPN: fmc_create_s2s_vpn -> fmc_deploy both peers -> fmc_vpn_status (every topology's
+  tunnels with what each device says: IKE and IPsec SAs, traffic each way, routes over the VTIs;
+  degraded tunnels first).
 - Health: fmc_list_devices, fmc_device_health, fmc_list_vpn_tunnels; "what changed or broke in the
   last hour?": fmc_recent_activity (health alerts + audit + deployments), fmc_list_health_alerts.
   A full ranked review of the estate: the fmc_firewall_health_review prompt.
@@ -194,6 +198,7 @@ def create_server(
             sdwan.register,
             templates.register,
             sdwan_status.register,
+            vpn_status.register,
             activity.register,
             platform_settings.register,
             platform_access.register,

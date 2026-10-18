@@ -814,6 +814,10 @@
       "tier": "read",
       "title": "Version and upgrade status"
     },
+    "fmc_vpn_status": {
+      "tier": "read",
+      "title": "VPN status"
+    },
     "fmc_where_used": {
       "tier": "read",
       "title": "Where is an object used"
