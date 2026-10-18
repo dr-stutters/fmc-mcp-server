@@ -13,7 +13,10 @@
   (`fmc_configure_ospf` on the hub and spokes, then deploy). `overlay='ospf'` with spokes now requires
   `spoke_loopbacks`; with a backup hub or `backup_wan_interface` it is blocked (not verified live).
   `fmc_update_sdwan_topology(add_spokes=..., spoke_loopbacks=...)` does the same for spokes added to an OSPF
-  overlay. The tool code itself has not run against FMC yet (unit tests on recorded and spec-shaped responses).
+  overlay. Live on FMC 10.0.1 (mcp-sdwan-t1, main 25d1ae7): one `fmc_create_sdwan_topology` call built the
+  overlay with three unnumbered spokes, and after `fmc_configure_ospf` and one deploy every spoke installed OSPF
+  routes and all host pairs pinged; removing a spoke and adding it back with `fmc_update_sdwan_topology` reused its
+  loopback and restored its routes.
 
 ### Fixed
 - **`fmc_sdwan_status`, from the 0.13.1 re-proof:**
