@@ -264,12 +264,57 @@ def choose_path(
     return usable[0][1], f"first usable interface in configured order{note}"
 
 
-async def _device_record(app: FmcApp, dev: dict[str, Any], domain: str | None) -> str:
-    """The device record a show command runs on: the device, or an HA pair's primary unit."""
+async def _device_record(
+    app: FmcApp, dev: dict[str, Any], domain: str | None, pair: dict[str, Any] | None = None
+) -> tuple[str, str]:
+    """(the record whose configuration to read, the record show commands run on): the device itself,
+    or for an HA pair its primary (FMC keeps the pair's configuration there) and its active unit (the
+    standby says 'Statistics not available on standby node'), the primary when no unit is active."""
     if dev.get("type") != "DeviceHAPair":
-        return str(dev["id"])
-    pair = await app.api.get(f"{await app.config_path(HA_PAIRS, domain)}/{dev['id']}")
-    return str(((pair or {}).get("primary") or {}).get("id") or dev["id"])
+        return str(dev["id"]), str(dev["id"])
+    if pair is None:
+        pair = await app.api.get(f"{await app.config_path(HA_PAIRS, domain)}/{dev['id']}")
+    primary = str(((pair or {}).get("primary") or {}).get("id") or dev["id"])
+    for u in ha_units(pair or {}):
+        if str(u.get("state") or "").lower() == "active" and u.get("id"):
+            return primary, str(u["id"])
+    return primary, primary
+
+
+def ha_units(pair: dict[str, Any]) -> list[dict[str, Any]]:
+    """The units of an HA pair with FMC's failover state of each (metadata.<side>Status.currentStatus)."""
+    meta = pair.get("metadata") or {}
+    out = []
+    for side in ("primary", "secondary"):
+        unit = pair.get(side) or {}
+        if unit:
+            state = (meta.get(f"{side}Status") or {}).get("currentStatus")
+            out.append({"role": side, "device": unit.get("name"), "id": unit.get("id"), "state": state})
+    return out
+
+
+def is_me(peer: str | None, names: set[str]) -> bool:
+    """A tunnel end names this device: its own name, an HA member's name, or FMC's '<pair>[<active
+    unit>]' form for an HA pair."""
+    if not peer:
+        return False
+    return peer in names or any(peer.startswith(f"{n}[") for n in names)
+
+
+def ha_findings(name: str, units: list[dict[str, Any]], topology: Any) -> list[dict[str, Any]]:
+    """A unit that is neither active nor standby (FMC: Failed, Disabled, ...) leaves the pair without
+    failover; no active unit at all takes the hub down."""
+    out = []
+    known = [u for u in units if u.get("state")]
+    for u in known:
+        state = str(u["state"])
+        if not state.lower().startswith(("active", "standby")):  # e.g. "Standby Ready" is fine
+            why = f"HA unit {u['device']} ({u['role']}) is {state}: the pair has no working standby"
+            out.append(_finding("warning", name, "HA pair", why, topology))
+    if known and not any(str(u["state"]).lower() == "active" for u in known):
+        states = ", ".join(f"{u['device']} {u['state']}" for u in known)
+        out.append(_finding("critical", name, "HA pair", f"no active unit ({states})", topology))
+    return out
 
 
 def _role(e: dict[str, Any]) -> str:
@@ -323,24 +368,24 @@ def _finding(severity: str, device: str, what: str, reason: str, topology: Any) 
     }
 
 
-def _own_side(tunnel: dict[str, Any], device: str) -> dict[str, Any]:
+def _own_side(tunnel: dict[str, Any], names: set[str]) -> dict[str, Any]:
     """This device's end (peerA or peerB) of a health/tunnelstatuses row."""
     for k in ("peerA", "peerB"):
         p = tunnel.get(k) or {}
-        if (p.get("device") or {}).get("name") == device:
+        if is_me((p.get("device") or {}).get("name"), names):
             return p
     return {}
 
 
 def egress_links(
-    links: dict[str, dict[str, Any]], egress: list[dict[str, Any]], own: list[dict[str, Any]], device: str
+    links: dict[str, dict[str, Any]], egress: list[dict[str, Any]], own: list[dict[str, Any]], names: set[str]
 ) -> dict[str, dict[str, Any]]:
     """`links` plus a status for egress tunnel interfaces (VTIs), which path monitoring doesn't list: the
     state of the tunnel on that interface, or TUNNEL_DOWN for a VTI when every tunnel of the device is
     down. Without it an app route's path_now stays on a tunnel that is down."""
     states: dict[str, list[str]] = {}
     for t in own:
-        side = (_own_side(t, device).get("interface") or {}).get("name")
+        side = (_own_side(t, names).get("interface") or {}).get("name")
         if side:
             states.setdefault(str(side).lower(), []).append(str(t.get("state")))
     all_down = bool(own) and all(str(t.get("state")) != "TUNNEL_UP" for t in own)
@@ -369,9 +414,11 @@ async def branch_status(
     commands: bool,
     domain: str | None,
     refused: dict[str, str] | None = None,
+    pair: dict[str, Any] | None = None,
 ) -> tuple[dict[str, Any], list[dict[str, Any]]]:
     """One branch (or hub): its row and its degraded-link findings. `refused` collects the show
-    commands FMC doesn't pass through, so the next devices don't ask again."""
+    commands FMC doesn't pass through, so the next devices don't ask again; `pair` is the HA pair
+    record (with failover states) when the endpoint is an HA pair."""
     refused = {} if refused is None else refused
     dev = endpoint.get("device") or {}
     name = str(dev.get("name") or endpoint.get("name"))
@@ -384,9 +431,11 @@ async def branch_status(
     ike: dict[str, Any] | None = None
     metrics = False
     findings: list[dict[str, Any]] = []
-    rec = await _device_record(app, dev, domain)
+    units = ha_units(pair) if pair else []
+    names = {name} | {str(u["device"]) for u in units if u.get("device")}
+    cfg, rec = await _device_record(app, dev, domain, pair)
     try:
-        path = await app.config_path(f"{DEVICES}/{rec}/routing/policybasedroutes", domain)
+        path = await app.config_path(f"{DEVICES}/{cfg}/routing/policybasedroutes", domain)
         pbr = (await app.all(path, cap=500)).items
     except (NotFound, UpstreamError) as err:
         pbr = []
@@ -430,7 +479,9 @@ async def branch_status(
             bgp_routes = parse_route_bgp(text)
     peers = ("peerA", "peerB")
     raw_own = [
-        x for x in tunnels if name in {((x.get(k) or {}).get("device") or {}).get("name") for k in peers}
+        x
+        for x in tunnels
+        if any(is_me(((x.get(k) or {}).get("device") or {}).get("name"), names) for k in peers)
     ]
     own = [tunnel_row(x) for x in raw_own]
     routes = []
@@ -439,7 +490,7 @@ async def branch_status(
         for a in p.get("forwardingActions") or []:
             ordering = _ordering(a)
             egress = a.get("egressInterfaces") or []
-            chosen, why = choose_path(ordering, egress, egress_links(links, egress, raw_own, name))
+            chosen, why = choose_path(ordering, egress, egress_links(links, egress, raw_own, names))
             match = a.get("matchCriteria")
             routes.append(
                 {
@@ -493,6 +544,7 @@ async def branch_status(
             "tunnel(s): FMC's tunnel monitor lags the device"
         )
         findings.append(_finding("warning", name, "overlay tunnel", why, tname))
+    findings += ha_findings(name, units, tname)
     for nb in bgp or []:
         if nb.get("state") != "Established":
             why = f"neighbor {nb['neighbor']} is {nb.get('state')}"
@@ -500,6 +552,7 @@ async def branch_status(
     out: dict[str, Any] = {
         "device": name,
         "role": _role(endpoint),
+        "ha": {"units": [{k: u[k] for k in ("role", "device", "state")} for u in units]} if units else None,
         "wan_links": sorted(wan, key=lambda r: (SEVERITY[r["health"]], str(r.get("logical_name")))),
         "tunnels": own,
         "tunnels_up": up,
@@ -588,8 +641,19 @@ def register(reg: ToolRegistrar) -> None:
             note = "No SD-WAN topologies (fmc_create_sdwan_topology builds one)."
             return object_result({"topologies": [], "note": note}, shape=False)
         want: dict[str, Any] | None = None
+        want_ids: set[str] = set()
+        try:
+            pairs = (await app.all(await app.config_path(HA_PAIRS, domain))).items
+        except (NotFound, UpstreamError):
+            pairs = []
+        members = {
+            str(p.get("id")): {str((p.get(s) or {}).get("id")) for s in ("primary", "secondary")}
+            for p in pairs
+        }
         if branch:
             want, _ = await _peer_device(app, branch, domain)
+            # an HA member stands for its pair, which is the topology endpoint
+            want_ids = {str(want["id"])} | {pid for pid, ids in members.items() if str(want["id"]) in ids}
         pm_note = None
         try:
             pm_path = await app.config_path("health/pathmonitoredinterfaces", domain)
@@ -608,7 +672,7 @@ def register(reg: ToolRegistrar) -> None:
             base = await app.config_path(f"{S2S}/{t['id']}", domain)
             eps = (await app.all(f"{base}/endpoints", cap=2000)).items
             if want:
-                eps = [ep for ep in eps if (ep.get("device") or {}).get("id") == want["id"]]
+                eps = [ep for ep in eps if str((ep.get("device") or {}).get("id")) in want_ids]
                 if not eps:
                     continue
             tpath = await app.config_path("health/tunnelstatuses", domain)
@@ -622,8 +686,14 @@ def register(reg: ToolRegistrar) -> None:
                 budget -= 1 if run else 0
                 if show_commands and not run:
                     skipped.append(str((ep.get("device") or {}).get("name")))
-                monitored = pm_by_dev.get(str((ep.get("device") or {}).get("id")), [])
-                row, found = await branch_status(app, ep, t, tunnels, monitored, run, domain, refused)
+                dev_id = str((ep.get("device") or {}).get("id"))
+                pair = None
+                if (ep.get("device") or {}).get("type") == "DeviceHAPair":
+                    pair = await app.api.get(f"{await app.config_path(HA_PAIRS, domain)}/{dev_id}")
+                monitored = [
+                    i for d in (dev_id, *sorted(members.get(dev_id, ()))) for i in pm_by_dev.get(d, [])
+                ]
+                row, found = await branch_status(app, ep, t, tunnels, monitored, run, domain, refused, pair)
                 branches.append(row)
                 found_here += found
             ranked += rank(found_here, branches)
