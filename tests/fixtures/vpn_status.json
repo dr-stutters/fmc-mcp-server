@@ -481,5 +481,12 @@
   "paging": {
    "count": 1
   }
+ },
+ "recorded": {
+  "_source": "Recorded 2026-10-18 on FMC 10.0.1 (Global/mcp-test-leaf) with fmc_run_show_command on a standalone FTDv 10.0 with no VPN (outside addresses scrubbed to 203.0.113.0/24; the tool strips the route legend).",
+  "show crypto ikev2 sa": "\nThere are no IKEv2 SAs\n",
+  "show crypto ipsec sa": "\nThere are no ipsec sas\n",
+  "show vpn-sessiondb l2l": "INFO: There are presently no active sessions\n\n",
+  "show route": "\nGateway of last resort is 203.0.113.254 to network 0.0.0.0\n\nS*       0.0.0.0 0.0.0.0 [1/0] via 203.0.113.254, outside\nC        10.99.1.0 255.255.255.0 is directly connected, inside\nL        10.99.1.1 255.255.255.255 is directly connected, inside\nC        10.99.100.0 255.255.255.0 is directly connected, mcp-dmz\nL        10.99.100.1 255.255.255.255 is directly connected, mcp-dmz\nB        172.31.1.1 255.255.255.255 [20/0] via 10.99.1.2, 00:11:39\nO        172.31.2.1 255.255.255.255 [110/11] via 10.99.1.2, 00:12:51, inside\nC        203.0.113.0 255.255.255.0 is directly connected, outside\nL        203.0.113.155 255.255.255.255 is directly connected, outside\n\n"
  }
 }

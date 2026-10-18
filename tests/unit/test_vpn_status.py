@@ -400,3 +400,17 @@ async def test_vpn_status_ha_pair_endpoint(fmc: respx.MockRouter) -> None:
     assert devs["branch-ha"]["vtis"] == ["vti-to-b"]  # read from the primary's record
     assert ran[0].startswith("d-a2 ")  # the active unit
     assert r["topologies"][0]["tunnels"][0]["device_says"][0].startswith("branch-ha: IKE READY")
+
+
+def test_recorded_outputs_without_vpn() -> None:
+    """FMC 10.0.1 on an FTD without VPN: empty SA and session lists, routes but none over a VTI."""
+    rec = LAB["recorded"]
+    assert parse_ikev2_sa(rec["show crypto ikev2 sa"]) == []
+    assert parse_ipsec_sa(rec["show crypto ipsec sa"]) == []
+    assert parse_l2l_sessions(rec["show vpn-sessiondb l2l"]) == []
+    routes = parse_routes(rec["show route"])
+    assert [(r["code"], r["prefix"]) for r in routes][:2] == [("S*", "0.0.0.0/0"), ("C", "10.99.1.0/24")]
+    bgp = next(r for r in routes if r["code"] == "B")
+    assert bgp["via"] == ["10.99.1.2"] and bgp["interfaces"] == []
+    assert next(r for r in routes if r["code"] == "O")["interfaces"] == ["inside"]
+    assert overlay_routes(routes, {"vti-x"}) == []
