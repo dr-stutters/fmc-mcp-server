@@ -55,6 +55,20 @@ DEFAULT_AS = 65000
 DEFAULT_COMMUNITY = 1000
 MAX_TUNNEL_ID = 10413
 MAX_LOOPBACK_ID = 1024
+# The top-level topology fields a PUT on policy/ftds2svpns/{id} carries (with autoVpnSettings). FMC
+# 10.0.1 refuses the GET body's sub-resource references (ikeSettings, ipsecSettings,
+# advancedSettings, endpoints) with 422 "Invalid value 'either need to be mapped to concrete types
+# ...' for field 'ipsecSettings'"; those have their own endpoints.
+TOPOLOGY_PUT_FIELDS = (
+    "id",
+    "name",
+    "type",
+    "description",
+    "topologyType",
+    "routeBased",
+    "ikeV1Enabled",
+    "ikeV2Enabled",
+)
 
 
 class SpokeSpec(BaseModel):
@@ -623,6 +637,13 @@ def register(reg: ToolRegistrar) -> None:
                 f"{WEAK_IKE_POLICY} / {WEAK_IPSEC_PROPOSAL} (DES): fine for a lab, not for production. "
                 "FMC may also refuse SD-WAN topologies without it."
             )
+        if overlay == "bgp" and multipath and len(hubs) > 1:
+            side_effects.append(
+                "multipath is on with two hubs: spokes spread traffic over both hub tunnels (ECMP), so "
+                "return traffic that routes through one hub only (one DC gateway) is asymmetric and can "
+                "be dropped. Use multipath=False for primary/backup hubs unless both hubs return traffic "
+                "symmetrically (live on mcp-sdwan-t2)."
+            )
         if overlay == "ospf":
             side_effects.append(
                 "No overlay routing is generated: run OSPF over the tunnel and inside networks on every "
@@ -908,7 +929,7 @@ def register(reg: ToolRegistrar) -> None:
             if not rs.get("enableBgp"):
                 blockers.append("multipath applies to the iBGP overlay, which this topology doesn't use.")
             new_topo = {
-                **{k: v for k, v in t.items() if k not in ("links", "metadata")},
+                **{k: t[k] for k in TOPOLOGY_PUT_FIELDS if k in t},
                 "autoVpnSettings": {
                     **(t.get("autoVpnSettings") or {}),
                     "routeSettings": {**rs, "enableMultiPath": multipath},
