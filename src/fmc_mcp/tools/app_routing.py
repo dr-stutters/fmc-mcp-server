@@ -6,7 +6,8 @@ best path metric: jitter, packet loss, round-trip time or MOS).
 FMC stores an application route as an extended access list (the match: applications, networks,
 ports, users) plus a forwarding action in the device's policy-based route for the ingress interfaces.
 These tools build both, preview-first; nothing reaches the FTD until fmc_deploy. Check on the device
-with fmc_run_show_command('show policy-route') and ('show path-monitoring').
+with fmc_sdwan_status (app routes and the WAN links they use) and fmc_get_routing; FMC 10.0.1's
+command API doesn't pass 'show policy-route' or 'show path-monitoring' through.
 """
 
 # No `from __future__ import annotations`: FastMCP inspects signatures at runtime.
@@ -555,7 +556,7 @@ def register(reg: ToolRegistrar) -> None:
         Traffic that matches leaves through the egress interface chosen by `order_by`; the rest
         follows the routing table. The preview shows the match, the ingress and egress interfaces
         with their priority and path monitoring. Deploy to apply; check with
-        fmc_run_show_command('show policy-route'). Remove with fmc_delete_app_route."""
+        fmc_sdwan_status (app routes, path in use). Remove with fmc_delete_app_route."""
         app: FmcApp = get_client(ctx)
         dev = await resolve_device(app, device, domain)
         base, vr_name = await routing_base(app, dev, virtual_router, domain)
@@ -728,7 +729,7 @@ def register(reg: ToolRegistrar) -> None:
             return {
                 "applied": [*steps, pbr_step[0]],
                 "extended_access_list": {"id": acl.get("id"), "name": acl.get("name")},
-                "next": "fmc_deploy, then fmc_run_show_command('show policy-route')",
+                "next": "fmc_deploy, then fmc_sdwan_status (app routes and the path each uses)",
             }
 
         return await fmc_preview(

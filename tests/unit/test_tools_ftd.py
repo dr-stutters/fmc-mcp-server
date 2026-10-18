@@ -362,6 +362,43 @@ async def test_run_show_command(ftd: respx.MockRouter) -> None:
     assert out["output"].startswith("S*") and "outside" in out["output"] and out["matched_lines"] == 1
 
 
+async def test_run_show_command_checks_fmc_allowlist_first(ftd: respx.MockRouter) -> None:
+    """Commands FMC's command API doesn't list are refused with alternatives before FMC is called; longer
+    commands go out as two words + parameters ('show route' + 'bgp')."""
+    cmd = ftd.get(f"{DEVPATH}/operational/commands").mock(
+        return_value=items([{"commandOutput": "B 10.20.1.0 255.255.255.0 [200/0] via 10.255.20.1"}])
+    )
+    async with Client(server()) as c:
+        for bad, hint in (
+            ("show bgp summary", "show route bgp"),
+            ("show path-monitoring", "fmc_sdwan_status"),
+        ):
+            with pytest.raises(ToolError, match="not supported by FMC's command API") as e:
+                await run(c, "fmc_run_show_command", {"device": "nonexistent-device", "command": bad})
+            assert hint in str(e.value) and "Supported (FMC 10.0.1 list)" in str(e.value)
+        assert cmd.call_count == 0
+        out = await run(c, "fmc_run_show_command", {"device": "mcp-ftd1", "command": "show route bgp"})
+    params = cmd.calls.last.request.url.params
+    assert (params["command"], params["parameters"]) == ("show route", "bgp")
+    assert out["command"] == "show route bgp" and "10.20.1.0" in out["output"]
+
+
+async def test_run_show_command_reads_the_allowlist_from_the_spec(ftd: respx.MockRouter) -> None:
+    from fmc_mcp.client import SPEC_PATH
+
+    from .test_show_commands import SPEC_DESCRIPTION, spec_doc
+
+    newer = SPEC_DESCRIPTION.replace("show banner", "show banner, show path-monitoring")
+    spec = ftd.get(SPEC_PATH).mock(return_value=httpx.Response(200, json=spec_doc(newer)))
+    cmd = ftd.get(f"{DEVPATH}/operational/commands").mock(return_value=items([{"commandOutput": "ok"}]))
+    async with Client(server()) as c:
+        out = await run(c, "fmc_run_show_command", {"device": "mcp-ftd1", "command": "show path-monitoring"})
+        with pytest.raises(ToolError, match="from the FMC API spec"):
+            await run(c, "fmc_run_show_command", {"device": "mcp-ftd1", "command": "show bgp summary"})
+    assert out["output"] == "ok" and cmd.calls.last.request.url.params["command"] == "show path-monitoring"
+    assert spec.call_count == 1 and cmd.call_count == 1
+
+
 async def test_show_command_invalid_vs_not_found(ftd: respx.MockRouter) -> None:
     def reply(req: httpx.Request) -> httpx.Response:
         msg = (

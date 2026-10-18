@@ -86,8 +86,8 @@ Workflows:
   fmc_sdwan_troubleshoot.
 - SD-WAN application-aware routing: fmc_configure_wan_interface (priority, path monitoring) on each
   WAN link -> fmc_create_app_route (applications/networks/users out of the link with the best
-  jitter, loss, RTT or MOS, or by priority) -> fmc_deploy -> fmc_run_show_command('show
-  policy-route'); ECMP across WAN links: fmc_configure_ecmp_zone; remove: fmc_delete_app_route.
+  jitter, loss, RTT or MOS, or by priority) -> fmc_deploy -> fmc_sdwan_status (app routes and the
+  path each uses); ECMP across WAN links: fmc_configure_ecmp_zone; remove: fmc_delete_app_route.
 - Block a host fast: map its IP into a dynamic object that a BLOCK rule references
   (fmc_map_dynamic_object); mapping changes need no deployment, only the rule does (once).
   fmc_contain_host / fmc_release_host do this for one host with the quarantine object (and propose
@@ -118,9 +118,10 @@ Workflows:
 Before changing or deleting an object, check fmc_where_used.
 
 Gotchas: FMC allows about 120 API requests per minute, so prefer the aggregate tools over many small
-calls. Changes only reach devices after a deployment. fmc_run_show_command only accepts FMC's
-approved show commands (mostly configuration views). fmc_api_call fills {domainUUID} in spec paths
-with the default domain.
+calls. Changes only reach devices after a deployment. fmc_run_show_command only accepts the show
+commands FMC's API spec lists (no show bgp, show ospf, show path-monitoring or show policy-route; use
+'show route bgp' / 'show route ospf'); it refuses the rest before calling FMC. fmc_api_call fills
+{domainUUID} in spec paths with the default domain.
 """
 
 SPEC = ServerSpec(

@@ -11,7 +11,7 @@ from fastmcp import Client
 
 from fmc_mcp._core import InvalidRequest
 from fmc_mcp.server import create_server
-from fmc_mcp.tools import sdwan_status
+from fmc_mcp.tools import sdwan_status, show_commands
 from fmc_mcp.tools.prompts import _sdwan_troubleshoot_text
 from fmc_mcp.tools.sdwan_status import (
     choose_path,
@@ -27,6 +27,15 @@ from .conftest import CFG, fixture, items, make_settings
 LAB = fixture("sdwan_lab")
 SHOW = fixture("ftd_sdwan_show")  # recorded FMC 10.0.1 outputs and refusal
 FMC10_REFUSES = {"show path-monitoring", "show policy-route", "show bgp summary"}
+
+
+@pytest.fixture(autouse=True)
+def _allowlist(request: pytest.FixtureRequest, monkeypatch: pytest.MonkeyPatch) -> None:
+    """Most tests model an FMC whose API spec lists the SD-WAN show commands (so their outputs are parsed);
+    tests named *fmc10* keep FMC 10.0.1's real list, where they are never sent."""
+    if "fmc10" not in request.node.name:
+        clis = show_commands.FALLBACK_CLIS + ", show path-monitoring, show policy-route, show bgp <?-option>"
+        monkeypatch.setattr(show_commands, "FALLBACK", show_commands.build(clis))
 
 
 @pytest.fixture(autouse=True)
@@ -266,23 +275,18 @@ def test_parse_route_bgp() -> None:
     assert parse_route_bgp("\n\n") == []
 
 
-async def test_fmc10_refused_commands_are_tried_once(fmc: respx.MockRouter) -> None:
+async def test_fmc10_unsupported_commands_are_never_sent(fmc: respx.MockRouter) -> None:
+    """FMC 10.0.1's spec doesn't list show path-monitoring / policy-route / bgp summary: not sent at all."""
     ran = lab(fmc, refused=FMC10_REFUSES, outputs={"d-sp1": {"show route bgp": SHOW["show route bgp"]}})
     async with Client(server()) as c:
         out = await run(c, "fmc_sdwan_status", {"topology": "mcp-sdwan-t1"})
-    first = [r for r in ran if r.startswith("d-sp1 ")]
-    assert {r.split(" ", 1)[1] for r in first} == {
-        *FMC10_REFUSES,
-        "show crypto ikev2 stats",
-        "show route bgp",
-    }
-    later = {r.split(" ", 1)[1] for r in ran if not r.startswith("d-sp1 ")}
-    assert later == {"show crypto ikev2 stats", "show route bgp"}  # refused ones not asked again
+    assert ran and {r.split(" ", 1)[1] for r in ran} == {"show crypto ikev2 stats", "show route bgp"}
     branches = {b["device"]: b for b in out["topologies"][0]["branches"]}
     sp1 = branches["mcp-sdwan-t1-spoke1"]
     assert sp1["bgp_routes"][0] == {"prefix": "10.20.1.0/255.255.255.0", "via": "10.255.20.1"}
     hub = branches["mcp-sdwan-t1-hub"]
     assert hub["evidence"]["show bgp summary"].startswith("not available: FMC doesn't pass")
+    assert "not sent" in hub["evidence"]["show path-monitoring"]
     assert all(
         w["health"] in ("not available", "critical") for b in branches.values() for w in b["wan_links"]
     )
