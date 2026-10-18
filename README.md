@@ -106,7 +106,7 @@ Changes made in FMC reach the firewalls only after a **deployment** (`fmc_deploy
 
 ## Tools
 
-There are 153 tools when every tier is enabled (66 read, 76 write, 11 dangerous; the dangerous tier turns `fmc_api_call` into a raw call), and six workflow prompts (`fmc_why_blocked`, `fmc_firewall_health_review`, `fmc_sdwan_troubleshoot`; `fmc_rule_change_review` and `fmc_policy_cleanup`, write tier; `fmc_onboard_ftd`, dangerous tier).
+There are 153 tools when every tier is enabled (66 read, 76 write, 11 dangerous; the dangerous tier turns `fmc_api_call` into a raw call), and seven workflow prompts (`fmc_why_blocked`, `fmc_firewall_health_review`, `fmc_sdwan_troubleshoot`; `fmc_rule_change_review` and `fmc_policy_cleanup`, write tier; `fmc_onboard_ftd` and `fmc_ha_failover_check`, dangerous tier).
 
 **Read**
 
@@ -145,6 +145,11 @@ Notes on some read tools:
   FMC as parameters. Anything else (`show bgp`, `show ospf`, `show path-monitoring`, `show policy-route`,
   `show conn`, `show nat`) is refused before FMC is called, with the alternatives.
 - `fmc_get_hit_counts` refreshes the counters from the device first (packet-tracer packets count too).
+- `fmc_get_ha_status` reads the pair from FMC and, by default, each unit's own failover state through FMC
+  (`show failover`, `show failover state`, `show failover history`): per unit Active / Standby Ready / Failed,
+  active time, interface and snort/disk status and last failure reason; failover and state link status,
+  versions, stateful replication counters, the last failover with its reason, and `checks` with
+  `ready_for_switch`. FMC's own unit states trail a failover by up to a minute. `live=false` skips the units.
 - `fmc_list_health_alerts` and `fmc_recent_activity` query FMC when called (no background collection):
   health alerts over a window with repeats collapsed, and one timeline of health alerts, audit records
   and deployments. The server never receives syslog or eStreamer; traffic events stay in the FMC UI or
@@ -192,7 +197,7 @@ MD5 password, because FMC returns it masked and a PUT would replace it, unless y
 | `fmc_rollback_deployment` | Rolls a device back to an earlier successful deployment. |
 | `fmc_register_device` | Registers a device with FMC and waits for the initial deployment. |
 | `fmc_delete_device` | Removes a device from FMC. |
-| `fmc_create_ha_pair` | Forms an HA pair. |
+| `fmc_create_ha_pair` | Forms an HA pair: the failover link, and state replication over it or over a separate state link (`state_interface`). |
 | `fmc_ha_action` | Breaks, switches or deletes an HA pair. |
 | `fmc_delete_policy` | Deletes a whole policy. |
 | `fmc_backup_devices` | Backs up device configurations to FMC (not supported on FTDv). |
@@ -218,8 +223,12 @@ MD5 password, because FMC returns it masked and a PUT would replace it, unless y
   branch>)` -> `fmc_get_device_template` (check the variables FMC created) -> `fmc_register_device` (the
   new FTD) -> `fmc_apply_device_template(template, device, variables, overrides)` -> `fmc_deploy` the branch
   and its hub(s) -> `fmc_get_vpn_topology`. Templates apply to standalone devices only.
-- **HA:** `fmc_create_ha_pair` -> `fmc_configure_ha_monitoring` (standby IPs) -> `fmc_deploy` (the pair's
-  name) -> `fmc_get_ha_status` / `show failover`; `fmc_ha_action` switch, break or delete.
+- **HA:** `fmc_create_ha_pair` (optionally a separate state link) -> `fmc_configure_ha_monitoring` (standby
+  IPs) -> `fmc_deploy` (the pair's name) -> `fmc_get_ha_status` (the units' own state, `ready_for_switch`);
+  `fmc_ha_action` switch, break or delete.
+- **Does the pair fail over cleanly?** The `fmc_ha_failover_check` prompt runs the pre-checks, a traffic
+  baseline (packet tracer, and pings from a CML host with a loss series), the switch (or, in a lab, the active
+  unit powered off), verifies roles, failover history and its reason, and reports the outage.
 - **Site-to-site VPN:** `fmc_create_s2s_vpn` -> `fmc_deploy` both peers -> `fmc_list_vpn_tunnels`. In FMC
   evaluation mode only DES crypto deploys; the tool picks it and says so.
 - **SD-WAN branches:** zone the WAN and inside interfaces (`fmc_update_interface`) -> `fmc_create_sdwan_topology`

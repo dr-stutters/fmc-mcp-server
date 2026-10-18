@@ -112,6 +112,10 @@ Workflows:
 - Health: fmc_list_devices, fmc_device_health, fmc_list_vpn_tunnels; "what changed or broke in the
   last hour?": fmc_recent_activity (health alerts + audit + deployments), fmc_list_health_alerts.
   A full ranked review of the estate: the fmc_firewall_health_review prompt.
+- HA: fmc_create_ha_pair (failover link; state_interface for a separate state link) ->
+  fmc_configure_ha_monitoring (standby IPs) -> fmc_deploy the pair -> fmc_get_ha_status (each unit's own
+  state, link status, last failover and why, ready_for_switch) -> fmc_ha_action switch. The
+  fmc_ha_failover_check prompt runs pre-checks, traffic, the switch, verification and a report.
 - Day-2 admin: fmc_upgrade_status (versions), fmc_list_backups / fmc_backup_devices,
   fmc_get_health_policy / fmc_update_health_policy, fmc_list_users, fmc_list_object_overrides /
   fmc_set_object_override (per-device values).
