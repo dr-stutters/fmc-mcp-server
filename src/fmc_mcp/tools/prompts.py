@@ -541,9 +541,11 @@ preview-first and runs only after the user approves it.
      loss for bulk transfers) instead of priority: change the policy-based route through the
      app-routing tools when this server has them, else {tool_ref("fmc_api_call")} PUT on the device's
      routing/policybasedroutes entry (show the body; preview first);
-   - when the branch has a single WAN tunnel: say so. {tool_ref("fmc_update_sdwan_topology")}'s
-     backup_wan_interface is refused by FMC 10.0.1 (it stores no backup interface), so a second
-     spoke tunnel has to be added in the FMC SD-WAN wizard for now;
+   - when the branch has a single WAN tunnel: say so. A second tunnel on another WAN lives in the
+     companion topology '<topology>-wan2' (a second hub DVTI on that WAN): add the branch there with
+     {tool_ref("fmc_update_sdwan_topology")} (add_spokes, its backup WAN) when the companion exists,
+     else rebuild with {tool_ref("fmc_create_sdwan_topology")}(hub_backup_wan_interface=...,
+     backup_wan_pool=...);
    - when the carrier link itself is bad, say so: no FMC change fixes it.
    Then {tool_ref("fmc_pending_changes")} with device={br} and, after approval, {tool_ref("fmc_deploy")}
    (the branch, and the hubs when the topology changed). Re-run {tool_ref("fmc_sdwan_status")} with

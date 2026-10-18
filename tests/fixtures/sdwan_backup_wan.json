@@ -1,0 +1,327 @@
+{
+  "_source": "Recorded live 2026-10-18 on FMC 10.0.1 (Global/mcp-test-leaf, lab mcp-sdwan-t1, agent backup-wan) with fmc_api_call GETs and the device CLI; device/interface UUIDs, lab addresses and WAN names scrubbed to the sdwan_lab.json ids and documentation ranges. Two AUTO_VPN topologies share the hub: mcp-sdwan-t1 (hub DVTI on the first WAN) and its companion mcp-sdwan-t1-wan2 (a second hub DVTI on the second WAN, own loopback and pool). The spoke is in both, one endpoint per WAN. (Live, the companion was named mcp-sdwan-t1-inet; the tool names it <topology>-wan2.)",
+  "spoke_endpoint_main": {
+    "metadata": {
+      "parentPolicy": {
+        "name": "FTDS2SVpn",
+        "id": "topo-t1",
+        "type": "mcp-sdwan-t1"
+      },
+      "timestamp": 1792308049039,
+      "lastUser": {
+        "name": "mcp-api-svc"
+      },
+      "domain": {
+        "name": "Global \\ mcp-test-leaf",
+        "id": "dom-leaf",
+        "type": "Domain"
+      },
+      "tunnelSourceInterfaceData": {
+        "enableSGTPropagate": false,
+        "pathMonitoring": {
+          "enable": true,
+          "monitoredIp": "203.0.113.254",
+          "type": "PEER_IPV4"
+        },
+        "applicationMonitoring": {
+          "enable": true
+        },
+        "ifname": "outside1",
+        "managementOnly": false,
+        "MTU": 1500,
+        "mode": "NONE",
+        "securityZone": {
+          "id": "zone-outside",
+          "type": "SecurityZone"
+        },
+        "ipv4": {
+          "static": {
+            "address": "203.0.113.11",
+            "netmask": "24"
+          }
+        },
+        "ipv6": {
+          "enableIPV6": false
+        },
+        "enabled": true,
+        "name": "Ethernet0/0",
+        "priority": 1,
+        "id": "d-sp1-e0"
+      },
+      "vtiInterfaceMetadataList": [
+        {
+          "vtiInterface": {
+            "enableSGTPropagate": false,
+            "ifname": "outside1_static_vti_1",
+            "managementOnly": false,
+            "MTU": 1500,
+            "mode": "NONE",
+            "securityZone": {
+              "id": "zone-overlay",
+              "type": "SecurityZone"
+            },
+            "ipv4": {
+              "static": {
+                "address": "10.255.255.2",
+                "netmask": "24"
+              }
+            },
+            "ipv6": {},
+            "enabled": true,
+            "name": "Tunnel1",
+            "priority": 0,
+            "id": "svti-sp1-1"
+          },
+          "tunnelSourceInterface": {
+            "enableSGTPropagate": false,
+            "pathMonitoring": {
+              "enable": true,
+              "monitoredIp": "203.0.113.254",
+              "type": "PEER_IPV4"
+            },
+            "applicationMonitoring": {
+              "enable": true
+            },
+            "ifname": "outside1",
+            "managementOnly": false,
+            "MTU": 1500,
+            "mode": "NONE",
+            "securityZone": {
+              "id": "zone-outside",
+              "type": "SecurityZone"
+            },
+            "ipv4": {
+              "static": {
+                "address": "203.0.113.11",
+                "netmask": "24"
+              }
+            },
+            "ipv6": {
+              "enableIPV6": false
+            },
+            "enabled": true,
+            "name": "Ethernet0/0",
+            "priority": 1,
+            "id": "d-sp1-e0"
+          },
+          "hubDevice": {
+            "name": "mcp-sdwan-t1-hub",
+            "id": "d-hub"
+          }
+        }
+      ]
+    },
+    "isLocalTunnelIdEnabled": false,
+    "extranet": false,
+    "dynamicRRIEnabled": false,
+    "allowIncomingIKEv2Routes": true,
+    "enableNATExempt": false,
+    "sendTunnelInterfaceIpToPeer": true,
+    "peerType": "SPOKE",
+    "tunnelSourceInterface": {
+      "name": "outside1",
+      "id": "d-sp1-e0",
+      "type": "PhysicalInterface"
+    },
+    "enableNatTraversal": true,
+    "overrideRemoteVpnFilter": false,
+    "protectedNetworks": {},
+    "device": {
+      "name": "mcp-sdwan-t1-spoke1",
+      "id": "d-sp1",
+      "type": "Device"
+    },
+    "interface": {
+      "name": "outside1",
+      "id": "d-sp1-e0",
+      "type": "PhysicalInterface"
+    },
+    "connectionType": "BIDIRECTIONAL",
+    "name": "mcp-sdwan-t1-spoke1",
+    "id": "ep-spoke1",
+    "type": "EndPoint"
+  },
+  "spoke_endpoint_wan2": {
+    "metadata": {
+      "parentPolicy": {
+        "name": "FTDS2SVpn",
+        "id": "topo-t1-wan2",
+        "type": "mcp-sdwan-t1-wan2"
+      },
+      "timestamp": 1792308367420,
+      "lastUser": {
+        "name": "mcp-api-svc"
+      },
+      "domain": {
+        "name": "Global \\ mcp-test-leaf",
+        "id": "dom-leaf",
+        "type": "Domain"
+      },
+      "tunnelSourceInterfaceData": {
+        "enableSGTPropagate": false,
+        "pathMonitoring": {
+          "enable": true,
+          "monitoredIp": "198.51.100.254",
+          "type": "PEER_IPV4"
+        },
+        "applicationMonitoring": {
+          "enable": true
+        },
+        "ifname": "outside2",
+        "managementOnly": false,
+        "MTU": 1500,
+        "mode": "NONE",
+        "securityZone": {
+          "id": "zone-outside",
+          "type": "SecurityZone"
+        },
+        "ipv4": {
+          "static": {
+            "address": "198.51.100.11",
+            "netmask": "24"
+          }
+        },
+        "ipv6": {
+          "enableIPV6": false
+        },
+        "enabled": true,
+        "name": "Ethernet0/1",
+        "priority": 2,
+        "id": "d-sp1-e1"
+      },
+      "vtiInterfaceMetadataList": [
+        {
+          "vtiInterface": {
+            "enableSGTPropagate": false,
+            "ifname": "outside2_static_vti_2",
+            "managementOnly": false,
+            "MTU": 1500,
+            "mode": "NONE",
+            "securityZone": {
+              "id": "zone-overlay",
+              "type": "SecurityZone"
+            },
+            "ipv4": {
+              "static": {
+                "address": "10.255.254.2",
+                "netmask": "24"
+              }
+            },
+            "ipv6": {},
+            "enabled": true,
+            "name": "Tunnel2",
+            "priority": 0,
+            "id": "svti-sp1-2"
+          },
+          "tunnelSourceInterface": {
+            "enableSGTPropagate": false,
+            "pathMonitoring": {
+              "enable": true,
+              "monitoredIp": "198.51.100.254",
+              "type": "PEER_IPV4"
+            },
+            "applicationMonitoring": {
+              "enable": true
+            },
+            "ifname": "outside2",
+            "managementOnly": false,
+            "MTU": 1500,
+            "mode": "NONE",
+            "securityZone": {
+              "id": "zone-outside",
+              "type": "SecurityZone"
+            },
+            "ipv4": {
+              "static": {
+                "address": "198.51.100.11",
+                "netmask": "24"
+              }
+            },
+            "ipv6": {
+              "enableIPV6": false
+            },
+            "enabled": true,
+            "name": "Ethernet0/1",
+            "priority": 2,
+            "id": "d-sp1-e1"
+          },
+          "hubDevice": {
+            "name": "mcp-sdwan-t1-hub",
+            "id": "d-hub"
+          }
+        }
+      ]
+    },
+    "isLocalTunnelIdEnabled": false,
+    "extranet": false,
+    "dynamicRRIEnabled": false,
+    "allowIncomingIKEv2Routes": true,
+    "enableNATExempt": false,
+    "sendTunnelInterfaceIpToPeer": true,
+    "peerType": "SPOKE",
+    "tunnelSourceInterface": {
+      "name": "outside2",
+      "id": "d-sp1-e1",
+      "type": "PhysicalInterface"
+    },
+    "enableNatTraversal": true,
+    "overrideRemoteVpnFilter": false,
+    "protectedNetworks": {},
+    "device": {
+      "name": "mcp-sdwan-t1-spoke1",
+      "id": "d-sp1",
+      "type": "Device"
+    },
+    "interface": {
+      "name": "outside2",
+      "id": "d-sp1-e1",
+      "type": "PhysicalInterface"
+    },
+    "connectionType": "BIDIRECTIONAL",
+    "name": "mcp-sdwan-t1-spoke1",
+    "id": "ep-wan2-spoke1",
+    "type": "EndPoint"
+  },
+  "refused": {
+    "PUT hub endpoint with backupInterfaces [{interface: <second DVTI>}]": {
+      "status": 400,
+      "description": "Backup interfaces should not be configured on hub devices."
+    },
+    "POST a second HUB endpoint (same device, second DVTI) into the same topology": {
+      "status": 400,
+      "description": "This endpoint is already part of the topology."
+    },
+    "PUT hub endpoint with a top-level vtiInterfaceMetadataList (two DVTIs)": {
+      "status": 422,
+      "description": "Unprocessable Entity - Unrecognized Field 'vtiInterfaceMetadataList' in request payload"
+    },
+    "PUT spoke endpoint with backupInterfaces [{interface: <second WAN>}] (second hub DVTI present)": {
+      "status": 200,
+      "stored": "nothing: the response and GET have no backupInterfaces and vtiInterfaceMetadataList still holds one VTI"
+    }
+  },
+  "device": {
+    "spoke1 show interface ip brief": [
+      "Tunnel1  10.255.255.2  YES manual up  up",
+      "Tunnel2  10.255.254.2  YES manual up  up"
+    ],
+    "spoke1 show crypto ikev2 sa": [
+      "203.0.113.11/500 -> 203.0.113.1/500 READY INITIATOR",
+      "198.51.100.11/500 -> 198.51.100.1/500 READY INITIATOR"
+    ],
+    "spoke1 show bgp summary": [
+      "10.255.255.1 4 65000 ... Up 2",
+      "10.255.254.1 4 65000 ... Up 2"
+    ],
+    "spoke1 show route bgp": [
+      "B 10.101.0.0 255.255.255.0 [200/1] via 10.255.254.1",
+      "                          [200/1] via 10.255.255.1"
+    ],
+    "hub show interface ip brief": [
+      "Virtual-Template1 10.255.255.1 up up",
+      "Virtual-Template2 10.255.254.1 up up",
+      "Virtual-Access1..3 (two on Template1, one on Template2)"
+    ],
+    "failover": "spoke1 first-WAN cable pulled (cml_set_link_state down): the first ping round from the host behind spoke1 to the hub LAN, started about 5 s later, lost nothing (5/5); the first-WAN BGP neighbour went Idle, routes on the second tunnel only. 100% loss on the first WAN with the cable up (cml_set_link_condition): no lost pings either, neighbour Idle within seconds. Recovery after the link came back: both tunnels and ECMP again within about 20 s."
+  }
+}

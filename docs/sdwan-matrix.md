@@ -185,6 +185,21 @@ reports nothing: `degraded` is empty, the hub row has no WAN links and no tunnel
   built and the tool reports success. Fix: read the endpoint back and fail when the backup is missing; the payload
   FMC uses for a second spoke WAN in AUTO_VPN is still to be captured from the FMC 10 SD-WAN wizard (probably a
   second hub DVTI on another WAN plus one `vtiInterfaceMetadataList` entry per spoke WAN).
+  **Follow-up (2026-10-18, live on mcp-sdwan-t1): a payload that works.** `vtiInterfaceMetadataList` is read-only
+  (in `metadata`; a top-level one gets 422 "Unrecognized Field"), and each entry is one spoke VTI per
+  (tunnel source, hub). The hub refuses `backupInterfaces` (400 "Backup interfaces should not be configured on hub
+  devices"), a second HUB endpoint for the same device is refused (400 "This endpoint is already part of the
+  topology"), and the spoke's `backupInterfaces` stays a no-op with a second hub DVTI in place. What works is a
+  **second AUTO_VPN topology on the same hub**: a second DVTI sourced from the hub's `inet` with its own loopback
+  and pool, and the spoke on `inet`, with the same iBGP AS and community. After one deploy the spoke has Tunnel1
+  (mpls) and Tunnel2 (inet), two IKEv2 SAs, two iBGP neighbours (one per hub DVTI address) and ECMP routes over
+  both; FMC merges both topologies into one `router bgp`. Failover: spoke1's `mpls` cable pulled -> the first
+  ping round from the host behind spoke1 (started about 5 s later) lost nothing, the mpls neighbour went Idle and the
+  routes stayed on the inet tunnel; 100% loss on `mpls` with the cable up -> no lost pings either, neighbour Idle
+  within seconds (the WAN has path monitoring); both tunnels back about 20 s after the link returned. The tools now
+  build it as the companion topology `<name>-wan2` (`hub_backup_wan_interface`, `backup_wan_pool`), recorded in
+  `tests/fixtures/sdwan_backup_wan.json`. Not verified yet: a backup WAN together with a backup hub (the tools block
+  that combination).
 - **R2 `fmc_sdwan_status` (and the C3/C5 evidence).** FMC 10.0.1's `operational/commands` refuses
   `show path-monitoring`, `show policy-route`, `show bgp summary` and `show bgp neighbors` (400 "Either command is
   not supported or entered command is an invalid command"), so the status never has path metrics: WAN health stays
