@@ -330,8 +330,35 @@ async def test_status_command_failure_is_a_note_not_an_error(fmc: respx.MockRout
     async with Client(server()) as c:
         out = await run(c, "fmc_get_ha_status", {"ha_pair": "mcp-fw-ha"})
     assert any(n.startswith("'show failover' on mcp-fw-ha-a") for n in out["notes"])
+    assert any(n.startswith("'show failover' on mcp-fw-ha-b") for n in out["notes"])
     assert out["ready_for_switch"] is False and "no data for failover_on" in out["summary"]
     assert out["last_failover"]["unit"] == "mcp-fw-ha-a"
+
+
+async def test_status_reads_the_other_unit_when_the_active_one_is_down(fmc: respx.MockRouter) -> None:
+    """The active unit powered off (lab failure test): FMC still names it active; the survivor answers."""
+    survivor = (
+        SHOW[SECONDARY]["show failover"]
+        .replace("This host: Secondary - Standby Ready", "This host: Secondary - Active")
+        .replace("Other host: Primary - Active", "Other host: Primary - Failed")
+    )
+    show = {PRIMARY: {}, SECONDARY: {**SHOW[SECONDARY], "show failover": survivor, "show failover state": ""}}
+    cmds = mock_pair(fmc, show=show)
+    async with Client(server()) as c:
+        out = await run(c, "fmc_get_ha_status", {"ha_pair": "mcp-fw-ha", "history": 1})
+    assert out["live_from"] == "mcp-fw-ha-b"
+    assert out["units"]["secondary"]["device_state"] == "Active"
+    assert out["units"]["primary"]["device_state"] == "Failed"
+    ready = next(c for c in out["checks"] if c["check"] == "standby_ready")
+    assert ready["ok"] is False and "mcp-fw-ha-a Failed" in ready["detail"]
+    assert out["ready_for_switch"] is False
+    assert [r.request.url.path.split("/")[-3] for r in cmds.calls] == [
+        PRIMARY,
+        SECONDARY,
+        SECONDARY,
+        PRIMARY,
+        SECONDARY,
+    ]
 
 
 def test_monitoring_config_warnings() -> None:
