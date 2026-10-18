@@ -150,6 +150,9 @@ Notes from the run:
 - `sampled_at` is the last step of the health-monitor range, and FMC repeats stale values at every step, so it can
   look current while the value is minutes old.
 - `bgp_routes` in `fmc_sdwan_status` keeps only the first next hop of an ECMP route.
+- The three points above are fixed after 0.13.1 (Unreleased): `bgp_routes[].via` lists every next hop, each link
+  says `changed_at` or `unchanged_since`, and FMC's "rechability No" window reads "metrics pending or the peer
+  unreachable per FMC" (still critical).
 - `fmc_delete_s2s_vpn`'s preview names the companion topology, and both deletes plus the DVTI, loopback and pool
   cleanup left 0 topologies and no SAs.
 
@@ -343,8 +346,9 @@ reports nothing: `degraded` is empty, the hub row has no WAN links and no tunnel
   **Re-run (pass):** unnumbered spoke VTIs work. With `fmc_api_call`, POST a /32 loopback on each spoke and PUT the
   FMC-generated spoke VTI with `ipAddressAssignmentType: BORROW_IP_FROM_INTERFACE` and `borrowIPfrom: <loopback ref>`
   (no `managementOnly`); run OSPF over the hub's pool network, the spokes' loopback block and the inside networks. Both
-  tunnel ends are then unnumbered, and the spokes install the OSPF routes. Tool follow-up: `overlay='ospf'` can create
-  the spoke loopbacks and switch the spoke VTIs after the endpoints exist (not done in this PR).
+  tunnel ends are then unnumbered, and the spokes install the OSPF routes. **Tool:** `overlay='ospf'` with
+  `spoke_loopbacks` now creates the spoke loopbacks and switches the spoke VTIs after the endpoints exist (also for
+  spokes added with `fmc_update_sdwan_topology`); not yet run live.
 - **R6 `fmc_update_sdwan_topology(multipath=...)`.** The tool PUTs `policy/ftds2svpns/{id}` with the whole GET body
   minus `links`/`metadata`, so `ipsecSettings`, `ikeSettings`, `advancedSettings` and `endpoints` go along as nested
   references -> FMC 422 "Invalid value 'either need to be mapped to concrete types, have custom deserializer, or

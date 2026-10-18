@@ -1,5 +1,36 @@
 # Changelog
 
+## Unreleased
+
+### Added
+- **SD-WAN OSPF overlay (matrix R5).** `fmc_create_sdwan_topology(overlay='ospf')` takes `spoke_loopbacks` (a subnet
+  outside the spoke pools, handed out in spoke order, or one address per spoke) and makes every spoke tunnel
+  unnumbered: it creates a /32 loopback `sdwan-ospf-lo` on each spoke (or reuses one that has the address), adds the
+  spokes, then PUTs each spoke VTI FMC generated with `ipAddressAssignmentType: BORROW_IP_FROM_INTERFACE` and
+  `borrowIPfrom` that loopback (without `ipv4` and `managementOnly`). That addressing carried OSPF live on FMC 10.0.1
+  (mcp-sdwan-t1: FULL adjacencies, OSPF routes on the spokes, all hosts reachable); with numbered spoke VTIs the
+  spokes installed no routes. The 0.13.0 preview warning is replaced by a note on what to run next
+  (`fmc_configure_ospf` on the hub and spokes, then deploy). `overlay='ospf'` with spokes now requires
+  `spoke_loopbacks`; with a backup hub or `backup_wan_interface` it is blocked (not verified live).
+  `fmc_update_sdwan_topology(add_spokes=..., spoke_loopbacks=...)` does the same for spokes added to an OSPF
+  overlay. The tool code itself has not run against FMC yet (unit tests on recorded and spec-shaped responses).
+
+### Fixed
+- **`fmc_sdwan_status`, from the 0.13.1 re-proof:**
+  - `bgp_routes[].via` is now a list with every next hop of an ECMP route (`show route bgp` prints the extra next
+    hops on indented lines; only the first was kept).
+  - `wan_links[].sampled_at` is gone: FMC's health monitor repeats the last value at every step of the range, so the
+    newest step looked current even for a value minutes old. Each link now has `changed_at` (the newest sample
+    whose value changed, or the start of a series after a reachability flip) or, when nothing changed in the
+    10-minute window, `unchanged_since`; the evidence says "changed at ..." or "value unchanged since ...".
+  - While FMC's `pathmonitoring` series say `rechability: No` with zero values (the first ~5 minutes of a brownout
+    on 10.0.1, while the device itself still reaches the peer), the reason reads "metrics pending or the peer
+    unreachable per FMC" instead of "peer ... does not answer". The link stays critical in `degraded`. The
+    `fmc_sdwan_troubleshoot` prompt explains both fields.
+- docs/GAP-ANALYSIS.md no longer says `show access-list` is refused (`show access-list <name>` is in the spec's
+  list). `fmc_run_show_command`'s description already matched the #136 allowlist; a unit test now checks that its
+  examples pass the allowlist and every command it names as refused is refused.
+
 ## 0.13.1 (2026-10-18)
 
 SD-WAN follow-up to 0.13.0, from the live matrix re-run on FMC 10.0.1 ([docs/sdwan-matrix.md](docs/sdwan-matrix.md)):

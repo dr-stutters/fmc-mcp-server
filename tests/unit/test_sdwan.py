@@ -251,14 +251,160 @@ async def test_failure_rolls_back_newest_first_and_masks_key(fmc: respx.MockRout
 async def test_evaluation_mode_and_ospf_overlay(fmc: respx.MockRouter) -> None:
     lab(fmc, evaluation=True, topologies=False)
     async with Client(server()) as c:
-        out = await run(c, "fmc_create_sdwan_topology", {**NEW, "overlay": "ospf"})
+        out = await run(
+            c, "fmc_create_sdwan_topology", {**NEW, "overlay": "ospf", "spoke_loopbacks": "10.255.9.0/24"}
+        )
     assert out["preview"]["ike_v2"]["policies"][0]["name"] == "DES-SHA-SHA-LATEST"
     assert out["preview"]["topology"]["autoVpnSettings"]["routeSettings"] == {"enableBgp": False}
-    assert any("fmc_configure_ospf" in s for s in out["side_effects"])
-    # FMC 10.0.1: unnumbered hub DVTI vs numbered spoke VTIs -> no OSPF routes on the spokes (R5)
-    assert any("unnumbered" in s and "overlay='bgp'" in s for s in out["side_effects"])
-    assert "not-reachable" in out["preview"]["warnings"][0]
+    # R5 solved: unnumbered spoke tunnels (a borrowed /32 loopback), so no warning, only the how-to note
+    assert "warnings" not in out["preview"]
+    note = next(s for s in out["side_effects"] if s.startswith("overlay='ospf'"))
+    assert "borrows its /32 loopback" in note and "fmc_configure_ospf" in note and "OSPF routes" in note
+    assert not any("not-reachable" in s or "use overlay='bgp'" in s for s in out["side_effects"])
     assert any("strong-crypto" in s for s in out["side_effects"])
+
+
+OSPF = {**NEW, "overlay": "ospf", "spoke_loopbacks": "10.255.9.0/24"}
+NEW_SVTI = {  # the spoke VTI FMC generates for the endpoint (shape of sdwan_backup_wan.json's metadata)
+    "id": "svti-new",
+    "name": "Tunnel1",
+    "ifname": "outside1_static_vti_1",
+    "type": "VTIInterface",
+    "tunnelType": "STATIC",
+    "tunnelId": 1,
+    "enabled": True,
+    "managementOnly": False,
+    "tunnelSource": {"id": "d-sp3-e0", "name": "Ethernet0/0", "type": "PhysicalInterface"},
+    "securityZone": {"id": "zone-overlay", "type": "SecurityZone"},
+    "ipv4": {"static": {"address": "10.255.250.2", "netmask": "24"}},
+    "ipsecMode": "ipv4",
+    "links": {"self": "x"},
+    "metadata": {"vpnTopologyName": "mcp-sdwan-t9"},
+}
+
+
+def ospf_lab(fmc: respx.MockRouter, *, metadata: bool = True) -> list[tuple[str, Any]]:
+    """The lab plus FMC's read-back of the new spoke endpoint (with or without vtiInterfaceMetadataList)
+    and the VTI it generated on spoke3."""
+    log = lab(fmc, topologies=False)
+    meta = {"vtiInterfaceMetadataList": [{"vtiInterface": {"id": "svti-new", "name": "Tunnel1"}}]}
+    fmc.get(url__regex=rf"{S2S}/topo-new/endpoints/new-\d+$").mock(
+        return_value=httpx.Response(200, json={"peerType": "SPOKE", "metadata": meta if metadata else {}})
+    )
+    vtis = f"{CFG}/devices/devicerecords/d-sp3/virtualtunnelinterfaces"
+    fmc.get(f"{vtis}/svti-new").mock(return_value=httpx.Response(200, json=NEW_SVTI))
+    # none while planning; the generated one once the topology exists
+    fmc.get(vtis).mock(
+        side_effect=lambda req: items(
+            [NEW_SVTI] if any(m == "POST policy/ftds2svpns" for m, _ in log) else []
+        )
+    )
+    return log
+
+
+async def test_ospf_overlay_spoke_tunnels_borrow_a_loopback(fmc: respx.MockRouter) -> None:
+    log = ospf_lab(fmc)
+    async with Client(server()) as c:
+        preview = await run(c, "fmc_create_sdwan_topology", OSPF)
+        assert preview["status"] == "preview", preview
+        steps = preview["preview"]["steps"]
+        assert "create loopback 'sdwan-ospf-lo' 10.255.9.1/32 on mcp-sdwan-t1-spoke3" in steps
+        assert steps[-1].startswith(
+            "set the tunnel FMC generates on mcp-sdwan-t1-spoke3 to borrow 10.255.9.1/32"
+        )
+        assert preview["preview"]["spokes"][0]["tunnel_borrows"] == "sdwan-ospf-lo (new) 10.255.9.1/32"
+        assert log == []
+        done = await run(c, "fmc_create_sdwan_topology", {**OSPF, "confirm": preview["confirm"]})
+    order = [m for m, _ in log]
+    assert order == [
+        "POST object/ipv4addresspools",
+        "POST devices/devicerecords/d-hub2/loopbackinterfaces",
+        "POST devices/devicerecords/d-hub2/virtualtunnelinterfaces",
+        "POST devices/devicerecords/d-sp3/loopbackinterfaces",  # before the topology: undone after it
+        "POST policy/ftds2svpns",
+        "PUT policy/ftds2svpns/topo-new/ikesettings/ike-n",
+        "PUT policy/ftds2svpns/topo-new/ipsecsettings/ips-n",
+        "POST policy/ftds2svpns/topo-new/endpoints",
+        "POST policy/ftds2svpns/topo-new/endpoints",
+        "PUT devices/devicerecords/d-sp3/virtualtunnelinterfaces/svti-new",
+    ]
+    lo, put = log[3][1], log[-1][1]
+    assert lo["ifname"] == "sdwan-ospf-lo" and lo["loopbackId"] == 1
+    assert lo["ipv4"] == {"static": {"address": "10.255.9.1", "netmask": "255.255.255.255"}}
+    assert put["ipAddressAssignmentType"] == "BORROW_IP_FROM_INTERFACE"
+    assert put["borrowIPfrom"] == {"id": "new-4", "type": "LoopbackInterface", "name": "Loopback1"}
+    # the GET body minus the pool address, read-only parts and managementOnly (live: FMC accepted that)
+    assert not {"ipv4", "managementOnly", "links", "metadata"} & set(put)
+    assert put["tunnelSource"]["id"] == "d-sp3-e0" and put["ifname"] == "outside1_static_vti_1"
+    created = done["result"]["created"]
+    assert "tunnel outside1_static_vti_1 on mcp-sdwan-t1-spoke3 borrows 10.255.9.1/32" in created
+    assert done["result"]["next"].startswith("Configure OSPF") and "show route ospf" in done["result"]["next"]
+
+
+async def test_ospf_borrow_finds_the_new_vti_without_endpoint_metadata(fmc: respx.MockRouter) -> None:
+    log = ospf_lab(fmc, metadata=False)
+    args = {**OSPF, "spoke_loopbacks": ["10.255.9.21/32"]}
+    async with Client(server()) as c:
+        preview = await run(c, "fmc_create_sdwan_topology", args)
+        await run(c, "fmc_create_sdwan_topology", {**args, "confirm": preview["confirm"]})
+    puts = [(m, b) for m, b in log if m.startswith("PUT devices/")]
+    assert [m for m, _ in puts] == ["PUT devices/devicerecords/d-sp3/virtualtunnelinterfaces/svti-new"]
+    assert puts[0][1]["borrowIPfrom"]["id"] == "new-4"
+    lo = next(b for m, b in log if m == "POST devices/devicerecords/d-sp3/loopbackinterfaces")
+    assert lo["ipv4"]["static"]["address"] == "10.255.9.21"
+
+
+async def test_ospf_reuses_a_spoke_loopback_with_the_address(fmc: respx.MockRouter) -> None:
+    log = ospf_lab(fmc)
+    have = {
+        "id": "lo-sp3",
+        "name": "Loopback3",
+        "ifname": "mgmt-lo",
+        "type": "LoopbackInterface",
+        "loopbackId": 3,
+    }
+    have["ipv4"] = {"static": {"address": "10.255.9.1", "netmask": "255.255.255.255"}}
+    fmc.get(f"{CFG}/devices/devicerecords/d-sp3/loopbackinterfaces").mock(return_value=items([have]))
+    async with Client(server()) as c:
+        preview = await run(c, "fmc_create_sdwan_topology", OSPF)
+        assert preview["preview"]["spokes"][0]["tunnel_borrows"] == "Loopback3 10.255.9.1/32"
+        await run(c, "fmc_create_sdwan_topology", {**OSPF, "confirm": preview["confirm"]})
+    assert "POST devices/devicerecords/d-sp3/loopbackinterfaces" not in [m for m, _ in log]
+    assert log[-1][1]["borrowIPfrom"]["id"] == "lo-sp3"
+
+
+@pytest.mark.parametrize(
+    ("change", "blocker"),
+    [
+        ({"spoke_loopbacks": "10.255.250.0/24"}, "is in the spoke pool 10.255.250.0/24"),
+        (
+            {"backup_hub": "mcp-sdwan-t1-hub", "backup_spoke_pool": "10.255.254.0/24", "hub_dvti": "x"},
+            "with a backup hub is not supported yet",
+        ),
+    ],
+)
+async def test_ospf_blockers(fmc: respx.MockRouter, change: dict[str, Any], blocker: str) -> None:
+    ospf_lab(fmc)
+    async with Client(server()) as c:
+        out = await run(c, "fmc_create_sdwan_topology", {**OSPF, **change})
+    assert out["status"] == "blocked" and any(blocker in b for b in out["blockers"]), out
+
+
+@pytest.mark.parametrize(
+    ("change", "error"),
+    [
+        ({"spoke_loopbacks": None}, "needs spoke_loopbacks"),
+        ({"overlay": "bgp"}, "spoke_loopbacks is for overlay='ospf'"),
+        ({"spoke_loopbacks": ["10.255.9.1", "10.255.9.2"]}, "2 address(es) for 1 spoke(s)"),
+        ({"spoke_loopbacks": "10.255.9.0/31x"}, "not an IPv4 subnet"),
+        ({"spoke_loopbacks": ["spoke3-lo"]}, "not an IPv4 address"),
+    ],
+)
+async def test_ospf_validation(fmc: respx.MockRouter, change: dict[str, Any], error: str) -> None:
+    lab(fmc, topologies=False)
+    async with Client(server()) as c:
+        r = await c.call_tool("fmc_create_sdwan_topology", {**OSPF, **change}, raise_on_error=False)
+    assert r.is_error and error in r.content[0].text  # type: ignore[union-attr]
 
 
 async def test_bgp_overlay_has_no_ospf_warning(fmc: respx.MockRouter) -> None:
@@ -288,6 +434,66 @@ async def test_update_adds_and_removes_spokes(fmc: respx.MockRouter) -> None:
         "POST policy/ftds2svpns/topo-t1/endpoints",
     ]
     assert log[1][1]["interface"]["id"] == "d-sp3-e1"
+
+
+def ospf_t1(fmc: respx.MockRouter) -> list[tuple[str, Any]]:
+    """The lab's mcp-sdwan-t1 as an OSPF overlay (no generated BGP), with spoke3's new VTI read back."""
+    log = lab(fmc)
+    topo = json.loads(json.dumps(LAB["policy/ftds2svpns"]))
+    topo["items"][0]["autoVpnSettings"]["routeSettings"] = {"enableBgp": False}
+    fmc.get(S2S).mock(return_value=httpx.Response(200, json=topo))
+    fmc.get(f"{CFG}/object/ipv4addresspools/pool-t1").mock(
+        return_value=httpx.Response(200, json=LAB["object/ipv4addresspools"]["items"][0])
+    )
+    meta = {"vtiInterfaceMetadataList": [{"vtiInterface": {"id": "svti-new"}}]}
+    fmc.get(url__regex=rf"{S2S}/topo-t1/endpoints/new-\d+$").mock(
+        return_value=httpx.Response(200, json={"metadata": meta})
+    )
+    svti = {**NEW_SVTI, "tunnelSource": {"id": "d-sp3-e1", "name": "Ethernet0/1"}}
+    fmc.get(f"{CFG}/devices/devicerecords/d-sp3/virtualtunnelinterfaces/svti-new").mock(
+        return_value=httpx.Response(200, json=svti)
+    )
+    return log
+
+
+async def test_update_adds_an_unnumbered_spoke_to_an_ospf_overlay(fmc: respx.MockRouter) -> None:
+    log = ospf_t1(fmc)
+    args = {
+        "topology": "mcp-sdwan-t1",
+        "add_spokes": [{"device": "mcp-sdwan-t1-spoke3", "wan_interface": "outside2"}],
+        "spoke_loopbacks": ["10.255.9.13"],
+    }
+    async with Client(server()) as c:
+        r = await c.call_tool(
+            "fmc_update_sdwan_topology", {**args, "spoke_loopbacks": None}, raise_on_error=False
+        )
+        assert r.is_error and "runs an OSPF overlay" in r.content[0].text  # type: ignore[union-attr]
+        blocked = await run(c, "fmc_update_sdwan_topology", {**args, "spoke_loopbacks": ["10.255.255.77"]})
+        assert blocked["status"] == "blocked" and "spoke pool" in blocked["blockers"][0]
+        preview = await run(c, "fmc_update_sdwan_topology", args)
+        assert preview["status"] == "preview", preview
+        assert preview["preview"]["add_spokes"][0]["tunnel_borrows"] == "sdwan-ospf-lo (new) 10.255.9.13/32"
+        assert any("fmc_configure_ospf" in e for e in preview["side_effects"])
+        done = await run(c, "fmc_update_sdwan_topology", {**args, "confirm": preview["confirm"]})
+    assert [m for m, _ in log] == [
+        "POST devices/devicerecords/d-sp3/loopbackinterfaces",
+        "POST policy/ftds2svpns/topo-t1/endpoints",
+        "PUT devices/devicerecords/d-sp3/virtualtunnelinterfaces/svti-new",
+    ]
+    assert log[-1][1]["borrowIPfrom"]["id"] == "new-1" and "ipv4" not in log[-1][1]
+    assert any("borrows 10.255.9.13/32" in x for x in done["result"]["changed"])
+
+
+async def test_update_spoke_loopbacks_only_for_ospf(fmc: respx.MockRouter) -> None:
+    lab(fmc)  # mcp-sdwan-t1 runs iBGP
+    args = {
+        "topology": "mcp-sdwan-t1",
+        "add_spokes": [{"device": "mcp-sdwan-t1-spoke3", "wan_interface": "outside2"}],
+        "spoke_loopbacks": "10.255.9.0/24",
+    }
+    async with Client(server()) as c:
+        r = await c.call_tool("fmc_update_sdwan_topology", args, raise_on_error=False)
+    assert r.is_error and "OSPF overlay" in r.content[0].text  # type: ignore[union-attr]
 
 
 async def test_update_backup_hub_checks_pools(fmc: respx.MockRouter) -> None:

@@ -20,6 +20,10 @@ preview-first and runs only after the user approves it.
    show path-monitoring, show policy-route and show bgp summary), say so: wan_links then carry the
    path-monitoring status only (health "not available"), so a brownout on a link that is still up
    can't be seen through FMC; ask the user for the device's 'show path-monitoring' from its console.
+   Metrics from FMC's health monitor trail the device by a few minutes: `changed_at` says when a link's
+   values last changed, `unchanged_since` that they are at least that old. A link FMC reports as
+   unreachable with "metrics pending" is still degraded, but in the first ~5 minutes of a brownout FMC
+   says this while the device still reaches the peer: call again before calling the path dead.
 
 2. App route: in the same result's `app_routes`, find the rule whose `match` (an extended ACL or an
    application/network object) covers "Teams". Confirm with `fmc_get_routing` with
