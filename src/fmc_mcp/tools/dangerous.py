@@ -37,7 +37,7 @@ from fmc_mcp.tools.common import Domain, ref_label, resolve_in, slim
 from fmc_mcp.tools.deploy import JOBS, deployable, deployable_row
 from fmc_mcp.tools.devices import DEVICES, HA_PAIRS, DeviceRef
 from fmc_mcp.tools.object_writes import applied, editable
-from fmc_mcp.tools.policies import POLICY_KINDS, PolicyKind, all_rules
+from fmc_mcp.tools.policies import POLICY_KINDS, PolicyKind, all_rules, policy_assignments
 from fmc_mcp.tools.system import iso
 
 DONE = {"deployed", "succeeded", "success", "completed", "complete"}
@@ -933,10 +933,9 @@ def register(reg: ToolRegistrar) -> None:
                 app, await app.config_path(f"{POLICY_KINDS[kind]}/{p['id']}/{sub}", domain)
             )
             details["rules"] = len(rules.items)
-        assigned = await app.all(await app.config_path("assignment/policyassignments", domain), cap=5000)
         targets = [
             ref_label(t)
-            for a in assigned.items
+            for a in await policy_assignments(app, domain)
             if (a.get("policy") or {}).get("id") == p["id"]
             for t in a.get("targets") or []
         ]
