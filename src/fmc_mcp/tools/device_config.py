@@ -408,7 +408,7 @@ def plan_logical_interface(
     if kind == "vti":
         src = pick(str(tunnel_source), [x for x in items if x[0] != "vti"], "tunnel_source")
         if src:
-            skind, s = src
+            s = src[1]
             if s.get("managementOnly") or str(s.get("name", "")).lower().startswith("management"):
                 blockers.append(
                     f"{s.get('name')} is a management interface; source the tunnel from a data interface."
@@ -434,6 +434,11 @@ def plan_logical_interface(
             "A VTI carries traffic once a route-based VPN uses it (fmc_create_s2s_vpn route_based, or an "
             "SD-WAN topology) and routes point at it."
         )
+        if not zone:
+            side.append(
+                "No security zone: access rules can't match the tunnel's traffic by zone until it has one "
+                "(fmc_update_interface security_zone=...)."
+            )
     if kind in MEMBER_KINDS:
         pool = [x for x in items if x[0] in MEMBER_KINDS[kind]]
         picked: list[dict[str, Any]] = []
