@@ -331,8 +331,9 @@ async def read_live(
 ) -> dict[str, Any]:
     """Run the failover show commands through FMC, one at a time (FMC runs one command per device
     at once): 'show failover' and 'show failover state' on the active unit (the primary when FMC
-    knows no active unit), 'show failover history' on each unit when `history`. A command that fails
-    becomes a note; the rest still run."""
+    knows no active unit; the other unit when that one doesn't answer, e.g. powered off), 'show
+    failover history' on each unit when `history`. A command that fails becomes a note; the rest
+    still run."""
     units = _unit_ids(ha)
     if not units:
         return {"notes": ["FMC lists no units for this pair."]}
@@ -348,16 +349,20 @@ async def read_live(
             return None
         return text
 
+    order = [active] + [u for u in units if u is not active]
     out: dict[str, Any] = {"ran_on": active["device"]}
-    text = await show(active, "show failover")
-    if text is not None:
-        out["failover"] = parse_show_failover(text)
-    text = await show(active, "show failover state")
-    if text is not None:
-        out["state"] = parse_failover_state(text)
+    for unit in order:
+        text = await show(unit, "show failover")
+        if text is not None:
+            out["ran_on"] = unit["device"]
+            out["failover"] = parse_show_failover(text)
+            text = await show(unit, "show failover state")
+            if text is not None:
+                out["state"] = parse_failover_state(text)
+            break
     if history:
         hist: dict[str, list[dict[str, Any]]] = {}
-        for u in [active] + [u for u in units if u is not active]:
+        for u in order:
             text = await show(u, "show failover history")
             if text is not None:
                 hist[str(u["device"])] = parse_failover_history(text)
