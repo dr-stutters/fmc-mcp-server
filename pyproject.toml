@@ -7,7 +7,7 @@ license = "MIT"
 requires-python = ">=3.12,<3.15"
 dependencies = [
     "pyyaml>=6.0",
-    # >>> bundled stutters-mcp-core v0.14.0 (scripts/bundle_core.py; do not edit)
+    # >>> bundled stutters-mcp-core v0.14.2 (scripts/bundle_core.py; do not edit)
     "fastmcp>=4.1,<5",
     "httpx>=0.28.1",
     "pydantic-settings>=2.15.0",
@@ -22,8 +22,8 @@ fmc-mcp-server = "fmc_mcp:main"
 # stutters-mcp-core is bundled into the package as fmc_mcp._core (ADR-005 in stutters-mcp-core):
 # python scripts/bundle_core.py vendor   (after a clone or a pin change; then uv lock if deps changed)
 [tool.bundle-core]
-tag = "v0.14.0"
-commit = "d53590090150b7b8a3d88fca7bde1d0140149d14"
+tag = "v0.14.2"
+commit = "3a8025f649e41d24f4788ff9fc2fd1deb16f4534"
 
 [build-system]
 requires = ["uv_build>=0.10.9,<0.11.0"]
