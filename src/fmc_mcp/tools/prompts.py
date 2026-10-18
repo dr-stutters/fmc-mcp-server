@@ -653,8 +653,8 @@ call it again.
    {tool_ref("fmc_list_nat_rules")} with device={on} (and {far}): a manual identity rule (source and
    destination translated to themselves) for local -> remote networks must sit above any dynamic PAT
    that also matches the inside networks; for policy-based topologies the endpoint's `nat_exempt`
-   (enableNATExempt with the inside zone) adds it. A PAT rule matching first sends the traffic out
-   untranslated-for-VPN, and the tunnel never sees it.
+   (enableNATExempt with the inside zone) adds it. A PAT rule that matches first translates the
+   source, so the traffic no longer matches the protected networks and never enters the tunnel.
 
 6. Access rules and the live path: {tracer}. Read the phases: ROUTE-LOOKUP (egress: the VTI or the
    outside interface), NAT (no translation for VPN traffic), ACCESS-LIST (the rule) and VPN
@@ -673,13 +673,15 @@ call it again.
    - not deployed: {tool_ref("fmc_deploy")} both ends (after {tool_ref("fmc_pending_changes")});
    - key mismatch: set the same pre-shared key on both ends (an extranet peer's own config, or the
      topology's IKE settings with {tool_ref("fmc_api_call")} PUT on
-     policy/ftds2svpns/<id>/ikesettings/<id>; the preview masks the key), then deploy;
-   - missing route over the tunnel: {tool_ref("fmc_create_static_route")} with interface=<the VTI's
-     logical name> and networks=<the far networks>, or a BGP/OSPF neighbor over the VTI
-     ({tool_ref("fmc_configure_bgp")});
-   - missing NAT exemption: {tool_ref("fmc_create_nat_rule")} with kind="manual", original and
-     translated source = the local networks (identity: omit translated_source), original and
-     translated destination = the remote networks, section="before_auto";
+     policy/ftds2svpns/<id>/ikesettings/<id>, a raw call that needs the dangerous tier; the preview
+     masks the key), then deploy;
+   - missing route over the tunnel: {tool_ref("fmc_create_static_route")} with device={on},
+     interface=<the VTI's logical name>, networks=<the far networks> and gateway=<the far end's VTI
+     address>, or a BGP/OSPF neighbor over the VTI ({tool_ref("fmc_configure_bgp")});
+   - missing NAT exemption: {tool_ref("fmc_create_nat_rule")} with policy=<the device's NAT policy>,
+     kind="manual", original_source=<the local networks> and no translated_source (identity),
+     original_destination and translated_destination=<the remote networks>, source_interface and
+     destination_interface=<the inside and outside zones>, section="before_auto";
    - access rule: {tool_ref("fmc_create_access_rule")} allowing the flow (from or to the VTI's zone
      for route-based tunnels);
    - an upstream path or carrier problem: say so; no FMC change fixes it.
