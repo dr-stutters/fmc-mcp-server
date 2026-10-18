@@ -25,6 +25,7 @@ from fmc_mcp._core import InvalidRequest, NotFound, ToolRegistrar, UpstreamError
 from fmc_mcp.client import FmcApp
 from fmc_mcp.tools.common import Domain, ref_label
 from fmc_mcp.tools.devices import DEVICES, HA_PAIRS
+from fmc_mcp.tools.show_commands import Supported, check_command, supported_commands
 from fmc_mcp.tools.troubleshoot import redact, run_show, tunnel_row
 from fmc_mcp.tools.vpn import S2S, _peer_device, resolve_topology
 
@@ -36,7 +37,7 @@ ROUTE_BGP = "show route bgp"  # the fallback when FMC refuses show bgp summary
 DOWN = {"OFFLINE", "DOWN", "TUNNEL_DOWN"}
 NOT_AVAILABLE = "not available"
 SEVERITY = {"critical": 0, "warning": 1, "ok": 2, "unknown": 3, NOT_AVAILABLE: 3}
-# FMC's answer to a show command it doesn't pass through (FMC 10.0.1, HTTP 400).
+# FMC's answer to a show command it doesn't pass through (FMC 10.0.1, HTTP 400), and ours.
 REFUSED = re.compile(r"not supported|invalid command|command is invalid", re.I)
 FMC_TUNNEL_LAG = (
     "Tunnel states come from FMC's tunnel monitor, which lagged the devices by 2-3 minutes on FMC "
@@ -44,9 +45,9 @@ FMC_TUNNEL_LAG = (
     "saw a change, and fmc_run_show_command('show crypto ikev2 sa') on the device is current."
 )
 NO_PATH_METRICS = (
-    "Path metrics are not available: FMC refused 'show path-monitoring', so a brownout (loss, delay, "
-    "jitter, low MOS) on a link that is still up can't be seen here; wan_links show the path-monitoring "
-    "status only. Check on the device console (show path-monitoring) for the numbers."
+    "Path metrics are not available: FMC doesn't pass 'show path-monitoring' through, so a brownout "
+    "(loss, delay, jitter, low MOS) on a link that is still up can't be seen here; wan_links show the "
+    "path-monitoring status only. Check on the device console (show path-monitoring) for the numbers."
 )
 
 _METRICS = {
@@ -415,10 +416,12 @@ async def branch_status(
     domain: str | None,
     refused: dict[str, str] | None = None,
     pair: dict[str, Any] | None = None,
+    supported: Supported | None = None,
 ) -> tuple[dict[str, Any], list[dict[str, Any]]]:
     """One branch (or hub): its row and its degraded-link findings. `refused` collects the show
     commands FMC doesn't pass through, so the next devices don't ask again; `pair` is the HA pair
-    record (with failover states) when the endpoint is an HA pair."""
+    record (with failover states) when the endpoint is an HA pair; `supported` is FMC's show-command
+    allowlist (commands it doesn't list are not sent)."""
     refused = {} if refused is None else refused
     dev = endpoint.get("device") or {}
     name = str(dev.get("name") or endpoint.get("name"))
@@ -442,11 +445,16 @@ async def branch_status(
         notes.append(f"app routes not read: {err}")
 
     async def show(cmd: str) -> str | None:
+        if cmd not in refused:
+            try:
+                check_command(cmd, supported)
+            except InvalidRequest:
+                refused[cmd] = "FMC doesn't pass this command through (not in its supported list; not sent)"
         if cmd in refused:
             evidence[cmd] = f"{NOT_AVAILABLE}: {refused[cmd]}"
             return None
         try:
-            text, _ = redact(await run_show(app, rec, cmd, domain))
+            text, _ = redact(await run_show(app, rec, cmd, domain, supported))
         except (InvalidRequest, NotFound, UpstreamError) as err:
             if REFUSED.search(str(err)):
                 refused[cmd] = "FMC doesn't pass this command through (not supported)"
@@ -607,7 +615,8 @@ def register(reg: ToolRegistrar) -> None:
             Field(
                 description="Also run show path-monitoring, show policy-route, show bgp summary (or show "
                 "route bgp) and show crypto ikev2 stats on the devices (path metrics, live app-route, "
-                "BGP and IKE state); commands FMC refuses are reported as not available"
+                "BGP and IKE state); commands FMC's API spec doesn't list are not sent and are reported "
+                "as not available"
             ),
         ] = True,
         max_devices: Annotated[
@@ -621,10 +630,12 @@ def register(reg: ToolRegistrar) -> None:
         ordering against the live metrics, with 'show policy-route' as evidence), and one ranked list
         of degraded links (down, lossy, slow, jittery or low MOS; a hub whose tunnels are all down is
         one entry). For a down tunnel the IKEv2 counters tell a pre-shared key mismatch (authentication
-        failures growing between two calls) from a dead path (retransmits only). FMC 10.0.1 refuses
-        show path-monitoring, so path metrics are then 'not available' and a brownout can't be seen
-        through FMC. Read-only; queried when called. Show commands cost one FMC request per device
-        each (a refused command is tried once per call); limit them with branch or max_devices."""
+        failures growing between two calls) from a dead path (retransmits only). FMC 10.0.1 doesn't pass
+        show path-monitoring, show policy-route or show bgp summary through (they are not in its API
+        spec's supported list, so they aren't sent): path metrics are then 'not available', BGP comes
+        from 'show route bgp', and a brownout can't be seen through FMC. Read-only; queried when called.
+        Show commands cost one FMC request per device each (a command FMC refuses is tried once per
+        call); limit them with branch or max_devices."""
         app: FmcApp = get_client(ctx)
         if topology:
             t = await resolve_topology(app, topology, domain)
@@ -665,6 +676,7 @@ def register(reg: ToolRegistrar) -> None:
             pm_by_dev.setdefault(str((p.get("device") or {}).get("id")), []).extend(p.get("interfaces") or [])
         budget = max_devices
         refused: dict[str, str] = {}
+        supported = await supported_commands(ctx) if show_commands else None
         out_topos: list[dict[str, Any]] = []
         ranked: list[dict[str, Any]] = []
         skipped: list[str] = []
@@ -693,7 +705,9 @@ def register(reg: ToolRegistrar) -> None:
                 monitored = [
                     i for d in (dev_id, *sorted(members.get(dev_id, ()))) for i in pm_by_dev.get(d, [])
                 ]
-                row, found = await branch_status(app, ep, t, tunnels, monitored, run, domain, refused, pair)
+                row, found = await branch_status(
+                    app, ep, t, tunnels, monitored, run, domain, refused, pair, supported
+                )
                 branches.append(row)
                 found_here += found
             ranked += rank(found_here, branches)

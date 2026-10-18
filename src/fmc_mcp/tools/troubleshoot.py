@@ -35,12 +35,10 @@ from fmc_mcp.tools.dangerous import task_id_of, wait_task
 from fmc_mcp.tools.device_config import device_interfaces, pick_interface, resolve_device
 from fmc_mcp.tools.devices import DeviceRef
 from fmc_mcp.tools.policies import ACCESS, PREFILTER, all_rules, resolve_policy
+from fmc_mcp.tools.show_commands import Supported, check_command, supported_commands
 from fmc_mcp.tools.system import iso
 
 MAX_OUTPUT_LINES = 400
-# The command API takes at most two words in `command`; the rest go in `parameters`.
-COMMAND_WORDS = 2
-UNSAFE = re.compile(r"[|;&`$<>\n\r]")
 RULE_ID = re.compile(r"(?:rule-id|Rule ID) (\d+)")
 # Phases that only say "passed" unless they drop; hidden from the compact view.
 ROUTINE = {
@@ -60,17 +58,10 @@ ROUTE_LEGEND = re.compile(r"^Codes: .*?\n(?=\s*\n|Gateway of last resort|\S)", r
 HIT_ID_CHUNK = 40  # rule ids per hit-count request (they go in the query string)
 
 
-def split_command(command: str) -> tuple[str, str | None]:
-    """'show running-config access-group' -> ('show running-config', 'access-group')."""
-    text = " ".join(command.strip().split())
-    if not text.lower().startswith("show "):
-        raise InvalidRequest("Only 'show ...' commands are supported (FMC runs them on the device).")
-    if UNSAFE.search(text):
-        raise InvalidRequest("Pipes, redirects and command separators are not allowed; use `match`.")
-    words = text.split(" ")
-    head = " ".join(words[:COMMAND_WORDS])
-    rest = " ".join(words[COMMAND_WORDS:]) or None
-    return head, rest
+def split_command(command: str, supported: Supported | None = None) -> tuple[str, str | None]:
+    """'show running-config access-group' -> ('show running-config', 'access-group'), after checking the
+    command against FMC's allowlist (show_commands.check_command)."""
+    return check_command(command, supported)
 
 
 SECRET = re.compile(
@@ -299,8 +290,12 @@ def _json(resp: Any) -> Any:
         return None
 
 
-async def run_show(app: FmcApp, device_id: str, command: str, domain: str | None) -> str:
-    head, rest = split_command(command)
+async def run_show(
+    app: FmcApp, device_id: str, command: str, domain: str | None, supported: Supported | None = None
+) -> str:
+    """Run one show command through FMC. `supported` is FMC's allowlist (show_commands.supported_commands;
+    the built-in FMC 10.0.1 list when None): an unsupported command is refused before any call."""
+    head, rest = split_command(command, supported)
     params: dict[str, Any] = {"command": head}
     if rest:
         params["parameters"] = rest
@@ -373,8 +368,9 @@ def register(reg: ToolRegistrar) -> None:
         command: Annotated[
             str,
             Field(
-                description="A 'show' command, e.g. 'show route', 'show nat detail', 'show interface ip "
-                "brief', 'show running-config access-group', 'show conn count', 'show failover'"
+                description="A 'show' command FMC passes through, e.g. 'show route', 'show route bgp', "
+                "'show interface ip brief', 'show running-config nat', 'show crypto ikev2 sa', "
+                "'show failover'"
             ),
         ],
         match: Annotated[
@@ -384,15 +380,20 @@ def register(reg: ToolRegistrar) -> None:
         domain: Domain = None,
     ) -> dict[str, Any]:
         """Run a read-only 'show' command on a managed FTD through FMC and return its output, to verify
-        that a deployment landed. FMC only allows an approved set, mostly configuration views: show
-        version, show route, show interface (ip brief), show failover, and show running-config
-        <section> (nat, route, interface, access-group, access-list, object, ...). It refuses
-        stateful or bulky commands (show conn, show xlate, show nat, show arp, show access-list,
-        plain show running-config): use the device CLI for those. One command per device at a
-        time; `match` filters the lines."""
+        that a deployment landed. FMC only passes through the CLIs its API spec lists for
+        operational/commands (read from the spec at run time; FMC 10.0.1: show version, failover, route
+        <option>, crypto <option>, ip, logging, snmp-server, ssl, vpn-sessiondb, access-list <name>, rule,
+        aaa-server, ntp, banner, network, firewall, dhcpd state, snort3 status), plus show interface and
+        show running-config <section>. Anything else (show bgp, show ospf, show path-monitoring, show
+        policy-route, show conn, show xlate, show nat, show arp, plain show running-config) is refused here
+        with the alternatives, before FMC is called. Words after the second go to FMC as parameters
+        ('show route bgp' = 'show route' + 'bgp'). One command per device at a time; `match` filters
+        the lines."""
         app: FmcApp = get_client(ctx)
+        supported = await supported_commands(ctx)
+        split_command(command, supported)  # refuse an unsupported command before resolving the device
         dev = await resolve_device(app, device, domain)
-        text, redacted = redact(await run_show(app, dev["id"], command, domain))
+        text, redacted = redact(await run_show(app, dev["id"], command, domain, supported))
         if re.match(r"show\s+(ipv6\s+)?route\b", command.strip(), re.I):
             text = ROUTE_LEGEND.sub("", text)
         output, total, truncated = filter_lines(text, match, max_lines)

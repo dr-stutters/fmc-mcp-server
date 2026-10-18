@@ -5,6 +5,16 @@
 ### Changed
 - Bundled stutters-mcp-core v0.14.0 -> v0.14.2: raw `fmc_api_call` writes mask secret fields (`manualPreSharedKey`,
   `preSharedKey`, passwords, keys) in the preview and the result; the request sent to FMC is unchanged.
+- `fmc_run_show_command` and the show commands `fmc_sdwan_status` runs check the command against the
+  supported CLIs that FMC's API spec documents for `devices/devicerecords/{id}/operational/commands`
+  (read from the spec index at run time; FMC 10.0.1's list is built in, plus the live-verified
+  `show interface` and `show running-config <section>`). An unsupported command (`show bgp summary`,
+  `show path-monitoring`, `show policy-route`, `show ospf ...`, `show conn`, plain `show running-config`)
+  is refused before FMC is called, naming the alternative (`show route bgp`, `fmc_sdwan_status`,
+  `fmc_get_routing`, ...) and the supported list. Words after the second still go to FMC as `parameters`;
+  an unambiguous abbreviation of the second word is expanded (`show run nat`). `fmc_sdwan_status` no
+  longer sends the three commands FMC 10.0.1 refuses (one request less per device each). Tool docs that
+  suggested `show bgp summary` / `show policy-route` now point to `show route bgp` / `fmc_sdwan_status`.
 
 ## 0.13.0 (2026-10-18)
 
