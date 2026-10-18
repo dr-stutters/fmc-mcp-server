@@ -292,7 +292,12 @@ note it and carry on.
    modules, their details and since when, and CPU/memory (above 90 % is a warning). A RED module
    is critical and a YELLOW one a warning, except an INTERFACE module saying an interface "is not
    receiving any packets": a warning on an idle link (a lab, an unused port), critical on one that
-   should carry traffic. Say which you assumed.
+   should carry traffic. Say which you assumed. For a device that is not green, near its CPU or
+   memory limit, or behind a finding in a later step (a down tunnel, an HA event, a burst of alerts),
+   {tool_ref("fmc_device_metrics")} with device=<name>, since="{lookback_hours}h"{d} shows its load
+   over the review window: CPU and memory peaks with their times, throughput, connections and drops.
+   A peak at the time of an alert ties them together; sustained CPU or memory above the limits the
+   result flags is a finding of its own. These calls count towards the per-device limit.
 
 2. HA and clusters: {tool_ref("fmc_list_ha_pairs")}{wd} and {tool_ref("fmc_list_clusters")}{wd}. For
    each HA pair with a unit in scope, {tool_ref("fmc_get_ha_status")} with ha_pair=<name>{d}. One
@@ -687,7 +692,8 @@ def register(reg: ToolRegistrar) -> None:
             int, Field(ge=1, le=720, description="How far back to read health alerts and deployments")
         ] = 24,
     ) -> str:
-        """Is the firewall estate healthy? Reviews device health and connectivity, HA pairs and
+        """Is the firewall estate healthy? Reviews device health and connectivity (with CPU, memory,
+        throughput and drops over the review window for the devices that need it), HA pairs and
         clusters, the deployment backlog and failed deployments, licences, software and VDB/SRU/LSP
         content age, backups, VPN tunnels and recent health alerts with the aggregate tools, and
         writes one ranked report (critical, warning, info), each finding with its evidence and a

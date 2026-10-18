@@ -117,7 +117,7 @@ There are 153 tools when every tier is enabled (66 read, 76 write, 11 dangerous;
 | Devices | `fmc_list_devices`, `fmc_get_device`, `fmc_list_device_interfaces`, `fmc_list_routes`, `fmc_get_routing`, `fmc_get_platform_settings`, `fmc_list_ha_pairs`, `fmc_get_ha_status`, `fmc_list_clusters` |
 | VPN | `fmc_list_vpn_topologies` (incl. SD-WAN), `fmc_get_vpn_topology`, `fmc_get_ravpn`, `fmc_sdwan_status` (per branch: WAN links with path metrics, the path each app route takes now and why, tunnels and iBGP, ranked degraded links) |
 | Device templates (FMC 7.6+) | `fmc_list_device_templates`, `fmc_get_device_template` (interfaces, variables, model mappings, VPN/SD-WAN settings, overridable objects, devices it was applied to; passwords masked) |
-| Troubleshooting | `fmc_packet_tracer`, `fmc_run_show_command`, `fmc_get_hit_counts`, `fmc_device_health`, `fmc_list_vpn_tunnels` |
+| Troubleshooting | `fmc_packet_tracer`, `fmc_run_show_command`, `fmc_get_hit_counts`, `fmc_device_health`, `fmc_device_metrics` (CPU, memory, throughput, connections and drops over a window: min/avg/max, peaks, dips and a compact series), `fmc_list_vpn_tunnels` |
 | Policies | `fmc_list_policies`, `fmc_get_access_policy`, `fmc_list_access_rules`, `fmc_get_access_rule`, `fmc_list_nat_rules`, `fmc_list_prefilter_rules`, `fmc_list_policy_assignments` |
 | Objects | `fmc_list_objects`, `fmc_get_object`, `fmc_find_object`, `fmc_where_used`, `fmc_unused_objects`, `fmc_list_dynamic_objects` |
 | Security Intelligence | `fmc_get_security_intelligence` |
@@ -229,6 +229,8 @@ MD5 password, because FMC returns it masked and a PUT would replace it, unless y
 - **"Teams is slow at branch Y":** the `fmc_sdwan_troubleshoot` prompt walks `fmc_sdwan_status` (path metrics,
   degraded links) -> the app-route rule and the interface it picks now -> the overlay tunnels and BGP ->
   `fmc_packet_tracer`, then proposes one previewed fix.
+- **Was the branch firewall busy during the outage?** `fmc_device_metrics(device, since='2026-10-18T09:30:00Z',
+  until='2026-10-18T10:00:00Z')`: CPU, memory, throughput, connections and drops with their peaks.
 - **What changed or broke in the last hour?** `fmc_recent_activity`.
 - **Is everything healthy?** The `fmc_firewall_health_review` prompt checks devices, HA, deployments,
   licences, content versions, backups, VPN and recent alerts, and ranks the findings (critical, warning,
