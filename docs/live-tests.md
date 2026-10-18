@@ -37,6 +37,8 @@ Inputs that depend on your own FMC and FTD come from these variables, in the env
 | `FMC_LIVE_REALM` | `mcp-test-ad` | An AD/LDAP realm already set up in FMC, for `test_live_identity.py` |
 | `FMC_LIVE_REALM_GROUP` | `mcp-contractors` | A group in that realm (expected after a download; the group rule uses it) |
 | `FMC_LIVE_IDENTITY_POLICY` | `mcp-test-idp` | An identity policy on the realm, selected in `mcp-test-ftd-acp` (FMC's REST API can't select it; use the access policy editor) |
+| `FMC_LIVE_IDENTITY_IP` | `192.0.2.57` | Optional: an address a user is logged in on through an identity source (ISE/pxGrid); `test_live_identity_sources.py` looks it up with `fmc_user_ip_lookup` (skipped when the account's role lacks Events & Logs > Analysis > Users) |
+| `FMC_LIVE_IDENTITY_USER` | `mcp-alice` | Optional: the user expected on `FMC_LIVE_IDENTITY_IP` |
 | `FMC_LIVE_HYGIENE_POLICY` | `mcp-test-hygiene-acp` | An access policy seeded with one finding per static `fmc_policy_audit` check (any-any allow, two rules differing only in destination, a duplicate host, a rule on an expired time range, a rule that logs nothing), for `test_live_hygiene.py` |
 
 ### SD-WAN matrix (`test_live_sdwan_matrix.py`, F53)

@@ -26,3 +26,20 @@ async def test_ha_status_when_paired(client: Client[Any]) -> None:
         pytest.skip("No HA pair on this FMC.")
     out = await call(client, "fmc_get_ha_status", {"ha_pair": pairs["results"][0]["id"]})
     assert {"primary", "secondary"} <= set(out["units"]) and out["monitored_interfaces"]
+
+
+async def test_ha_failover_state_from_the_units(client: Client[Any]) -> None:
+    """F65: the units' own failover state through FMC (read-only: show failover / state / history)."""
+    pairs = await call(client, "fmc_list_ha_pairs", {"response_format": "json"})
+    for pair in pairs["results"]:
+        out = await call(client, "fmc_get_ha_status", {"ha_pair": pair["id"], "history": 3})
+        states = [u.get("device_state") for u in out["units"].values()]
+        if all(states):  # both units answered through FMC (a stopped lab pair only gives notes)
+            break
+    else:
+        pytest.skip("No HA pair whose units answer show commands.")
+    assert sorted(s.split()[0] for s in states) == ["Active", "Standby"]
+    assert out["failover"] == "On" and out["failover_link"]["status"] == "up"
+    assert {c["check"] for c in out["checks"]} >= {"standby_ready", "failover_link_up", "config_in_sync"}
+    assert isinstance(out["ready_for_switch"], bool) and out["summary"]
+    assert out["last_failover"]["at"] and "stateful_replication" in out
