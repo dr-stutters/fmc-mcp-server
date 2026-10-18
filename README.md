@@ -139,17 +139,17 @@ Notes on some read tools:
 - `fmc_rule_lookup` works out, offline, which access rule handles traffic from a source to a
   destination and port. `fmc_packet_tracer` asks the device itself (FMC runs packet-tracer; nothing
   is transmitted) and names the rule that allowed or dropped the packet and why.
+- `fmc_get_ha_status` reads the pair from FMC and, by default, each unit's own failover state through FMC
+  (`show failover`, `show failover state`, `show failover history`): per unit Active / Standby Ready / Failed,
+  active time, interface and snort/disk status and last failure reason; failover and state link status,
+  versions, stateful replication counters, the last failover with its reason, and `checks` with
+  `ready_for_switch`. FMC's own unit states trail a failover by up to a minute. `live=false` skips the units.
 - `fmc_run_show_command` runs the show commands FMC's API spec lists for `operational/commands` (read from
   the spec at run time, FMC 10.0.1's list built in): `show route [bgp|ospf|...]`, `show crypto ikev2 sa`,
   `show failover`, `show interface ip brief`, `show running-config <section>`... Words after the second go to
   FMC as parameters. Anything else (`show bgp`, `show ospf`, `show path-monitoring`, `show policy-route`,
   `show conn`, `show nat`) is refused before FMC is called, with the alternatives.
 - `fmc_get_hit_counts` refreshes the counters from the device first (packet-tracer packets count too).
-- `fmc_get_ha_status` reads the pair from FMC and, by default, each unit's own failover state through FMC
-  (`show failover`, `show failover state`, `show failover history`): per unit Active / Standby Ready / Failed,
-  active time, interface and snort/disk status and last failure reason; failover and state link status,
-  versions, stateful replication counters, the last failover with its reason, and `checks` with
-  `ready_for_switch`. FMC's own unit states trail a failover by up to a minute. `live=false` skips the units.
 - `fmc_list_health_alerts` and `fmc_recent_activity` query FMC when called (no background collection):
   health alerts over a window with repeats collapsed, and one timeline of health alerts, audit records
   and deployments. The server never receives syslog or eStreamer; traffic events stay in the FMC UI or
@@ -223,12 +223,8 @@ MD5 password, because FMC returns it masked and a PUT would replace it, unless y
   branch>)` -> `fmc_get_device_template` (check the variables FMC created) -> `fmc_register_device` (the
   new FTD) -> `fmc_apply_device_template(template, device, variables, overrides)` -> `fmc_deploy` the branch
   and its hub(s) -> `fmc_get_vpn_topology`. Templates apply to standalone devices only.
-- **HA:** `fmc_create_ha_pair` (optionally a separate state link) -> `fmc_configure_ha_monitoring` (standby
-  IPs) -> `fmc_deploy` (the pair's name) -> `fmc_get_ha_status` (the units' own state, `ready_for_switch`);
-  `fmc_ha_action` switch, break or delete.
-- **Does the pair fail over cleanly?** The `fmc_ha_failover_check` prompt runs the pre-checks, a traffic
-  baseline (packet tracer, and pings from a CML host with a loss series), the switch (or, in a lab, the active
-  unit powered off), verifies roles, failover history and its reason, and reports the outage.
+- **HA:** `fmc_create_ha_pair` -> `fmc_configure_ha_monitoring` (standby IPs) -> `fmc_deploy` (the pair's
+  name) -> `fmc_get_ha_status` / `show failover`; `fmc_ha_action` switch, break or delete.
 - **Site-to-site VPN:** `fmc_create_s2s_vpn` -> `fmc_deploy` both peers -> `fmc_list_vpn_tunnels`. In FMC
   evaluation mode only DES crypto deploys; the tool picks it and says so.
 - **SD-WAN branches:** zone the WAN and inside interfaces (`fmc_update_interface`) -> `fmc_create_sdwan_topology`
@@ -242,6 +238,10 @@ MD5 password, because FMC returns it masked and a PUT would replace it, unless y
 - **Is everything healthy?** The `fmc_firewall_health_review` prompt checks devices, HA, deployments,
   licences, content versions, backups, VPN and recent alerts, and ranks the findings (critical, warning,
   info) with a next step for each.
+- **Does the HA pair fail over cleanly?** The `fmc_ha_failover_check` prompt runs the pre-checks
+  (`fmc_get_ha_status`: standby ready, links, monitored interfaces, config sync), a traffic baseline (packet
+  tracer, and pings from a CML host with a loss series), the switch (`fmc_ha_action`, or in a lab the active
+  unit powered off), then verifies roles, failover history and its reason, and reports the outage.
 - **Is this rule change safe?** The `fmc_rule_change_review` prompt baselines the policy, runs sample flows
   through `fmc_rule_lookup` before and after, checks shadowing and overlap, previews the change and plans the
   deploy with a rollback.
