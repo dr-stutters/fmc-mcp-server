@@ -1,0 +1,640 @@
+{
+ "items": [
+  {
+   "name": "Uncategorized",
+   "id": "89a91712-fe55-11e4-a157-a9da511cbd1e",
+   "type": "URLCategory"
+  },
+  {
+   "name": "Malware Sites",
+   "id": "abba9b63-bb10-4729-b901-2e2aa0f01001",
+   "type": "URLCategory"
+  },
+  {
+   "name": "Spyware and Adware",
+   "id": "abba9b63-bb10-4729-b901-2e2aa0f01002",
+   "type": "URLCategory"
+  },
+  {
+   "name": "Phishing",
+   "id": "abba9b63-bb10-4729-b901-2e2aa0f01003",
+   "type": "URLCategory"
+  },
+  {
+   "name": "Botnets",
+   "id": "abba9b63-bb10-4729-b901-2e2aa0f01004",
+   "type": "URLCategory"
+  },
+  {
+   "name": "Spam",
+   "id": "abba9b63-bb10-4729-b901-2e2aa0f01005",
+   "type": "URLCategory"
+  },
+  {
+   "name": "Exploits",
+   "id": "abba9b63-bb10-4729-b901-2e2aa0f01006",
+   "type": "URLCategory"
+  },
+  {
+   "name": "High Risk Sites and Locations",
+   "id": "abba9b63-bb10-4729-b901-2e2aa0f01008",
+   "type": "URLCategory"
+  },
+  {
+   "name": "Bogon",
+   "id": "abba9b63-bb10-4729-b901-2e2aa0f01009",
+   "type": "URLCategory"
+  },
+  {
+   "name": "Ebanking Fraud",
+   "id": "abba9b63-bb10-4729-b901-2e2aa0f01011",
+   "type": "URLCategory"
+  },
+  {
+   "name": "Indicators of Compromise (IOC)",
+   "id": "abba9b63-bb10-4729-b901-2e2aa0f01012",
+   "type": "URLCategory"
+  },
+  {
+   "name": "Domain Generated Algorithm",
+   "id": "abba9b63-bb10-4729-b901-2e2aa0f01013",
+   "type": "URLCategory"
+  },
+  {
+   "name": "Open HTTP Proxy",
+   "id": "abba9b63-bb10-4729-b901-2e2aa0f01014",
+   "type": "URLCategory"
+  },
+  {
+   "name": "Open Mail Relay",
+   "id": "abba9b63-bb10-4729-b901-2e2aa0f01015",
+   "type": "URLCategory"
+  },
+  {
+   "name": "TOR exit Nodes",
+   "id": "abba9b63-bb10-4729-b901-2e2aa0f01016",
+   "type": "URLCategory"
+  },
+  {
+   "name": "Newly Seen Domains",
+   "id": "abba9b63-bb10-4729-b901-2e2aa0f01020",
+   "type": "URLCategory"
+  },
+  {
+   "name": "Cryptojacking",
+   "id": "abba9b63-bb10-4729-b901-2e2aa0f01021",
+   "type": "URLCategory"
+  },
+  {
+   "name": "Linkshare",
+   "id": "abba9b63-bb10-4729-b901-2e2aa0f01022",
+   "type": "URLCategory"
+  },
+  {
+   "name": "Malicious Sites",
+   "id": "abba9b63-bb10-4729-b901-2e2aa0f01023",
+   "type": "URLCategory"
+  },
+  {
+   "name": "Education",
+   "id": "abba9b63-bb10-4729-b901-2e2aa0f02001",
+   "type": "URLCategory"
+  },
+  {
+   "name": "Arts",
+   "id": "abba9b63-bb10-4729-b901-2e2aa0f02002",
+   "type": "URLCategory"
+  },
+  {
+   "name": "Computers and Internet",
+   "id": "abba9b63-bb10-4729-b901-2e2aa0f02003",
+   "type": "URLCategory"
+  },
+  {
+   "name": "Job Search",
+   "id": "abba9b63-bb10-4729-b901-2e2aa0f02004",
+   "type": "URLCategory"
+  },
+  {
+   "name": "Shopping",
+   "id": "abba9b63-bb10-4729-b901-2e2aa0f02005",
+   "type": "URLCategory"
+  },
+  {
+   "name": "Adult",
+   "id": "abba9b63-bb10-4729-b901-2e2aa0f02006",
+   "type": "URLCategory"
+  },
+  {
+   "name": "Games",
+   "id": "abba9b63-bb10-4729-b901-2e2aa0f02007",
+   "type": "URLCategory"
+  },
+  {
+   "name": "Sports and Recreation",
+   "id": "abba9b63-bb10-4729-b901-2e2aa0f02008",
+   "type": "URLCategory"
+  },
+  {
+   "name": "Society and Culture",
+   "id": "abba9b63-bb10-4729-b901-2e2aa0f02010",
+   "type": "URLCategory"
+  },
+  {
+   "name": "Government and Law",
+   "id": "abba9b63-bb10-4729-b901-2e2aa0f02011",
+   "type": "URLCategory"
+  },
+  {
+   "name": "Science and Technology",
+   "id": "abba9b63-bb10-4729-b901-2e2aa0f02012",
+   "type": "URLCategory"
+  },
+  {
+   "name": "Social Science",
+   "id": "abba9b63-bb10-4729-b901-2e2aa0f02014",
+   "type": "URLCategory"
+  },
+  {
+   "name": "Finance",
+   "id": "abba9b63-bb10-4729-b901-2e2aa0f02015",
+   "type": "URLCategory"
+  },
+  {
+   "name": "Hate Speech",
+   "id": "abba9b63-bb10-4729-b901-2e2aa0f02016",
+   "type": "URLCategory"
+  },
+  {
+   "name": "Reference",
+   "id": "abba9b63-bb10-4729-b901-2e2aa0f02017",
+   "type": "URLCategory"
+  },
+  {
+   "name": "Infrastructure and Content Delivery Networks",
+   "id": "abba9b63-bb10-4729-b901-2e2aa0f02018",
+   "type": "URLCategory"
+  },
+  {
+   "name": "Business and Industry",
+   "id": "abba9b63-bb10-4729-b901-2e2aa0f02019",
+   "type": "URLCategory"
+  },
+  {
+   "name": "Search Engines and Portals",
+   "id": "abba9b63-bb10-4729-b901-2e2aa0f02020",
+   "type": "URLCategory"
+  },
+  {
+   "name": "Illegal Activities",
+   "id": "abba9b63-bb10-4729-b901-2e2aa0f02022",
+   "type": "URLCategory"
+  },
+  {
+   "name": "Online Communities",
+   "id": "abba9b63-bb10-4729-b901-2e2aa0f02024",
+   "type": "URLCategory"
+  },
+  {
+   "name": "Filter Avoidance",
+   "id": "abba9b63-bb10-4729-b901-2e2aa0f02025",
+   "type": "URLCategory"
+  },
+  {
+   "name": "Advertisements",
+   "id": "abba9b63-bb10-4729-b901-2e2aa0f02027",
+   "type": "URLCategory"
+  },
+  {
+   "name": "Online Trading",
+   "id": "abba9b63-bb10-4729-b901-2e2aa0f02028",
+   "type": "URLCategory"
+  },
+  {
+   "name": "Lingerie and Swimsuits",
+   "id": "abba9b63-bb10-4729-b901-2e2aa0f02031",
+   "type": "URLCategory"
+  },
+  {
+   "name": "Lotteries",
+   "id": "abba9b63-bb10-4729-b901-2e2aa0f02034",
+   "type": "URLCategory"
+  },
+  {
+   "name": "Weapons",
+   "id": "abba9b63-bb10-4729-b901-2e2aa0f02036",
+   "type": "URLCategory"
+  },
+  {
+   "name": "Web Hosting",
+   "id": "abba9b63-bb10-4729-b901-2e2aa0f02037",
+   "type": "URLCategory"
+  },
+  {
+   "name": "Web-based Email",
+   "id": "abba9b63-bb10-4729-b901-2e2aa0f02038",
+   "type": "URLCategory"
+  },
+  {
+   "name": "Chat and Instant Messaging",
+   "id": "abba9b63-bb10-4729-b901-2e2aa0f02040",
+   "type": "URLCategory"
+  },
+  {
+   "name": "Transportation",
+   "id": "abba9b63-bb10-4729-b901-2e2aa0f02044",
+   "type": "URLCategory"
+  },
+  {
+   "name": "Real Estate",
+   "id": "abba9b63-bb10-4729-b901-2e2aa0f02045",
+   "type": "URLCategory"
+  },
+  {
+   "name": "Travel",
+   "id": "abba9b63-bb10-4729-b901-2e2aa0f02046",
+   "type": "URLCategory"
+  },
+  {
+   "name": "Illegal Drugs",
+   "id": "abba9b63-bb10-4729-b901-2e2aa0f02047",
+   "type": "URLCategory"
+  },
+  {
+   "name": "Gambling",
+   "id": "abba9b63-bb10-4729-b901-2e2aa0f02049",
+   "type": "URLCategory"
+  },
+  {
+   "name": "Hacking",
+   "id": "abba9b63-bb10-4729-b901-2e2aa0f02050",
+   "type": "URLCategory"
+  },
+  {
+   "name": "Cheating and Plagiarism",
+   "id": "abba9b63-bb10-4729-b901-2e2aa0f02051",
+   "type": "URLCategory"
+  },
+  {
+   "name": "Sex Education",
+   "id": "abba9b63-bb10-4729-b901-2e2aa0f02052",
+   "type": "URLCategory"
+  },
+  {
+   "name": "Software Updates",
+   "id": "abba9b63-bb10-4729-b901-2e2aa0f02053",
+   "type": "URLCategory"
+  },
+  {
+   "name": "Pornography",
+   "id": "abba9b63-bb10-4729-b901-2e2aa0f02054",
+   "type": "URLCategory"
+  },
+  {
+   "name": "Dating",
+   "id": "abba9b63-bb10-4729-b901-2e2aa0f02055",
+   "type": "URLCategory"
+  },
+  {
+   "name": "Peer File Transfer",
+   "id": "abba9b63-bb10-4729-b901-2e2aa0f02056",
+   "type": "URLCategory"
+  },
+  {
+   "name": "Safe for Kids",
+   "id": "abba9b63-bb10-4729-b901-2e2aa0f02057",
+   "type": "URLCategory"
+  },
+  {
+   "name": "News",
+   "id": "abba9b63-bb10-4729-b901-2e2aa0f02058",
+   "type": "URLCategory"
+  },
+  {
+   "name": "Non-sexual Nudity",
+   "id": "abba9b63-bb10-4729-b901-2e2aa0f02060",
+   "type": "URLCategory"
+  },
+  {
+   "name": "Dining and Drinking",
+   "id": "abba9b63-bb10-4729-b901-2e2aa0f02061",
+   "type": "URLCategory"
+  },
+  {
+   "name": "Web Page Translation",
+   "id": "abba9b63-bb10-4729-b901-2e2aa0f02063",
+   "type": "URLCategory"
+  },
+  {
+   "name": "Child Abuse Content",
+   "id": "abba9b63-bb10-4729-b901-2e2aa0f02064",
+   "type": "URLCategory"
+  },
+  {
+   "name": "Computer Security",
+   "id": "abba9b63-bb10-4729-b901-2e2aa0f02065",
+   "type": "URLCategory"
+  },
+  {
+   "name": "Online Storage and Backup",
+   "id": "abba9b63-bb10-4729-b901-2e2aa0f02066",
+   "type": "URLCategory"
+  },
+  {
+   "name": "Internet Telephony",
+   "id": "abba9b63-bb10-4729-b901-2e2aa0f02067",
+   "type": "URLCategory"
+  },
+  {
+   "name": "Freeware and Shareware",
+   "id": "abba9b63-bb10-4729-b901-2e2aa0f02068",
+   "type": "URLCategory"
+  },
+  {
+   "name": "Social Networking",
+   "id": "abba9b63-bb10-4729-b901-2e2aa0f02069",
+   "type": "URLCategory"
+  },
+  {
+   "name": "Mobile Phones",
+   "id": "abba9b63-bb10-4729-b901-2e2aa0f02070",
+   "type": "URLCategory"
+  },
+  {
+   "name": "File Transfer Services",
+   "id": "abba9b63-bb10-4729-b901-2e2aa0f02071",
+   "type": "URLCategory"
+  },
+  {
+   "name": "Streaming Video",
+   "id": "abba9b63-bb10-4729-b901-2e2aa0f02072",
+   "type": "URLCategory"
+  },
+  {
+   "name": "Streaming Audio",
+   "id": "abba9b63-bb10-4729-b901-2e2aa0f02073",
+   "type": "URLCategory"
+  },
+  {
+   "name": "Astrology",
+   "id": "abba9b63-bb10-4729-b901-2e2aa0f02074",
+   "type": "URLCategory"
+  },
+  {
+   "name": "Extreme",
+   "id": "abba9b63-bb10-4729-b901-2e2aa0f02075",
+   "type": "URLCategory"
+  },
+  {
+   "name": "Fashion",
+   "id": "abba9b63-bb10-4729-b901-2e2aa0f02076",
+   "type": "URLCategory"
+  },
+  {
+   "name": "Alcohol",
+   "id": "abba9b63-bb10-4729-b901-2e2aa0f02077",
+   "type": "URLCategory"
+  },
+  {
+   "name": "Tobacco",
+   "id": "abba9b63-bb10-4729-b901-2e2aa0f02078",
+   "type": "URLCategory"
+  },
+  {
+   "name": "Humor",
+   "id": "abba9b63-bb10-4729-b901-2e2aa0f02079",
+   "type": "URLCategory"
+  },
+  {
+   "name": "SaaS and B2B",
+   "id": "abba9b63-bb10-4729-b901-2e2aa0f02080",
+   "type": "URLCategory"
+  },
+  {
+   "name": "Personal Sites",
+   "id": "abba9b63-bb10-4729-b901-2e2aa0f02081",
+   "type": "URLCategory"
+  },
+  {
+   "name": "Digital Postcards",
+   "id": "abba9b63-bb10-4729-b901-2e2aa0f02082",
+   "type": "URLCategory"
+  },
+  {
+   "name": "Politics",
+   "id": "abba9b63-bb10-4729-b901-2e2aa0f02083",
+   "type": "URLCategory"
+  },
+  {
+   "name": "Illegal Downloads",
+   "id": "abba9b63-bb10-4729-b901-2e2aa0f02084",
+   "type": "URLCategory"
+  },
+  {
+   "name": "Organizational Email",
+   "id": "abba9b63-bb10-4729-b901-2e2aa0f02085",
+   "type": "URLCategory"
+  },
+  {
+   "name": "Religion",
+   "id": "abba9b63-bb10-4729-b901-2e2aa0f02086",
+   "type": "URLCategory"
+  },
+  {
+   "name": "Non-governmental Organizations",
+   "id": "abba9b63-bb10-4729-b901-2e2aa0f02087",
+   "type": "URLCategory"
+  },
+  {
+   "name": "Auctions",
+   "id": "abba9b63-bb10-4729-b901-2e2aa0f02088",
+   "type": "URLCategory"
+  },
+  {
+   "name": "Professional Networking",
+   "id": "abba9b63-bb10-4729-b901-2e2aa0f02089",
+   "type": "URLCategory"
+  },
+  {
+   "name": "Photo Search and Images",
+   "id": "abba9b63-bb10-4729-b901-2e2aa0f02090",
+   "type": "URLCategory"
+  },
+  {
+   "name": "Dynamic and Residential",
+   "id": "abba9b63-bb10-4729-b901-2e2aa0f02091",
+   "type": "URLCategory"
+  },
+  {
+   "name": "Parked Domains",
+   "id": "abba9b63-bb10-4729-b901-2e2aa0f02092",
+   "type": "URLCategory"
+  },
+  {
+   "name": "Entertainment",
+   "id": "abba9b63-bb10-4729-b901-2e2aa0f02093",
+   "type": "URLCategory"
+  },
+  {
+   "name": "DIY Projects",
+   "id": "abba9b63-bb10-4729-b901-2e2aa0f02097",
+   "type": "URLCategory"
+  },
+  {
+   "name": "Hunting",
+   "id": "abba9b63-bb10-4729-b901-2e2aa0f02098",
+   "type": "URLCategory"
+  },
+  {
+   "name": "Military",
+   "id": "abba9b63-bb10-4729-b901-2e2aa0f02099",
+   "type": "URLCategory"
+  },
+  {
+   "name": "Online Meetings",
+   "id": "abba9b63-bb10-4729-b901-2e2aa0f02100",
+   "type": "URLCategory"
+  },
+  {
+   "name": "Paranormal",
+   "id": "abba9b63-bb10-4729-b901-2e2aa0f02101",
+   "type": "URLCategory"
+  },
+  {
+   "name": "Personal VPN",
+   "id": "abba9b63-bb10-4729-b901-2e2aa0f02102",
+   "type": "URLCategory"
+  },
+  {
+   "name": "Not Actionable",
+   "id": "abba9b63-bb10-4729-b901-2e2aa0f02103",
+   "type": "URLCategory"
+  },
+  {
+   "name": "Health and Medicine",
+   "id": "abba9b63-bb10-4729-b901-2e2aa0f02104",
+   "type": "URLCategory"
+  },
+  {
+   "name": "Recipes and Food",
+   "id": "abba9b63-bb10-4729-b901-2e2aa0f02105",
+   "type": "URLCategory"
+  },
+  {
+   "name": "Nature and Conservation",
+   "id": "abba9b63-bb10-4729-b901-2e2aa0f02106",
+   "type": "URLCategory"
+  },
+  {
+   "name": "Animals and Pets",
+   "id": "abba9b63-bb10-4729-b901-2e2aa0f02107",
+   "type": "URLCategory"
+  },
+  {
+   "name": "Web Cache and Archives",
+   "id": "abba9b63-bb10-4729-b901-2e2aa0f02108",
+   "type": "URLCategory"
+  },
+  {
+   "name": "Cannabis",
+   "id": "abba9b63-bb10-4729-b901-2e2aa0f02109",
+   "type": "URLCategory"
+  },
+  {
+   "name": "Conventions, Conferences and Trade Shows",
+   "id": "abba9b63-bb10-4729-b901-2e2aa0f02110",
+   "type": "URLCategory"
+  },
+  {
+   "name": "Cryptocurrency",
+   "id": "abba9b63-bb10-4729-b901-2e2aa0f02111",
+   "type": "URLCategory"
+  },
+  {
+   "name": "Cryptomining",
+   "id": "abba9b63-bb10-4729-b901-2e2aa0f02112",
+   "type": "URLCategory"
+  },
+  {
+   "name": "Encrypted DNS",
+   "id": "abba9b63-bb10-4729-b901-2e2aa0f02113",
+   "type": "URLCategory"
+  },
+  {
+   "name": "Dynamic DNS Provider",
+   "id": "abba9b63-bb10-4729-b901-2e2aa0f02114",
+   "type": "URLCategory"
+  },
+  {
+   "name": "Online Document Sharing and Collaboration",
+   "id": "abba9b63-bb10-4729-b901-2e2aa0f02115",
+   "type": "URLCategory"
+  },
+  {
+   "name": "Internet of Things",
+   "id": "abba9b63-bb10-4729-b901-2e2aa0f02116",
+   "type": "URLCategory"
+  },
+  {
+   "name": "Museums",
+   "id": "abba9b63-bb10-4729-b901-2e2aa0f02117",
+   "type": "URLCategory"
+  },
+  {
+   "name": "Cloud and Data Centers",
+   "id": "abba9b63-bb10-4729-b901-2e2aa0f02118",
+   "type": "URLCategory"
+  },
+  {
+   "name": "Terrorism and Violent Extremism",
+   "id": "abba9b63-bb10-4729-b901-2e2aa0f02119",
+   "type": "URLCategory"
+  },
+  {
+   "name": "URL Shorteners",
+   "id": "abba9b63-bb10-4729-b901-2e2aa0f02120",
+   "type": "URLCategory"
+  },
+  {
+   "name": "Private IP Addresses as Host",
+   "id": "abba9b63-bb10-4729-b901-2e2aa0f02121",
+   "type": "URLCategory"
+  },
+  {
+   "name": "DNS-Tunneling",
+   "id": "abba9b63-bb10-4729-b901-2e2aa0f02122",
+   "type": "URLCategory"
+  },
+  {
+   "name": "Regional Restricted Sites (Great Britain)",
+   "id": "abba9b63-bb10-4729-b901-2e2aa0f02123",
+   "type": "URLCategory"
+  },
+  {
+   "name": "Regional Restricted Sites (Italy)",
+   "id": "abba9b63-bb10-4729-b901-2e2aa0f02124",
+   "type": "URLCategory"
+  },
+  {
+   "name": "Regional Restricted Sites (Germany)",
+   "id": "abba9b63-bb10-4729-b901-2e2aa0f02125",
+   "type": "URLCategory"
+  },
+  {
+   "name": "Regional Restricted Sites (Poland)",
+   "id": "abba9b63-bb10-4729-b901-2e2aa0f02126",
+   "type": "URLCategory"
+  },
+  {
+   "name": "Generative AI",
+   "id": "abba9b63-bb10-4729-b901-2e2aa0f02128",
+   "type": "URLCategory"
+  }
+ ],
+ "paging": {
+  "offset": 0,
+  "limit": 1000,
+  "count": 126,
+  "pages": 1
+ }
+}
