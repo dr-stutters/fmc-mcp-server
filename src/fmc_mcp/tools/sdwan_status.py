@@ -824,7 +824,8 @@ def register(reg: ToolRegistrar) -> None:
         (they trail the device by up to ~5 minutes, and a link without path monitoring has none: 'not
         available'), and BGP comes from 'show route bgp'. Read-only; queried when called. Path metrics
         cost one FMC request per topology; show commands one per device each (a command FMC refuses is
-        tried once per call); limit them with branch or max_devices."""
+        tried once per call); limit them with branch or max_devices. Whether a branch firewall itself
+        was busy when a link degraded (CPU, throughput, drops over time): fmc_device_metrics."""
         app: FmcApp = get_client(ctx)
         if topology:
             t = await resolve_topology(app, topology, domain)
@@ -933,6 +934,11 @@ def register(reg: ToolRegistrar) -> None:
             notes.append(NO_PATH_METRICS)
         if any(r["interface"] in ("overlay tunnel", "hub") for r in ranked):
             notes.append(FMC_TUNNEL_LAG)
+        if ranked:
+            notes.append(
+                "Was a degraded branch's firewall itself busy (CPU, throughput, drops) when it degraded? "
+                "fmc_device_metrics with device=<the branch> and since=<before the problem began>."
+            )
         if skipped:
             notes.append(
                 f"Show commands skipped on {', '.join(skipped)} (max_devices={max_devices}): no path metrics "
