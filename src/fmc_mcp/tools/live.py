@@ -20,6 +20,7 @@ import ipaddress
 import re
 import time
 from dataclasses import dataclass
+from datetime import datetime
 from typing import Annotated, Any, Literal
 
 from fastmcp import Context
@@ -382,7 +383,18 @@ def activity_row(a: dict[str, Any]) -> dict[str, Any]:
     return {k: v for k, v in row.items() if v not in (None, "")}
 
 
-async def active_sessions(
+def _seen(s: dict[str, Any]) -> float:
+    """A session's last activity for sorting: lastSeen, else loginTime (epoch s/ms or ISO 8601)."""
+    ts = s.get("lastSeen") or s.get("loginTime")
+    try:
+        n = float(ts or 0)
+        return n / 1000 if n > 10**11 else n  # milliseconds, as iso() reads them
+    except (TypeError, ValueError):
+        stamp = iso(ts)
+        return datetime.fromisoformat(stamp.replace("Z", "+00:00")).timestamp() if stamp else 0.0
+
+
+async def session_items(
     app: FmcApp,
     domain: str | None,
     *,
@@ -390,8 +402,9 @@ async def active_sessions(
     user: str | None = None,
     device: str | None = None,
 ) -> list[dict[str, Any]]:
-    """FMC's active identity sessions (user <-> current IP), filtered server-side. AuthError (403) when the
-    account's role lacks the Analysis > Users permissions."""
+    """FMC's active identity sessions (user <-> current IP) as FMC returns them, newest activity first,
+    filtered server-side (`user` matches as a substring, as FMC does). AuthError (403) when the account's
+    role lacks the Analysis > Users permissions. Also the identity source tools' reader (F34)."""
     params: dict[str, Any] = {}
     if ip:
         params["currentIP"] = ip
@@ -400,7 +413,19 @@ async def active_sessions(
     if device:
         params["device"] = device
     page = await app.all(await app.config_path(SESSIONS, domain), params, cap=SESSION_CAP)
-    return [session_row(s) for s in page.items]
+    return sorted(page.items, key=_seen, reverse=True)
+
+
+async def active_sessions(
+    app: FmcApp,
+    domain: str | None,
+    *,
+    ip: str | None = None,
+    user: str | None = None,
+    device: str | None = None,
+) -> list[dict[str, Any]]:
+    """session_items shaped as rows (session_row), newest first."""
+    return [session_row(s) for s in await session_items(app, domain, ip=ip, user=user, device=device)]
 
 
 def _role_error(e: AuthError, what: str) -> AuthError:
@@ -577,8 +602,10 @@ def register(reg: ToolRegistrar) -> None:
         last-seen time. With history, also the user's (or the IP's) recent logins and logoffs. The
         FTD CLI has no 'show user-identity' and FMC 10.0.1 refuses it, so this reads FMC's
         analysis/activesessions and analysis/useractivity; the account's role needs the Events &
-        Logs > Analysis > Users permissions (403 otherwise). Use it before evaluating user rules with
-        fmc_rule_lookup(identities=...) or fmc_live_connections(user=...)."""
+        Logs > Analysis > Users permissions (403 otherwise). Use it to list sessions (paged; every
+        session one device reports) and with fmc_live_connections(user=...). For the identity a user or
+        group rule sees (the user plus their AD groups) use fmc_user_ip_lookup; fmc_rule_lookup resolves
+        the source IP's user itself."""
         app: FmcApp = get_client(ctx)
         if not (ip or user or device):
             raise InvalidRequest("Give an ip, a user or a device to look up sessions for.")

@@ -24,6 +24,8 @@ from fmc_mcp.tools.identity_sources import (
     user_ips,
     users_on_ip,
 )
+from fmc_mcp.tools.live import active_sessions as live_sessions
+from fmc_mcp.tools.live import session_items
 
 from .conftest import CFG, empty, fixture, items, make_settings
 
@@ -152,6 +154,7 @@ def test_ise_state_from_health_module() -> None:
     assert ise_state({**ise, "status": "RED", "details": "Lost connection to pxGrid"}) == "failed"
     assert ise_state({**ise, "status": "YELLOW", "details": "Secondary host unreachable"}) == "degraded"
     assert ise_state(None) == "unknown"
+    assert ise_state({**ise, "status": "RECOVERED", "details": "Connected to primary host"}) == "connected"
 
 
 def test_latest_alert_per_device_and_module_wins() -> None:
@@ -317,6 +320,27 @@ async def test_hooks_map_ip_to_users_and_user_to_ips(fmc: respx.MockRouter) -> N
         ]
         assert await user_ips(app, "alice", None) == ["192.0.2.57"]
         assert await user_ips(app, "other\\alice", None) == []
+    finally:
+        await app.aclose()
+
+
+async def test_session_reader_is_newest_first_and_shared(fmc: respx.MockRouter) -> None:
+    """One reader (live.session_items) serves both fmc_user_identity_sessions and these tools: newest
+    activity first, whether FMC gives epoch seconds, milliseconds or ISO 8601."""
+    base = FX["activesessions"]["items"][0]
+    rows = [
+        {**base, "username": "old", "lastSeen": 1792330000},
+        {**base, "username": "newest", "lastSeen": "2026-10-18T22:00:00Z"},
+        {**base, "username": "mid", "lastSeen": 1792334300000},
+        {**base, "username": "none", "lastSeen": None, "loginTime": None},
+    ]
+    mock_sessions(fmc, rows)
+    app = FmcApp(make_settings())
+    try:
+        got = await session_items(app, None, ip="192.0.2.57")
+        assert [s["username"] for s in got] == ["newest", "mid", "old", "none"]
+        shaped = await live_sessions(app, None, ip="192.0.2.57")
+        assert [s["user"] for s in shaped] == ["newest", "mid", "old", "none"]
     finally:
         await app.aclose()
 
