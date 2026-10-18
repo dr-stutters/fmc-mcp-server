@@ -72,14 +72,19 @@ def ftd(fmc: respx.MockRouter) -> respx.MockRouter:
         fmc.get(f"{DEVPATH}/physicalinterfaces/{i['id']}").mock(
             return_value=httpx.Response(200, json={**i, "fragmentReassembly": False})
         )
-    for kind in ("subinterfaces", "etherchannelinterfaces", "virtualtunnelinterfaces", "loopbackinterfaces"):
+    for kind in (
+        "subinterfaces",
+        "etherchannelinterfaces",
+        "virtualtunnelinterfaces",
+        "loopbackinterfaces",
+        "bridgegroupinterfaces",  # FTDv answers 200 (empty) here (ftd_interface_kinds.json)
+    ):
         fmc.get(f"{DEVPATH}/{kind}").mock(return_value=empty())
-    for kind in ("vlaninterfaces", "bridgegroupinterfaces"):  # FTDv: not supported on this model
-        fmc.get(f"{DEVPATH}/{kind}").mock(
-            return_value=httpx.Response(
-                405, json={"error": {"messages": [{"description": "VLAN Interface type is not supported"}]}}
-            )
+    fmc.get(f"{DEVPATH}/vlaninterfaces").mock(  # FTDv: not supported on this model
+        return_value=httpx.Response(
+            405, json={"error": {"messages": [{"description": "VLAN Interface type is not supported"}]}}
         )
+    )
     fmc.get(f"{DEVPATH}/routing/ipv4staticroutes").mock(
         return_value=httpx.Response(200, json=fixture("ftd_ipv4staticroutes"))
     )

@@ -53,3 +53,13 @@ async def test_si_block_and_unblock(client: Client[Any]) -> None:
         await deploy(client, "mcp live test: SI unblock", ignore_warning=True)
     si = await call(client, "fmc_get_security_intelligence", {"policy": ACP, "response_format": "json"})
     assert f"mcp-si-{TARGET}" not in si["network_block"]
+
+
+async def test_si_feeds_and_lists_read(client: Client[Any]) -> None:
+    """F61, read-only: every SI feed and custom list with its status, and a policy's view with the DNS
+    rules and the feeds/lists it uses."""
+    out = await call(client, "fmc_get_security_intelligence", {"response_format": "json"})
+    for row in out.get("feeds") or []:
+        assert row["kind"] in ("ip", "url", "dns") and row["status"], row
+    si = await call(client, "fmc_get_security_intelligence", {"policy": ACP, "response_format": "json"})
+    assert "network_block" in si and "url_block" in si, si

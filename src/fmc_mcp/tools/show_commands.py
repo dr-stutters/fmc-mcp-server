@@ -10,15 +10,12 @@ that covers it instead (FMC answers such commands with a bare 400 "Either comman
 
 from __future__ import annotations
 
-import asyncio
-import logging
 import re
 from dataclasses import dataclass, field
 from typing import Any
 
 from fmc_mcp._core import InvalidRequest
-
-log = logging.getLogger(__name__)
+from fmc_mcp.spec_index import spec_index
 
 COMMANDS_OP = (
     "/api/fmc_config/v1/domain/{domainUUID}/devices/devicerecords/{containerUUID}/operational/commands"
@@ -26,7 +23,6 @@ COMMANDS_OP = (
 # The command API takes at most two words in `command`; the rest go in `parameters`.
 COMMAND_WORDS = 2
 UNSAFE = re.compile(r"[|;&`$<>\n\r]")
-SPEC_WAIT_S = 15.0  # a first spec load (~10 MB) continues in the background after this
 
 # FMC 10.0.1's API Explorer, `command` parameter of GET .../operational/commands (verbatim list).
 FALLBACK_CLIS = (
@@ -133,7 +129,6 @@ def build(spec_clis: str | None) -> Supported:
 
 FALLBACK = build(None)
 _parsed: list[tuple[Any, Supported]] = []  # (index, its allowlist): the index is kept so its id isn't reused
-_loading: set[asyncio.Future[Any]] = set()
 
 
 def from_index(index: Any) -> Supported:
@@ -157,32 +152,10 @@ def from_index(index: Any) -> Supported:
 
 async def supported_commands(ctx: Any) -> Supported:
     """The allowlist from the spec index (loaded once, disk-cached by core); FMC 10.0.1's when the spec
-    isn't available. A first spec load that takes longer than SPEC_WAIT_S keeps going in the background."""
-    store = None
-    try:
-        store = ctx.lifespan_context.get("specs")
-    except Exception:  # noqa: BLE001 - no lifespan (helper used outside a tool call)
-        store = None
-    if store is None:
-        return FALLBACK
-    task = asyncio.ensure_future(store.get())
-    try:
-        index = await asyncio.wait_for(asyncio.shield(task), SPEC_WAIT_S)
-    except TimeoutError:
-        _loading.add(task)
-        task.add_done_callback(_finished)
-        log.info("FMC spec still loading; using the built-in show-command list for now")
-        return FALLBACK
-    except Exception as e:  # noqa: BLE001 - a broken spec must not break show commands
-        log.warning("FMC spec unavailable for the show-command list: %s", e)
-        return FALLBACK
-    return from_index(index)
-
-
-def _finished(task: asyncio.Future[Any]) -> None:
-    _loading.discard(task)
-    if not task.cancelled() and task.exception() is not None:
-        log.warning("FMC spec load failed: %s", task.exception())
+    isn't available. A first spec load that takes longer than spec_index.SPEC_WAIT_S keeps going in the
+    background."""
+    index = await spec_index(ctx, "show-command list")
+    return FALLBACK if index is None else from_index(index)
 
 
 def _expand(word: str, choices: list[str]) -> str | None:
