@@ -124,6 +124,7 @@ There are 153 tools when every tier is enabled (66 read, 76 write, 11 dangerous;
 | Decryption / DNS | `fmc_get_decryption_policy`, `fmc_get_dns_policy` |
 | Identity (AD/LDAP) | `fmc_get_realm` (directories, downloaded users and groups), `fmc_test_realm` (bind test from FMC; needs `FMC_UI_USERNAME`), `fmc_get_identity_policy` (rules, access policies using it) |
 | Intrusion (Snort 3) | `fmc_get_intrusion_policy` (base, mode, usage, overridden rules), `fmc_find_intrusion_rules` (gid:sid, SID or text; per-policy state) |
+| File / malware, network analysis | `fmc_get_file_policy` (settings and file rules; `catalog=true` lists file categories and types), `fmc_get_network_analysis_policy` (base, mode, access policies using it, inspector overrides) |
 | Change management | `fmc_change_tickets` (status, tickets, a ticket's changes and validation) |
 | Admin | `fmc_upgrade_status` (versions, upgrade history, packages), `fmc_list_backups`, `fmc_get_health_policy`, `fmc_list_users`, `fmc_list_object_overrides` |
 | Analysis | `fmc_rule_lookup`, `fmc_shadowed_rules`, `fmc_policy_audit` (ranked hygiene findings with a fix each), `fmc_export_access_rules` (rows or CSV, re-importable) |
@@ -163,6 +164,8 @@ Notes on some read tools:
 | SD-WAN application-aware routing | `fmc_configure_wan_interface` (priority, ICMP path monitoring to the next hop or an IP, HTTP application monitoring), `fmc_configure_ecmp_zone`, `fmc_create_app_route` (applications, networks, ports or users out of the WAN link picked by order, priority, or lowest jitter / loss / RTT or highest MOS), `fmc_delete_app_route`; `fmc_get_routing` shows the routes and WAN settings |
 | Platform settings / logging | `fmc_create_platform_settings_policy`, `fmc_configure_syslog`, `fmc_set_access_logging`, `fmc_configure_ntp`, `fmc_configure_snmp` (v2c; community write-only), `fmc_configure_ssh_access` |
 | Dynamic objects | `fmc_create_dynamic_object`, `fmc_delete_dynamic_object`, `fmc_map_dynamic_object` |
+| File / malware | `fmc_create_file_policy`, `fmc_create_file_rule` (DETECT, BLOCK, MALWARE_CLOUD_LOOKUP, BLOCK_MALWARE, with or without reset; by protocol, direction, file type and category), `fmc_delete_file_rule`; on ALLOW rules: `fmc_create_access_rule` / `fmc_update_access_rule(file_policy=...)` |
+| Network analysis | `fmc_create_network_analysis_policy` (on a base policy; an access policy selects it in the UI, FMC's REST API has no field for that) |
 | Intrusion tuning | `fmc_set_intrusion_rule_state` (ALERT/BLOCK/DROP/REJECT/PASS/DISABLE/DEFAULT per policy), `fmc_create_intrusion_policy`, `fmc_create_intrusion_rule` / `fmc_delete_intrusion_rule` (custom Snort 3 rules); `fmc_update_access_rule(intrusion_policy=...)` |
 | Change management | `fmc_ticket` (open / submit / discard / release; an open ticket is sent as `ticket-id` with every change) |
 | Decryption | `fmc_create_decryption_policy`, `fmc_create_decryption_rule` (DO_NOT_DECRYPT, BLOCK, MONITOR), `fmc_delete_decryption_rule`, `fmc_set_decryption_policy` |
