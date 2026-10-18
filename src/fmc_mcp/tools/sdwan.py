@@ -30,7 +30,7 @@ from fmc_mcp._core import (
 from fmc_mcp.client import FmcApp, is_uuid
 from fmc_mcp.preview import fmc_preview
 from fmc_mcp.tools.common import Domain, pick_by_name, ref_label, resolve_object
-from fmc_mcp.tools.device_config import device_interfaces, pick_interface
+from fmc_mcp.tools.device_config import device_interfaces, iref, pick_interface
 from fmc_mcp.tools.devices import DEVICES, INTERFACE_KINDS
 from fmc_mcp.tools.vpn import (
     DEFAULT_IKE_POLICY,
@@ -175,10 +175,6 @@ class HubPlan:
                 else f"{(self.loopback_body or {}).get('ifname')} (new: {self.pool.hub_ip}/32)"
             )
         return {k: v for k, v in out.items() if v is not None}
-
-
-def iref(i: dict[str, Any]) -> dict[str, Any]:
-    return {"id": i["id"], "type": i.get("type"), "name": i.get("name")}
 
 
 def _parse_range(rng: str) -> tuple[ipaddress.IPv4Address, ipaddress.IPv4Address] | None:

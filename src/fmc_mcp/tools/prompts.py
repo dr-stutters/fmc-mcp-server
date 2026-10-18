@@ -22,6 +22,18 @@ def _q(value: str, what: str) -> str:
     return json.dumps(v)
 
 
+# AD user names may carry the realm ('LAB\\alice'); nothing else beyond _SAFE's word characters.
+_USER = re.compile(r"^[\w.@\\-]{1,100}$")
+
+
+def _qu(value: str, what: str) -> str:
+    """A user name (optionally 'REALM\\user') as a quoted literal."""
+    v = value.strip()
+    if not _USER.match(v):
+        raise InvalidRequest(f"{what} {value!r} is not a user name (letters, digits, . @ - and REALM\\user).")
+    return json.dumps(v)
+
+
 def _why_blocked_text(
     source: str,
     destination: str,
@@ -297,7 +309,12 @@ note it and carry on.
    modules, their details and since when, and CPU/memory (above 90 % is a warning). A RED module
    is critical and a YELLOW one a warning, except an INTERFACE module saying an interface "is not
    receiving any packets": a warning on an idle link (a lab, an unused port), critical on one that
-   should carry traffic. Say which you assumed.
+   should carry traffic. Say which you assumed. For a device that is not green, near its CPU or
+   memory limit, or behind a finding in a later step (a down tunnel, an HA event, a burst of alerts),
+   {tool_ref("fmc_device_metrics")} with device=<name>, since="{lookback_hours}h"{d} shows its load
+   over the review window: CPU and memory peaks with their times, throughput, connections and drops.
+   A peak at the time of an alert ties them together; sustained CPU or memory above the limits the
+   result flags is a finding of its own. These calls count towards the per-device limit.
 
 2. HA and clusters: {tool_ref("fmc_list_ha_pairs")}{wd} and {tool_ref("fmc_list_clusters")}{wd}. For
    each HA pair with a unit in scope, {tool_ref("fmc_get_ha_status")} with ha_pair=<name>{d}. One
@@ -562,6 +579,495 @@ preview-first and runs only after the user approves it.
 """
 
 
+def _vpn_troubleshoot_text(
+    symptom: str,
+    device: str | None,
+    topology: str | None,
+    source: str | None,
+    destination: str | None,
+    protocol: str,
+    port: int | None,
+) -> str:
+    """fmc_vpn_troubleshoot: symptom -> fmc_vpn_status -> IKE -> IPsec -> routing -> NAT exemption ->
+    access rules -> cause and one previewed fix."""
+    proto = protocol.strip().lower()
+    if proto not in ("tcp", "udp", "icmp"):
+        raise InvalidRequest(f"protocol must be tcp, udp or icmp, not {protocol!r}.")
+    if proto == "icmp":
+        port = None
+    sym = _q(symptom, "symptom")
+    dev = _q(device, "device") if device else None
+    topo = _q(topology, "topology") if topology else None
+    src = _q(source, "source") if source else None
+    dst = _q(destination, "destination") if destination else None
+    scope = ", ".join(x for x in (f"device={dev}" if dev else "", f"topology={topo}" if topo else "") if x)
+    status = f"{tool_ref('fmc_vpn_status')}" + (f" with {scope}" if scope else "")
+    on = dev or "<the device at the near end>"
+    far = "<the device at the far end>"
+    src_v = src or "<a host behind the near end>"
+    dst_v = dst or "<a host behind the far end>"
+    port_arg = f", destination_port={port}" if port is not None else ""
+    tracer = (
+        f'{tool_ref("fmc_packet_tracer")} with device={on}, protocol="{proto}", source_ip={src_v}, '
+        f"destination_ip={dst_v}{port_arg}"
+    )
+    lookup = (
+        f"{tool_ref('fmc_rule_lookup')} with device={on}, source={src_v}, destination={dst_v}, "
+        f'protocol="{proto}"' + (f", port={port}" if port is not None else "")
+    )
+    return f"""A site-to-site VPN problem: {sym}. Find the phase where it breaks (IKE, IPsec, routing over
+the tunnel, NAT exemption or access rules), name the likely cause with its evidence, and propose one
+fix. Steps 1-7 are read-only; the fix in step 8 is preview-first and runs only after the user approves
+it. FMC allows about 120 API requests per minute: call each tool once per step unless a step says to
+call it again.
+
+1. Status: {status}. Find the tunnel(s) the symptom is about: their `state`, `device_says` (what each
+   device's IKE and IPsec SAs say) and the `degraded` entries for them, worst first. Note the topology
+   (route-based or policy-based; SD-WAN topologies are route-based), both endpoints, each end's VTI,
+   the protected networks and NAT exemption. Then go to the phase the evidence points at:
+   - no tunnel at all for the topology ("FMC monitors no tunnel"): not deployed. Check
+     {tool_ref("fmc_pending_changes")} for both devices and {tool_ref("fmc_list_deployments")} with
+     since_hours=24; an undeployed change is the cause.
+   - FMC says TUNNEL_DOWN or UNKNOWN but a device has a READY IKE SA (or the reverse): FMC's tunnel
+     monitor lags the devices by minutes. Trust `device_says`; call {tool_ref("fmc_vpn_status")} again
+     after a minute before calling the tunnel down.
+   - a device that is disconnected from FMC can't be checked here: say so.
+   If the symptom is about remote-access (Secure Client) users, this walk doesn't apply: report what
+   {tool_ref("fmc_get_ravpn")} shows (profiles, pools, AAA, gateways and sessions) and stop.
+
+2. IKE (phase 1): no READY IKE SA between the two ends. Read the IKEv2 counters in the `degraded`
+   reasons and call {status} a second time (a minute later) so it can compare them:
+   - Authentication Failures growing: a pre-shared key or certificate mismatch. Check
+     {tool_ref("fmc_get_vpn_topology")} (`ike`: authentication type, which policies; the key is
+     masked): for an extranet peer, its key differs from FMC's; for two managed devices, one end
+     wasn't deployed after the key changed (step 1's pending changes).
+   - only Retransmit limit exceeded / Initial exchange failed growing: the peer doesn't answer. Check
+     the path: {tool_ref("fmc_run_show_command")} with device={on} and 'show route <the peer's
+     address>' (it must leave by the outside interface), 'show interface ip brief', and
+     {tool_ref("fmc_list_health_alerts")} with since_minutes=60, device={on} for a down interface.
+     UDP 500/4500 blocked or NATed upstream gives the same picture: say so when the path looks fine.
+   - SAs that stay IN-NEG, or no failures at all: compare the IKE policies (cipher, integrity, DH
+     group) of both ends in {tool_ref("fmc_get_vpn_topology")}; an extranet peer must offer one of
+     them.
+
+3. IPsec (phase 2): IKE is READY but traffic fails. In `device_says` and the devices' `ipsec_sas`:
+   - no child SA: the IPsec proposals or PFS group don't match ({tool_ref("fmc_get_vpn_topology")}
+     `ipsec`), or, policy-based, the protected networks of the two ends don't mirror each other
+     (local_network/remote_network of the SAs vs `protected_networks`).
+   - one-way traffic (packets out but none in, or the reverse; the `tunnel traffic` findings): the
+     side that sends nothing back is the problem: its routing (step 4), its NAT exemption (step 5) or
+     its access rules (step 6) for the return traffic.
+   - IPsec send/receive errors: MTU or anti-replay trouble on the path; note them.
+   For detail: {tool_ref("fmc_run_show_command")} with device={on} and 'show crypto ipsec sa peer
+   <the peer's address>'.
+
+4. Routing over the tunnel:
+   - route-based: the device's `overlay_routes` must hold a route to {dst_v} via its VTI. None (the
+     `overlay routing` finding) or a route out of another interface is the cause. Check
+     {tool_ref("fmc_get_routing")} with device={on} (BGP or OSPF neighbors on the VTI) and
+     {tool_ref("fmc_list_routes")} with device={on} (static routes via the VTI); do the same on
+     {far} for the return route. {tool_ref("fmc_run_show_command")} with 'show route <destination>'
+     shows what the device uses now.
+   - policy-based: {dst_v} must be inside the far end's protected networks and the route to it must
+     leave by the interface the crypto map is on (usually the default route out of outside).
+
+5. NAT exemption: traffic between the protected networks must not be translated. Check
+   {tool_ref("fmc_list_nat_rules")} with device={on} (and {far}): a manual identity rule (source and
+   destination translated to themselves) for local -> remote networks must sit above any dynamic PAT
+   that also matches the inside networks; for policy-based topologies the endpoint's `nat_exempt`
+   (enableNATExempt with the inside zone) adds it. A PAT rule that matches first translates the
+   source, so the traffic no longer matches the protected networks and never enters the tunnel.
+
+6. Access rules and the live path: {tracer}. Read the phases: ROUTE-LOOKUP (egress: the VTI or the
+   outside interface), NAT (no translation for VPN traffic), ACCESS-LIST (the rule) and VPN
+   (encrypt). A drop names the phase and rule; an ACL drop hands over to the
+   {tool_ref("fmc_why_blocked")} prompt. Confirm offline with {lookup}. Route-based traffic is
+   inspected by the access policy in both directions (rules need the VTI's security zone); for
+   policy-based tunnels FMC can bypass the access policy for decrypted traffic:
+   {tool_ref("fmc_api_call")} GET policy/ftds2svpns/<topology id>/advancedsettings,
+   advancedTunnelSetting.bypassAccessControlTrafficForDecryptedTraffic.
+
+7. Report: the phase that breaks, the cause, and the evidence (state and `device_says`, the counter
+   values and how they grew, the missing route, the NAT rule that matches first, the dropping rule).
+   Say what was not checked (devices skipped, FMC's monitor lag, a far end FMC doesn't manage).
+
+8. Fix: propose one change and preview it, for example:
+   - not deployed: {tool_ref("fmc_deploy")} both ends (after {tool_ref("fmc_pending_changes")});
+   - key mismatch: set the same pre-shared key on both ends (an extranet peer's own config, or the
+     topology's IKE settings with {tool_ref("fmc_api_call")} PUT on
+     policy/ftds2svpns/<id>/ikesettings/<id>, a raw call that needs the dangerous tier; the preview
+     masks the key), then deploy;
+   - missing route over the tunnel: {tool_ref("fmc_create_static_route")} with device={on},
+     interface=<the VTI's logical name>, networks=<the far networks> and gateway=<the far end's VTI
+     address>, or a BGP/OSPF neighbor over the VTI ({tool_ref("fmc_configure_bgp")});
+   - missing NAT exemption: {tool_ref("fmc_create_nat_rule")} with policy=<the device's NAT policy>,
+     kind="manual", original_source=<the local networks> and no translated_source (identity),
+     original_destination and translated_destination=<the remote networks>, source_interface and
+     destination_interface=<the inside and outside zones>, section="before_auto";
+   - access rule: {tool_ref("fmc_create_access_rule")} allowing the flow (from or to the VTI's zone
+     for route-based tunnels);
+   - an upstream path or carrier problem: say so; no FMC change fixes it.
+   After the user approves and the change is confirmed: {tool_ref("fmc_pending_changes")} and
+   {tool_ref("fmc_deploy")} for the devices it touches (both ends where both changed), then run
+   {status} again and the packet tracer from step 6 to show the tunnel up and the flow passing.
+   SD-WAN WAN-link problems (loss, delay, the path an application takes): the
+   {tool_ref("fmc_sdwan_troubleshoot")} prompt.
+"""
+
+
+def _prove_user_policy_text(
+    client_ip: str,
+    destination: str,
+    allowed_user: str,
+    blocked_user: str,
+    protocol: str,
+    port: int | None,
+    device: str | None,
+    allow_rule: str | None,
+    block_rule: str | None,
+) -> str:
+    """The fmc_prove_user_policy instructions: one client IP, one user who should get through and one who
+    should not, proven offline (fmc_rule_lookup with identities) and live (fmc_prove_policy)."""
+    proto = protocol.strip().lower()
+    if proto not in ("tcp", "udp", "icmp"):
+        raise InvalidRequest(f"protocol must be tcp, udp or icmp, not {protocol!r}.")
+    try:
+        ipaddress.ip_address(client_ip.strip())
+        ipaddress.ip_address(destination.strip())
+    except ValueError as e:
+        raise InvalidRequest(f"client_ip and destination must be IP addresses ({e}).") from None
+    if proto == "icmp":
+        port = None
+    elif port is None:
+        raise InvalidRequest(
+            f"port is required for {proto} (fmc_prove_policy can't trace a {proto} flow without one), "
+            "e.g. 80; use protocol='icmp' for a ping test."
+        )
+    ip, dst = _q(client_ip, "client_ip"), _q(destination, "destination")
+    ok, no = _qu(allowed_user, "allowed_user"), _qu(blocked_user, "blocked_user")
+    dev = _q(device, "device") if device else None
+    port_arg = f", port={port}" if port is not None else ""
+    flow_port = f', "port": {port}' if port is not None else ""
+    flow_dev = f', "device": {dev}' if dev else ""
+    dev_arg = f"device={dev}" if dev else "device=<the FTD between the client and the destination>"
+    find_dev = (
+        f"The firewall is {dev}."
+        if dev
+        else f"Find the FTD the client sits behind: {tool_ref('fmc_rule_lookup')} with device=<candidate> "
+        f"shows under `device.ingress` whether its interfaces cover {ip}, or leave the device out of the "
+        f"{tool_ref('fmc_prove_policy')} flows and it picks the device itself."
+    )
+
+    def expect(user: str, verdict: str, rule: str | None) -> str:
+        r = f', "rule": {_q(rule, "rule")}' if rule else ""
+        label = json.dumps(f"{json.loads(user)} {verdict}")
+        return (
+            f'{{"source": {ip}, "destination": {dst}, "protocol": "{proto}"{flow_port}{flow_dev}, '
+            f'"user": {user}, "expect": "{verdict}"{r}, "name": {label}}}'
+        )
+
+    service = f"{proto} port {port}" if port is not None else proto
+    return f"""Prove the user-based policy for one client: {ok} may reach {dst} ({service}) and {no}
+may not, from client {ip}. The firewall applies user rules from its live user-to-IP mapping (ISE/pxGrid,
+passive AD or captive portal), so each user has to be logged in on {ip} when their flow is traced. Steps 0-2,
+4 and 5 are read-only; step 3 needs the users to log in and out (ask the operator, or in the lab run the
+login/logoff actions); step 6 changes the policy only if the user asks and approves the preview. Keep a
+table of what each step shows.
+
+0. Context. {find_dev} Note its access control policy (from {tool_ref("fmc_get_device")}) and the
+   identity policy linked to it ({tool_ref("fmc_get_identity_policy")}): the identity rule must cover
+   the client's zone and network with the realm that holds both users, or no user is ever seen.
+
+1. What the configuration says, per user (offline): {tool_ref("fmc_rule_lookup")} with {dev_arg},
+   source={ip}, destination={dst}, protocol="{proto}"{port_arg} and identities=[{ok}, <its groups>], then
+   again with identities=[{no}, <its groups>]. Group membership comes from AD ({tool_ref("fmc_get_realm")}
+   lists the downloaded users and groups). Expect {ok}: a definite ALLOW rule; {no}: a BLOCK rule or the
+   default action. If both give the same verdict the policy itself is wrong: stop and report it.
+
+2. Who is on the client now: ISE's active sessions for {ip} ({tool_ref("ise_find_session")} or
+   {tool_ref("ise_list_active_sessions")}) show the user and whether the session reached FMC (pxGrid).
+
+3. Live proof, one user at a time:
+   a. With {ok} logged in on {ip}: {tool_ref("fmc_prove_policy")} with flows=[{
+        expect(ok, "allow", allow_rule)
+    }].
+   b. Log {ok} off and {no} on (same client), wait until ISE shows {no} on {ip}, then
+      {tool_ref("fmc_prove_policy")} with flows=[{expect(no, "block", block_rule)}].
+   Each row must be `pass`: the verdict matches, `user_seen` is the expected user, and (when given) the
+   deciding rule is the expected one. `user_seen` empty or another user means the device's mapping is
+   stale or missing: wait for ISE/pxGrid and retry once before calling it a failure.
+
+4. If a row is fail or mismatch: {tool_ref("fmc_packet_tracer")} with the same flow (verbose) shows every
+   phase including Snort's identity phase; {tool_ref("fmc_get_hit_counts")} on the deciding rule;
+   {tool_ref("fmc_pending_changes")} for the device (an undeployed user rule is the usual cause).
+
+5. Report: a table per user with the offline verdict (step 1), the live verdict and deciding rule (step 3),
+   the user the device saw, and pass/fail; then the cause of anything that failed and the evidence.
+
+6. Fix (only if the user asks for one), preview-first: {tool_ref("fmc_update_access_rule")} (users=[...] on
+   the right rule, or move_to above the rule that wins) or {tool_ref("fmc_create_access_rule")}; show the
+   preview, wait for approval, confirm, {tool_ref("fmc_deploy")} (preview-first), then rerun step 3.
+"""
+
+
+def _threat_review_text(policy: str, domain: str | None) -> str:
+    """fmc_threat_defense_review: posture -> rule hygiene -> SI/DNS -> intrusion policies -> NAP -> report."""
+    pol = _q(policy, "policy")
+    dom = _q(domain, "domain") if domain else None
+    d = f", domain={dom}" if dom else ""
+    where = f" in domain {dom}" if dom else ""
+    return f"""Review the threat-defense posture of access control policy {pol}{where}:
+what inspects the traffic it allows, what slips past inspection, and whether Security Intelligence, DNS,
+file and intrusion settings do their job. Every step is read-only: change and deploy nothing; each fix
+is a proposal the user approves separately.
+
+FMC allows about 120 API requests per minute: call each tool below once and drill into single objects
+only where a finding needs it. A tool that fails is a finding of its own (say what it hides) and you
+carry on.
+
+1. Posture: {tool_ref("fmc_threat_posture")} with policy={pol}{d}. It returns the default action, every
+   ALLOW rule's intrusion policy, file policy and logging, the intrusion policies in use (base policy,
+   PREVENTION or DETECTION), TRUST rules and prefilter FASTPATH rules, Security Intelligence and DNS
+   coverage, decryption, the network analysis policy it uses and its mode, the licences of the devices
+   the policy is assigned to, and ranked findings, each with a fix as a tool call. Keep them all.
+
+2. Rule hygiene that weakens inspection: {tool_ref("fmc_policy_audit")} with policy={pol},
+   checks=["no_intrusion", "no_logging", "permissive", "shadowed"], refresh_hits=false{d}. ALLOW rules
+   without an intrusion policy, rules that log nothing, any-any ALLOW rules and shadowed rules. Merge
+   with step 1 so each rule appears once.
+
+3. Security Intelligence in detail: {tool_ref("fmc_get_security_intelligence")} with policy={pol}{d}:
+   the block and do-not-block lists, the DNS policy's rules and the status of each feed and custom list.
+   A feed in a block list that is "not downloaded yet", "stale" or "downloaded but empty" is high (the
+   policy blocks less than it shows); a Talos category or feed in a do-not-block list is medium (it
+   exempts that traffic from Security Intelligence).
+
+4. Intrusion policies: for each policy in step 1's intrusion_policies (at most three),
+   {tool_ref("fmc_get_intrusion_policy")} with policy=<name>{d}: base policy, mode and overridden rules.
+   In a PREVENTION policy, overrides that DISABLE a rule or turn a drop into ALERT or PASS are medium
+   (list gid:sid and message); a custom policy based on "Connectivity Over Security" or "No Rules
+   Active" is info. When the user cares about a specific threat (e.g. Log4j),
+   {tool_ref("fmc_find_intrusion_rules")} with query=<text>, policy=<name>{d} shows whether it drops.
+
+5. Network analysis: step 1's network_analysis_policy is the one the access policy uses (FMC names
+   its users in each network analysis policy's record); in DETECTION mode its preprocessors only report
+   malformed or evasive traffic. {tool_ref("fmc_list_policies")} with kind="network_analysis"{d} lists the
+   others. FMC's API can't change which one the access policy uses and doesn't show the intrusion policy
+   used before a rule is determined: give the UI path (access policy editor > Advanced > Network Analysis
+   and Intrusion Policies).
+
+6. Report. First a posture summary in a few lines: default action; how many ALLOW rules have an
+   intrusion policy, a file policy and logging; intrusion policies and modes; Talos categories in the
+   SI block lists; DNS policy; decryption; licences per device. Then one ranked list (high, medium,
+   low, info), findings with one cause merged. Each finding gives:
+   - a title naming the rule, policy, feed or device;
+   - evidence: the tool and the values it returned;
+   - the fix as the exact tool call to preview, e.g. {tool_ref("fmc_update_access_rule")} with
+     intrusion_policy=..., {tool_ref("fmc_set_si_lists")}, {tool_ref("fmc_set_dns_policy")},
+     {tool_ref("fmc_create_intrusion_policy")}, {tool_ref("fmc_set_intrusion_rule_state")},
+     {tool_ref("fmc_update_prefilter_rule")}, {tool_ref("fmc_set_device_licenses")},
+     {tool_ref("fmc_set_decryption_policy")}, or the FMC UI path where no tool covers it;
+   - the impact: what traffic it changes (a new drop can break an application) and that it needs a
+     deployment.
+
+7. Offer, don't apply: ask which fixes to apply. For each approved fix, preview it, show the preview
+   and confirm only what the user approved, one change at a time. Then
+   {tool_ref("fmc_pending_changes")} for the devices the policy is assigned to and a
+   {tool_ref("fmc_deploy")} preview naming exactly those devices (a separate approval). To show the
+   intrusion policy dropping real traffic afterwards: take a rule that drops in it (e.g. 1:58723,
+   Log4j "${{jndi:" in an HTTP header, with {tool_ref("fmc_find_intrusion_rules")}), send a harmless
+   request that matches it from a test client through the firewall, and check that the connection is
+   reset and that the intrusion event shows in the FMC UI (Analysis > Intrusions > Events).
+"""
+
+
+def _ha_failover_check_text(
+    ha_pair: str,
+    action: str,
+    domain: str | None,
+    source: str | None,
+    destination: str | None,
+    protocol: str,
+    port: int | None,
+    lab: str | None,
+    test_node: str | None,
+    target: str | None,
+) -> str:
+    """fmc_ha_failover_check: pre-checks -> traffic before -> switch -> verify -> traffic after -> report."""
+    if action not in ("check", "switch", "fail_active"):
+        raise InvalidRequest(f"action must be check, switch or fail_active, not {action!r}.")
+    proto = protocol.strip().lower()
+    if proto not in ("tcp", "udp", "icmp"):
+        raise InvalidRequest(f"protocol must be tcp, udp or icmp, not {protocol!r}.")
+    if bool(source) != bool(destination):
+        raise InvalidRequest("A test flow needs both source and destination (or neither).")
+    for value, what in ((source, "source"), (destination, "destination"), (target, "target")):
+        if value:
+            try:
+                ipaddress.ip_address(value.strip())
+            except ValueError:
+                raise InvalidRequest(f"{what} {value!r} is not an IP address.") from None
+    if (test_node or target) and not (lab and test_node and target):
+        raise InvalidRequest("Real traffic from CML needs lab, test_node and target together.")
+    if action == "fail_active" and not lab:
+        raise InvalidRequest("action='fail_active' powers off the active unit in CML: give the lab.")
+    pair = _q(ha_pair, "ha_pair")
+    dom = _q(domain, "domain") if domain else None
+    d = f", domain={dom}" if dom else ""
+    where = f" in domain {dom}" if dom else ""
+    lab_q = _q(lab, "lab") if lab else None
+    node_q = _q(test_node, "test_node") if test_node else None
+    tgt = json.loads(_q(target, "target")) if target else None
+    if proto == "icmp":
+        port = None
+    flow_steps: list[str] = []
+    if source and destination:
+        src, dst = _q(source, "source"), _q(destination, "destination")
+        dport = f", destination_port={port}" if port else ""
+        flow_steps.append(
+            f'{tool_ref("fmc_packet_tracer")} with device=<the active unit>, protocol="{proto}", '
+            f"source_ip={src}, destination_ip={dst}{dport}{d}: the verdict (expect allow), the "
+            "ingress and egress interfaces and the matched rule"
+        )
+    if lab_q and node_q:
+        flow_steps.append(
+            f"{tool_ref('cml_check_reachability')} with lab={lab_q}, nodes=[{node_q}], "
+            f'targets=["{tgt}"], count=10: success percent and average RTT of real packets through the pair'
+        )
+    if flow_steps:
+        traffic = "\n   - ".join(["", *flow_steps]).lstrip("\n")
+        traffic_step = f"Run each of these and keep the results as the baseline:\n{traffic}"
+    else:
+        traffic_step = (
+            "No test flow was given: ask the user for one that crosses the pair (an inside host to an "
+            "outside address), or take an address from a monitored data interface's network and trace "
+            f"it with {tool_ref('fmc_packet_tracer')} (device=<the active unit>{d}). Say in the report "
+            "that the traffic check used packet tracer only."
+        )
+    measure = ""
+    if lab_q and node_q:
+        measure = f"""
+   First, so the loss can be measured, start a ping series on the test host that runs through the
+   event (a Linux host; 600 probes at 5 per second, about 2 minutes): {tool_ref("cml_configure_node")}
+   with lab={lab_q}, node={node_q}, mode="exec",
+   lines=["nohup ping -i 0.2 -c 600 {tgt} > /tmp/ha-failover-ping.log 2>&1 &"] (preview-first: show it
+   and confirm after approval). Optional: a long-lived TCP flow from the same host, e.g.
+   "nohup iperf -c <a server beyond the pair> -t 300 -i 1 > /tmp/ha-failover-iperf.log 2>&1 &" when
+   an iperf server exists: its per-second throughput drops for the outage and recovers on the same
+   connection when the connection's state was replicated; the client reports a reset when it wasn't.
+   Then, within a minute:"""
+    after_series = (
+        f"""Then the loss during the event: {tool_ref("cml_configure_node")} with lab={lab_q},
+   node={node_q}, mode="exec", lines=["tail -n 3 /tmp/ha-failover-ping.log"] (after the series has
+   ended): packets transmitted vs received; at 0.2 s per probe, lost probes x 0.2 s estimates the
+   outage. The iperf log, if started, shows whether the long-lived connection survived. """
+        if lab_q and node_q
+        else "No test host was given, so the loss during the event was not measured: say so. "
+    )
+    if action == "check":
+        event = f"""4. No failover: only the checks were asked for. To run the switch later: this prompt with
+   action="switch", or {tool_ref("fmc_ha_action")} with ha_pair={pair}, action="switch" (dangerous,
+   preview-first).
+
+5. Report: readiness (`ready_for_switch` and the summary), each check with its evidence, the
+   traffic baseline, the last failover and its reason, and for each failed check or warning the fix
+   from step 1."""
+    else:
+        if action == "switch":
+            change = f"""   {tool_ref("fmc_ha_action")} with ha_pair={pair}, action="switch",
+   wait=true{d}. Show the preview (both units, their FMC states, the effect) and confirm only after
+   the user approves. Note when you confirm and when the task finishes: that is how long FMC took,
+   not the outage."""
+            verify = """After the switch the former standby is Active and the other unit is
+   Standby Ready; it passes through Cold Standby, Sync Config and Bulk Sync first, and until then
+   `standby_ready` fails: call again, at most 5 times."""
+            restore = ""
+        else:
+            change = f"""   Power off the active unit's CML node: {tool_ref("cml_set_node_state")} with
+   lab={lab_q}, node=<the active unit's node>, state="stop". Find the node with
+   {tool_ref("cml_list_nodes")} (lab={lab_q}): match the unit's management address
+   ({tool_ref("fmc_get_device")}) with the node's, or ask the user; never guess. Show the preview and
+   confirm only after the user approves. The standby must take over within the unit hold time
+   (trigger_criteria peerHoldTime from step 1)."""
+            verify = """After the failure the former standby is Active; the powered-off unit
+   can't answer, so its show commands come back as notes and `standby_ready` fails until it is back
+   (step 6)."""
+            restore = f"""
+   Then bring the unit back: {tool_ref("cml_set_node_state")} with lab={lab_q}, node=<the same node>,
+   state="start" (preview-first), and wait for it ({tool_ref("cml_wait_for_converged")}; an FTDv takes
+   10-20 minutes). It rejoins as the standby (Cold Standby, Sync Config, Bulk Sync, Standby Ready),
+   it doesn't take the active role back: {tool_ref("fmc_get_ha_status")} until `ready_for_switch` is
+   true again (at most 5 calls, a few minutes apart)."""
+        title = "Switch" if action == "switch" else "Unplanned failover (lab only)"
+        event_word = "switch" if action == "switch" else "failure"
+        event = f"""4. {title}: dangerous, preview-first.{measure}
+{change}
+
+5. Verify: {tool_ref("fmc_get_ha_status")} again (live=true, history=5{d}).
+   {verify}
+   last_failover must be new: the unit that took over, when, and why (a planned switch reads like
+   "Set by the config command" or "Other unit wants me Active"; an unplanned one like "HELLO not heard
+   from mate", "Interface check" or "Failover state check"). Every other blocker check passes.
+
+6. Traffic after: repeat step 2 with device=<the unit that is active now>. {after_series}Compare
+   stateful_replication with step 1: its TCP and UDP conn counters grow as connections are
+   replicated to the standby.{restore}
+
+7. Report: per unit, role, device_state before and after and active time; the failover and state
+   links; each check before and after; when the {event_word} happened and how long until a unit was
+   Standby Ready again; the traffic before and after, with the loss and the outage estimate, and
+   whether long-lived connections survived; the history entries the event added (time, from, to,
+   reason); anything that failed, with its next step. Mark what you could not measure (no test host,
+   a command FMC refused) as not measured instead of guessing."""
+    what = {
+        "check": "the checks only (no failover)",
+        "switch": "a planned switch of the active unit",
+        "fail_active": "an unplanned failover (the active unit powered off in CML)",
+    }[action]
+    change_note = (
+        "Every step is read-only."
+        if action == "check"
+        else "Steps 1-3 are read-only; step 4 changes the pair and runs only after the user approves "
+        "its preview."
+    )
+    return f"""Check that FTD HA pair {pair}{where} fails over cleanly: pre-checks, a traffic baseline,
+{what}, verification, the traffic afterwards and a report. {change_note}
+
+{tool_ref("fmc_get_ha_status")} runs a few show commands on the units each time (FMC allows about 120
+API requests per minute): call it once per step, and when you wait for a state, at most 5 times.
+
+1. Pre-checks: {tool_ref("fmc_get_ha_status")} with ha_pair={pair}, live=true, history=5{d}. Note per
+   unit the device, role, FMC state and device_state (the unit's own: Active, Standby Ready, Failed,
+   ...), active time, interface and module status and last_failure; the failover and state links
+   (interface, status, separate or shared), monitored_interfaces, config_status, versions,
+   stateful_replication (TCP/UDP connections replicated, errors), last_failover (when, which unit,
+   why) and every entry of `checks`. FMC's unit states trail a failover by up to a minute; the
+   device_state is current.
+   - `ready_for_switch` false: don't go past step 3; report each failed blocker with its fix:
+     a monitored interface Failed or No Link: cabling or the switch port on that unit
+     ({tool_ref("fmc_run_show_command")} with device=<unit>, command='show interface ip brief');
+     standby not Standby Ready: it is still syncing (Cold Standby, Bulk Sync), call again, or it is
+     Failed (its interfaces, snort, disk); failover link down: the link between the units;
+     config_status not HEALTHY_CONFIG: {tool_ref("fmc_pending_changes")} and {tool_ref("fmc_deploy")}
+     for the pair; versions differ: finish the upgrade ({tool_ref("fmc_upgrade_status")}); a module
+     (snort, disk) not up: {tool_ref("fmc_device_health")} for that unit.
+   - Warnings don't stop it, but say what a failover will cost: a state link that is down or
+     unconfigured, or replication errors, means connections drop; a data interface that is not
+     monitored or has no standby IP means its failure wouldn't trigger a failover
+     ({tool_ref("fmc_configure_ha_monitoring")}); state replication over the failover link is fine
+     for a lab, a separate state link is better under load (set when the pair is formed:
+     {tool_ref("fmc_create_ha_pair")} with state_interface).
+
+2. Traffic before. {traffic_step}
+
+3. Failover history before: each unit's `history` from step 1 (newest first) and last_failover.
+   The full table: {tool_ref("fmc_run_show_command")} with device=<unit>, command='show failover
+   history'{d}. Keep the newest entry per unit so the report can show what the event added.
+
+{event}
+"""
+
+
 def register(reg: ToolRegistrar) -> None:
     @reg.prompt(
         title="Why is this traffic blocked?",
@@ -692,7 +1198,8 @@ def register(reg: ToolRegistrar) -> None:
             int, Field(ge=1, le=720, description="How far back to read health alerts and deployments")
         ] = 24,
     ) -> str:
-        """Is the firewall estate healthy? Reviews device health and connectivity, HA pairs and
+        """Is the firewall estate healthy? Reviews device health and connectivity (with CPU, memory,
+        throughput and drops over the review window for the devices that need it), HA pairs and
         clusters, the deployment backlog and failed deployments, licences, software and VDB/SRU/LSP
         content age, backups, VPN tunnels and recent health alerts with the aggregate tools, and
         writes one ranked report (critical, warning, info), each finding with its evidence and a
@@ -769,3 +1276,166 @@ def register(reg: ToolRegistrar) -> None:
         the app-route rule, the interface it picks now and why, the overlay tunnels and BGP, and a packet
         tracer check, then proposes one previewed fix. Read-only until the user approves the fix."""
         return _sdwan_troubleshoot_text(application, branch, destination, source, topology)
+
+    @reg.prompt(
+        title="Troubleshoot a site-to-site VPN",
+        example={
+            "symptom": "branch-a cannot reach 10.2.2.10 over the VPN",
+            "device": "mcp-sdwan-t1-spoke1",
+            "topology": "mcp-fw-t1",
+            "source": "10.1.1.10",
+            "destination": "10.2.2.10",
+            "protocol": "icmp",
+        },
+    )
+    def fmc_vpn_troubleshoot(
+        symptom: Annotated[
+            str,
+            Field(
+                description="What is wrong, in a few plain words, e.g. 'branch-a cannot reach 10.2.2.0/24 "
+                "over the VPN' or 'tunnel to hq-asa down'"
+            ),
+        ],
+        device: Annotated[
+            str | None, Field(description="The FTD (or HA pair) at the near end of the tunnel")
+        ] = None,
+        topology: Annotated[str | None, Field(description="VPN topology name (optional)")] = None,
+        source: Annotated[
+            str | None, Field(description="A host behind the near end, for packet tracer, e.g. 10.1.1.10")
+        ] = None,
+        destination: Annotated[
+            str | None, Field(description="A host behind the far end, for packet tracer, e.g. 10.2.2.10")
+        ] = None,
+        protocol: Annotated[
+            Literal["tcp", "udp", "icmp"], Field(description="Test flow protocol: tcp, udp or icmp")
+        ] = "icmp",
+        port: Annotated[
+            int | None, Field(ge=1, le=65535, description="Test flow destination port (tcp/udp)")
+        ] = None,
+    ) -> str:
+        """ "The VPN to X is down" or "traffic doesn't cross the tunnel": starts from fmc_vpn_status
+        (tunnel state and what each device says) and walks the phases in order: IKE (key mismatch vs
+        dead path from the IKEv2 counters, proposals), IPsec (child SAs, one-way traffic), routing
+        over the tunnel (routes via the VTI or protected networks), NAT exemption and access rules
+        (packet tracer and rule lookup), then names the likely cause with its evidence and proposes
+        one previewed fix. Read-only until the user approves the fix."""
+        return _vpn_troubleshoot_text(symptom, device, topology, source, destination, protocol, port)
+
+    @reg.prompt(
+        title="Prove a user-based policy",
+        uses=["fmc", "ise"],
+        example={
+            "client_ip": "10.99.1.10",
+            "destination": "192.0.2.80",
+            "allowed_user": "alice",
+            "blocked_user": "bob",
+            "protocol": "tcp",
+            "port": "80",
+            "device": "mcp-ftd-identity",
+            "allow_rule": "mcp-fw-allow-staff",
+            "block_rule": "mcp-fw-block-contractors",
+        },
+    )
+    def fmc_prove_user_policy(
+        client_ip: Annotated[str, Field(description="The client both users log in on, e.g. 10.99.1.10")],
+        destination: Annotated[str, Field(description="Destination IP the users try to reach")],
+        allowed_user: Annotated[str, Field(description="The user who should get through, e.g. alice")],
+        blocked_user: Annotated[str, Field(description="The user who should be blocked, e.g. bob")],
+        protocol: Annotated[Literal["tcp", "udp", "icmp"], Field(description="tcp, udp or icmp")] = "tcp",
+        port: Annotated[
+            int | None, Field(ge=1, le=65535, description="Destination port (required for tcp/udp), e.g. 80")
+        ] = None,
+        device: Annotated[
+            str | None, Field(description="The FTD between client and destination; found if omitted")
+        ] = None,
+        allow_rule: Annotated[
+            str | None, Field(description="The access rule that should allow the allowed user (optional)")
+        ] = None,
+        block_rule: Annotated[
+            str | None, Field(description="The access rule that should block the blocked user (optional)")
+        ] = None,
+    ) -> str:
+        """Prove that user-based access rules work: one client IP, one user who should reach a
+        destination and one who should not. Checks the configuration offline per user (fmc_rule_lookup
+        with identities), who ISE sees on the client, then has each user log in and proves the live
+        verdict with fmc_prove_policy (verdict, deciding rule and the user the firewall saw), and
+        reports a pass/fail table with the cause of any failure."""
+        return _prove_user_policy_text(
+            client_ip, destination, allowed_user, blocked_user, protocol, port, device, allow_rule, block_rule
+        )
+
+    @reg.prompt(
+        title="Threat-defense review of an access policy",
+        example={"policy": "mcp-fw-threat-acp", "domain": "Global/mcp-test-leaf"},
+    )
+    def fmc_threat_defense_review(
+        policy: Annotated[str, Field(description="Access control policy name or UUID")],
+        domain: Annotated[
+            str | None, Field(description="FMC domain name or UUID; the server's default domain if omitted")
+        ] = None,
+    ) -> str:
+        """How well does this access policy stop threats? Reviews intrusion policies on the default
+        action and every ALLOW rule (modes, base policies, overrides), file policies, what bypasses
+        inspection (TRUST, prefilter fastpath), Security Intelligence and DNS coverage with feed status,
+        decryption, network analysis policies and the device licences, with fmc_threat_posture and
+        fmc_policy_audit, then writes a ranked report where each finding has its evidence, a proposed fix
+        and the tool that applies it. Read-only; fixes run only after the user approves each preview."""
+        return _threat_review_text(policy, domain)
+
+    @reg.prompt(
+        title="HA failover check",
+        uses=["fmc", "cml"],
+        tier=Tier.DANGEROUS,
+        example={
+            "ha_pair": "mcp-fw-ha",
+            "action": "switch",
+            "domain": "Global/mcp-test-leaf",
+            "source": "192.0.2.10",
+            "destination": "198.51.100.1",
+            "protocol": "icmp",
+            "lab": "mcp-fw-ha",
+            "test_node": "inside-host",
+            "target": "198.51.100.1",
+        },
+    )
+    def fmc_ha_failover_check(
+        ha_pair: Annotated[str, Field(description="FTD HA pair name or UUID (fmc_list_ha_pairs)")],
+        action: Annotated[
+            Literal["check", "switch", "fail_active"],
+            Field(
+                description="check: pre-checks and traffic only; switch: planned switch with "
+                "fmc_ha_action; fail_active: power off the active unit in CML (lab test)"
+            ),
+        ] = "switch",
+        domain: Annotated[
+            str | None, Field(description="FMC domain name or UUID; the server's default domain if omitted")
+        ] = None,
+        source: Annotated[
+            str | None, Field(description="Test flow source IP for packet tracer, e.g. an inside host")
+        ] = None,
+        destination: Annotated[
+            str | None, Field(description="Test flow destination IP for packet tracer")
+        ] = None,
+        protocol: Annotated[Literal["tcp", "udp", "icmp"], Field(description="Test flow protocol")] = "icmp",
+        port: Annotated[
+            int | None, Field(ge=1, le=65535, description="Test flow destination port (tcp/udp)")
+        ] = None,
+        lab: Annotated[
+            str | None, Field(description="CML lab with a test host behind the pair (real traffic)")
+        ] = None,
+        test_node: Annotated[
+            str | None, Field(description="CML node to send real traffic from, e.g. an inside host")
+        ] = None,
+        target: Annotated[
+            str | None, Field(description="IP address the test node pings through the pair")
+        ] = None,
+    ) -> str:
+        """Does this HA pair fail over cleanly? Pre-checks with fmc_get_ha_status (standby ready,
+        failover and state links up, monitored interfaces, config in sync, versions, replication
+        errors), a traffic baseline (packet tracer, and real pings from a CML host), then a planned
+        switch (fmc_ha_action) or, in a lab, the active unit powered off, with a ping series for the
+        loss; then the roles, the failover history and its reason, and the traffic again, and a
+        report with the outage. The change runs only after the user approves its preview."""
+        return _ha_failover_check_text(
+            ha_pair, action, domain, source, destination, protocol, port, lab, test_node, target
+        )

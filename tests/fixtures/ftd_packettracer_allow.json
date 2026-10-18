@@ -1,0 +1,98 @@
+{
+ "deviceResponse": [
+  {
+   "deviceDetails": {
+    "name": "mcp-ftd1",
+    "id": "2c11eaca-c7e3-11f1-a7ce-a8b537b1b4bb",
+    "type": "Device"
+   },
+   "result": {
+    "inputInterface": "inside(vrfid:0)",
+    "inputStatus": "up",
+    "inputLineStatus": "up",
+    "outputInterface": "outside(vrfid:0)",
+    "outputStatus": "up",
+    "outputLineStatus": "up",
+    "action": "allow"
+   },
+   "phases": [
+    {
+     "id": 1,
+     "type": "ACCESS-LIST",
+     "result": "ALLOW",
+     "config": "Implicit Rule",
+     "additionalInformation": "Forward Flow based lookup yields rule:\n in  id=0x14b7601a7a60, priority=1, domain=permit, deny=false\n\thits=122, user_data=0x0000000000000000, cs_id=0x0, l3_type=0x8\n\tsrc mac=0000.0000.0000, mask=0000.0000.0000\n\tdst mac=0000.0000.0000, mask=0100.0000.0000\n\tinput_ifc=inside, output_ifc=any"
+    },
+    {
+     "id": 2,
+     "type": "ROUTE-LOOKUP",
+     "subType": "No ECMP load balancing",
+     "result": "ALLOW",
+     "additionalInformation": "Destination is locally connected. No ECMP load balancing.\nFound next-hop 192.0.2.10 using egress ifc  outside(vrfid:0)"
+    },
+    {
+     "id": 3,
+     "type": "OBJECT_GROUP_SEARCH",
+     "result": "ALLOW",
+     "additionalInformation": "Source object-group match count:          0\n Source NSG match count:                   0\n Destination NSG match count:              0\n Classify table lookup count:              1\n Total lookup count:                       1\n Duplicate key pair count:                 0\n Classify table match count:               5"
+    },
+    {
+     "id": 4,
+     "type": "ACCESS-LIST",
+     "result": "ALLOW",
+     "config": "access-group CSM_FW_ACL_ global\naccess-list CSM_FW_ACL_ advanced permit ip any any rule-id 268434450 \naccess-list CSM_FW_ACL_ remark rule-id 268434450: ACCESS POLICY: mcp-test-ftd-acp - Default\naccess-list CSM_FW_ACL_ remark rule-id 268434450: L7 RULE: mcp-test-quarantine-block",
+     "additionalInformation": "This packet will be sent to snort for additional processing where a verdict will be reached\n Forward Flow based lookup yields rule:\n in  id=0x14b7601a5bd0, priority=12, domain=permit, deny=false\n\thits=37, user_data=0x0000000000000000, cs_id=0x0, use_real_addr, flags=0x0, protocol=0\n\tsrc ip/id=0.0.0.0, mask=0.0.0.0, port=0, tag=any, ifc=any\n\tdst ip/id=0.0.0.0, mask=0.0.0.0, port=0, tag=any, ifc=any, \n\tdscp=0x0, input_ifc=any, output_ifc=any"
+    },
+    {
+     "id": 6,
+     "type": "NAT",
+     "result": "ALLOW",
+     "config": "object network mcp-test-ftd-inside-net\n nat (inside,outside) dynamic interface",
+     "additionalInformation": "Dynamic translate 10.99.1.10/1 to 192.0.2.10/1\n Forward Flow based lookup yields rule:\n in  id=0x14b7602ee4c0, priority=6, domain=nat, deny=false"
+    },
+    {
+     "id": 15,
+     "type": "FLOW-CREATION",
+     "result": "ALLOW",
+     "additionalInformation": "New flow created with id 46, packet dispatched to next module"
+    },
+    {
+     "id": 16,
+     "type": "EXTERNAL-INSPECT",
+     "result": "ALLOW",
+     "additionalInformation": "Application: 'SNORT Inspect'"
+    },
+    {
+     "id": 17,
+     "type": "SNORT",
+     "subType": "identity",
+     "result": "ALLOW",
+     "additionalInformation": "user id: unknown, realm id: 0, device type: 0, auth type: passive, auth proto: basic, username: none, AD domain: none,\nsrc sgt: 0, src sgt type: unknown, dst sgt: 0, dst sgt type: unknown, abp src: none, abp dst: none, location: none"
+    },
+    {
+     "id": 18,
+     "type": "SNORT",
+     "subType": "firewall",
+     "result": "ALLOW",
+     "config": "Network 0, Inspection 0, Detection 0, Rule ID 268434447",
+     "additionalInformation": "Starting rule matching, zone 1 -> 2, geo 0 -> 0, vlan 0, src sgt: 0, src sgt type: unknown, dst sgt: 0, dst sgt type: unknown, user 9999999, no url or host, no xff\nMatched rule ids 268434447 - Allow"
+    },
+    {
+     "id": 19,
+     "type": "SNORT",
+     "subType": "appid",
+     "result": "ALLOW",
+     "additionalInformation": "service: ICMP(3501), client: (0), payload: (0), misc: (0)"
+    },
+    {
+     "id": 22,
+     "type": "ADJACENCY-LOOKUP",
+     "subType": "Resolve Nexthop IP address to MAC",
+     "result": "ALLOW",
+     "additionalInformation": "Found adjacency entry for Next-hop 192.0.2.10 on interface  outside\nAdjacency :Active\nMAC address 0050.5600.0001 hits 0 reference 1"
+    }
+   ]
+  }
+ ],
+ "_source": "fmc_packet_tracer on mcp-ftd1 (FMC 10.0.1, Global/mcp-test-leaf), icmp 10.99.1.10 -> the outside gateway, 2026-10-18; rebuilt in the raw packettracer/traces shape from the tool's verbose phases (routine QOS/IP-OPTIONS/INSPECT phases left out), 198.18.x scrubbed to 192.0.2.10"
+}

@@ -75,7 +75,28 @@ def interface_row(kind: str, i: dict[str, Any]) -> dict[str, Any]:
         "mtu": i.get("MTU"),
         "description": i.get("description"),
         "id": i.get("id"),
+        **logical_details(i),
     }
+
+
+def logical_details(i: dict[str, Any]) -> dict[str, Any]:
+    """What only logical interfaces carry: EtherChannel / bridge-group members and LACP mode, a VTI's
+    tunnel type, source, borrowed address and VPN topology. Empty for other interfaces."""
+    out: dict[str, Any] = {}
+    if i.get("selectedInterfaces"):
+        out["members"] = [ref_label(m) for m in i["selectedInterfaces"]]
+    if i.get("lacpMode"):
+        out["lacp"] = str(i["lacpMode"]).lower()
+    if i.get("tunnelType"):
+        out["tunnel_type"] = str(i["tunnelType"]).lower()
+    if i.get("tunnelSource"):
+        out["tunnel_source"] = ref_label(i["tunnelSource"])
+    if i.get("borrowIPfrom"):
+        out["borrows_from"] = ref_label(i["borrowIPfrom"])
+    topo = (i.get("metadata") or {}).get("vpnTopologyName")
+    if topo:
+        out["vpn_topology"] = topo
+    return out
 
 
 async def zone_names(app: FmcApp, domain: str | None) -> dict[str, str]:
