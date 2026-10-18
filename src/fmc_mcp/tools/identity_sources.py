@@ -394,11 +394,23 @@ async def expand_identities(
     return out, added
 
 
+def role_error(e: AuthError) -> AuthError:
+    """A 403 on FMC's identity sessions, with the permission that fixes it; other errors unchanged."""
+    if e.status_code == 403:
+        return AuthError(ROLE_HINT, 403)
+    return e
+
+
 async def users_on_ip(
     app: FmcApp, ip: ipaddress.IPv4Address | ipaddress.IPv6Address, domain: str | None
 ) -> list[dict[str, Any]]:
-    """fmc_find_address hook: one row per user FMC has a session for on `ip`."""
-    rows = await active_sessions(app, domain, ip=str(ip))
+    """fmc_find_address hook (find_address.IDENTITY_LOOKUPS): one row per user FMC has a session for on
+    `ip`. A 403 (role without Analysis > Users) raises AuthError with the permission to add, which
+    fmc_find_address reports as a warning."""
+    try:
+        rows = await active_sessions(app, domain, ip=str(ip))
+    except AuthError as e:
+        raise role_error(e) from None
     return [
         {
             "where": f"user {qualified(s.get('realmName'), str(s.get('username') or s.get('user')))}",
@@ -411,9 +423,15 @@ async def users_on_ip(
 
 
 async def user_ips(app: FmcApp, user: str, domain: str | None) -> list[str]:
-    """fmc_prove_policy hook: the IPs `user` (or 'realm\\user') has sessions on, newest first."""
+    """fmc_prove_policy hook (prove.USER_IP_RESOLVERS): the IPs `user` (or 'realm\\user') has sessions on,
+    newest first; [] when the user has none. A 403 raises AuthError naming the missing permission."""
     realm, name = split_identity(user)
-    rows = await active_sessions(app, domain, user=name)
+    if not name:
+        return []
+    try:
+        rows = await active_sessions(app, domain, user=name)
+    except AuthError as e:
+        raise role_error(e) from None
     out: list[str] = []
     for s in rows:
         uname = str(s.get("username") or s.get("user") or "")
@@ -571,6 +589,8 @@ def register(reg: ToolRegistrar) -> None:
                 )
         except AuthError as e:
             out["sessions"] = {"error": ROLE_HINT if e.status_code == 403 else str(e)}
+        except UpstreamError as e:
+            out["sessions"] = {"error": f"FMC identity sessions unavailable: {e}"}
 
         # devices
         names: dict[str, str] = {}
@@ -682,12 +702,18 @@ def register(reg: ToolRegistrar) -> None:
             out["sessions_error"] = ROLE_HINT
         if sessions is not None:
             if name:
-                sessions = [
+                exact = [
                     s
                     for s in sessions
                     if str(s.get("username") or s.get("user") or "").lower() == name.lower()
                     and (realm is None or str(s.get("realmName") or "").lower() == realm.lower())
-                ] or sessions
+                ]
+                if sessions and not exact:
+                    out["match"] = (
+                        f"No session for exactly {user!r}; these users' names contain {name!r} (FMC "
+                        "matches the user name as a substring)."
+                    )
+                sessions = exact or sessions
             out["sessions"] = [session_row(s) for s in sessions[:100]]
             if len(sessions) > 100:
                 out["sessions_truncated"] = f"{len(sessions)} sessions; showing the 100 newest"

@@ -11,6 +11,7 @@ import pytest
 import respx
 from fastmcp import Client
 
+from fmc_mcp._core import AuthError
 from fmc_mcp.client import FmcApp
 from fmc_mcp.server import create_server
 from fmc_mcp.tools.identity_sources import (
@@ -318,6 +319,39 @@ async def test_hooks_map_ip_to_users_and_user_to_ips(fmc: respx.MockRouter) -> N
         assert await user_ips(app, "other\\alice", None) == []
     finally:
         await app.aclose()
+
+
+async def test_hooks_report_the_missing_role_on_403(fmc: respx.MockRouter) -> None:
+    """fmc_find_address turns a hook's UpstreamError into a warning; the text must say what to fix."""
+    mock_sessions(fmc, None)
+    app = FmcApp(make_settings())
+    try:
+        with pytest.raises(AuthError) as ip_err:
+            await users_on_ip(app, ipaddress.ip_address("192.0.2.57"), None)
+        with pytest.raises(AuthError) as user_err:
+            await user_ips(app, "alice", None)
+    finally:
+        await app.aclose()
+    for err in (ip_err.value, user_err.value):
+        assert err.status_code == 403 and "Events & Logs > Analysis > Users" in str(err)
+
+
+async def test_user_lookup_says_when_only_a_substring_matched(fmc: respx.MockRouter) -> None:
+    mock_sessions(fmc, FX["activesessions"]["items"])
+    mock_realm_lookups(fmc)
+    async with Client(server()) as c:
+        out = await run(c, "fmc_user_ip_lookup", {"user": "ali"})
+    assert [s["user"] for s in out["sessions"]] == ["alice"]
+    assert "contain 'ali'" in out["match"]
+
+
+async def test_identity_sources_survive_a_sessions_error(fmc: respx.MockRouter) -> None:
+    mock_status(fmc)
+    fmc.get(f"{CFG}/analysis/activesessions").mock(return_value=httpx.Response(404, json={}))
+    async with Client(server()) as c:
+        out = await run(c, "fmc_get_identity_sources", {})
+    assert out["sessions"]["error"].startswith("FMC identity sessions unavailable")
+    assert "; sessions not readable;" in out["verdict"]
 
 
 # --- fmc_rule_lookup resolves the user ------------------------------------------------------------------
