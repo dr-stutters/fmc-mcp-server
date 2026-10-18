@@ -1,0 +1,142 @@
+{
+ "recorded": "FMC 10.0.1, Global/mcp-test-leaf, HA pair of two FTDv (lina 9.24(1)) formed with fmc_create_ha_pair (one link for failover and state), 2026-10-18, read-only: the pair record, monitoredinterfaces?expanded=true and operational/commands output of each unit. Addresses replaced with RFC 5737 ones (the FTD's internal management 203.0.113.130/131 is as printed), serials and ids with placeholders. The secondary's last 8 'show failover' lines came from a second read a minute later (the counters moved).",
+ "pair": {
+  "id": "0c000000-0000-4000-8000-00000000000c",
+  "type": "DeviceHAPair",
+  "name": "mcp-fw-ha",
+  "primary": {
+   "id": "0a000000-0000-4000-8000-00000000000a",
+   "name": "mcp-fw-ha-a",
+   "keepLocalEvents": false
+  },
+  "secondary": {
+   "id": "0b000000-0000-4000-8000-00000000000b",
+   "name": "mcp-fw-ha-b",
+   "keepLocalEvents": false
+  },
+  "ftdHABootstrap": {
+   "isEncryptionEnabled": false,
+   "lanFailover": {
+    "subnetMask": "255.255.255.252",
+    "activeIP": "203.0.113.1",
+    "standbyIP": "203.0.113.2",
+    "logicalName": "FAILOVER-LINK",
+    "interfaceObject": {
+     "MTU": 1500,
+     "mode": "NONE",
+     "enabled": true,
+     "name": "Ethernet0/2",
+     "priority": 0
+    }
+   },
+   "statefulFailover": {
+    "subnetMask": "255.255.255.252",
+    "activeIP": "203.0.113.1",
+    "standbyIP": "203.0.113.2",
+    "logicalName": "FAILOVER-LINK",
+    "interfaceObject": {
+     "MTU": 1500,
+     "mode": "NONE",
+     "enabled": true,
+     "name": "Ethernet0/2",
+     "priority": 0
+    }
+   }
+  },
+  "ftdHAFailoverTriggerCriteria": {
+   "noOfFailedInterfaceLimit": 1,
+   "peerPollTime": 1,
+   "peerHoldTime": 15,
+   "peerPollTimeUnit": "SEC",
+   "peerHoldTimeUnit": "SEC",
+   "interfacePollTime": 5,
+   "interfacePollTimeUnit": "SEC",
+   "interfaceHoldTime": 25
+  },
+  "metadata": {
+   "primaryStatus": {
+    "device": {
+     "id": "0a000000-0000-4000-8000-00000000000a",
+     "name": "mcp-fw-ha-a",
+     "keepLocalEvents": false
+    },
+    "currentStatus": "Active"
+   },
+   "secondaryStatus": {
+    "device": {
+     "id": "0b000000-0000-4000-8000-00000000000b",
+     "name": "mcp-fw-ha-b",
+     "keepLocalEvents": false
+    },
+    "currentStatus": "Standby"
+   },
+   "analyticsOnly": false,
+   "configStatus": "HEALTHY_CONFIG",
+   "lastUser": {
+    "name": "api-user",
+    "type": "User"
+   },
+   "domain": {
+    "id": "e276abec-e0f2-11e3-8169-6d9ed49b625f",
+    "type": "Domain"
+   }
+  }
+ },
+ "monitoredinterfaces": [
+  {
+   "name": "management",
+   "id": "00000000-0000-0ed3-0000-021474906677",
+   "type": "MonitoredInterface",
+   "metadata": {
+    "interfaceUuid": "00000000-0000-0ed3-0000-021474904435",
+    "interfaceName": "Management0/0",
+    "interfaceType": "PHYSICAL"
+   },
+   "monitorForFailures": true
+  },
+  {
+   "name": "outside",
+   "id": "00000000-0000-0ed3-0000-021474906678",
+   "type": "MonitoredInterface",
+   "metadata": {
+    "interfaceUuid": "00000000-0000-0ed3-0000-021474904431",
+    "interfaceName": "Ethernet0/0",
+    "interfaceType": "PHYSICAL"
+   },
+   "ipv4Configuration": {
+    "activeIPv4Address": "198.51.100.218",
+    "activeIPv4Mask": "24",
+    "standbyIPv4Address": "198.51.100.219"
+   },
+   "monitorForFailures": true
+  },
+  {
+   "name": "inside",
+   "id": "00000000-0000-0ed3-0000-021474906679",
+   "type": "MonitoredInterface",
+   "metadata": {
+    "interfaceUuid": "00000000-0000-0ed3-0000-021474904432",
+    "interfaceName": "Ethernet0/1",
+    "interfaceType": "PHYSICAL"
+   },
+   "ipv4Configuration": {
+    "activeIPv4Address": "192.0.2.1",
+    "activeIPv4Mask": "24",
+    "standbyIPv4Address": "192.0.2.2"
+   },
+   "monitorForFailures": true
+  }
+ ],
+ "show": {
+  "primary": {
+   "show failover": "Failover On \nFailover unit Primary\nFailover LAN Interface: FAILOVER-LINK Ethernet0/2 (up)\nReconnect timeout 0:00:00\nUnit Poll frequency 1 seconds, holdtime 15 seconds\nInterface Poll frequency 5 seconds, holdtime 25 seconds\nInterface Policy 1\nMonitored Interfaces 3 of 311 maximum\nMAC Address Move Notification Interval not set\nfailover replication http\nVersion: Ours 9.24(1), Mate 9.24(1)\nSerial Number: Ours 9A0000000AA, Mate 9A0000000BB\nLast Failover at: 14:09:52 UTC Oct 18 2026\n\tThis host: Primary - Active \n\t\tActive time: 20590 (sec)\n\t\tslot 0: ASAv hw/sw rev (/9.24(1)) status (Up Sys)\n\t\t  Interface management (203.0.113.130): Normal (Monitored)\n\t\t  Interface outside (198.51.100.218): Normal (Monitored)\n\t\t  Interface inside (192.0.2.1): Normal (Monitored)\n\t\tslot 1: snort rev (1.0)  status (up)\n\t\tslot 2: diskstatus rev (1.0)  status (up)\n\tOther host: Secondary - Standby Ready \n\t\tActive time: 0 (sec)\n\t\t  Interface management (203.0.113.131): Normal (Monitored)\n\t\t  Interface outside (198.51.100.219): Normal (Monitored)\n\t\t  Interface inside (192.0.2.2): Normal (Monitored)\n\t\tslot 1: snort rev (1.0)  status (up)\n\t\tslot 2: diskstatus rev (1.0)  status (up)\n\nStateful Failover Logical Update Statistics\n\tLink : FAILOVER-LINK Ethernet0/2 (up)\n\tStateful Obj \txmit       xerr       rcv        rerr      \n\tGeneral\t\t18240      0          2790       0         \n\tsys cmd  \t2790       0          2790       0         \n\tup time  \t0          0          0          0         \n\tRPC services  \t0          0          0          0         \n\tTCP conn \t5          0          0          0         \n\tUDP conn \t0          0          0          0         \n\tARP tbl  \t15443      0          0          0         \n\tXlate_Timeout  \t0          0          0          0         \n\tIPv6 ND tbl  \t0          0          0          0         \n\tVPN IKEv1 SA \t0          0          0          0         \n\tVPN IKEv1 P2 \t0          0          0          0         \n\tVPN IKEv2 SA \t0          0          0          0         \n\tVPN IKEv2 P2 \t0          0          0          0         \n\tVPN CTCP upd \t0          0          0          0         \n\tVPN SDI upd \t0          0          0          0         \n\tVPN DHCP upd \t0          0          0          0         \n\tSIP Session \t0          0          0          0         \n\tSIP Tx \t0          0          0          0         \n\tSIP Pinhole \t0          0          0          0         \n\tRoute Session \t0          0          0          0         \n\tRouter ID \t0          0          0          0         \n\tCTS SGTNAME \t0          0          0          0         \n\tCTS PAC \t0          0          0          0         \n\tTrustSec-SXP \t0          0          0          0         \n\tIPv6 Route \t0          0          0          0         \n\tSTS Table \t0          0          0          0         \n\tUmbrella Device-ID \t0          0          0          0         \n\tRule DB B-Sync \t0          0          0          0         \n\tRule DB P-Sync \t2          0          0          0         \n\tRule DB Delete \t0          0          0          0         \n\n\tLogical Update Queue Information\n\t \t \tCur \tMax \tTotal\n\tRecv Q: \t0 \t3 \t2790\n\tXmit Q: \t0 \t12 \t29583\n",
+   "show failover state": "\n               State          Last Failure Reason      Date/Time\nThis host  -   Primary\n               Active         None\nOther host -   Secondary\n               Standby Ready  Comm Failure             14:10:06 UTC Oct 18 2026\n\n====Configuration State===\n\tSync Skipped\n====Communication State===\n\tMac set\n\n",
+   "show failover history": "==========================================================================\nFrom State                 To State                   Reason\n==========================================================================\n13:41:11 UTC Oct 18 2026\nNot Detected               Disabled                   No Error\n\n14:09:05 UTC Oct 18 2026\nDisabled                   Negotiation                Set by the config command\n                                                      (failover)\n\n14:09:52 UTC Oct 18 2026\nNegotiation                Just Active                No Active unit found\n\n14:09:52 UTC Oct 18 2026\nJust Active                Active Drain               No Active unit found\n\n14:09:52 UTC Oct 18 2026\nActive Drain               Active Applying Config     No Active unit found\n\n14:09:52 UTC Oct 18 2026\nActive Applying Config     Active Config Applied      No Active unit found\n\n14:09:52 UTC Oct 18 2026\nActive Config Applied      Active                     No Active unit found\n\n==========================================================================\n",
+   "show failover interface": "\tinterface FAILOVER-LINK Ethernet0/2\n\t\tSystem IP Address: 203.0.113.1 255.255.255.252\n\t\tMy IP Address    : 203.0.113.1\n\t\tOther IP Address : 203.0.113.2\n"
+  },
+  "secondary": {
+   "show failover": "Failover On \nFailover unit Secondary\nFailover LAN Interface: FAILOVER-LINK Ethernet0/2 (up)\nReconnect timeout 0:00:00\nUnit Poll frequency 1 seconds, holdtime 15 seconds\nInterface Poll frequency 5 seconds, holdtime 25 seconds\nInterface Policy 1\nMonitored Interfaces 3 of 311 maximum\nMAC Address Move Notification Interval not set\nfailover replication http\nVersion: Ours 9.24(1), Mate 9.24(1)\nSerial Number: Ours 9A0000000BB, Mate 9A0000000AA\nLast Failover at: 13:41:13 UTC Oct 18 2026\n\tThis host: Secondary - Standby Ready \n\t\tActive time: 0 (sec)\n\t\tslot 0: ASAv hw/sw rev (/9.24(1)) status (Up Sys)\n\t\t  Interface management (203.0.113.131): Normal (Monitored)\n\t\t  Interface outside (198.51.100.219): Normal (Monitored)\n\t\t  Interface inside (192.0.2.2): Normal (Monitored)\n\t\tslot 1: snort rev (1.0)  status (up)\n\t\tslot 2: diskstatus rev (1.0)  status (up)\n\tOther host: Primary - Active \n\t\tActive time: 20609 (sec)\n\t\t  Interface management (203.0.113.130): Normal (Monitored)\n\t\t  Interface outside (198.51.100.218): Normal (Monitored)\n\t\t  Interface inside (192.0.2.1): Normal (Monitored)\n\t\tslot 1: snort rev (1.0)  status (up)\n\t\tslot 2: diskstatus rev (1.0)  status (up)\n\nStateful Failover Logical Update Statistics\n\tLink : FAILOVER-LINK Ethernet0/2 (up)\n\tStateful Obj \txmit       xerr       rcv        rerr      \n\tGeneral\t\t2792       0          18245      0         \n\tsys cmd  \t2792       0          2792       0         \n\tup time  \t0          0          0          0         \n\tRPC services  \t0          0          0          0         \n\tTCP conn \t0          0          5          0         \n\tUDP conn \t0          0          0          0         \n\tARP tbl  \t0          0          15446      0         \n\tXlate_Timeout  \t0          0          0          0         \n\tIPv6 ND tbl  \t0          0          0          0         \n\tVPN IKEv1 SA \t0          0          0          0         \n\tVPN IKEv1 P2 \t0          0          0          0         \n\tVPN IKEv2 SA \t0          0          0          0         \n\tVPN IKEv2 P2 \t0          0          0          0         \n\tVPN CTCP upd \t0          0          0          0         \n\tVPN SDI upd \t0          0          0          0         \n\tVPN DHCP upd \t0          0          0          0         \n\tSIP Session \t0          0          0          0         \n\tSIP Tx \t0          0          0          0         \n\tSIP Pinhole \t0          0          0          0         \n\tRoute Session \t0          0          0          0         \n\tRouter ID \t0          0          0          0         \n\tCTS SGTNAME \t0          0          0          0         \n\tCTS PAC \t0          0          0          0         \n\tTrustSec-SXP \t0          0          0          0         \n\tIPv6 Route \t0          0          0          0         \n\tSTS Table \t0          0          0          0         \n\tUmbrella Device-ID \t0          0          0          0         \n\tRule DB B-Sync \t0          0          0          0         \n\tRule DB P-Sync \t0          0          2          0         \n\tRule DB Delete \t0          0          0          0         \n\n\tLogical Update Queue Information\n\t \t \tCur \tMax \tTotal\n\tRecv Q: \t0 \t10 \t29731\n\tXmit Q: \t0 \t1 \t2810\n",
+   "show failover history": "==========================================================================\nFrom State                 To State                   Reason\n==========================================================================\n13:41:17 UTC Oct 18 2026\nNot Detected               Disabled                   No Error\n\n14:10:18 UTC Oct 18 2026\nDisabled                   Negotiation                Set by the config command\n                                                      (failover)\n\n14:10:20 UTC Oct 18 2026\nNegotiation                Cold Standby               Detected an Active peer\n\n14:10:21 UTC Oct 18 2026\nCold Standby               App Sync                   Detected an Active peer\n\n14:10:52 UTC Oct 18 2026\nApp Sync                   Sync Config                Detected an Active peer\n\n14:11:10 UTC Oct 18 2026\nSync Config                Sync File System           Detected an Active peer\n\n14:11:10 UTC Oct 18 2026\nSync File System           Bulk Sync                  Detected an Active peer\n\n14:11:23 UTC Oct 18 2026\nBulk Sync                  Standby Ready              Detected an Active peer\n\n==========================================================================\n"
+  }
+ }
+}
