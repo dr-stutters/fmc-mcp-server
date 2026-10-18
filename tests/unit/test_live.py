@@ -122,12 +122,15 @@ async def test_host_filter_and_columns(ftd: respx.MockRouter) -> None:
     logging_on(ftd)
     data = await call("fmc_live_connections", {"device": "mcp-ftd1", "host": "10.99.1.10"})
     assert data["source"] == "syslog buffer (show logging)"
+    # the most recently active connection first (a busy buffer's first page is 'right now')
     assert [(r["protocol"], r["state"]) for r in data["results"]] == [
-        ("TCP", "closed"),
-        ("TCP", "open"),
         ("ICMP", "closed"),
+        ("TCP", "open"),
+        ("TCP", "closed"),
     ]
     assert data["open"] == 1 and data["connections_seen"] == 5
+    data = await call("fmc_live_connections", {"device": "mcp-ftd1"})
+    assert [r.get("id", r["protocol"]) for r in data["results"]] == ["99", "ICMP", "103", "102", "101"]
     data = await call("fmc_live_connections", {"device": "mcp-ftd1", "host": "10.99.1.0/24", "port": 23})
     assert [r["id"] for r in data["results"]] == ["102"]
     data = await call("fmc_live_connections", {"device": "mcp-ftd1", "protocol": "udp", "state": "closed"})
