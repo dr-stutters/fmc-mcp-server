@@ -25,10 +25,12 @@ from fmc_mcp.tools import (
     devices,
     dns,
     dynamic_objects,
+    file_policy,
     ha,
     hygiene,
     identity,
     intrusion,
+    network_analysis,
     object_import,
     object_writes,
     objects,
@@ -97,6 +99,11 @@ Workflows:
   fmc_set_intrusion_rule_state in a custom policy (fmc_create_intrusion_policy on top of a system one;
   fmc_update_access_rule intrusion_policy=... puts it on an ALLOW rule) -> fmc_deploy. Custom Snort 3
   rules: fmc_create_intrusion_rule.
+- Block files and malware: fmc_create_file_policy -> fmc_create_file_rule (e.g. BLOCK MSEXE downloads over
+  HTTP, BLOCK_MALWARE for a malware cloud lookup that blocks) -> fmc_update_access_rule file_policy=... on
+  ALLOW rules -> fmc_deploy; fmc_get_file_policy shows the rules. Network analysis (preprocessing):
+  fmc_get_network_analysis_policy, fmc_create_network_analysis_policy (linking it to an access policy is
+  UI-only).
 - Users and groups in access rules (AD/LDAP): fmc_create_trusted_ca (LDAPS) -> fmc_create_realm ->
   fmc_test_realm -> fmc_download_realm -> fmc_create_identity_policy + fmc_create_identity_rule (PASSIVE
   needs ISE/pxGrid or an agent for user-IP mappings) -> select the identity policy in the access policy
@@ -200,6 +207,8 @@ def create_server(
             routing.register,
             app_routing.register,
             intrusion.register,
+            file_policy.register,
+            network_analysis.register,
             admin.register,
             prefilter.register,
             security_intel.register,
