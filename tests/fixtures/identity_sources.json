@@ -1,0 +1,430 @@
+{
+ "_source": "FMC 10.0.1, domain Global/<leaf>, 2026-10-18. Recorded (GETs, names and addresses scrubbed): devices, health_alerts, isesgt_disabled (422), realms, realmusers, groups_user1/2, activesessions_403, internalcertificates. Spec-example shapes (the lab has no ISE source yet and its API role gets 403 on analysis/*): isesgts, activesessions, useractivity. identitypolicies/identityrules: the shape of the lab's PASSIVE identity rule.",
+ "devices": [
+  {
+   "id": "71f24ba4-c9c6-11f1-b39a-f8b1a0356797",
+   "type": "Device",
+   "name": "ftd-identity"
+  },
+  {
+   "id": "0c7a00e4-caf9-11f1-a329-a5594ad4d7df",
+   "type": "Device",
+   "name": "ftd-ha-a"
+  },
+  {
+   "id": "503133d6-c9c6-11f1-b434-883d23e0134a",
+   "type": "Device",
+   "name": "ftd-down"
+  }
+ ],
+ "health_alerts": {
+  "items": [
+   {
+    "deviceUUID": "0c7a00e4-caf9-11f1-a329-a5594ad4d7df",
+    "moduleID": "SNORT_IDENTITY_MEMORY_USAGE",
+    "moduleUUID": "36ce7a0d-79ec-4dfe-bee5-b8d37661ca17",
+    "timestamp": 1792334344,
+    "status": "GREEN",
+    "details": "3.7% of 20.0M used",
+    "type": "Alert",
+    "params": "<params><totalloop><val>3.7%</val></totalloop><totalloop><val>740.7K / 20.0M</val></totalloop><memloop><val>531.6K</val></memloop><memloop><val>32B</val></memloop><memloop><val>139.3K</val></memloop><bindingloop><val>0 / 64000</val></bindingloop><bindingloop><val>0</val></bindingloop><bindingloop><val>0</val></bindingloop><ugloop><val>0</val></ugloop><ugloop><val>0 / 128</val></ugloop></params>"
+   },
+   {
+    "deviceUUID": "503133d6-c9c6-11f1-b434-883d23e0134a",
+    "moduleID": "SNORT_IDENTITY_MEMORY_USAGE",
+    "moduleUUID": "36ce7a0d-79ec-4dfe-bee5-b8d37661ca17",
+    "timestamp": 1792334430,
+    "status": "DISABLED",
+    "details": "Appliance unreachable",
+    "type": "Alert"
+   },
+   {
+    "deviceUUID": "71f24ba4-c9c6-11f1-b39a-f8b1a0356797",
+    "moduleID": "SNORT_IDENTITY_MEMORY_USAGE",
+    "moduleUUID": "36ce7a0d-79ec-4dfe-bee5-b8d37661ca17",
+    "timestamp": 1792334392,
+    "status": "GREEN",
+    "details": "3.7% of 20.0M used",
+    "type": "Alert",
+    "params": "<params><totalloop><val>3.7%</val></totalloop><totalloop><val>740.7K / 20.0M</val></totalloop><memloop><val>531.6K</val></memloop><memloop><val>32B</val></memloop><memloop><val>139.3K</val></memloop><bindingloop><val>0 / 64000</val></bindingloop><bindingloop><val>0</val></bindingloop><bindingloop><val>0</val></bindingloop><ugloop><val>0</val></ugloop><ugloop><val>0 / 128</val></ugloop></params>"
+   },
+   {
+    "deviceUUID": "0",
+    "moduleID": "USER_AGENT",
+    "moduleUUID": "5bbe3968-1334-4a0b-9e01-b9183353788f",
+    "timestamp": 1792334430,
+    "status": "GREEN",
+    "details": "Process is running correctly",
+    "type": "Alert"
+   },
+   {
+    "deviceUUID": "0",
+    "moduleID": "ISE",
+    "moduleUUID": "5bbe3968-1334-4a0b-9e01-b9183353799f",
+    "timestamp": 1792334430,
+    "status": "GREEN",
+    "details": "ISE is not configured or not enabled",
+    "type": "Alert"
+   },
+   {
+    "deviceUUID": "0",
+    "moduleID": "PASSIVE_IDENTITY_AGENT_MONITOR",
+    "moduleUUID": "cd3f6580-575a-4a3c-b862-9e41b0be77fa",
+    "timestamp": 1792334430,
+    "status": "GREEN",
+    "details": "Passive identity agent not enabled",
+    "type": "Alert"
+   },
+   {
+    "deviceUUID": "0c7a00e4-caf9-11f1-a329-a5594ad4d7df",
+    "moduleID": "IDENTITY_PROCESS_STATUS",
+    "moduleUUID": "f2e0ca94-7e93-413e-9a9e-ba397a29671e",
+    "timestamp": 1792334344,
+    "status": "GREEN",
+    "details": "Identity Process are disabled",
+    "type": "Alert"
+   },
+   {
+    "deviceUUID": "503133d6-c9c6-11f1-b434-883d23e0134a",
+    "moduleID": "IDENTITY_PROCESS_STATUS",
+    "moduleUUID": "f2e0ca94-7e93-413e-9a9e-ba397a29671e",
+    "timestamp": 1792334430,
+    "status": "DISABLED",
+    "details": "Appliance unreachable",
+    "type": "Alert"
+   },
+   {
+    "deviceUUID": "71f24ba4-c9c6-11f1-b39a-f8b1a0356797",
+    "moduleID": "IDENTITY_PROCESS_STATUS",
+    "moduleUUID": "f2e0ca94-7e93-413e-9a9e-ba397a29671e",
+    "timestamp": 1792334392,
+    "status": "GREEN",
+    "details": "Identity Process are disabled",
+    "type": "Alert"
+   },
+   {
+    "deviceUUID": "0",
+    "moduleID": "UNRESOLVED_GROUPS_MONITOR",
+    "moduleUUID": "fbbafe00-c831-11ea-87d0-0242ac130003",
+    "timestamp": 1792334430,
+    "status": "GREEN",
+    "details": "No unresolved groups are being used in policies",
+    "type": "Alert"
+   }
+  ],
+  "paging": {
+   "offset": 0,
+   "limit": 200,
+   "count": 10,
+   "pages": 1
+  }
+ },
+ "isesgt_disabled": {
+  "error": {
+   "category": "FRAMEWORK",
+   "messages": [
+    {
+     "description": "Request cannot be processed because Identity Service Engine is disabled"
+    }
+   ],
+   "severity": "ERROR"
+  }
+ },
+ "isesgts": {
+  "items": [
+   {
+    "name": "Employees",
+    "id": "a6d3f2c0-0000-0000-0000-000000000004",
+    "type": "ISESecurityGroupTag",
+    "tag": 4,
+    "description": "Employee Security Group"
+   },
+   {
+    "name": "Contractors",
+    "id": "a6d3f2c0-0000-0000-0000-000000000005",
+    "type": "ISESecurityGroupTag",
+    "tag": 5,
+    "description": "Contractor Security Group"
+   }
+  ],
+  "paging": {
+   "offset": 0,
+   "limit": 25,
+   "count": 2,
+   "pages": 1
+  }
+ },
+ "realms": {
+  "items": [
+   {
+    "realmType": "DISCOVERED",
+    "realmId": 3,
+    "enabled": true,
+    "metadata": {
+     "systemDefined": true,
+     "isDownloading": false
+    },
+    "id": "799e1584-c9d7-11f1-9bf6-907f42b34fab",
+    "type": "Realm",
+    "name": "Discovered Identities"
+   },
+   {
+    "realmType": "SPECIAL",
+    "realmId": 0,
+    "enabled": true,
+    "metadata": {
+     "systemDefined": true,
+     "isDownloading": false
+    },
+    "id": "f0550b71-0175-40fb-a34f-cbc7655b6fb5",
+    "type": "Realm",
+    "name": "Special Identities"
+   },
+   {
+    "realmType": "AD",
+    "adPrimaryDomain": "example.com",
+    "baseDn": "DC=example,DC=com",
+    "groupDn": "OU=Lab,DC=example,DC=com",
+    "groupAttribute": "member",
+    "dirUsername": "svc-ldap@example.com",
+    "dirPassword": "********",
+    "updateHour": 0,
+    "updateInterval": 24,
+    "directoryConfigurations": [
+     {
+      "id": 0,
+      "hostname": "dc01.example.com",
+      "port": 636,
+      "encryptionProtocol": "LDAPS",
+      "useRoutingToSelectInterface": false,
+      "encryptionCert": {
+       "id": "8ac6e464-c9d5-11f1-a4e0-98786f180443",
+       "type": "ExternalCACertificate",
+       "name": "corp-root-CA"
+      }
+     }
+    ],
+    "realmId": 2,
+    "enabled": true,
+    "metadata": {
+     "systemDefined": false,
+     "isDownloading": false
+    },
+    "id": "8c3defd6-c9d5-11f1-a4e0-98786f180443",
+    "type": "Realm",
+    "name": "corp"
+   }
+  ],
+  "paging": {
+   "offset": 0,
+   "limit": 25,
+   "count": 3,
+   "pages": 1
+  }
+ },
+ "realmusers": {
+  "items": [
+   {
+    "metadata": {
+     "resolved": true,
+     "lastSeen": 0,
+     "lastSynced": 1792281663,
+     "forPolicy": true
+    },
+    "id": "1",
+    "type": "RealmUser",
+    "name": "alice",
+    "realm": {
+     "id": "8c3defd6-c9d5-11f1-a4e0-98786f180443",
+     "type": "Realm",
+     "name": "corp"
+    }
+   },
+   {
+    "metadata": {
+     "resolved": true,
+     "lastSeen": 0,
+     "lastSynced": 1792281663,
+     "forPolicy": true
+    },
+    "id": "2",
+    "type": "RealmUser",
+    "name": "bob",
+    "realm": {
+     "id": "8c3defd6-c9d5-11f1-a4e0-98786f180443",
+     "type": "Realm",
+     "name": "corp"
+    }
+   }
+  ],
+  "paging": {
+   "offset": 0,
+   "limit": 50,
+   "count": 2,
+   "pages": 1
+  }
+ },
+ "groups_user1": {
+  "items": [
+   {
+    "metadata": {
+     "hasUnresolvedReferences": false,
+     "lastSynced": 1792281663
+    },
+    "id": "2",
+    "type": "RealmUserGroup",
+    "name": "employees",
+    "realm": {
+     "id": "8c3defd6-c9d5-11f1-a4e0-98786f180443",
+     "type": "Realm",
+     "name": "corp"
+    }
+   }
+  ],
+  "paging": {
+   "offset": 0,
+   "limit": 25,
+   "count": 1,
+   "pages": 1
+  }
+ },
+ "groups_user2": {
+  "items": [
+   {
+    "metadata": {
+     "hasUnresolvedReferences": false,
+     "lastSynced": 1792281663
+    },
+    "id": "1",
+    "type": "RealmUserGroup",
+    "name": "contractors",
+    "realm": {
+     "id": "8c3defd6-c9d5-11f1-a4e0-98786f180443",
+     "type": "Realm",
+     "name": "corp"
+    }
+   }
+  ],
+  "paging": {
+   "offset": 0,
+   "limit": 25,
+   "count": 1,
+   "pages": 1
+  }
+ },
+ "activesessions_403": {
+  "error": {
+   "category": "FRAMEWORK",
+   "messages": [
+    {
+     "description": "The user is not authorized."
+    }
+   ],
+   "severity": "ERROR"
+  }
+ },
+ "activesessions": {
+  "items": [
+   {
+    "id": "MnxQYXNzaXZlfDE5Mi4wLjIuNTc=",
+    "userId": 1,
+    "loginTime": 1792334000,
+    "lastSeen": 1792334300,
+    "device": "fmc",
+    "authenticationType": "Passive Authentication",
+    "currentIP": "192.0.2.57",
+    "user": "alice",
+    "realmId": 2,
+    "realmName": "corp",
+    "username": "alice",
+    "firstName": "Alice",
+    "lastName": "",
+    "email": "alice@example.com",
+    "department": "employees (corp)",
+    "phone": "",
+    "discoveryApplication": "LDAP"
+   }
+  ],
+  "paging": {
+   "offset": 0,
+   "limit": 25,
+   "count": 1,
+   "pages": 1
+  }
+ },
+ "useractivity": {
+  "items": [
+   {
+    "eventId": 0,
+    "time": 1792334000,
+    "event": "User Login",
+    "username": "alice",
+    "realmName": "corp",
+    "discoveryApplication": "LDAP",
+    "authenticationType": "Passive Authentication",
+    "ipAddress": "192.0.2.57",
+    "startPort": 0,
+    "endPort": 0,
+    "description": "",
+    "securityGroupTag": "Employees",
+    "endpointProfile": "Windows10-Workstation",
+    "endpointLocation": "",
+    "device": "fmc"
+   }
+  ],
+  "paging": {
+   "offset": 0,
+   "limit": 25,
+   "count": 1,
+   "pages": 1
+  }
+ },
+ "identitypolicies": {
+  "items": [
+   {
+    "id": "871a2430-c8fd-11f1-acd3-69ea5174bd84",
+    "name": "lab-idp",
+    "type": "IdentityPolicy"
+   }
+  ],
+  "paging": {
+   "count": 1
+  }
+ },
+ "identityrules": {
+  "items": [
+   {
+    "id": "005056a1-0000-0ed3-0000-000268435460",
+    "name": "passive-inside",
+    "type": "IdentityPolicyRule",
+    "enabled": true,
+    "authenticationType": "PASSIVE",
+    "realm": {
+     "id": "8c3defd6-c9d5-11f1-a4e0-98786f180443",
+     "type": "Realm",
+     "name": "corp"
+    },
+    "sourceNetworks": {
+     "literals": [
+      {
+       "type": "Network",
+       "value": "192.0.2.0/24"
+      }
+     ]
+    }
+   }
+  ],
+  "paging": {
+   "count": 1
+  }
+ },
+ "internalcertificates": {
+  "items": [],
+  "paging": {
+   "offset": 0,
+   "limit": 0,
+   "count": 0,
+   "pages": 0
+  }
+ }
+}

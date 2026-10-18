@@ -66,21 +66,26 @@ def rule_row(r: dict[str, Any]) -> dict[str, Any]:
     return {k: v for k, v in row.items() if v is not None}
 
 
-async def upload_list(app: FmcApp, path: str, name: str, domain_name: str) -> dict[str, Any]:
-    """Create a custom SI DNS list holding one domain (FMC takes these as a multipart file upload)."""
+async def upload_file(
+    app: FmcApp, path: str, name: str, file_name: str, text: str, *, method: str = "POST"
+) -> dict[str, Any]:
+    """Send a custom Security Intelligence list (IP, URL or DNS) as FMC takes it: a multipart upload with
+    the fields `name` and `payloadFile` (one entry per line)."""
     req = httpx.Request(
-        "POST",
+        method,
         "http://upload/",
-        files={
-            "name": (None, name),
-            "payloadFile": (f"{name}{MARKER}", f"{domain_name}\n".encode(), "text/plain"),
-        },
+        files={"name": (None, name), "payloadFile": (file_name, text.encode(), "text/plain")},
     )
     content = req.read()
     out: dict[str, Any] = await app.api.request(
-        "POST", path, content=content, headers={"Content-Type": req.headers["content-type"]}
+        method, path, content=content, headers={"Content-Type": req.headers["content-type"]}
     )
     return out
+
+
+async def upload_list(app: FmcApp, path: str, name: str, domain_name: str) -> dict[str, Any]:
+    """Create a custom SI DNS list holding one domain."""
+    return await upload_file(app, path, name, f"{name}{MARKER}", f"{domain_name}\n")
 
 
 def register(reg: ToolRegistrar) -> None:
