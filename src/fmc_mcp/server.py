@@ -20,6 +20,7 @@ from fmc_mcp.tools import (
     containment,
     dangerous,
     decryption,
+    decryption_check,
     deploy,
     device_config,
     devices,
@@ -32,6 +33,7 @@ from fmc_mcp.tools import (
     object_import,
     object_writes,
     objects,
+    pki,
     platform_access,
     platform_settings,
     policies,
@@ -102,6 +104,13 @@ Workflows:
   needs ISE/pxGrid or an agent for user-IP mappings) -> select the identity policy in the access policy
   editor (FMC's REST API can't) -> fmc_create_access_rule users=[group] -> fmc_deploy;
   fmc_rule_lookup identities=[user, groups] evaluates such rules.
+- TLS decryption (decrypt-resign): fmc_create_internal_ca (FMC generates the key; self-signed, or a CSR
+  your CA signs -> fmc_install_internal_ca_cert) -> install its certificate (fmc_get_certificate) as a
+  trusted root on the clients -> fmc_create_decryption_policy (tls13_decryption=true; trusted_cas for
+  private server PKIs) -> fmc_create_decryption_rule (DO_NOT_DECRYPT exemptions first, then
+  DECRYPT_RESIGN with internal_ca) -> fmc_set_decryption_policy -> fmc_deploy; fmc_tls_decryption_check
+  says what a flow gets and what is missing. Existing CA or server keys: fmc_import_certificate_files
+  (read from FMC_PKI_DIR on the server host; keys never pass through MCP).
 - PoC to production / domain to domain: fmc_export_policy_bundle -> fmc_plan_policy_bundle_import (target
   domain) -> fmc_import_policy_bundle -> fmc_diff_policy_bundle against live -> assign + fmc_deploy.
 - Policy review: fmc_policy_audit ranks shadowed, permissive, unlogged, uninspected, unused and mergeable
@@ -207,7 +216,9 @@ def create_server(
             bundle.register,
             bundle_import.register,
             tickets.register,
+            pki.register,
             decryption.register,
+            decryption_check.register,
             dns.register,
             identity.register,
             prompts.register,
