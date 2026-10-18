@@ -108,6 +108,7 @@ class Conn:
     reason: str | None = None
     started: str | None = None
     ended: str | None = None
+    seq: int = 0  # line of the buffer that last mentioned it (newest activity sorts first)
 
     def row(self) -> dict[str, Any]:
         out = {
@@ -157,11 +158,12 @@ def parse_log_buffer(text: str) -> tuple[list[Conn], bool]:
     order: list[Conn] = []
     c: Conn | None
     snort: list[dict[str, str]] = []
-    for raw in text.replace("\r", "").split("\n"):
+    for seq, raw in enumerate(text.replace("\r", "").split("\n"), 1):
         m = LOG_LINE.match(raw.strip())
         if not m:
             continue
         msg, body, when = m.group("msg"), m.group("text"), m.group("time").strip() or None
+        c = None
         if msg in ("302013", "302015"):
             b = BUILT.match(body)
             if not b:
@@ -229,7 +231,10 @@ def parse_log_buffer(text: str) -> tuple[list[Conn], bool]:
             fields = {k.strip(): v.strip() for k, v in SNORT_FIELD.findall(body)}
             fields["_end"] = "1" if msg == "430003" else ""
             fields["_time"] = when or ""
+            fields["_seq"] = str(seq)
             snort.append(fields)
+        if c is not None:
+            c.seq = seq
     for ev in snort:
         _merge_snort(ev, order)
     return order, enabled
@@ -265,6 +270,7 @@ def _merge_snort(ev: dict[str, str], conns: list[Conn]) -> None:
             started=ev.get("_time") or None,
         )
         conns.append(match)
+    match.seq = max(match.seq, _int(ev.get("_seq")) or 0)
     match.rule = ev.get("AccessControlRuleName") or match.rule
     match.action = ev.get("AccessControlRuleAction") or match.action
     user = ev.get("User")
@@ -454,7 +460,8 @@ def register(reg: ToolRegistrar) -> None:
         device's syslog buffer ('show logging': connection built/teardown messages and Snort
         connection events); if the buffer is off the answer says how to turn it on. Where FMC's API
         lists 'show conn' (read from its spec at run time) the live connection table is used instead.
-        Newest last; filter by host, user, port, protocol or state. Pair with fmc_packet_tracer (why a
+        From the buffer, the most recently active connections come first; filter by host, user, port,
+        protocol or state. Pair with fmc_packet_tracer (why a
         flow is allowed or dropped) and fmc_user_identity_sessions (who is on an IP)."""
         app: FmcApp = get_client(ctx)
         net = _host_filter(host)
@@ -486,6 +493,7 @@ def register(reg: ToolRegistrar) -> None:
         else:
             text = await run_show(app, dev["id"], "show logging", domain, supported)
             conns, enabled = parse_log_buffer(text)
+            conns.sort(key=lambda c: -c.seq)  # most recent activity first
             source = "syslog buffer (show logging)"
             if not enabled:
                 off = {"device": dev.get("name"), "source": source, "available": False, "note": BUFFER_HINT}
