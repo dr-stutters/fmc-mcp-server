@@ -25,6 +25,7 @@ from fmc_mcp.tools import (
     devices,
     dns,
     dynamic_objects,
+    find_address,
     ha,
     hygiene,
     identity,
@@ -105,6 +106,8 @@ Workflows:
   fmc_rule_lookup identities=[user, groups] evaluates such rules.
 - PoC to production / domain to domain: fmc_export_policy_bundle -> fmc_plan_policy_bundle_import (target
   domain) -> fmc_import_policy_bundle -> fmc_diff_policy_bundle against live -> assign + fmc_deploy.
+- "Where does 10.1.2.3 appear?": fmc_find_address (objects and groups, dynamic-object mappings, access,
+  prefilter and NAT rules, static routes, VPN endpoints in one ranked call) -> fmc_where_used on an object.
 - Policy review: fmc_policy_audit ranks shadowed, permissive, unlogged, uninspected, unused and mergeable
   rules, expired time ranges and duplicate objects, each with a fix to preview; then fmc_pending_changes
   -> fmc_deploy.
@@ -182,6 +185,7 @@ def create_server(
             policies.register,
             objects.register,
             analysis.register,
+            find_address.register,
             hygiene.register,
             deploy.register,
             device_config.register,
