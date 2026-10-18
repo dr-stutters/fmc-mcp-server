@@ -158,7 +158,7 @@ Notes on some read tools:
 | Access control | `fmc_create_access_policy`, `fmc_create_access_rule`, `fmc_update_access_rule`, `fmc_delete_access_rule`, `fmc_import_access_rules` (bulk, validated) |
 | Prefilter | `fmc_create_prefilter_policy`, `fmc_set_prefilter_policy` (link to an access policy), `fmc_create_prefilter_rule`, `fmc_update_prefilter_rule`, `fmc_delete_prefilter_rule` (FASTPATH / ANALYZE / BLOCK) |
 | NAT | `fmc_create_nat_policy`, `fmc_create_nat_rule`, `fmc_update_nat_rule`, `fmc_delete_nat_rule` |
-| Device configuration | `fmc_update_interface`, `fmc_create_subinterface`, `fmc_delete_interface`, `fmc_create_static_route`, `fmc_delete_static_route`, `fmc_assign_policy` |
+| Device configuration | `fmc_update_interface`, `fmc_create_subinterface`, `fmc_create_interface` (loopback, VTI, EtherChannel, BVI), `fmc_delete_interface`, `fmc_create_static_route`, `fmc_delete_static_route`, `fmc_assign_policy` |
 | Routing | `fmc_configure_bgp`, `fmc_configure_ospf`, `fmc_create_vrf`, `fmc_delete_vrf` |
 | SD-WAN application-aware routing | `fmc_configure_wan_interface` (priority, ICMP path monitoring to the next hop or an IP, HTTP application monitoring), `fmc_configure_ecmp_zone`, `fmc_create_app_route` (applications, networks, ports or users out of the WAN link picked by order, priority, or lowest jitter / loss / RTT or highest MOS), `fmc_delete_app_route`; `fmc_get_routing` shows the routes and WAN settings |
 | Platform settings / logging | `fmc_create_platform_settings_policy`, `fmc_configure_syslog`, `fmc_set_access_logging`, `fmc_configure_ntp`, `fmc_configure_snmp` (v2c; community write-only), `fmc_configure_ssh_access` |
@@ -178,7 +178,10 @@ Notes on some read tools:
 
 `fmc_create_access_rule` takes a position (`insert_before` or `insert_after`), a section and a
 category. `fmc_update_access_rule` can move a rule with `move_to`. `fmc_update_interface` sets the
-logical name, zone, IPv4 (static or DHCP), MTU and admin state of any existing interface.
+logical name, zone, IPv4 (static or DHCP), MTU and admin state of any existing interface;
+`fmc_create_interface` adds loopbacks, static or dynamic VTIs (own /30 or a borrowed loopback address),
+EtherChannels (LACP active/passive or static) and BVIs, checking members, used names and ids, and
+overlapping subnets in the preview.
 `fmc_map_dynamic_object` changes take effect on the devices **without a deployment** (only the rule
 that references the object needs one). `fmc_configure_bgp` refuses to edit BGP while a neighbor has an
 MD5 password, because FMC returns it masked and a PUT would replace it, unless you re-enter it with

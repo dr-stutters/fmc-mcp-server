@@ -64,6 +64,8 @@ Workflows:
 - Onboard an FTD: fmc_register_device (waits for the initial deployment) -> fmc_update_interface
   (logical name, zone, IP) -> fmc_create_static_route -> fmc_assign_policy (NAT, platform settings)
   -> fmc_deploy -> verify with fmc_run_show_command ('show route', 'show interface ip brief').
+  Loopbacks, VTIs, EtherChannels and BVIs: fmc_create_interface (then fmc_update_interface /
+  fmc_delete_interface like any interface).
 - Roll out a branch from a device template (FMC 7.6+): fmc_create_device_template (from a working
   branch with source_device) -> fmc_get_device_template (variables, interfaces, VPN/SD-WAN settings)
   -> fmc_register_device (the new FTD) -> fmc_apply_device_template(template, device, variables)
