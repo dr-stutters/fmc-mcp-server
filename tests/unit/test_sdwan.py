@@ -324,7 +324,18 @@ async def test_evaluation_mode_and_ospf_overlay(fmc: respx.MockRouter) -> None:
     assert out["preview"]["ike_v2"]["policies"][0]["name"] == "DES-SHA-SHA-LATEST"
     assert out["preview"]["topology"]["autoVpnSettings"]["routeSettings"] == {"enableBgp": False}
     assert any("fmc_configure_ospf" in s for s in out["side_effects"])
+    # FMC 10.0.1: unnumbered hub DVTI vs numbered spoke VTIs -> no OSPF routes on the spokes (R5)
+    assert any("unnumbered" in s and "overlay='bgp'" in s for s in out["side_effects"])
+    assert "not-reachable" in out["preview"]["warnings"][0]
     assert any("strong-crypto" in s for s in out["side_effects"])
+
+
+async def test_bgp_overlay_has_no_ospf_warning(fmc: respx.MockRouter) -> None:
+    lab(fmc, topologies=False)
+    async with Client(server()) as c:
+        out = await run(c, "fmc_create_sdwan_topology", NEW)
+    assert "warnings" not in out["preview"]
+    assert not any("unnumbered" in s for s in out["side_effects"])
 
 
 async def test_update_adds_and_removes_spokes(fmc: respx.MockRouter) -> None:
