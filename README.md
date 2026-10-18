@@ -172,7 +172,7 @@ Notes on some read tools:
 | Admin | `fmc_update_health_policy` (module on/off, thresholds), `fmc_set_object_override` (per-device object values) |
 | Containment | `fmc_contain_host`, `fmc_release_host` (instant, no deploy); `fmc_si_block` (Security Intelligence block list for IPs, networks, URLs; logged; needs a deploy) |
 | HA | `fmc_configure_ha_monitoring` (monitored interfaces, standby IPs, failover MACs) |
-| VPN | `fmc_create_s2s_vpn` (point-to-point IKEv2 PSK; policy- or route-based), `fmc_delete_s2s_vpn`; SD-WAN: `fmc_create_sdwan_topology` (wizard hub and spoke: hub DVTI, spoke pool, spokes on their WAN interfaces, backup hub, iBGP overlay), `fmc_update_sdwan_topology` (add or remove spokes and the backup hub, ECMP) |
+| VPN | `fmc_create_s2s_vpn` (point-to-point IKEv2 PSK; policy- or route-based), `fmc_delete_s2s_vpn`; SD-WAN: `fmc_create_sdwan_topology` (wizard hub and spoke: hub DVTI, spoke pool, spokes on their WAN interfaces, backup hub, a second WAN tunnel per spoke through the companion topology `<name>-wan2`, iBGP overlay), `fmc_update_sdwan_topology` (add or remove spokes, their second WAN and the backup hub, ECMP) |
 | VPN | `fmc_create_s2s_vpn` (point-to-point IKEv2 PSK; policy- or route-based), `fmc_delete_s2s_vpn` |
 | Device templates | `fmc_create_device_template` (generated from a standalone FTD, or empty from a firewall mode and access policy), `fmc_delete_device_template` |
 
