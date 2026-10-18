@@ -201,13 +201,20 @@ def _rule_number(rule_id: Any) -> str:
 
 
 async def _rule_names(app: FmcApp, policy_name: str, domain: str | None) -> dict[str, str]:
-    """{device rule id: rule name} for an access policy; {} when it can't be read."""
+    """{device rule id: rule name} for an access policy; {} when it can't be read. Cached for a minute
+    (writes clear the cache), so a batch of traces (fmc_prove_policy) reads each policy once."""
+    key = f"rule-names:{domain}:{policy_name}"
+    hit = app.cache_get(key)
+    if hit is not None:
+        return hit  # type: ignore[no-any-return]
     try:
         pol = await resolve_policy(app, "access", policy_name, domain)
         page = await all_rules(app, await app.config_path(f"{ACCESS}/{pol['id']}/accessrules", domain))
     except UpstreamError:  # includes NotFound: naming is best-effort, the trace itself stands
         return {}
-    return {_rule_number(str(r.get("id", "")).rsplit("-", 1)[-1]): str(r.get("name")) for r in page.items}
+    names = {_rule_number(str(r.get("id", "")).rsplit("-", 1)[-1]): str(r.get("name")) for r in page.items}
+    app.cache_put(key, names)
+    return names
 
 
 async def name_snort_rules(app: FmcApp, traces: list[dict[str, Any]], domain: str | None) -> None:
@@ -360,6 +367,85 @@ async def rule_hits(
     return hits, last, notes
 
 
+async def packet_trace(
+    app: FmcApp,
+    dev: dict[str, Any],
+    protocol: str,
+    source_ip: str,
+    destination_ip: str,
+    *,
+    input_interface: str | None = None,
+    destination_port: int | None = None,
+    source_port: int = 40000,
+    icmp_type: int = 8,
+    icmp_code: int = 0,
+    verbose: bool = False,
+    domain: str | None = None,
+    context: Any = None,
+    interfaces: list[tuple[str, dict[str, Any]]] | None = None,
+) -> dict[str, Any]:
+    """Run FMC's packet tracer for one flow on a resolved device (fmc_packet_tracer, fmc_prove_policy):
+    {flow, input_interface, input_interface_found_by?, results: [summarize_trace() rows with
+    verdict_rule]}. The ingress interface comes from the source IP (connected subnet or static route)
+    unless given; pass a DeviceContext as `context` and the device's `interfaces` to reuse ones already
+    read (several flows on one device)."""
+    protocol = protocol.lower()
+    ifaces = interfaces if interfaces is not None else await device_interfaces(app, dev["id"], domain)
+    found_by = None
+    if not input_interface:
+        try:
+            src_ip = ipaddress.ip_address(source_ip.strip())
+        except ValueError as e:
+            raise InvalidRequest(f"Invalid address: {e}") from None
+        dc = context or await device_context(app, dev, Catalog(app, domain), domain)
+        leg = dc.leg(src_ip)
+        if leg is None:
+            raise InvalidRequest(
+                f"No interface or static route on {dev['name']} covers {src_ip}; pass input_interface."
+            )
+        input_interface, found_by = leg.interface, leg.how
+    _, iface = pick_interface(ifaces, input_interface, dev["name"])
+    if not iface.get("ifname"):
+        raise InvalidRequest(
+            f"{iface.get('name')} has no logical name; packet tracer needs a named interface."
+        )
+    try:
+        src = ipaddress.ip_address(source_ip.strip())
+        dst = ipaddress.ip_address(destination_ip.strip())
+    except ValueError as e:
+        raise InvalidRequest(f"Invalid address: {e}") from None
+    if src.version != dst.version:
+        raise InvalidRequest("Source and destination must both be IPv4 or both IPv6.")
+    ip_type = "IPv4" if src.version == 4 else "IPv6"
+    body: dict[str, Any] = {
+        "device": {"id": dev["id"], "type": dev.get("type") or "Device", "name": dev.get("name")},
+        "interface": {"id": iface["id"], "type": iface.get("type"), "name": iface.get("ifname")},
+        "protocol": protocol.upper(),
+        "sourceIPType": ip_type,
+        "sourceIPValue": str(src),
+        "destinationIPType": ip_type,
+        "destinationIPValue": str(dst),
+    }
+    if protocol == "icmp":
+        body.update(icmpType=icmp_type, icmpCode=icmp_code, icmpID=1)
+    else:
+        if destination_port is None:
+            raise InvalidRequest("destination_port is required for tcp and udp.")
+        body.update(sourcePort=str(source_port), destinationPort=str(destination_port))
+    where = await app.device_domain("devices/devicerecords", dev["id"], await app.domain_uuid(domain))
+    path = f"/api/fmc_troubleshoot/v1/domain/{where}/packettracer/traces"
+    resp = await app.api.post(path, body, timeout=180)
+    traces = summarize_trace(resp if isinstance(resp, dict) else {}, verbose)
+    await name_snort_rules(app, traces, domain)
+    flow = f"{protocol} {src}" + (f":{source_port}" if protocol != "icmp" else "")
+    flow += f" -> {dst}" + (f":{destination_port}" if protocol != "icmp" else f" type {icmp_type}")
+    out: dict[str, Any] = {"flow": flow, "input_interface": iface.get("ifname")}
+    if found_by:
+        out["input_interface_found_by"] = found_by
+    out["results"] = traces
+    return out
+
+
 def register(reg: ToolRegistrar) -> None:
     @reg.read(title="Run a show command on a device")
     async def fmc_run_show_command(
@@ -449,59 +535,20 @@ def register(reg: ToolRegistrar) -> None:
         name) is picked from the source IP unless given."""
         app: FmcApp = get_client(ctx)
         dev = await resolve_device(app, device, domain)
-        ifaces = await device_interfaces(app, dev["id"], domain)
-        found_by = None
-        if not input_interface:
-            try:
-                src_ip = ipaddress.ip_address(source_ip.strip())
-            except ValueError as e:
-                raise InvalidRequest(f"Invalid address: {e}") from None
-            leg = (await device_context(app, dev, Catalog(app, domain), domain)).leg(src_ip)
-            if leg is None:
-                raise InvalidRequest(
-                    f"No interface or static route on {dev['name']} covers {src_ip}; pass input_interface."
-                )
-            input_interface, found_by = leg.interface, leg.how
-        _, iface = pick_interface(ifaces, input_interface, dev["name"])
-        if not iface.get("ifname"):
-            raise InvalidRequest(
-                f"{iface.get('name')} has no logical name; packet tracer needs a named interface."
-            )
-        try:
-            src = ipaddress.ip_address(source_ip.strip())
-            dst = ipaddress.ip_address(destination_ip.strip())
-        except ValueError as e:
-            raise InvalidRequest(f"Invalid address: {e}") from None
-        if src.version != dst.version:
-            raise InvalidRequest("Source and destination must both be IPv4 or both IPv6.")
-        ip_type = "IPv4" if src.version == 4 else "IPv6"
-        body: dict[str, Any] = {
-            "device": {"id": dev["id"], "type": dev.get("type") or "Device", "name": dev.get("name")},
-            "interface": {"id": iface["id"], "type": iface.get("type"), "name": iface.get("ifname")},
-            "protocol": protocol.upper(),
-            "sourceIPType": ip_type,
-            "sourceIPValue": str(src),
-            "destinationIPType": ip_type,
-            "destinationIPValue": str(dst),
-        }
-        if protocol == "icmp":
-            body.update(icmpType=icmp_type, icmpCode=icmp_code, icmpID=1)
-        else:
-            if destination_port is None:
-                raise InvalidRequest("destination_port is required for tcp and udp.")
-            body.update(sourcePort=str(source_port), destinationPort=str(destination_port))
-        where = await app.device_domain("devices/devicerecords", dev["id"], await app.domain_uuid(domain))
-        path = f"/api/fmc_troubleshoot/v1/domain/{where}/packettracer/traces"
-        resp = await app.api.post(path, body, timeout=180)
-        traces = summarize_trace(resp if isinstance(resp, dict) else {}, verbose)
-        await name_snort_rules(app, traces, domain)
-        flow = f"{protocol} {src}" + (f":{source_port}" if protocol != "icmp" else "")
-        flow += f" -> {dst}" + (f":{destination_port}" if protocol != "icmp" else f" type {icmp_type}")
-        out: dict[str, Any] = {"flow": flow, "input_interface": iface.get("ifname")}
-        if found_by:
-            out["input_interface_found_by"] = found_by
-        out["results"] = traces
-        return out
+        return await packet_trace(
+            app,
+            dev,
+            protocol,
+            source_ip,
+            destination_ip,
+            input_interface=input_interface,
+            destination_port=destination_port,
+            source_port=source_port,
+            icmp_type=icmp_type,
+            icmp_code=icmp_code,
+            verbose=verbose,
+            domain=domain,
+        )
 
     @reg.read(title="Rule hit counts")
     async def fmc_get_hit_counts(

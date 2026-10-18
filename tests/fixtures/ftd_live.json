@@ -1,0 +1,101 @@
+{
+ "_source": "show logging (buffer off): FMC 10.0.1 operational/commands on mcp-ftd1, 2026-10-18 (GET). show conn all / show conn all detail: the FTD 10.0.0 CLI of the same device through the CML console (FMC refuses 'show conn' over its API), 2026-10-18. show logging (buffer on): that header with buffered logging turned on and message lines in the formats of the Secure Firewall Threat Defense syslog guide (302013-302021, 305011, 430002/430003), lab addressing, because the lab buffer was off at recording time. activesessions / useractivity: the FMC 10.0.1 spec example shapes (getActiveSession, getUserActivity) with lab users; the lab API role gets 403 on analysis/*.",
+ "show logging (buffer off)": {
+  "items": [
+   {
+    "commandInput": "show logging",
+    "commandOutput": "Syslog logging: enabled\n    Facility: 20\n    Timestamp logging: enabled\n    Timezone: disabled\n    Logging Format: disabled\n    Hide Username logging: enabled\n    Standby logging: disabled\n    Debug-trace logging: disabled\n    Console logging: disabled\n    Monitor logging: disabled\n    Buffer logging: disabled\n    Trap logging: level warnings, facility 20, 6 messages logged\n    Global TCP syslog stats::\n        NOT_PUTABLE: 0, ALL_CHANNEL_DOWN: 0\n        CHANNEL_FLAP_CNT: 0, SYSLOG_PKT_LOSS: 0\n        PARTIAL_REWRITE_CNT: 0\n    Permit-hostdown logging: enabled\n    History logging: disabled\n    Device ID: disabled\n    Mail logging: disabled\n    ASDM logging: disabled\n    FMC logging: list MANAGER_VPN_EVENT_LIST, 0 messages logged\n    cloud-manager logging: disabled\n    DRW Read Lock Failure: 0\n",
+    "type": "command"
+   }
+  ],
+  "paging": {
+   "offset": 0,
+   "limit": 25,
+   "count": 1,
+   "pages": 1
+  }
+ },
+ "show logging (buffer on)": {
+  "items": [
+   {
+    "commandInput": "show logging",
+    "commandOutput": "Syslog logging: enabled\n    Facility: 20\n    Timestamp logging: enabled\n    Timezone: disabled\n    Logging Format: disabled\n    Hide Username logging: enabled\n    Standby logging: disabled\n    Debug-trace logging: disabled\n    Console logging: disabled\n    Monitor logging: disabled\n    Buffer logging: level informational, 11 messages logged\n    Trap logging: level warnings, facility 20, 6 messages logged\n    Global TCP syslog stats::\n        NOT_PUTABLE: 0, ALL_CHANNEL_DOWN: 0\n        CHANNEL_FLAP_CNT: 0, SYSLOG_PKT_LOSS: 0\n        PARTIAL_REWRITE_CNT: 0\n    Permit-hostdown logging: enabled\n    History logging: disabled\n    Device ID: disabled\n    Mail logging: disabled\n    ASDM logging: disabled\n    FMC logging: list MANAGER_VPN_EVENT_LIST, 0 messages logged\n    cloud-manager logging: disabled\n    DRW Read Lock Failure: 0\n\nOct 18 2026 14:01:02: %FTD-6-302013: Built outbound TCP connection 101 for outside:192.0.2.80/80 (192.0.2.80/80) to inside:10.99.1.10/40001 (198.51.100.2/40001)(LAB\\alice)\nOct 18 2026 14:01:02: %FTD-1-430002: DeviceUUID: 00000000-0000-0000-0000-000000000099, InstanceID: 1, FirstPacketSecond: 2026-10-18T14:01:02Z, ConnectionID: 7, AccessControlRuleAction: Allow, SrcIP: 10.99.1.10, DstIP: 192.0.2.80, SrcPort: 40001, DstPort: 80, Protocol: tcp, IngressInterface: inside, EgressInterface: outside, IngressZone: mcp-test-identity-inside, EgressZone: mcp-test-identity-outside, ACPolicy: mcp-fw-threat-acp, AccessControlRuleName: mcp-fw-baseline, Prefilter Policy: Default Prefilter Policy, User: LAB\\alice, Client: Wget, ApplicationProtocol: HTTP, InitiatorPackets: 1, ResponderPackets: 0, InitiatorBytes: 74, ResponderBytes: 0, NAPPolicy: Balanced Security and Connectivity\nOct 18 2026 14:01:03: %FTD-6-302014: Teardown TCP connection 101 for outside:192.0.2.80/80 to inside:10.99.1.10/40001 duration 0:00:01 bytes 1520 TCP FINs from inside (LAB\\alice)\nOct 18 2026 14:01:03: %FTD-1-430003: DeviceUUID: 00000000-0000-0000-0000-000000000099, InstanceID: 1, FirstPacketSecond: 2026-10-18T14:01:02Z, ConnectionID: 7, AccessControlRuleAction: Allow, SrcIP: 10.99.1.10, DstIP: 192.0.2.80, SrcPort: 40001, DstPort: 80, Protocol: tcp, IngressInterface: inside, EgressInterface: outside, IngressZone: mcp-test-identity-inside, EgressZone: mcp-test-identity-outside, ACPolicy: mcp-fw-threat-acp, AccessControlRuleName: mcp-fw-baseline, Prefilter Policy: Default Prefilter Policy, User: LAB\\alice, Client: Wget, ApplicationProtocol: HTTP, ConnectionDuration: 1, InitiatorPackets: 6, ResponderPackets: 5, InitiatorBytes: 400, ResponderBytes: 1120, NAPPolicy: Balanced Security and Connectivity\nOct 18 2026 14:01:10: %FTD-6-302013: Built outbound TCP connection 102 for outside:192.0.2.80/23 (192.0.2.80/23) to inside:10.99.1.10/40002 (198.51.100.2/40002)(LAB\\alice)\nOct 18 2026 14:01:11: %FTD-6-305011: Built dynamic TCP translation from inside:10.99.1.10/40002 to outside:198.51.100.2/40002\nOct 18 2026 14:01:12: %FTD-6-302015: Built inbound UDP connection 103 for outside:192.0.2.53/5353 (192.0.2.53/5353) to inside:10.99.1.11/53 (198.51.100.11/53)\nOct 18 2026 14:01:12: %FTD-6-302016: Teardown UDP connection 103 for outside:192.0.2.53/5353 to inside:10.99.1.11/53 duration 0:00:00 bytes 96\nOct 18 2026 14:01:20: %FTD-6-302020: Built outbound ICMP connection for faddr 192.0.2.80/0 gaddr 198.51.100.2/7 laddr 10.99.1.10/7 type 8 code 0\nOct 18 2026 14:01:22: %FTD-6-302021: Teardown ICMP connection for faddr 192.0.2.80/0 gaddr 198.51.100.2/7 laddr 10.99.1.10/7 type 8 code 0\nOct 18 2026 14:01:30: %FTD-6-302014: Teardown TCP connection 99 for outside:192.0.2.80/443 to inside:10.99.1.12/39000 duration 0:02:00 bytes 5000 TCP Reset-O from outside\n",
+    "type": "command"
+   }
+  ],
+  "paging": {
+   "offset": 0,
+   "limit": 25,
+   "count": 1,
+   "pages": 1
+  }
+ },
+ "show conn all detail": "3 in use, 5 most used\nInspect Snort:\n\tpreserve-connection: 0 enabled, 0 in effect, 1 most enabled, 0 most in effect\nFlags: A - awaiting responder ACK to SYN, a - awaiting initiator ACK to SYN,\n       B - TCP probe for server certificate,\n       b - TCP state-bypass or nailed,\n       C - CTIQBE media, c - cluster centralized,\n       D - DNS, d - dump, E - outside back connection, e - semi-distributed,\n       F - initiator FIN, f - responder FIN,\n       G - group, g - MGCP, H - H.323, h - H.225.0, I - initiator data,\n       i - incomplete, J - GTP, j - GTP data, K - GTP t3-response\n       k - Skinny media, L - decap tunnel, M - SMTP data, m - SIP media\n       N - inspected by Snort (1 - preserve-connection enabled, 2 - preserve-connection in effect, 3 - elephant-flow, 4 - elephant-flow bypassed, 5 - elephant-flow throttled, 6 - elephant-flow exempted, 7 - fast-forwarded flow, 8 - down/busy failopened\n       n - GUP, O - responder data, o - offloaded,\n       P - inside back connection, p - passenger flow,\n       Q - QUIC, q - SQL*Net data, R - initiator acknowledged FIN,\n       R - UDP SUNRPC, r - responder acknowledged FIN,\n       T - SIP, t - SIP transient, U - up,\n       V - VPN orphan, v - M3UA W - WAAS,\n       w - secondary domain backup,\n       X - inspected by service module,\n       x - per session, Y - director stub flow, y - backup stub flow,\n       Z - Scansafe redirection, Z(1 - zero-trust flow, 2 - hybrid-zero-trust tunnel, 3 - hybrid-zero-trust stream),\n       z - forwarding stub flow\n\nNOTE: invalid(4294967295) represents connection which do not have a valid Internal-Data/Rx-RingNum.\n\nOSPF inside: 10.99.1.2/0 NP Identity Ifc: 224.0.0.5/0,\n    , flags  , idle 1s, uptime 19m22s, timeout 2m0s, bytes 10040, flow id 7, Snort id -1, Rx-RingNum invalid, Internal-Data invalid\n  Connection lookup keyid: 495050\n\nOSPF inside: 224.0.0.5/0 NP Identity Ifc: 10.99.1.1/0,\n    , flags  , idle 0s, uptime 19m24s, timeout 2m0s, bytes 7524, flow id 4, Snort id -1, Rx-RingNum 0, Internal-Data0/0\n  Connection lookup keyid: 416094\n\nTCP inside: 10.99.1.2/179 NP Identity Ifc: 10.99.1.1/24127,\n    flags UI , idle 14s, uptime 19m6s, timeout 1h0m, bytes 472, flow id 8, Snort id -1, Rx-RingNum 0, Internal-Data0/0\n  Initiator: 10.99.1.1, Responder: 10.99.1.2\n  Connection lookup keyid: 543606",
+ "show conn all": "3 in use, 5 most used\nInspect Snort:\n\tpreserve-connection: 0 enabled, 0 in effect, 1 most enabled, 0 most in effect\n\nOSPF inside 10.99.1.2 NP Identity Ifc  224.0.0.5, idle 0:00:09, bytes 9960, flags\nOSPF inside 224.0.0.5 NP Identity Ifc  10.99.1.1, idle 0:00:08, bytes 7464, flags\nTCP inside  10.99.1.2:179 NP Identity Ifc  10.99.1.1:24127, idle 0:00:13, bytes 472, flags UI",
+ "activesessions": {
+  "items": [
+   {
+    "id": "MnxQYXNzaXZlfDEwLjk5LjEuMTA=",
+    "userId": 3,
+    "loginTime": 1792332000,
+    "lastSeen": 1792332300,
+    "device": "mcp-ftd-identity",
+    "authenticationType": "Passive Authentication",
+    "currentIP": "10.99.1.12",
+    "user": "alice",
+    "realmId": 2,
+    "realmName": "LAB",
+    "username": "alice",
+    "firstName": "Alice",
+    "lastName": "",
+    "email": "alice@lab.example",
+    "department": "mcp-staff (lab)",
+    "phone": "",
+    "discoveryApplication": "LDAP"
+   }
+  ],
+  "paging": {
+   "offset": 0,
+   "limit": 25,
+   "count": 1,
+   "pages": 1
+  }
+ },
+ "useractivity": {
+  "items": [
+   {
+    "eventId": 0,
+    "time": 1792332000,
+    "event": "User Login",
+    "username": "alice",
+    "realmName": "LAB",
+    "discoveryApplication": "LDAP",
+    "authenticationType": "Passive Authentication",
+    "ipAddress": "10.99.1.12",
+    "startPort": 0,
+    "endPort": 0,
+    "description": "",
+    "vpnSessionType": "",
+    "vpnGroupPolicy": "",
+    "vpnConnectionProfile": "",
+    "vpnClientPublicIP": "",
+    "vpnClientCountry": "",
+    "vpnClientOS": "",
+    "vpnClientApplication": "",
+    "vpnConnectionDuration": 0,
+    "vpnBytesOut": 0,
+    "vpnBytesIn": 0,
+    "securityGroupTag": "",
+    "endpointProfile": "",
+    "endpointLocation": "",
+    "device": "mcp-ftd-identity"
+   }
+  ],
+  "paging": {
+   "offset": 0,
+   "limit": 25,
+   "count": 1,
+   "pages": 1
+  }
+ }
+}
