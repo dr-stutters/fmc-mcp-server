@@ -27,6 +27,16 @@
   it. FMC's samples trailed the device by about 5 minutes (a CML brownout on mcp-sdwan-t1-spoke1's MPLS link:
   RTT 1.5 -> 307 ms, loss 0 -> 33 %, MOS 4.4 -> 0, tunnel 303 ms / 57 %); the status says so.
   `capture_fixtures.py --sdwan-metrics` records the response (`ftd_sdwan_pathmetrics.json`).
+- **SD-WAN: a spoke's second WAN tunnel (`spokes[].backup_wan_interface`, matrix R1).** FMC 10.0.1 drops
+  `backupInterfaces` on AUTO_VPN spokes, refuses it on hubs, and allows one endpoint per device per topology.
+  `fmc_create_sdwan_topology` now builds the second tunnel as FMC accepts it (found live on mcp-sdwan-t1): a
+  companion AUTO_VPN topology `<name>-wan2` with the same hub on a second DVTI (new `hub_backup_wan_interface`,
+  `hub_backup_dvti`, `hub_backup_loopback`, `backup_wan_pool`: its own loopback and pool) and each spoke with
+  `backup_wan_interface` on that WAN, with the same IKE, IPsec and iBGP settings. Live: two IKEv2 SAs and two
+  iBGP sessions per spoke, and a dead first WAN (cable pulled, or 100% loss) moved traffic to the other tunnel
+  without a lost ping. `fmc_update_sdwan_topology` adds a spoke's backup WAN to the companion, removes removed
+  spokes from it too, and sets `multipath` on both. A backup WAN with a backup hub is blocked (not verified).
+  The read-back-and-undo from 0.13.0 is gone with the field it checked.
 
 ## 0.13.0 (2026-10-18)
 

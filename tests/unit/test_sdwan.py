@@ -48,7 +48,6 @@ def lab(
     evaluation: bool = False,
     topologies: bool = True,
     fail: dict[str, httpx.Response] | None = None,
-    drop_backup: bool = False,
 ) -> list[tuple[str, Any]]:
     """Mount the recorded SD-WAN lab; return the ordered log of writes (method path, body)."""
     for key, data in LAB.items():
@@ -70,7 +69,6 @@ def lab(
     )
     log: list[tuple[str, Any]] = []
     counter = iter(range(1, 1000))
-    posted: dict[str, Any] = {}  # endpoint id -> stored body, for the read-back GET
 
     def write(req: httpx.Request) -> httpx.Response:
         body = json.loads(req.content) if req.content else None
@@ -85,22 +83,14 @@ def lab(
             if path.endswith("virtualtunnelinterfaces"):
                 made["name"] = f"Virtual-Template{body['tunnelId']}"
             if path == "policy/ftds2svpns":
-                made = {**NEW_TOPO, **body, "id": "topo-new"}
-            if path.endswith("/endpoints"):
-                posted[made["id"]] = made
+                tid = "topo-new-wan2" if body["name"].endswith("-wan2") else "topo-new"
+                made = {**NEW_TOPO, **body, "id": tid}
             return httpx.Response(201, json=made)
         return httpx.Response(200, json={})
 
     fmc.route(method__in=["POST", "PUT", "DELETE"], path__startswith=CFG).mock(side_effect=write)
 
-    def read_endpoint(req: httpx.Request) -> httpx.Response:
-        stored = dict(posted[req.url.path.rsplit("/", 1)[1]])
-        if drop_backup:  # what FMC 10.0.1 does with backupInterfaces on an AUTO_VPN spoke
-            stored.pop("backupInterfaces", None)
-        return httpx.Response(200, json=stored)
-
-    fmc.get(url__regex=rf"{S2S}/topo-[a-z0-9]+/endpoints/new-\d+$").mock(side_effect=read_endpoint)
-    for tid in ("topo-new",):
+    for tid in ("topo-new", "topo-new-wan2"):
         fmc.get(f"{S2S}/{tid}/ikesettings").mock(return_value=items([{"id": "ike-n", "type": "IkeSettings"}]))
         fmc.get(f"{S2S}/{tid}/ipsecsettings").mock(
             return_value=items([{"id": "ips-n", "type": "IPSecSettings", "metadata": {"x": 1}}])
@@ -116,12 +106,7 @@ NEW = {
     "tunnel_zone": "mcp-sdwan-overlay",
     "spoke_pool": "10.255.250.0/24",
     "spokes": [
-        {
-            "device": "mcp-sdwan-t1-spoke3",
-            "wan_interface": "outside1",
-            "backup_wan_interface": "outside2",
-            "inside_interfaces": ["inside"],
-        }
+        {"device": "mcp-sdwan-t1-spoke3", "wan_interface": "outside1", "inside_interfaces": ["inside"]}
     ],
 }
 
@@ -168,62 +153,8 @@ async def test_create_builds_pool_loopback_dvti_then_topology(fmc: respx.MockRou
     assert hub["interface"]["id"] == "new-3" and hub["ipv4PoolsForSpokeVti"][0]["id"] == "new-1"
     assert hub["insideInterface"][0]["id"] == "d-hub2-e2"
     assert spoke["peerType"] == "SPOKE" and spoke["interface"]["id"] == "d-sp3-e0"
-    assert spoke["backupInterfaces"] == [
-        {"interface": {"id": "d-sp3-e1", "type": "PhysicalInterface", "name": "Ethernet0/1"}}
-    ]
+    assert "backupInterfaces" not in spoke
     assert done["result"]["topology"]["kind"] == "SD-WAN (hub and spoke)"
-
-
-async def test_create_undoes_the_build_when_fmc_drops_the_backup_wan(fmc: respx.MockRouter) -> None:
-    """FMC 10.0.1 answers 2xx to backupInterfaces on an AUTO_VPN spoke and stores nothing (live on
-    mcp-sdwan-t1, 2026-10-18): the tool must not report a backup tunnel that doesn't exist."""
-    log = lab(fmc, topologies=False, drop_backup=True)
-    async with Client(server()) as c:
-        preview = await run(c, "fmc_create_sdwan_topology", NEW)
-        assert any("stores nothing" in e for e in preview["side_effects"])
-        r = await c.call_tool(
-            "fmc_create_sdwan_topology", {**NEW, "confirm": preview["confirm"]}, raise_on_error=False
-        )
-    text = r.content[0].text  # type: ignore[union-attr]
-    assert r.is_error and "did not store it" in text and "Everything created was deleted again" in text
-    deletes = [m for m, _ in log if m.startswith("DELETE")]
-    assert deletes == [  # newest first: topology (with its endpoints), DVTI, loopback, pool
-        "DELETE policy/ftds2svpns/topo-new",
-        "DELETE devices/devicerecords/d-hub2/virtualtunnelinterfaces/new-3",
-        "DELETE devices/devicerecords/d-hub2/loopbackinterfaces/new-2",
-        "DELETE object/ipv4addresspools/new-1",
-    ]
-
-
-async def test_create_without_backup_wan_reads_nothing_back(fmc: respx.MockRouter) -> None:
-    log = lab(fmc, topologies=False, drop_backup=True)
-    args = {**NEW, "spokes": [{"device": "mcp-sdwan-t1-spoke3", "wan_interface": "outside1"}]}
-    async with Client(server()) as c:
-        preview = await run(c, "fmc_create_sdwan_topology", args)
-        assert not any("stores nothing" in e for e in preview["side_effects"])
-        done = await run(c, "fmc_create_sdwan_topology", {**args, "confirm": preview["confirm"]})
-    assert done["status"] == "applied" and not any(m.startswith("DELETE") for m, _ in log)
-
-
-async def test_update_removes_the_new_spoke_when_fmc_drops_the_backup_wan(fmc: respx.MockRouter) -> None:
-    log = lab(fmc, drop_backup=True)
-    args = {
-        "topology": "mcp-sdwan-t1",
-        "add_spokes": [
-            {"device": "mcp-sdwan-t1-spoke3", "wan_interface": "outside2", "backup_wan_interface": "outside1"}
-        ],
-    }
-    async with Client(server()) as c:
-        preview = await run(c, "fmc_update_sdwan_topology", args)
-        assert any("stores nothing" in e for e in preview["side_effects"])
-        r = await c.call_tool(
-            "fmc_update_sdwan_topology", {**args, "confirm": preview["confirm"]}, raise_on_error=False
-        )
-    assert r.is_error and "did not store it" in r.content[0].text  # type: ignore[union-attr]
-    assert [m for m, _ in log] == [
-        "POST policy/ftds2svpns/topo-t1/endpoints",
-        "DELETE policy/ftds2svpns/topo-t1/endpoints/new-1",
-    ]
 
 
 async def test_create_reuses_dvti_and_pool_with_backup_hub(fmc: respx.MockRouter) -> None:

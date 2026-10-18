@@ -82,9 +82,9 @@ class SpokeSpec(BaseModel):
     )
     backup_wan_interface: str | None = Field(
         None,
-        description="A second WAN interface for a backup tunnel (e.g. LTE). FMC 10.0.1 accepts it on "
-        "an AUTO_VPN spoke but stores nothing; the tool reads the spoke back and undoes the change "
-        "when FMC dropped it",
+        description="A second WAN interface for a second tunnel to the hub (e.g. inet or LTE). It "
+        "terminates on the hub's second-WAN DVTI (hub_backup_wan_interface) in the companion "
+        "topology '<name>-wan2'; both tunnels carry iBGP, so traffic fails over when one goes down",
     )
     inside_interfaces: list[str] = Field(
         default_factory=list,
@@ -241,6 +241,8 @@ async def plan_hub(
     inside: list[str],
     zone: dict[str, Any],
     domain: str | None,
+    taken_loopbacks: set[int] | None = None,
+    taken_tunnels: set[int] | None = None,
 ) -> HubPlan:
     dev, iface_dev = await _peer_device(app, device, domain)
     vtis = await device_interfaces(app, iface_dev, domain, ["vti"])
@@ -282,7 +284,9 @@ async def plan_hub(
                 f"With an existing pool, name the loopback the {role}'s DVTI borrows its address "
                 "from (hub_loopback / backup_hub_loopback), or give the pool as a subnet."
             )
-        lid = _free_id({int(i.get("loopbackId") or 0) for _, i in loops}, MAX_LOOPBACK_ID)
+        lid = _free_id(
+            {int(i.get("loopbackId") or 0) for _, i in loops} | (taken_loopbacks or set()), MAX_LOOPBACK_ID
+        )
         hub.loopback_body = {
             "type": "LoopbackInterface",
             "loopbackId": lid,
@@ -290,7 +294,7 @@ async def plan_hub(
             "ifname": f"{dvti.strip()}-lo",
             "ipv4": {"static": {"address": pp.hub_ip, "netmask": "255.255.255.255"}},
         }
-    tid = _free_id({int(i.get("tunnelId") or 0) for _, i in vtis}, MAX_TUNNEL_ID)
+    tid = _free_id({int(i.get("tunnelId") or 0) for _, i in vtis} | (taken_tunnels or set()), MAX_TUNNEL_ID)
     hub.dvti_body = {
         "type": "VTIInterface",
         "tunnelType": "DYNAMIC",
@@ -314,21 +318,25 @@ class SpokePlan:
     inside: list[dict[str, Any]]
     blockers: list[str]
 
-    def endpoint(self) -> dict[str, Any]:
+    def endpoint(self, wan: dict[str, Any] | None = None) -> dict[str, Any]:
+        """The spoke endpoint on its WAN interface (or on `wan`: the backup WAN's endpoint in the
+        companion topology). Never `backupInterfaces`: FMC 10.0.1 drops it on AUTO_VPN spokes."""
         ep: dict[str, Any] = {
             "name": self.device["name"],
             "type": "EndPoint",
             "peerType": "SPOKE",
             "extranet": False,
             "device": self.device,
-            "interface": self.wan,
+            "interface": wan or self.wan,
             "connectionType": "BIDIRECTIONAL",
         }
         if self.inside:
             ep["insideInterface"] = self.inside
-        if self.backup:
-            ep["backupInterfaces"] = [{"interface": self.backup}]
         return ep
+
+    def backup_endpoint(self) -> dict[str, Any]:
+        assert self.backup is not None
+        return self.endpoint(self.backup)
 
     def summary(self) -> dict[str, Any]:
         out = {
@@ -364,26 +372,21 @@ async def plan_spoke(app: FmcApp, spec: SpokeSpec, domain: str | None) -> SpokeP
     return SpokePlan(dev, wan, backup, inside, blockers)
 
 
+WAN2_SUFFIX = "-wan2"
 BACKUP_WAN_NOTE = (
-    "backup_wan_interface: FMC 10.0.1 answers 2xx to backupInterfaces on an AUTO_VPN spoke but "
-    "stores nothing, so no backup tunnel is built (seen live on mcp-sdwan-t1). The tool reads each "
-    "such spoke back and undoes the change if FMC dropped the backup interface."
+    "Spokes with backup_wan_interface get their second tunnel from a companion AUTO_VPN topology "
+    "'{companion}': the same hub on a second DVTI (sourced from its second WAN, with its own loopback "
+    "and spoke pool) and each such spoke on its backup WAN. FMC 10.0.1 drops backupInterfaces on an "
+    "AUTO_VPN spoke and allows one endpoint per device per topology, so this is how a spoke gets a "
+    "second WAN tunnel (live on mcp-sdwan-t1, 2026-10-18: two IKEv2 SAs and two iBGP sessions per "
+    "spoke; spoke WAN down -> traffic on the other tunnel without a lost ping). Both topologies share "
+    "the iBGP settings; delete both to remove the overlay (fmc_delete_s2s_vpn)."
 )
 
 
-async def check_backup_kept(app: FmcApp, endpoints: str, made: dict[str, Any], spoke: SpokePlan) -> None:
-    """Read a new spoke endpoint back and fail when FMC dropped its backup WAN interface."""
-    if not spoke.backup or not made.get("id"):
-        return
-    stored = await app.api.get(f"{endpoints}/{made['id']}")
-    kept = {(b.get("interface") or {}).get("id") for b in (stored or {}).get("backupInterfaces") or []}
-    if spoke.backup["id"] not in kept:
-        raise UpstreamError(
-            f"FMC accepted backup WAN interface {ref_label(spoke.backup)} for spoke "
-            f"{spoke.device['name']} but did not store it (the endpoint has no backupInterfaces), so "
-            "there would be no backup tunnel. FMC 10.0.1 doesn't take a second spoke WAN this way; "
-            "build the topology without backup_wan_interface"
-        )
+def companion_name(name: str) -> str:
+    """The companion topology that carries the spokes' backup WAN tunnels."""
+    return f"{name}{WAN2_SUFFIX}"
 
 
 def hub_endpoint(hub: HubPlan, dvti: dict[str, Any], pool: dict[str, Any]) -> dict[str, Any]:
@@ -549,6 +552,28 @@ def register(reg: ToolRegistrar) -> None:
             list[str] | None, Field(description="Hub inside interfaces advertised into the overlay")
         ] = None,
         spokes: Spokes = None,
+        hub_backup_wan_interface: Annotated[
+            str | None,
+            Field(
+                description="Hub WAN interface for a second DVTI that the spokes' backup_wan_interface "
+                "tunnels terminate on (built as the companion topology '<name>-wan2')"
+            ),
+        ] = None,
+        hub_backup_dvti: Annotated[
+            str,
+            Field(
+                description="Logical name of the hub's second-WAN DVTI: reused when it exists, otherwise "
+                "created from hub_backup_wan_interface and a loopback"
+            ),
+        ] = "sdwan-dvti-wan2",
+        hub_backup_loopback: LoopbackArg = None,
+        backup_wan_pool: Annotated[
+            str | None,
+            Field(
+                description="Spoke tunnel address pool of the second-WAN DVTI: an existing IPv4 address "
+                "pool or a subnet (its own, not overlapping spoke_pool)"
+            ),
+        ] = None,
         backup_hub: Annotated[
             str | None,
             Field(description="Backup (secondary) hub FTD or HA pair; spokes keep a tunnel to both"),
@@ -610,6 +635,20 @@ def register(reg: ToolRegistrar) -> None:
             raise InvalidRequest("backup_hub needs backup_spoke_pool (its own subnet or pool).")
         if not backup_hub and (backup_spoke_pool or backup_hub_wan_interface or backup_hub_loopback):
             raise InvalidRequest("backup_* settings need backup_hub.")
+        wan2_wanted = any(s.backup_wan_interface for s in spokes)
+        if wan2_wanted and not backup_wan_pool:
+            raise InvalidRequest(
+                "Spokes with backup_wan_interface need backup_wan_pool (the second-WAN DVTI's own subnet "
+                "or pool) and hub_backup_wan_interface (or an existing hub_backup_dvti)."
+            )
+        if not wan2_wanted and (backup_wan_pool or hub_backup_wan_interface or hub_backup_loopback):
+            raise InvalidRequest(
+                "hub_backup_wan_interface / backup_wan_pool / hub_backup_loopback are for spokes with "
+                "backup_wan_interface; give at least one."
+            )
+        if wan2_wanted and hub_backup_dvti.strip().lower() == hub_dvti.strip().lower():
+            raise InvalidRequest("hub_backup_dvti must differ from hub_dvti.")
+        companion = companion_name(name)
         blockers: list[str] = []
         try:
             await resolve_topology(app, name, domain)
@@ -633,6 +672,37 @@ def register(reg: ToolRegistrar) -> None:
                 domain=domain,
             )
         ]
+        wan2: HubPlan | None = None
+        if wan2_wanted:
+            p0 = hubs[0]
+            wan2 = await plan_hub(
+                app,
+                role="primary hub (second WAN)",
+                primary=True,
+                device=hub,
+                wan_interface=hub_backup_wan_interface,
+                dvti=hub_backup_dvti,
+                loopback=hub_backup_loopback,
+                pool=backup_wan_pool,
+                pool_name=f"{companion}-pool",
+                inside=hub_inside_interfaces or [],
+                zone=zone,
+                domain=domain,
+                taken_loopbacks={p0.loopback_body["loopbackId"]} if p0.loopback_body else set(),
+                taken_tunnels={p0.dvti_body["tunnelId"]} if p0.dvti_body else set(),
+            )
+            if len(companion) > 64:
+                blockers.append(f"The companion topology name {companion!r} is longer than 64 characters.")
+            try:
+                await resolve_topology(app, companion, domain)
+                blockers.append(f"A VPN topology named {companion!r} already exists.")
+            except NotFound:
+                pass
+            if backup_hub:
+                blockers.append(
+                    "backup_wan_interface with a backup hub is not supported yet (the second-WAN tunnels "
+                    "were verified with one hub only); build without one of them."
+                )
         if backup_hub:
             hubs.append(
                 await plan_hub(
@@ -658,17 +728,21 @@ def register(reg: ToolRegistrar) -> None:
             if sp.device["id"] in seen:
                 raise InvalidRequest(f"{sp.device['name']} appears twice (as a hub or spoke).")
             seen.add(sp.device["id"])
-        for h in hubs:
+        for h in hubs + ([wan2] if wan2 else []):
             blockers += h.blockers
         for sp in planned:
             blockers += sp.blockers
-        blockers += overlap_blockers(hubs)
+        blockers += overlap_blockers(hubs + ([wan2] if wan2 else []))
+        if wan2 and wan2.dvti and hubs[0].dvti and wan2.dvti["id"] == hubs[0].dvti["id"]:
+            blockers.append(
+                "hub_backup_dvti is the same interface as hub_dvti; the second WAN needs its own DVTI."
+            )
 
         strong_ok = await strong_crypto_allowed(app)
         weak = strong_ok is False
         side_effects = [_deploy_note([h.device["name"] for h in hubs] + [s.device["name"] for s in planned])]
-        if any(sp.backup for sp in planned):
-            side_effects.append(BACKUP_WAN_NOTE)
+        if wan2:
+            side_effects.append(BACKUP_WAN_NOTE.format(companion=companion))
         if weak and not ike_policies and not ipsec_proposals:
             side_effects.append(
                 "FMC has no strong-crypto (export-controlled) licence, so the defaults are "
@@ -737,7 +811,7 @@ def register(reg: ToolRegistrar) -> None:
         ]
         path = await app.config_path(S2S, domain)
         steps: list[str] = []
-        for h in hubs:
+        for h in hubs + ([wan2] if wan2 else []):
             if h.pool.body:
                 steps.append(
                     f"create IPv4 address pool {h.pool.body['name']!r} ({h.pool.body['ipAddressRange']})"
@@ -751,17 +825,22 @@ def register(reg: ToolRegistrar) -> None:
         steps += ["create AUTO_VPN topology", "set IKEv2 and IPsec"]
         steps += [f"add {h.role} {h.device['name']}" for h in hubs]
         steps += [f"add spoke {s.device['name']}" for s in planned]
+        if wan2:
+            steps += [f"create AUTO_VPN topology {companion!r}", f"set IKEv2 and IPsec on {companion!r}"]
+            steps += [f"add hub {wan2.device['name']} on its second-WAN DVTI to {companion!r}"]
+            steps += [
+                f"add spoke {s.device['name']} on its backup WAN to {companion!r}"
+                for s in planned
+                if s.backup
+            ]
 
         async def apply() -> Any:
             b = Builder(app, domain, pre_shared_key)
 
-            async def steps_() -> Any:
-                hub_eps = []
-                for h in hubs:
-                    pool = await b.pool(h.pool)
-                    dvti = await b.hub_dvti(h)
-                    hub_eps.append(hub_endpoint(h, dvti, pool))
-                topo = await b.post(path, topo_body, f"topology {name!r}")
+            async def topology(
+                topo_name: str, eps: list[dict[str, Any]], tag: str
+            ) -> tuple[dict[str, Any], list[dict[str, Any]]]:
+                topo = await b.post(path, {**topo_body, "name": topo_name}, f"topology {topo_name!r}")
                 app.invalidate_cache()
                 base = f"{path}/{topo['id']}"
                 ike = await _one(app, f"{base}/ikesettings")
@@ -777,22 +856,44 @@ def register(reg: ToolRegistrar) -> None:
                         "ikeV2IpsecProposal": proposal_refs,
                     },
                 )
-                b.done.append("IKE/IPsec settings")
-                made = []
-                for ep in hub_eps:
-                    # endpoints go with the topology: no separate undo
-                    made.append(await b.post(f"{base}/endpoints", ep, f"endpoint {ep['name']}", undo=False))
-                for sp in planned:
-                    ep = sp.endpoint()
-                    made.append(await b.post(f"{base}/endpoints", ep, f"endpoint {ep['name']}", undo=False))
-                    await check_backup_kept(app, f"{base}/endpoints", made[-1], sp)
-                return {
+                b.done.append(f"IKE/IPsec settings{tag}")
+                # endpoints go with the topology: no separate undo
+                made = [
+                    await b.post(f"{base}/endpoints", ep, f"endpoint {ep['name']}{tag}", undo=False)
+                    for ep in eps
+                ]
+                return topo, made
+
+            async def steps_() -> Any:
+                hub_eps = []
+                for h in hubs:
+                    pool = await b.pool(h.pool)
+                    dvti = await b.hub_dvti(h)
+                    hub_eps.append(hub_endpoint(h, dvti, pool))
+                wan2_ep = None
+                if wan2:
+                    pool2 = await b.pool(wan2.pool)  # pool, loopback, DVTI: as for the primary
+                    wan2_ep = hub_endpoint(wan2, await b.hub_dvti(wan2), pool2)
+                topo, made = await topology(name, hub_eps + [sp.endpoint() for sp in planned], "")
+                out: dict[str, Any] = {
                     "topology": topology_row(topo),
                     "endpoints": [endpoint_row(m) for m in made],
+                }
+                deleting = "fmc_delete_s2s_vpn"
+                if wan2_ep is not None:
+                    backups = [sp.backup_endpoint() for sp in planned if sp.backup]
+                    t2, made2 = await topology(companion, [wan2_ep, *backups], f" ({companion})")
+                    out["backup_wan_topology"] = {
+                        "topology": topology_row(t2),
+                        "endpoints": [endpoint_row(m) for m in made2],
+                    }
+                    deleting = f"fmc_delete_s2s_vpn on {name!r} and {companion!r}"
+                return {
+                    **out,
                     "created": b.done,
                     "next": "Deploy the hubs and spokes (fmc_deploy), then check fmc_get_vpn_topology, "
                     "fmc_list_vpn_tunnels and fmc_run_show_command('show route bgp'). To remove it: "
-                    "fmc_delete_s2s_vpn, then fmc_delete_interface for a DVTI/loopback created here.",
+                    f"{deleting}, then fmc_delete_interface for a DVTI/loopback created here.",
                 }
 
             return await b.run(f"Building SD-WAN topology {name!r}", steps_)
@@ -811,6 +912,10 @@ def register(reg: ToolRegistrar) -> None:
                 "hub_loopback": hub_loopback,
                 "hub_inside_interfaces": hub_inside_interfaces,
                 "spokes": [s.model_dump() for s in spokes],
+                "hub_backup_wan_interface": hub_backup_wan_interface,
+                "hub_backup_dvti": hub_backup_dvti,
+                "hub_backup_loopback": hub_backup_loopback,
+                "backup_wan_pool": backup_wan_pool,
                 "backup_hub": backup_hub,
                 "backup_hub_wan_interface": backup_hub_wan_interface,
                 "backup_hub_dvti": backup_hub_dvti,
@@ -837,12 +942,26 @@ def register(reg: ToolRegistrar) -> None:
                     "topology": topo_body,
                     "hubs": [h.summary() for h in hubs],
                     "spokes": [s.summary() for s in planned],
+                    **(
+                        {
+                            "backup_wan": {
+                                "topology": companion,
+                                "hub": wan2.summary(),
+                                "spokes": [s.summary() for s in planned if s.backup],
+                            }
+                        }
+                        if wan2
+                        else {}
+                    ),
                     "ike_v2": shown_ike,
                     "ipsec_proposals": [p["name"] for p in proposal_refs],
                 },
                 fingerprint={
                     "hubs": [h.summary() for h in hubs],
                     "spokes": [s.endpoint() for s in planned],
+                    "backup_wan": (
+                        [wan2.summary(), [s.backup_endpoint() for s in planned if s.backup]] if wan2 else None
+                    ),
                     "zone": zone["id"],
                     "ike": [p["id"] for p in policies],
                     "ipsec": [p["id"] for p in proposals],
@@ -908,6 +1027,20 @@ def register(reg: ToolRegistrar) -> None:
         by_dev: dict[Any, dict[str, Any]] = {(e.get("device") or {}).get("id"): e for e in endpoints}
         hubs_now = [e for e in endpoints if e.get("peerType") == "HUB"]
         blockers: list[str] = []
+        # The companion topology '<name>-wan2' that carries the spokes' backup WAN tunnels, if any.
+        companion = companion_name(str(t.get("name")))
+        c_topo: dict[str, Any] | None = None
+        c_path = ""
+        c_by_dev: dict[Any, dict[str, Any]] = {}
+        if not str(t.get("name")).endswith(WAN2_SUFFIX):
+            try:
+                c_topo = await resolve_topology(app, companion, domain)
+            except NotFound:
+                c_topo = None
+        if c_topo is not None:
+            c_path = await app.config_path(f"{S2S}/{c_topo['id']}", domain)
+            c_eps = (await app.all(f"{c_path}/endpoints", cap=2000)).items
+            c_by_dev = {(e.get("device") or {}).get("id"): e for e in c_eps}
 
         async def find(ref: str, role: str) -> dict[str, Any]:
             dev, _ = await _peer_device(app, ref, domain)
@@ -968,18 +1101,40 @@ def register(reg: ToolRegistrar) -> None:
             if new_hub and sp.device["id"] == new_hub.device["id"]:
                 raise InvalidRequest(f"{sp.device['name']} can't be both the backup hub and a spoke.")
             blockers += sp.blockers
+            if sp.backup and c_topo is None:
+                blockers.append(
+                    f"{sp.device['name']}: backup_wan_interface needs the second-WAN topology {companion!r} "
+                    "(FMC 10.0.1 drops backupInterfaces on AUTO_VPN spokes). Create the topology with "
+                    "fmc_create_sdwan_topology(hub_backup_wan_interface=..., backup_wan_pool=...) to get it."
+                )
+            elif sp.backup and sp.device["id"] in c_by_dev:
+                blockers.append(f"{sp.device['name']} is already in {companion!r}.")
+        # removed spokes leave the companion too
+        c_removing = [
+            c_by_dev[(e.get("device") or {}).get("id")]
+            for e in removing
+            if (e.get("device") or {}).get("id") in c_by_dev
+        ]
         new_topo = None
+        c_new_topo = None
+
+        def multipath_put(topo: dict[str, Any]) -> dict[str, Any]:
+            rs = ((topo.get("autoVpnSettings") or {}).get("routeSettings")) or {}
+            return {
+                **{k: topo[k] for k in TOPOLOGY_PUT_FIELDS if k in topo},
+                "autoVpnSettings": {
+                    **(topo.get("autoVpnSettings") or {}),
+                    "routeSettings": {**rs, "enableMultiPath": multipath},
+                },
+            }
+
         if multipath is not None:
             rs = ((t.get("autoVpnSettings") or {}).get("routeSettings")) or {}
             if not rs.get("enableBgp"):
                 blockers.append("multipath applies to the iBGP overlay, which this topology doesn't use.")
-            new_topo = {
-                **{k: t[k] for k in TOPOLOGY_PUT_FIELDS if k in t},
-                "autoVpnSettings": {
-                    **(t.get("autoVpnSettings") or {}),
-                    "routeSettings": {**rs, "enableMultiPath": multipath},
-                },
-            }
+            new_topo = multipath_put(t)
+            if c_topo is not None:  # both topologies feed the same router bgp: keep them alike
+                c_new_topo = multipath_put(c_topo)
 
         def label(e: dict[str, Any]) -> str:
             role = (
@@ -992,6 +1147,7 @@ def register(reg: ToolRegistrar) -> None:
         after = [label(e) for e in endpoints if id(e) not in gone]
         after += [f"{new_hub.device['name']} (backup hub)"] if new_hub else []
         after += [f"{s.device['name']} (spoke)" for s in adding]
+        after += [f"{s.device['name']} (spoke, backup WAN in {companion})" for s in adding if s.backup]
         hub_names = [str(e.get("name")) for e in hubs_now]
         if new_hub or drop_hub or new_topo:
             deploy = [str(e.get("name")) for e in endpoints] + [s.device["name"] for s in adding]
@@ -1002,7 +1158,11 @@ def register(reg: ToolRegistrar) -> None:
         if removing or drop_hub:
             side_effects.append("Removed devices' tunnels go down when they are deployed.")
         if any(sp.backup for sp in adding):
-            side_effects.append(BACKUP_WAN_NOTE)
+            side_effects.append(BACKUP_WAN_NOTE.format(companion=companion))
+        if c_removing:
+            side_effects.append(f"Removed spokes also leave the second-WAN topology {companion!r}.")
+        if c_new_topo is not None:
+            side_effects.append(f"multipath is set on {companion!r} too (both feed the same iBGP).")
 
         async def apply() -> Any:
             b = Builder(app, domain)
@@ -1011,6 +1171,12 @@ def register(reg: ToolRegistrar) -> None:
                 if new_topo is not None:
                     await app.api.put(path, new_topo)
                     b.done.append(f"multipath {'on' if multipath else 'off'}")
+                if c_new_topo is not None:
+                    await app.api.put(c_path, c_new_topo)
+                    b.done.append(f"multipath {'on' if multipath else 'off'} on {companion}")
+                for e in c_removing:
+                    await app.api.delete(f"{c_path}/endpoints/{e['id']}")
+                    b.done.append(f"removed {e.get('name')} from {companion}")
                 for e in removing + ([drop_hub] if drop_hub else []):
                     await app.api.delete(f"{path}/endpoints/{e['id']}")
                     b.done.append(f"removed {label(e)}")
@@ -1024,7 +1190,14 @@ def register(reg: ToolRegistrar) -> None:
                     made.append(
                         await b.post(f"{path}/endpoints", sp.endpoint(), f"spoke {sp.device['name']}")
                     )
-                    await check_backup_kept(app, f"{path}/endpoints", made[-1], sp)
+                    if sp.backup:
+                        made.append(
+                            await b.post(
+                                f"{c_path}/endpoints",
+                                sp.backup_endpoint(),
+                                f"spoke {sp.device['name']} (backup WAN, {companion})",
+                            )
+                        )
                 app.invalidate_cache()
                 return {
                     "topology": t.get("name"),
@@ -1038,7 +1211,7 @@ def register(reg: ToolRegistrar) -> None:
         return await fmc_preview(
             ctx,
             tool="fmc_update_sdwan_topology",
-            owned=[t],
+            owned=[t, c_topo],
             args={
                 "topology": topology,
                 "add_spokes": [s.model_dump() for s in add_spokes],
@@ -1078,7 +1251,9 @@ def register(reg: ToolRegistrar) -> None:
                     "topology": topology_row(t),
                     "settings": t.get("autoVpnSettings"),
                     "endpoints": sorted(str(e.get("id")) for e in endpoints),
+                    "companion": sorted(str(e.get("id")) for e in c_by_dev.values()) if c_topo else None,
                     "add": [s.endpoint() for s in adding],
+                    "add_backup": [s.backup_endpoint() for s in adding if s.backup],
                     "hub": new_hub.summary() if new_hub else None,
                 },
                 blockers=blockers,

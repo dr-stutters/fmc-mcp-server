@@ -163,6 +163,7 @@
         "fmc_packet_tracer",
         "fmc_why_blocked",
         "fmc_update_sdwan_topology",
+        "fmc_create_sdwan_topology",
         "fmc_pending_changes",
         "fmc_deploy"
       ],

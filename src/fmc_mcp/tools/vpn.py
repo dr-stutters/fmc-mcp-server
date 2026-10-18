@@ -565,6 +565,17 @@ def register(reg: ToolRegistrar) -> None:
         base = await app.config_path(f"{S2S}/{t['id']}", domain)
         endpoints = await app.all(f"{base}/endpoints", cap=2000)
         rows = [endpoint_row(e) for e in endpoints.items]
+        side_effects = ["The tunnels go down when the devices are next deployed."]
+        companion = f"{t.get('name')}-wan2"  # fmc_create_sdwan_topology's second-WAN topology
+        if t.get("topologyType") == "AUTO_VPN":
+            try:
+                await resolve_topology(app, companion, domain)
+                side_effects.append(
+                    f"{companion!r} carries this SD-WAN topology's second-WAN tunnels and stays; "
+                    "delete it too (fmc_delete_s2s_vpn) to remove the whole overlay."
+                )
+            except NotFound:
+                pass
         return await fmc_preview(
             ctx,
             tool="fmc_delete_s2s_vpn",
@@ -575,7 +586,7 @@ def register(reg: ToolRegistrar) -> None:
                 f"Delete VPN topology {t.get('name')!r} ({len(rows)} endpoint(s))",
                 details={"topology": topology_row(t), "endpoints": rows},
                 fingerprint={"topology": topology_row(t), "endpoints": rows},
-                side_effects=["The tunnels go down when the devices are next deployed."],
+                side_effects=side_effects,
             ),
             apply=lambda: _delete(app, base, t),
         )
