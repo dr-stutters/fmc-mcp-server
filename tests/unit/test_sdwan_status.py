@@ -18,6 +18,7 @@ from fmc_mcp.tools.sdwan_status import (
     link_severity,
     parse_bgp_summary,
     parse_ikev2_stats,
+    parse_path_metrics,
     parse_path_monitoring,
     parse_route_bgp,
 )
@@ -27,6 +28,16 @@ from .conftest import CFG, fixture, items, make_settings
 LAB = fixture("sdwan_lab")
 SHOW = fixture("ftd_sdwan_show")  # recorded FMC 10.0.1 outputs and refusal
 FMC10_REFUSES = {"show path-monitoring", "show policy-route", "show bgp summary"}
+PATHMETRICS = fixture("ftd_sdwan_pathmetrics")  # recorded health/metrics metric=pathmonitoring (d-sp1)
+NO_PATH_SAMPLES = {
+    "items": [
+        {
+            "response": '{"status":"success","data":{"resultType":"matrix","result":[]}}',
+            "metric": "pathmonitoring",
+            "type": "Metric",
+        }
+    ]
+}
 
 
 @pytest.fixture(autouse=True)
@@ -77,6 +88,8 @@ def lab(
         if not key.startswith("_") and key != "show":
             fmc.get(f"{CFG}/{key}").mock(return_value=httpx.Response(200, json=data))
     fmc.get(f"{CFG}/devicehapairs/ftddevicehapairs").mock(return_value=items([]))
+    # the health monitor without path metrics (no interface monitored); tests mount PATHMETRICS instead
+    fmc.get(f"{CFG}/health/metrics").mock(return_value=httpx.Response(200, json=NO_PATH_SAMPLES))
     ran: list[str] = []
 
     def show(req: httpx.Request) -> httpx.Response:
@@ -441,3 +454,137 @@ async def test_branch_given_as_an_ha_member_resolves_to_the_pair(fmc: respx.Mock
     rows = out["topologies"][0]["branches"]
     assert [b["device"] for b in rows] == [HA["name"]] and rows[0]["role"] == "hub"
     assert not [d for d in out["degraded"] if d["interface"] == "HA pair"]  # active + standby is healthy
+
+
+# --- path metrics from the health monitor (metric pathmonitoring; SD-WAN matrix R2) -----------------
+
+# health/pathmonitoredinterfaces as FMC 10.0.1 returned it for mcp-sdwan-t1-spoke1 (ids replaced; FMC
+# reports settings only, no status).
+SP1_MONITORED = {
+    "items": [
+        {
+            "device": {"id": "d-sp1", "type": "Device", "name": "mcp-sdwan-t1-spoke1"},
+            "interfaces": [
+                {
+                    "interface": {
+                        "name": n,
+                        "ifname": ifn,
+                        "priority": prio,
+                        "id": f"d-sp1-{n}",
+                        "pathMonitoring": {"enable": True, "monitoredIp": ip, "type": "PEER_IPV4"},
+                    }
+                }
+                for n, ifn, prio, ip in (
+                    ("Ethernet0/0", "mpls", 1, "10.11.11.1"),
+                    ("Ethernet0/1", "inet", 2, "10.12.11.1"),
+                    ("Tunnel1", "mpls_static_vti_1", 1, "10.255.1.1"),
+                )
+            ],
+            "type": "PathMonitoredInterface",
+        }
+    ]
+}
+
+
+def test_parse_path_metrics_recorded() -> None:
+    base = parse_path_metrics(PATHMETRICS["baseline"])["d-sp1"]
+    assert base["mpls"] == {
+        "logical_name": "mpls",
+        "jitter_ms": 0.59,
+        "mos": 4.4,
+        "loss_pct": 0.0,
+        "rtt_ms": 1.87,
+        "reachable": True,
+        "peer": "10.11.11.1",
+        "interface": "Ethernet0/0",
+        "sampled_at": "2026-10-18T06:50:16Z",
+    }
+    brown = parse_path_metrics(PATHMETRICS["brownout"])["d-sp1"]
+    assert brown["mpls"]["rtt_ms"] == 307.5 and brown["mpls"]["loss_pct"] == 33.0
+    assert brown["mpls"]["jitter_ms"] == 29.13 and brown["mpls"]["mos"] == 0.0
+    assert brown["inet"]["rtt_ms"] == 2.74 and brown["inet"]["mos"] == 4.4
+    # the tunnel's series went from rechability No to Yes: the newer one wins
+    assert brown["mpls_static_vti_1"]["reachable"] is True and brown["mpls_static_vti_1"]["loss_pct"] == 57.0
+    assert parse_path_metrics(NO_PATH_SAMPLES) == {} and parse_path_metrics({}) == {}
+    assert parse_path_metrics({"items": [{"response": "not json"}]}) == {}
+
+
+def test_unreachable_peer_has_no_numbers_and_is_critical() -> None:
+    data = json.loads(json.dumps(PATHMETRICS["brownout"]))
+    prom = json.loads(data["items"][0]["response"])
+    prom["data"]["result"] = [r for r in prom["data"]["result"] if r["metric"]["rechability"] == "No"]
+    data["items"][0]["response"] = json.dumps(prom)
+    vti = parse_path_metrics(data)["d-sp1"]["mpls_static_vti_1"]
+    assert vti["reachable"] is False and not {"rtt_ms", "loss_pct", "mos", "jitter_ms"} & set(vti)
+    level, reasons = link_severity(vti)
+    assert level == "critical" and "10.255.1.1 does not answer" in reasons[0]
+
+
+def metrics_lab(fmc: respx.MockRouter, sample: str) -> list[httpx.Request]:
+    lab(fmc, refused=FMC10_REFUSES)
+    fmc.get(f"{CFG}/health/pathmonitoredinterfaces").mock(
+        return_value=httpx.Response(200, json=SP1_MONITORED)
+    )
+    asked: list[httpx.Request] = []
+
+    def metrics(req: httpx.Request) -> httpx.Response:
+        asked.append(req)
+        return httpx.Response(200, json=PATHMETRICS[sample])
+
+    fmc.get(f"{CFG}/health/metrics").mock(side_effect=metrics)
+    return asked
+
+
+async def test_brownout_seen_through_the_health_monitor(fmc: respx.MockRouter) -> None:
+    asked = metrics_lab(fmc, "brownout")
+    async with Client(server()) as c:
+        out = await run(c, "fmc_sdwan_status", {"branch": "mcp-sdwan-t1-spoke1"})
+    flt = asked[0].url.params["filter"]
+    assert len(asked) == 1 and "deviceUUIDs:d-sp1;metric:pathmonitoring;" in flt
+    br = out["topologies"][0]["branches"][0]
+    wan = {w.get("logical_name"): w for w in br["wan_links"]}
+    assert wan["mpls"]["health"] == "critical" and wan["mpls"]["rtt_ms"] == 307.5
+    assert {"rtt_ms 307.5 >= 300", "loss_pct 33 >= 5", "MOS 0 <= 3.1"} <= set(wan["mpls"]["reasons"])
+    assert wan["inet"]["health"] == "ok" and wan["inet"]["monitoring"] == "PEER_IPV4 10.12.11.1"
+    assert wan["mpls_static_vti_1"]["health"] == "critical"
+    assert "mpls: rtt_ms 307.5" in " ".join(br["evidence"]["health/metrics pathmonitoring"])
+    deg = {(d["device"], d["interface"]) for d in out["degraded"]}
+    assert ("mcp-sdwan-t1-spoke1", "mpls") in deg and ("mcp-sdwan-t1-spoke1", "inet") not in deg
+    assert any("health monitor" in n for n in out["notes"])
+    assert not any("are not available" in n for n in out["notes"])  # refused show path-monitoring
+
+
+async def test_clean_links_from_the_health_monitor_are_ok(fmc: respx.MockRouter) -> None:
+    metrics_lab(fmc, "baseline")
+    async with Client(server()) as c:
+        out = await run(c, "fmc_sdwan_status", {"branch": "mcp-sdwan-t1-spoke1", "show_commands": False})
+    wan = {w.get("logical_name"): w for w in out["topologies"][0]["branches"][0]["wan_links"]}
+    assert wan["mpls"]["health"] == "ok" and wan["mpls"]["rtt_ms"] == 1.87 and wan["mpls"]["mos"] == 4.4
+    assert not [d for d in out["degraded"] if d["interface"] in ("mpls", "inet")]
+
+
+async def test_health_monitor_errors_degrade_to_a_note(fmc: respx.MockRouter) -> None:
+    lab(fmc, refused=FMC10_REFUSES)
+    fmc.get(f"{CFG}/health/metrics").mock(return_value=httpx.Response(500, json={"error": "boom"}))
+    async with Client(server()) as c:
+        out = await run(c, "fmc_sdwan_status", {"branch": "mcp-sdwan-t1-spoke1"})
+    assert any(n.startswith("health/metrics (pathmonitoring)") for n in out["notes"])
+    assert any("are not available" in n for n in out["notes"])
+
+
+async def test_ha_hub_metrics_come_from_the_active_unit(fmc: respx.MockRouter) -> None:
+    ha_lab(fmc, primary="Failed", secondary="Active")
+    asked: list[str] = []
+
+    def metrics(req: httpx.Request) -> httpx.Response:
+        asked.append(req.url.params["filter"])
+        body = json.dumps(PATHMETRICS["brownout"]).replace("d-sp1", "d-hub2")
+        return httpx.Response(200, json=json.loads(body))
+
+    fmc.get(f"{CFG}/health/metrics").mock(side_effect=metrics)
+    async with Client(server()) as c:
+        out = await run(c, "fmc_sdwan_status", {"branch": HA["name"]})
+    assert asked and asked[0].startswith("deviceUUIDs:d-hub,d-hub2;")  # the members, not the pair id
+    hub = out["topologies"][0]["branches"][0]
+    wan = {w.get("logical_name"): w for w in hub["wan_links"]}
+    assert wan["mpls"]["health"] == "critical" and wan["mpls"]["loss_pct"] == 33.0

@@ -16,6 +16,18 @@
   longer sends the three commands FMC 10.0.1 refuses (one request less per device each). Tool docs that
   suggested `show bgp summary` / `show policy-route` now point to `show route bgp` / `fmc_sdwan_status`.
 
+### Fixed
+- **`fmc_sdwan_status` reads path metrics from FMC's health monitor (SD-WAN matrix R2).** FMC 10.0.1 refuses
+  `show path-monitoring`, but `health/metrics` answers `metric:pathmonitoring` (live; the spec documents only
+  cpu, mem, interface, asp_drops, disk_stats and critical_process, and `path_monitoring` returns nothing): RTT
+  and jitter in microseconds, loss in percent, MOS, and the peer's reachability per path-monitored interface,
+  physical or VTI. The status now asks once per topology for every endpoint (an HA pair's members, preferring
+  the active unit), fills `wan_links` with `rtt_ms`, `jitter_ms`, `loss_pct`, `mos`, `reachable`, `peer` and
+  `sampled_at`, ranks a brownout (or an unreachable peer) as degraded and orders metric-based app routes by
+  it. FMC's samples trailed the device by about 5 minutes (a CML brownout on mcp-sdwan-t1-spoke1's MPLS link:
+  RTT 1.5 -> 307 ms, loss 0 -> 33 %, MOS 4.4 -> 0, tunnel 303 ms / 57 %); the status says so.
+  `capture_fixtures.py --sdwan-metrics` records the response (`ftd_sdwan_pathmetrics.json`).
+
 ## 0.13.0 (2026-10-18)
 
 Wave 4 Phase D, Firewall SD-WAN (F51 a–d): topology authoring, application-aware routing, SD-WAN status with a
