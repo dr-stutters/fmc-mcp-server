@@ -3,6 +3,7 @@
 The 126 URL categories are recorded from FMC 10.0.1 (tests/fixtures/urlcategories.json); the reputation
 levels are FMC 10.0.1's spec enum (IUrlCategoryAndReputation.reputation)."""
 
+import asyncio
 import json
 from types import SimpleNamespace
 from typing import Any
@@ -13,6 +14,7 @@ import respx
 from fastmcp import Client
 from fastmcp.exceptions import ToolError
 
+from fmc_mcp import spec_index as spec_index_mod
 from fmc_mcp.server import create_server
 from fmc_mcp.url_categories import (
     FALLBACK_REPUTATIONS,
@@ -113,6 +115,31 @@ async def test_reputation_levels_come_from_the_spec_index() -> None:
         list(FALLBACK_REPUTATIONS),
         "built-in",
     )
+
+
+async def test_spec_index_falls_back_while_loading_and_on_errors() -> None:
+    """Shared with the show-command allowlist: a slow first load keeps running (referenced) while the caller
+    uses its built-in list; a broken spec gives the built-in list too."""
+    gate = asyncio.Event()
+
+    class Slow:
+        async def get(self) -> Any:
+            await gate.wait()
+            return SimpleNamespace(schemas={})
+
+    class Broken:
+        async def get(self) -> Any:
+            raise RuntimeError("spec unreadable")
+
+    slow = SimpleNamespace(lifespan_context={"specs": Slow()})
+    assert await spec_index_mod.spec_index(slow, "test list", wait_s=0.01) is None
+    assert len(spec_index_mod._loading) == 1
+    gate.set()
+    for _ in range(5):
+        await asyncio.sleep(0)
+    assert not spec_index_mod._loading
+    broken = SimpleNamespace(lifespan_context={"specs": Broken()})
+    assert await reputation_levels(broken) == (list(FALLBACK_REPUTATIONS), "built-in")
 
 
 def test_merge_url_block_replaces_only_the_given_part() -> None:
