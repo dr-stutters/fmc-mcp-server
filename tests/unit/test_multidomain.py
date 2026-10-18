@@ -237,3 +237,22 @@ async def test_domain_ancestors_nearest_first(fmc: respx.MockRouter) -> None:
         assert await app.domain_ancestors("Global") == []
     finally:
         await app.aclose()
+
+
+async def test_nat_policy_of_a_leaf_device_inherited_from_global(fmc: respx.MockRouter) -> None:
+    """live-1b R1: fmc_find_address(device=...) found no NAT policy on a leaf device running a Global one."""
+    from fmc_mcp.client import FmcApp
+    from fmc_mcp.tools.policies import nat_policy_of
+
+    fmc.get(f"{CHILD_CFG}/assignment/policyassignments").mock(
+        return_value=items([assignment(LEAF_ACP, LEAF_DEV)])
+    )
+    fmc.get(f"{CFG}/assignment/policyassignments").mock(
+        return_value=items([assignment(GLOBAL_NAT, LEAF_DEV)])
+    )
+    app = FmcApp(make_settings())
+    try:
+        assert await nat_policy_of(app, LEAF_DEV["id"], "Branch") == GLOBAL_NAT["id"]
+        assert await nat_policy_of(app, SIBLING["id"], "Branch") is None
+    finally:
+        await app.aclose()
