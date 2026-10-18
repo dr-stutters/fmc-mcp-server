@@ -1,6 +1,11 @@
 # Changelog
 
-## Unreleased
+## 0.13.2 (2026-10-18)
+
+SD-WAN polish from the 0.13.1 re-proof: `fmc_create_sdwan_topology(overlay='ospf')` builds a working OSPF overlay
+(unnumbered spoke VTIs borrowing a /32 loopback each; proven live on FMC 10.0.1 with the tool alone: OSPF routes on
+every spoke, all host pairs reachable, spokes removed and re-added), and `fmc_sdwan_status` reports every ECMP next
+hop, when a metric last changed, and FMC's early "unreachable" samples as pending. 153 tools, six prompts.
 
 ### Added
 - **SD-WAN OSPF overlay (matrix R5).** `fmc_create_sdwan_topology(overlay='ospf')` takes `spoke_loopbacks` (a subnet
