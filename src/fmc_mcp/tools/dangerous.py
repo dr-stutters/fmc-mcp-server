@@ -1,6 +1,7 @@
 """Dangerous-tier tools: deploy, device registration/removal, HA form/break/switch, policy deletion."""
 
 # No `from __future__ import annotations`: FastMCP inspects signatures at runtime.
+import ipaddress
 import time
 from typing import Annotated, Any, Literal
 
@@ -123,6 +124,26 @@ async def _deploy_target(
         if dev["id"] in units and h.get("id") in by_id:
             return by_id[h["id"]]
     raise InvalidRequest(f"{dev.get('name')!r} has no pending changes (see fmc_list_deployable_devices).")
+
+
+def _link_net(active: str, standby: str, mask: str, what: str) -> ipaddress.IPv4Network:
+    """The subnet of an HA link, after checking its two addresses are distinct IPv4 hosts in it."""
+    try:
+        a, b = ipaddress.IPv4Address(active.strip()), ipaddress.IPv4Address(standby.strip())
+        net = ipaddress.IPv4Network(f"{a}/{mask.strip()}", strict=False)
+    except ValueError as e:
+        raise InvalidRequest(
+            f"The {what} needs IPv4 addresses and a mask such as 255.255.255.252: {e}"
+        ) from None
+    if a == b:
+        raise InvalidRequest(f"The {what}'s active and standby addresses must differ.")
+    if b not in net:
+        raise InvalidRequest(f"The {what}'s standby address {b} is not in {net} (active {a}).")
+    if net.prefixlen < 31 and (
+        a in (net.network_address, net.broadcast_address) or b in (net.network_address, net.broadcast_address)
+    ):
+        raise InvalidRequest(f"The {what}'s addresses must be host addresses of {net}.")
+    return net
 
 
 async def finish(ctx: Context, app: FmcApp, resp: Any, wait: bool, domain: str | None, what: str) -> Any:
@@ -648,23 +669,83 @@ def register(reg: ToolRegistrar) -> None:
         standby_ip: Annotated[str, Field(description="Failover link IP on the secondary")],
         subnet_mask: Annotated[str, Field(description="Failover link mask, e.g. 255.255.255.252")],
         logical_name: Annotated[str, Field(description="Failover link logical name")] = "FAILOVER-LINK",
+        state_interface: Annotated[
+            str | None,
+            Field(
+                description="Physical interface for a separate stateful failover (state) link, e.g. "
+                "GigabitEthernet0/8; omit to replicate state over the failover link"
+            ),
+        ] = None,
+        state_active_ip: Annotated[
+            str | None, Field(description="State link IP on the primary (with state_interface)")
+        ] = None,
+        state_standby_ip: Annotated[
+            str | None, Field(description="State link IP on the secondary (with state_interface)")
+        ] = None,
+        state_subnet_mask: Annotated[
+            str | None,
+            Field(description="State link mask (with state_interface); default: the failover link's mask"),
+        ] = None,
+        state_logical_name: Annotated[
+            str, Field(description="State link logical name (with state_interface)")
+        ] = "STATE-LINK",
         wait: Wait = True,
         domain: Domain = None,
         confirm: Confirm = None,
     ) -> dict[str, Any]:
-        """Join two registered FTDs into an active/standby HA pair over one failover/stateful link.
-        The secondary's configuration is replaced by the primary's. With wait, polls the HA task."""
+        """Join two registered FTDs into an active/standby HA pair. The failover link carries the
+        units' hello and configuration sync; connection state is replicated over it too, or over a
+        separate state link (state_interface + its two addresses, recommended when traffic is heavy).
+        Neither link can be changed after the pair is formed (break and form it again). The
+        secondary's configuration is replaced by the primary's. With wait, polls the HA task; check
+        the result with fmc_get_ha_status."""
         app: FmcApp = get_client(ctx)
+        failover_net = _link_net(active_ip, standby_ip, subnet_mask, "failover link")
+        state_given = [
+            k
+            for k, v in (
+                ("state_active_ip", state_active_ip),
+                ("state_standby_ip", state_standby_ip),
+                ("state_subnet_mask", state_subnet_mask),
+            )
+            if v
+        ]
+        if state_interface is None and state_given:
+            raise InvalidRequest(
+                f"{', '.join(state_given)} need state_interface (the state link's interface)."
+            )
+        if state_interface is not None:
+            if state_interface.strip().lower() == failover_interface.strip().lower():
+                raise InvalidRequest(
+                    "state_interface is the failover interface: omit state_interface (and its addresses) "
+                    "to replicate state over the failover link."
+                )
+            if not state_active_ip or not state_standby_ip:
+                raise InvalidRequest("A separate state link needs state_active_ip and state_standby_ip.")
+            if state_logical_name.strip().lower() == logical_name.strip().lower():
+                raise InvalidRequest("state_logical_name must differ from the failover link's logical_name.")
+            state_net = _link_net(
+                state_active_ip, state_standby_ip, state_subnet_mask or subnet_mask, "state link"
+            )
+            if state_net.overlaps(failover_net):
+                raise InvalidRequest(
+                    f"The state link {state_net} overlaps the failover link {failover_net}: "
+                    "give it its own subnet."
+                )
         p = await resolve_in(app, DEVICES, primary, "device", domain)
         s = await resolve_in(app, DEVICES, secondary, "device", domain)
         if p["id"] == s["id"]:
             raise InvalidRequest("primary and secondary must be different devices.")
         ifaces = await app.all(await app.config_path(f"{DEVICES}/{p['id']}/physicalinterfaces", domain))
-        iface = next(
-            (i for i in ifaces.items if str(i.get("name", "")).lower() == failover_interface.lower()), None
-        )
-        if iface is None:
-            raise InvalidRequest(f"{p.get('name')!r} has no physical interface {failover_interface!r}.")
+
+        def phys(wanted: str) -> dict[str, Any]:
+            for i in ifaces.items:
+                if str(i.get("name", "")).lower() == wanted.lower():
+                    found: dict[str, Any] = i
+                    return found
+            raise InvalidRequest(f"{p.get('name')!r} has no physical interface {wanted!r}.")
+
+        iface = phys(failover_interface)
         link = {
             "useIPv6Address": False,
             "subnetMask": subnet_mask,
@@ -673,6 +754,22 @@ def register(reg: ToolRegistrar) -> None:
             "activeIP": active_ip,
             "logicalName": logical_name,
         }
+        state_link = link
+        state_iface: dict[str, Any] | None = None
+        if state_interface is not None:
+            state_iface = phys(state_interface)
+            state_link = {
+                "useIPv6Address": False,
+                "subnetMask": state_subnet_mask or subnet_mask,
+                "interfaceObject": {
+                    "id": state_iface["id"],
+                    "type": "PhysicalInterface",
+                    "name": state_iface.get("name"),
+                },
+                "standbyIP": state_standby_ip,
+                "activeIP": state_active_ip,
+                "logicalName": state_logical_name,
+            }
         body = {
             "name": name,
             "type": "DeviceHAPair",
@@ -680,9 +777,9 @@ def register(reg: ToolRegistrar) -> None:
             "secondary": {"id": s["id"]},
             "ftdHABootstrap": {
                 "isEncryptionEnabled": False,
-                "useSameLinkForFailovers": True,
+                "useSameLinkForFailovers": state_iface is None,
                 "lanFailover": link,
-                "statefulFailover": link,
+                "statefulFailover": state_link,
             },
         }
         path = await app.config_path(HA_PAIRS, domain)
@@ -705,6 +802,11 @@ def register(reg: ToolRegistrar) -> None:
                 "standby_ip": standby_ip,
                 "subnet_mask": subnet_mask,
                 "logical_name": logical_name,
+                "state_interface": state_interface,
+                "state_active_ip": state_active_ip,
+                "state_standby_ip": state_standby_ip,
+                "state_subnet_mask": state_subnet_mask,
+                "state_logical_name": state_logical_name,
                 "wait": wait,
                 "domain": domain,
             },
@@ -713,14 +815,22 @@ def register(reg: ToolRegistrar) -> None:
                 f"Form HA pair {name!r}: {p.get('name')} (primary) + {s.get('name')} (secondary)",
                 details={
                     "domain": await app.domain_name(await app.domain_uuid(domain)),
+                    "failover_link": f"{iface.get('name')} {logical_name} {active_ip}/{standby_ip}",
+                    "state_link": (
+                        f"{state_iface.get('name')} {state_logical_name} {state_active_ip}/{state_standby_ip}"
+                        if state_iface
+                        else "same as the failover link"
+                    ),
                     "body": body,
                     **({"deploy_window": window} if window else {}),
                 },
-                fingerprint=[p["id"], s["id"], iface["id"]],
+                fingerprint=[p["id"], s["id"], iface["id"], state_iface and state_iface["id"]],
                 blockers=window_blockers,
                 blast_radius=2,
                 side_effects=[
-                    "The secondary's configuration is overwritten; both devices sync and may reload."
+                    "The secondary's configuration is overwritten; both devices sync and may reload.",
+                    "The failover and state links are fixed once the pair exists: changing them means "
+                    "breaking the pair (fmc_ha_action action=break) and forming it again.",
                 ],
             ),
             apply=apply,
@@ -743,7 +853,9 @@ def register(reg: ToolRegistrar) -> None:
         confirm: Confirm = None,
     ) -> dict[str, Any]:
         """Break an FTD HA pair into standalone devices, switch the active unit (failover), or delete
-        the pair from FMC. All are disruptive; the preview states the effect."""
+        the pair from FMC. All are disruptive; the preview states the effect. Before a switch,
+        fmc_get_ha_status (ready_for_switch, its checks) says whether the standby can take over; the
+        fmc_ha_failover_check prompt runs the checks, the switch and the verification."""
         app: FmcApp = get_client(ctx)
         if force and action != "break":
             raise InvalidRequest("force only applies to action='break'.")
