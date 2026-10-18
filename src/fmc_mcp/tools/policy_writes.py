@@ -19,10 +19,16 @@ from fmc_mcp._core import (
 from fmc_mcp.client import FmcApp, is_uuid
 from fmc_mcp.preview import fmc_preview
 from fmc_mcp.refs import NETWORK_TYPES, PORT_TYPES, RefResolver, network_literal
-from fmc_mcp.rules import flatten_access_rule, flatten_nat_rule
+from fmc_mcp.rules import flatten_access_rule, flatten_nat_rule, url_labels
 from fmc_mcp.tools.common import Domain, block_labels, ref_label, resolve_in, rule_changes
 from fmc_mcp.tools.object_writes import applied, editable
 from fmc_mcp.tools.policies import ACCESS, NAT, all_rules, find_access_rule, resolve_policy
+from fmc_mcp.url_categories import (
+    UrlCategoryCondition,
+    category_conditions,
+    category_details,
+    merge_url_block,
+)
 
 PolicyRef = Annotated[str, Field(description="Policy name or UUID")]
 RuleAction = Literal["ALLOW", "TRUST", "BLOCK", "BLOCK_RESET", "MONITOR", "BLOCK_INTERACTIVE"]
@@ -54,6 +60,19 @@ PortsParam = Annotated[
 UrlsParam = Annotated[
     list[str] | None, Field(description="URL object/group names or literal URLs (https://...)")
 ]
+UrlCategoriesParam = Annotated[
+    list[UrlCategoryCondition] | None,
+    Field(
+        description="URL categories with a reputation level, e.g. [{'category': 'Gambling'}, {'category': "
+        "'Malware Sites', 'reputation': 'QUESTIONABLE'}]. Needs the URL licence on the devices "
+        "(fmc_set_device_licenses). On update a given list replaces the rule's categories ([] removes "
+        "them) and keeps its URL objects and literals"
+    ),
+]
+URL_LICENCE = (
+    "URL categories are matched by devices with the URL licence (fmc_set_device_licenses) once FMC's URL "
+    "database is downloaded."
+)
 DynamicParam = Annotated[
     list[str] | None,
     Field(description="Dynamic object names (fmc_list_dynamic_objects); mappings change without a deploy"),
@@ -206,6 +225,7 @@ def register(reg: ToolRegistrar) -> None:
         source_ports: PortsParam = None,
         destination_ports: PortsParam = None,
         urls: UrlsParam = None,
+        url_categories: UrlCategoriesParam = None,
         source_dynamic_objects: DynamicParam = None,
         destination_dynamic_objects: DynamicParam = None,
         users: UsersParam = None,
@@ -263,6 +283,9 @@ def register(reg: ToolRegistrar) -> None:
                 },
             )
         )
+        cats = await category_conditions(ctx, app, url_categories or [], domain)
+        if cats:
+            body["urls"] = merge_url_block(None, body.get("urls") or {}, cats)
         body = {k: v for k, v in body.items() if v != {}}
         body.update(_log_fields(log, action))
         if intrusion_policy:
@@ -299,12 +322,16 @@ def register(reg: ToolRegistrar) -> None:
             if insert_after
             else f"at the end of the {category or section or 'default'} section"
         )
+        details: dict[str, Any] = {"rule": flatten_access_rule(body), "position": where, "rules_now": count}
+        if cats:
+            details["url_categories"] = category_details(cats, action)
         plan = Plan(
             f"Add {action} rule {name!r} to {p.get('name')!r} {where}",
-            details={"rule": flatten_access_rule(body), "position": where, "rules_now": count, "body": body},
+            details={**details, "body": body},
             fingerprint={"policy": p["id"], "rules": [r.get("id") for r in existing.items], "body": body},
             blockers=blockers,
-            side_effects=["Takes effect on devices after the next deployment."],
+            side_effects=["Takes effect on devices after the next deployment."]
+            + ([URL_LICENCE] if cats else []),
         )
         return await fmc_preview(
             ctx,
@@ -321,6 +348,7 @@ def register(reg: ToolRegistrar) -> None:
                 "source_ports": source_ports,
                 "destination_ports": destination_ports,
                 "urls": urls,
+                "url_categories": _dump(url_categories),
                 "source_dynamic_objects": source_dynamic_objects,
                 "destination_dynamic_objects": destination_dynamic_objects,
                 "users": users,
@@ -354,6 +382,7 @@ def register(reg: ToolRegistrar) -> None:
         source_ports: PortsParam = None,
         destination_ports: PortsParam = None,
         urls: UrlsParam = None,
+        url_categories: UrlCategoriesParam = None,
         source_dynamic_objects: DynamicParam = None,
         destination_dynamic_objects: DynamicParam = None,
         users: UsersParam = None,
@@ -411,6 +440,10 @@ def register(reg: ToolRegistrar) -> None:
                 "users": users,
             },
         )
+        cats = None if url_categories is None else await category_conditions(ctx, app, url_categories, domain)
+        if cats is not None or "urls" in new_conditions:
+            # objects/literals and categories share the urls block: replace only the part that was given
+            new_conditions["urls"] = merge_url_block(current.get("urls"), new_conditions.get("urls"), cats)
         cleared: dict[str, Any] = {}
         if removed_ips:
             cleared["ipsPolicy"] = {"from": ref_label(removed_ips), "to": None, "removed": True}
@@ -418,7 +451,8 @@ def register(reg: ToolRegistrar) -> None:
             if block:
                 desired[field] = block
             elif desired.pop(field, None):  # [] = any: FMC's PUT replaces the rule, so omit the field
-                cleared[field] = {"from": block_labels(current.get(field)), "to": "any"}
+                labels = url_labels if field == "urls" else block_labels
+                cleared[field] = {"from": labels(current.get(field)), "to": "any"}
         desired.update(_log_fields(log, desired.get("action")))
         _fix_block_logging(desired)
         desired.pop("commentHistoryList", None)
@@ -429,6 +463,8 @@ def register(reg: ToolRegistrar) -> None:
         changes = {**rule_changes(editable(current), desired), **cleared}
         changes.pop("commentHistoryList", None)
         details: dict[str, Any] = {"rule": current.get("name"), "index": old_index, "changes": changes}
+        if cats:
+            details["url_categories"] = category_details(cats, desired.get("action"))
         blockers = await identity_blockers(app, p, new_conditions.get("users"), domain)
         order = await all_rules(app, base)
         if move_to:
@@ -478,6 +514,7 @@ def register(reg: ToolRegistrar) -> None:
                 "source_ports": source_ports,
                 "destination_ports": destination_ports,
                 "urls": urls,
+                "url_categories": _dump(url_categories),
                 "source_dynamic_objects": source_dynamic_objects,
                 "destination_dynamic_objects": destination_dynamic_objects,
                 "users": users,
@@ -499,7 +536,8 @@ def register(reg: ToolRegistrar) -> None:
                     "desired": desired,
                 },
                 blockers=blockers,
-                side_effects=["Takes effect on devices after the next deployment."],
+                side_effects=["Takes effect on devices after the next deployment."]
+                + ([URL_LICENCE] if cats else []),
             ),
             apply=lambda: applied_rule(app, apply),
         )
@@ -806,6 +844,10 @@ def register(reg: ToolRegistrar) -> None:
             ),
             apply=lambda: applied(app, lambda: app.api.delete(path)),
         )
+
+
+def _dump(items: list[UrlCategoryCondition] | None) -> list[dict[str, Any]] | None:
+    return None if items is None else [i.model_dump() for i in items]
 
 
 def _proto_port(text: str) -> tuple[str, int]:
