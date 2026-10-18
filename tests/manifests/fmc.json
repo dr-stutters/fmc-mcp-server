@@ -12,6 +12,7 @@
       "references": [
         "fmc_list_devices",
         "fmc_device_health",
+        "fmc_device_metrics",
         "fmc_list_ha_pairs",
         "fmc_list_clusters",
         "fmc_get_ha_status",
@@ -492,6 +493,10 @@
       "tier": "read",
       "title": "Device health"
     },
+    "fmc_device_metrics": {
+      "tier": "read",
+      "title": "Device metrics over time"
+    },
     "fmc_diff_policy_bundle": {
       "tier": "read",
       "title": "Diff policy bundles"
@@ -511,6 +516,10 @@
     "fmc_export_policy_bundle": {
       "tier": "read",
       "title": "Export a policy bundle"
+    },
+    "fmc_find_address": {
+      "tier": "read",
+      "title": "Find where an address appears"
     },
     "fmc_find_intrusion_rules": {
       "tier": "read",
@@ -861,5 +870,5 @@
       "title": "Where is an object used"
     }
   },
-  "version": "0.13.1"
+  "version": "0.13.2"
 }
