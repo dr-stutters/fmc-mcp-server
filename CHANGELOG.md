@@ -1,5 +1,11 @@
 # Changelog
 
+## Unreleased
+
+### Changed
+- Bundled stutters-mcp-core v0.14.0 -> v0.14.2: raw `fmc_api_call` writes mask secret fields (`manualPreSharedKey`,
+  `preSharedKey`, passwords, keys) in the preview and the result; the request sent to FMC is unchanged.
+
 ## 0.13.0 (2026-10-18)
 
 Wave 4 Phase D, Firewall SD-WAN (F51 a–d): topology authoring, application-aware routing, SD-WAN status with a
