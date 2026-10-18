@@ -389,6 +389,17 @@ def test_onboard_branch_deploys_named_devices_only() -> None:
     assert "someone else's pending changes: stop" in text
 
 
+def test_onboard_branch_names_the_required_args() -> None:
+    """Each manual-path call names what the tool requires (policy and devices, a NAT rule's policy)."""
+    text = _branch()
+    assert "kind='nat', policy=<their NAT policy>, devices=[\"mcp-fw-branch1\"]" in text
+    assert "`fmc_create_nat_rule` policy=<that policy>, kind='auto'" in text
+    assert "kind='nat', policy=<that policy>, devices=[\"mcp-fw-branch1\"]" in text
+    assert "kind='platform_settings', policy=<their platform settings policy>" in text
+    assert "`fmc_create_security_zone` name=<zone name>" in text
+    assert "command='show interface ip brief'" in text and "command='show\n      crypto ikev2 sa'" in text
+
+
 def test_onboard_branch_template_given() -> None:
     text = _branch(template="mcp-fw-branch-tmpl", variables={"insideIp": "10.77.14.1/24", "bgp_as": "65014"})
     assert '`fmc_get_device_template` template="mcp-fw-branch-tmpl"' in text
