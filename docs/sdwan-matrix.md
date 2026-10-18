@@ -194,6 +194,13 @@ reports nothing: `degraded` is empty, the hub row has no WAN links and no tunnel
   monitoring there), and report "not available" rather than `unknown`. FMC's tunnel states also lag 2-3 minutes
   behind the devices, so the status should say how old they are. Also: `app_routes[].name` is null and
   `path_now` stays on a tunnel that is down.
+  Follow-up (2026-10-18): the health monitor has the numbers. `health/metrics` with `metric:pathmonitoring`
+  (not `path_monitoring`, which returns an empty result) returns RTT/jitter (microseconds), loss (%), MOS and
+  peer reachability per path-monitored interface, including VTIs. A CML brownout on t1-spoke1's MPLS link showed
+  up as RTT 307 ms, loss 33 %, MOS 0 about 5 minutes after it started (the device's console had 287 ms / 23 %
+  within a minute). The data was there under `Initial_Health_Policy` with `hm_pathmonitoring` disabled too; the
+  run's devices now use `mcp-sdwan-health` (module on). `health/pathmonitoredinterfaces` holds the settings only
+  (no status). `fmc_sdwan_status` reads the metric (PR after 0.13.0).
 - **R3 `fmc_configure_wan_interface` on a VTI** (`interface='<spoke tunnel>'`, `priority=1`,
   `path_monitoring='ip'`): PUT `devices/devicerecords/{id}/virtualtunnelinterfaces/{id}` -> 400 "Fields:
   { managementOnly } must be excluded from json payload." The tool echoes the GET body; for VTIs it must drop
