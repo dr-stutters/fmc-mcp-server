@@ -260,7 +260,7 @@ MD5 password, because FMC returns it masked and a PUT would replace it, unless y
   CAs from `fmc_create_trusted_ca`, FMC's client certificate as an internal certificate), then FMC's pxGrid
   client is approved in ISE. `fmc_get_identity_sources` shows whether it works end to end (FMC's ISE health
   module, SGTs downloaded, sessions by source, user-IP bindings on each device, certificate expiry) and what
-  to fix; `fmc_user_ip_lookup` answers "who is on 10.1.2.3?" and "where is alice?". Reading FMC's identity
+  to fix; `fmc_user_ip_lookup` answers "who is on 192.0.2.57?" and "where is alice?". Reading FMC's identity
   sessions needs Events & Logs > Analysis > Users in the account's role.
 - **Baseline a policy and see what changed:** `fmc_export_policy_bundle(policy)` returns one YAML bundle
   (schema 1): the access policy's settings and ordered rules, its prefilter, decryption, identity, NAT and
