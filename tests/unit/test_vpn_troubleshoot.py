@@ -89,6 +89,8 @@ def test_names_each_phase_cause() -> None:
     assert "one-way traffic" in t
     assert "overlay_routes" in t and "via its VTI" in t
     assert "identity rule" in t and "above any dynamic PAT" in t
+    # the fixes name every required argument of the write tools they propose
+    assert "gateway=<the far end's VTI" in t and "policy=<the device's NAT policy>" in t
     assert "bypassAccessControlTrafficForDecryptedTraffic" in t
     assert "FMC's tunnel" in t and "lags" in t  # trust device_says over a lagging monitor
     assert "`fmc_get_ravpn`" in t  # remote access is out of this walk
