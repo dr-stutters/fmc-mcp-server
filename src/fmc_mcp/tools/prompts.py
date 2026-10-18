@@ -686,7 +686,7 @@ def _ip_iface(value: str | None, what: str) -> ipaddress.IPv4Interface | ipaddre
     try:
         iface = ipaddress.ip_interface(v)
     except ValueError:
-        raise InvalidRequest(f"{what} {value!r} is not an address/prefix such as 10.10.14.1/24.") from None
+        raise InvalidRequest(f"{what} {value!r} is not an address/prefix such as 10.77.14.1/24.") from None
     if "/" not in v:
         raise InvalidRequest(f"{what} {value!r} needs a prefix length, e.g. {v}/24.")
     return iface
@@ -812,9 +812,9 @@ Stop and report when a step fails; keep notes of what each step returned.
 
 2. Register: {tool_ref("fmc_register_device")} with name={dev}, host={hst}, access_policy={acp},
    license_caps and performance_tier like the other spokes, wait=true, and NO reg_key: the server uses
-   FMC_FTD_REG_KEY (the preview says where the key comes from). If the preview says the server has no
-   key, stop: the operator sets FMC_FTD_REG_KEY on the server. The call waits for the registration task
-   and FMC's initial deployment (5-10 minutes). Then {tool_ref("fmc_get_device")} name={dev}: connected,
+   FMC_FTD_REG_KEY (the preview says where the key comes from). If it refuses with "No registration
+   key", stop: the operator sets FMC_FTD_REG_KEY on the server. The call waits for the registration task
+   and FMC's initial deployment (5-10 minutes). Then {tool_ref("fmc_get_device")} device={dev}: connected,
    with model and version. "Unreachable" or a key error means the FTD's manager setting doesn't match
    (step 1).
 
@@ -1177,15 +1177,16 @@ def register(reg: ToolRegistrar) -> None:
             "name": "mcp-fw-branch1",
             "host": "192.0.2.13",
             "topology": "mcp-fw-t1",
-            "variables": '{"wanIp": "198.51.100.14/24", "insideIp": "10.10.14.1/24"}',
+            "variables": '{"wanIp": "198.51.100.14/24", "insideIp": "10.77.14.1/24"}',
             "access_policy": "mcp-fw-base-acp",
             "wan_interface": "Ethernet0/0",
             "wan_ip": "198.51.100.14/24",
             "wan_gateway": "198.51.100.1",
             "inside_interface": "Ethernet0/1",
-            "inside_ip": "10.10.14.1/24",
-            "inside_host": "10.10.14.10",
-            "test_destination": "10.10.10.10",
+            "inside_ip": "10.77.14.1/24",
+            "inside_host": "10.77.14.10",
+            "test_destination": "10.77.0.10",
+            "template": "mcp-fw-branch-tmpl",
             "domain": "Global/mcp-test-leaf",
         },
     )
@@ -1197,7 +1198,7 @@ def register(reg: ToolRegistrar) -> None:
             dict[str, str] | None,
             Field(
                 description="Device template variable values for this branch, by name (as "
-                'fmc_get_device_template lists them), e.g. {"insideIp": "10.10.14.1/24"}'
+                'fmc_get_device_template lists them), e.g. {"insideIp": "10.77.14.1/24"}'
             ),
         ] = None,
         template: Annotated[
@@ -1219,13 +1220,13 @@ def register(reg: ToolRegistrar) -> None:
             str, Field(description="Inside (LAN) interface for the manual path")
         ] = "Ethernet0/1",
         inside_ip: Annotated[
-            str | None, Field(description="Inside address/prefix, e.g. 10.10.14.1/24")
+            str | None, Field(description="Inside address/prefix, e.g. 10.77.14.1/24")
         ] = None,
         inside_host: Annotated[
             str | None, Field(description="A host on the branch inside network, for the policy flow")
         ] = None,
         test_destination: Annotated[
-            str | None, Field(description="A host behind the hub the branch must reach, e.g. 10.10.10.10")
+            str | None, Field(description="A host behind the hub the branch must reach, e.g. 10.77.0.10")
         ] = None,
         domain: Annotated[
             str | None, Field(description="FMC domain for every call; the server's default if omitted")

@@ -1,7 +1,7 @@
 # fmc_onboard_branch
 
 title: Onboard an SD-WAN branch
-arguments: {"access_policy": "mcp-fw-base-acp", "domain": "Global/mcp-test-leaf", "host": "192.0.2.13", "inside_host": "10.10.14.10", "inside_interface": "Ethernet0/1", "inside_ip": "10.10.14.1/24", "name": "mcp-fw-branch1", "template": "example", "test_destination": "10.10.10.10", "topology": "mcp-fw-t1", "variables": "{\"wanIp\": \"198.51.100.14/24\", \"insideIp\": \"10.10.14.1/24\"}", "wan_gateway": "198.51.100.1", "wan_interface": "Ethernet0/0", "wan_ip": "198.51.100.14/24"}
+arguments: {"access_policy": "mcp-fw-base-acp", "domain": "Global/mcp-test-leaf", "host": "192.0.2.13", "inside_host": "10.77.14.10", "inside_interface": "Ethernet0/1", "inside_ip": "10.77.14.1/24", "name": "mcp-fw-branch1", "template": "mcp-fw-branch-tmpl", "test_destination": "10.77.0.10", "topology": "mcp-fw-t1", "variables": "{\"wanIp\": \"198.51.100.14/24\", \"insideIp\": \"10.77.14.1/24\"}", "wan_gateway": "198.51.100.1", "wan_interface": "Ethernet0/0", "wan_ip": "198.51.100.14/24"}
 
 Onboard a branch FTD into an SD-WAN topology end to end: register it (the key comes from the
 server's FMC_FTD_REG_KEY, never from the conversation), configure it from a device template when
@@ -43,17 +43,17 @@ Stop and report when a step fails; keep notes of what each step returned.
 
 2. Register: `fmc_register_device` with name="mcp-fw-branch1", host="192.0.2.13", access_policy="mcp-fw-base-acp",
    license_caps and performance_tier like the other spokes, wait=true, and NO reg_key: the server uses
-   FMC_FTD_REG_KEY (the preview says where the key comes from). If the preview says the server has no
-   key, stop: the operator sets FMC_FTD_REG_KEY on the server. The call waits for the registration task
-   and FMC's initial deployment (5-10 minutes). Then `fmc_get_device` name="mcp-fw-branch1": connected,
+   FMC_FTD_REG_KEY (the preview says where the key comes from). If it refuses with "No registration
+   key", stop: the operator sets FMC_FTD_REG_KEY on the server. The call waits for the registration task
+   and FMC's initial deployment (5-10 minutes). Then `fmc_get_device` device="mcp-fw-branch1": connected,
    with model and version. "Unreachable" or a key error means the FTD's manager setting doesn't match
    (step 1).
 
-3. Device template, when one fits: `fmc_get_device_template` template="example": firewall mode,
+3. Device template, when one fits: `fmc_get_device_template` template="mcp-fw-branch-tmpl": firewall mode,
    model mapping, variables (type, default) and VPN/SD-WAN settings. It fits when its SD-WAN settings make the
    device a spoke of "mcp-fw-t1" and its model and firewall mode match "mcp-fw-branch1" (step 2).
-   Apply it: `fmc_apply_device_template` template="example", device="mcp-fw-branch1", variables={"wanIp": "198.51.100.14/24", "insideIp": "10.10.14.1/24"},
-   overrides={<object>: <value>} for the branch's own objects (its inside network "10.10.14.0/24"). It is
+   Apply it: `fmc_apply_device_template` template="mcp-fw-branch-tmpl", device="mcp-fw-branch1", variables={"wanIp": "198.51.100.14/24", "insideIp": "10.77.14.1/24"},
+   overrides={<object>: <value>} for the branch's own objects (its inside network "10.77.14.0/24"). It is
    dangerous-tier and replaces the device's interfaces, routing, policies and VPN membership: check every
    variable in the preview against the branch's values, wait for approval, then confirm. Keep PASSWORD
    variables out of this conversation: their template default applies. Afterwards
@@ -72,21 +72,21 @@ Stop and report when a step fails; keep notes of what each step returned.
    b. Interfaces: `fmc_update_interface` device="mcp-fw-branch1":
       - interface="Ethernet0/0", logical_name=<the other spokes' WAN name, e.g. outside>, enabled=true,
         security_zone=<WAN zone>, ipv4="198.51.100.14/24";
-      - interface="Ethernet0/1", logical_name='inside', enabled=true, security_zone=<inside zone>, ipv4="10.10.14.1/24".
+      - interface="Ethernet0/1", logical_name='inside', enabled=true, security_zone=<inside zone>, ipv4="10.77.14.1/24".
    c. Underlay route: `fmc_create_static_route` device="mcp-fw-branch1", interface=<WAN logical name>,
       networks=['any-ipv4'], gateway="198.51.100.1". It must cover the hubs' WAN addresses (step 0); when they sit
       behind a carrier network instead, route that network (a network object) via "198.51.100.1" as well.
    d. NAT for local internet breakout, if the other spokes have it: their NAT policy
       (`fmc_assign_policy` kind='nat') when it isn't tied to their addresses, else
       `fmc_create_nat_policy` and `fmc_create_nat_rule` kind='auto',
-      original_source=<a network object for "10.10.14.0/24">, translated_source='interface',
+      original_source=<a network object for "10.77.14.0/24">, translated_source='interface',
       nat_type='DYNAMIC', source_interface=<inside zone>, destination_interface=<WAN zone>, then
       `fmc_assign_policy`. Keep the PAT on the WAN zone, never 'any': overlay traffic leaves
       through the VTI and must keep its addresses. Platform settings: the other spokes' policy
       (`fmc_assign_policy` kind='platform_settings').
    e. Access policy "mcp-fw-base-acp": it must allow the inside zone to and from the overlay zone (branch to hub
       networks and back) and inside to WAN for breakout. Check offline with `fmc_rule_lookup`
-      policy="mcp-fw-base-acp", source="10.10.14.10", destination="10.10.10.10", protocol='icmp', source_zone=<inside zone>,
+      policy="mcp-fw-base-acp", source="10.77.14.10", destination="10.77.0.10", protocol='icmp', source_zone=<inside zone>,
       destination_zone=<overlay zone>, and the reverse flow. Missing: add the zones to an allow rule
       (`fmc_update_access_rule`) or create one (`fmc_create_access_rule`). The policy
       is shared, so its other devices get the change on their next deployment: say so in the preview
@@ -120,10 +120,10 @@ Stop and report when a step fails; keep notes of what each step returned.
       sa' (READY) and 'show crypto ipsec sa' (encaps and decaps both counting).
    b. Routes: `fmc_run_show_command` device="mcp-fw-branch1", command='show route bgp' ('show route ospf'
       for an OSPF overlay): the hubs' and the other branches' inside networks over the tunnel. On each
-      hub the same command shows "10.10.14.0/24" via the branch's tunnel address.
+      hub the same command shows "10.77.14.0/24" via the branch's tunnel address.
    c. Policy flow: real traffic first with CML (`cml_run_commands` on a branch inside host,
-      'ping -c 3 10.10.10.10'), then `fmc_packet_tracer` device="mcp-fw-branch1", input_interface='inside',
-      protocol='icmp', source_ip="10.10.14.10", destination_ip="10.10.10.10": allow, out through the tunnel (VTI), no NAT
+      'ping -c 3 10.77.0.10'), then `fmc_packet_tracer` device="mcp-fw-branch1", input_interface='inside',
+      protocol='icmp', source_ip="10.77.14.10", destination_ip="10.77.0.10": allow, out through the tunnel (VTI), no NAT
       translation. A drop: the `fmc_why_blocked` prompt walks it.
    d. Application routes: if the other branches have app routes (`app_routes` in step 7a), "mcp-fw-branch1" doesn't
       inherit them; list them as follow-up (`fmc_configure_wan_interface`,
@@ -135,13 +135,13 @@ Stop and report when a step fails; keep notes of what each step returned.
    verbatim, so the branch can be proven now and after every later change:
 
    branch "mcp-fw-branch1" | topology "mcp-fw-t1" | hubs <names> | WAN "Ethernet0/0" "198.51.100.14/24" via "198.51.100.1" |
-   inside "10.10.14.0/24" | overlay zone <zone> | access policy "mcp-fw-base-acp"
+   inside "10.77.14.0/24" | overlay zone <zone> | access policy "mcp-fw-base-acp"
    `fmc_prove_policy` flows=[
-     {"name": "branch to hub LAN", "source": "10.10.14.10", "destination": "10.10.10.10",
+     {"name": "branch to hub LAN", "source": "10.77.14.10", "destination": "10.77.0.10",
        "protocol": "icmp", "device": "mcp-fw-branch1", "expect": "allow"},
-     {"name": "hub LAN to branch", "source": "10.10.10.10", "destination": "10.10.14.10",
+     {"name": "hub LAN to branch", "source": "10.77.0.10", "destination": "10.77.14.10",
        "protocol": "icmp", "device": "<the primary hub>", "expect": "allow"},
-     {"name": "<a flow the policy blocks>", "source": "10.10.14.10", "destination": "<address>",
+     {"name": "<a flow the policy blocks>", "source": "10.77.14.10", "destination": "<address>",
        "protocol": "tcp", "port": <port>, "device": "mcp-fw-branch1", "expect": "block"}
    ]
    The third flow is one the access policy must block between the sites (from step 4e); leave it out
