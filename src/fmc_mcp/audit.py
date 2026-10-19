@@ -25,6 +25,10 @@ _API_URL_NODOMAIN = re.compile(r"https?://[^/\s]+/api/")
 _STATUS_TAIL = re.compile(r"(\(\d{3}\))\s+-\s.*$")
 # Operational requests that change no configuration (hit-count refresh, packet tracer, show commands).
 _OPERATIONAL = re.compile(r"^(PUT|POST) \S*/(operational/hitcounts|packettracer|commands)\b", re.I)
+# FMC's own records of troubleshooting runs: 'Devices > Troubleshoot > Packet Tracer' ("Trace: packet-tracer
+# input inside TCP ... (device: ftd1)"), packet capture and the like: no configuration changes either.
+TROUBLESHOOT_SUBSYSTEM = "devices > troubleshoot"
+_DEVICE_IN_MESSAGE = re.compile(r"\(device: ([^()]+)\)\s*$")
 
 
 @dataclass
@@ -38,12 +42,21 @@ class AuditScan:
 
 def is_read(rec: dict[str, Any]) -> bool:
     """A read-only API call, page view, login/logout, session expiry or an operational request
-    (hit-count refresh, packet tracer, show command)."""
+    (hit-count refresh, packet tracer, show command, FMC's Devices > Troubleshoot records)."""
     msg = str(rec.get("message") or "")
-    sub = str(rec.get("subSystem") or "")
+    sub = str(rec.get("subSystem") or "").strip().lower()
     return bool(
-        _READ_MESSAGE.match(msg) or sub.strip().lower() in NOISE_SUBSYSTEMS or _OPERATIONAL.match(msg)
+        _READ_MESSAGE.match(msg)
+        or sub in NOISE_SUBSYSTEMS
+        or _OPERATIONAL.match(msg)
+        or sub.startswith(TROUBLESHOOT_SUBSYSTEM)
     )
+
+
+def device_in(rec: dict[str, Any]) -> str | None:
+    """The device a record names at its end, as FMC writes troubleshooting runs: '... (device: ftd1)'."""
+    m = _DEVICE_IN_MESSAGE.search(str(rec.get("message") or ""))
+    return m.group(1).strip() if m else None
 
 
 def compact_message(msg: Any) -> str:

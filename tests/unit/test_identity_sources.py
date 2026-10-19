@@ -14,6 +14,7 @@ from fastmcp import Client
 from fmc_mcp._core import AuthError
 from fmc_mcp.client import FmcApp
 from fmc_mcp.server import create_server
+from fmc_mcp.tools import live
 from fmc_mcp.tools.identity_sources import (
     cert_row,
     identity_memory,
@@ -321,7 +322,8 @@ async def test_ip_lookup_without_session_says_unknown_user(fmc: respx.MockRouter
     assert out["sessions"] == [] and "unknown user" in out["note"] and "identities" not in out
 
 
-async def test_user_lookup_with_history(fmc: respx.MockRouter) -> None:
+async def test_user_lookup_with_history(fmc: respx.MockRouter, monkeypatch: pytest.MonkeyPatch) -> None:
+    monkeypatch.setattr(live, "clock", lambda: FX["useractivity"]["items"][0]["time"] + 600)
     mock_sessions(fmc, FX["activesessions"]["items"])
     mock_realm_lookups(fmc)
     hist = fmc.get(f"{CFG}/analysis/useractivity").mock(return_value=ok(FX["useractivity"]))
@@ -330,6 +332,7 @@ async def test_user_lookup_with_history(fmc: respx.MockRouter) -> None:
     assert [s["ip"] for s in out["sessions"]] == ["192.0.2.57"]
     assert out["history"][0]["sgt"] == "Employees" and out["history"][0]["event"] == "User Login"
     assert hist.calls.last.request.url.params["username"] == "alice"
+    assert "time" not in hist.calls.last.request.url.params  # FMC 10.0.1: 422 "Invalid time field."
 
 
 async def test_user_lookup_keeps_groups_when_sessions_are_refused(fmc: respx.MockRouter) -> None:
