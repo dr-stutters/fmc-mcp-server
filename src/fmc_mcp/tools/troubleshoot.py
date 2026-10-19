@@ -56,6 +56,7 @@ REMARK = re.compile(r"rule-id (\d+): (ACCESS POLICY|PREFILTER POLICY|L4 RULE|L7 
 # The 'show route' codes legend (11 lines before every table); the route codes are standard.
 ROUTE_LEGEND = re.compile(r"^Codes: .*?\n(?=\s*\n|Gateway of last resort|\S)", re.S | re.M)
 HIT_ID_CHUNK = 40  # rule ids per hit-count request (they go in the query string)
+DEFAULT_ACTION = "Default Action"  # FMC's name for the default action's hit-count row
 
 
 def split_command(command: str, supported: Supported | None = None) -> tuple[str, str | None]:
@@ -321,6 +322,11 @@ async def run_show(
     return "\n".join(str(i.get("commandOutput") or "") for i in items)
 
 
+def is_default_action(hit: dict[str, Any]) -> bool:
+    """A hit-count row of the access policy's default action (not a rule)."""
+    return (hit.get("rule") or {}).get("type") == "AccessPolicyDefaultAction"
+
+
 async def rule_hits(
     ctx: Context,
     app: FmcApp,
@@ -331,9 +337,12 @@ async def rule_hits(
     *,
     refresh: bool,
     include_default: bool,
+    default_action_id: str | None = None,
 ) -> tuple[dict[str, dict[str, Any]], Any, list[str]]:
     """Hit-count rows by rule id on one device, the counters' fetch time, and notes. With refresh,
-    FMC first pulls the counters from the device and FMC's clock offset is learned."""
+    FMC first pulls the counters from the device and FMC's clock offset is learned. With
+    include_default the policy's default action is added (by `default_action_id`, the access
+    policy's defaultAction.id, when known)."""
     notes: list[str] = []
     refreshed_at: float | None = None
     if refresh:
@@ -345,20 +354,24 @@ async def rule_hits(
                 refreshed_at = time.time()
         except UpstreamError as e:
             notes.append(f"Refresh failed ({e}); showing the last counters FMC has.")
-    # FMC 10.0.1 returns only the default action unless rule ids are listed explicitly.
+    # Rules are asked for by id (FMC ignores fetchZeroHitCount with `ids`). Without `ids`,
+    # fetchZeroHitCount:true lists only rows that were never hit (FMC 10.0.1), so the default action
+    # can't be found that way once it has blocked something: it goes in by id, or by its name.
+    ids = list(rule_ids)
+    if include_default and default_action_id and default_action_id not in ids:
+        ids.append(default_action_id)
     hits: dict[str, dict[str, Any]] = {}
-    chunks = [rule_ids[i : i + HIT_ID_CHUNK] for i in range(0, len(rule_ids), HIT_ID_CHUNK)] or [[]]
+    chunks = [ids[i : i + HIT_ID_CHUNK] for i in range(0, len(ids), HIT_ID_CHUNK)]
     for chunk in chunks:
-        flt = f"deviceId:{device_id};fetchZeroHitCount:true"
-        if chunk:
-            flt += f";ids:{','.join(chunk)}"
+        flt = f"deviceId:{device_id};fetchZeroHitCount:true;ids:{','.join(chunk)}"
         page = await app.all(hc_path, {"filter": flt}, cap=5000)
         for h in page.items:
             hits[str((h.get("rule") or {}).get("id"))] = h
-    if include_default:
-        page = await app.all(hc_path, {"filter": f"deviceId:{device_id};fetchZeroHitCount:true"}, cap=50)
+    if include_default and not any(is_default_action(h) for h in hits.values()):
+        page = await app.all(hc_path, {"filter": f"deviceId:{device_id};name:{DEFAULT_ACTION}"}, cap=50)
         for h in page.items:
-            hits.setdefault(str((h.get("rule") or {}).get("id")), h)
+            if is_default_action(h):
+                hits.setdefault(str((h.get("rule") or {}).get("id")), h)
     last = next((h.get("lastFetchTimeStamp") for h in hits.values() if h.get("lastFetchTimeStamp")), None)
     if refreshed_at is not None:
         learned = learn_local_offset(last, refreshed_at)
@@ -594,6 +607,7 @@ def register(reg: ToolRegistrar) -> None:
             domain,
             refresh=refresh,
             include_default=kind == "access",
+            default_action_id=(p.get("defaultAction") or {}).get("id"),
         )
         tz_offset = app.local_offset
         rows = []
@@ -608,7 +622,10 @@ def register(reg: ToolRegistrar) -> None:
                 continue
             rows.append(
                 {
-                    "index": order.get(rid) or meta.get("ruleIndex") or "default",
+                    # the default action's ruleIndex is the deployed rule count + 1: it can clash
+                    "index": "default"
+                    if is_default_action(h)
+                    else order.get(rid) or meta.get("ruleIndex") or "default",
                     "rule": name,
                     "hits": count,
                     "first_hit": to_utc(h.get("firstHitTimeStamp"), tz_offset),

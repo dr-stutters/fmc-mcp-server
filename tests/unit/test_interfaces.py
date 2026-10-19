@@ -15,7 +15,7 @@ from fastmcp.exceptions import ToolError
 
 from fmc_mcp._core import InvalidRequest
 from fmc_mcp.server import create_server
-from fmc_mcp.tools.device_config import LOGICAL_KINDS, plan_logical_interface
+from fmc_mcp.tools.device_config import LOGICAL_KINDS, is_virtual, plan_logical_interface
 from fmc_mcp.tools.devices import INTERFACE_KINDS, interface_row
 
 from .conftest import CFG, fixture, items, make_settings
@@ -88,7 +88,16 @@ def as_items(kinds: dict[str, list[dict[str, Any]]]) -> list[tuple[str, dict[str
     return [(k, i) for k, rows in kinds.items() for i in rows]
 
 
-def plan(kind: str, kinds: dict[str, list[dict[str, Any]]] | None = None, **kw: Any) -> Any:
+# A hardware model (EtherChannel is supported there); mcp-ftd1 (DEV) is an FTDv for KVM.
+HW = {**DEV, "model": "Cisco Secure Firewall 3110 Threat Defense", "performanceTier": None}
+
+
+def plan(
+    kind: str,
+    kinds: dict[str, list[dict[str, Any]]] | None = None,
+    device: dict[str, Any] | None = None,
+    **kw: Any,
+) -> Any:
     args: dict[str, Any] = {
         "logical_name": None,
         "number": None,
@@ -104,7 +113,7 @@ def plan(kind: str, kinds: dict[str, list[dict[str, Any]]] | None = None, **kw: 
         "enabled": True,
         **kw,
     }
-    return plan_logical_interface(kind, DEV, as_items(kinds or recorded()), **args)
+    return plan_logical_interface(kind, device or DEV, as_items(kinds or recorded()), **args)
 
 
 # --- the planner (pure) ---------------------------------------------------------------------------
@@ -244,6 +253,7 @@ def test_etherchannel_from_spare_physical_interfaces() -> None:
     p = plan(
         "etherchannel",
         kinds,
+        HW,
         members=["Ethernet0/2", "Ethernet0/3"],
         logical_name="lan-pc",
         zone=zone,
@@ -278,6 +288,7 @@ def test_etherchannel_members_must_be_free_and_unconfigured() -> None:
     p = plan(
         "etherchannel",
         kinds,
+        HW,
         members=["outside", "Ethernet0/1", "Ethernet0/2", "Ethernet0/2", "Management0/0", "lo9"],
     )
     text = "\n".join(p.blockers)
@@ -308,7 +319,7 @@ def test_bvi_members_take_no_address_and_need_names() -> None:
     assert p.body["ipAddress"] == "10.97.0.1" and p.body["bridgeGroupId"] == 1 and "mode" not in p.body
     assert any("Ethernet0/1.100 has its own IPv4 address" in b for b in p.blockers)
     assert any("Ethernet0/1 has its own IPv4 address" in b for b in p.blockers)
-    assert any("Member Ethernet0/2 has no logical name" in s for s in p.side_effects)
+    assert any("Member Ethernet0/2 has no logical name" in s and "SWITCHED" in s for s in p.side_effects)
     assert set(p.body) <= set(REC["created"]["bridgegroupinterfaces"]) | {"description"}
 
 
@@ -417,6 +428,7 @@ async def test_create_etherchannel_blocked_on_a_configured_member(fmc: respx.Moc
     )
     assert out["status"] == "blocked"
     assert any("Ethernet0/1 is configured" in b for b in out["blockers"])
+    assert any("mcp-ftd1 is an FTDv" in b for b in out["blockers"])
     with pytest.raises(ToolError, match="needs members"):
         await preview_of("fmc_create_interface", {"device": "mcp-ftd1", "kind": "bvi"})
 
@@ -481,3 +493,85 @@ def test_every_kind_maps_to_a_collection() -> None:
     for lk in LOGICAL_KINDS.values():
         assert lk.collection in INTERFACE_KINDS
         assert INTERFACE_KINDS[lk.collection] in REC  # recorded on FTDv
+
+
+# --- F58 live proof (mcp-fw-branch1, FTDv for KVM 10.0.0, FMC 10.0.1) ---------------------------------------
+# FMC's answers to the bodies fmc_create_interface previewed (tests/fixtures/ftd_interface_live_fmc10.json).
+LIVE = fixture("ftd_interface_live_fmc10")
+
+
+def test_is_virtual() -> None:
+    assert is_virtual(LIVE["device"])  # "... Threat Defense for KVM", FTDv5
+    assert is_virtual({"model": "Cisco Firepower Threat Defense for VMware"})
+    assert is_virtual({"model": "Cisco Secure Firewall Threat Defense Virtual", "performanceTier": None})
+    assert is_virtual({"model": "", "performanceTier": "FTDv50"})
+    assert not is_virtual(HW)
+    assert not is_virtual({"model": "Cisco Firepower 2130 Threat Defense", "performanceTier": None})
+
+
+async def test_etherchannel_is_blocked_on_ftdv(fmc: respx.MockRouter) -> None:
+    """Live: the preview passed, then FMC refused the POST on the FTDv (400, recorded in the fixture)."""
+    dev = {**LIVE["device"], "id": DEV["id"], "name": "mcp-ftd1"}
+    kinds = recorded()
+    kinds["physical"] += [unconfigured("Ethernet0/2", 0), unconfigured("Ethernet0/3", 1)]
+    mock_device(fmc, kinds)
+    fmc.get(f"{CFG}/devices/devicerecords").mock(return_value=items([dev]))
+    fmc.get(DEVPATH).mock(return_value=httpx.Response(200, json=dev))
+    post = fmc.post(f"{DEVPATH}/etherchannelinterfaces")
+    out = await preview_of(
+        "fmc_create_interface",
+        {
+            "device": "mcp-ftd1",
+            "kind": "etherchannel",
+            "logical_name": "lan-po",
+            "number": 1,
+            "members": ["Ethernet0/2", "Ethernet0/3"],
+            "security_zone": "mcp-test-ftd-in",
+            "ipv4": "198.51.100.65/30",
+            "lacp_mode": "active",
+        },
+    )
+    assert out["status"] == "blocked" and not post.called
+    [why] = [b for b in out["blockers"] if "FTDv" in b]
+    assert "Threat Defense for KVM" in why and "Etherchannel interface is not supported on 'Virtual'" in why
+    assert why.split("refuses the POST with ")[1].startswith('"' + LIVE["etherchannel_error"].rstrip("."))
+    # a hardware model plans the same channel without that blocker
+    assert not plan(
+        "etherchannel", kinds, HW, members=["Ethernet0/2", "Ethernet0/3"], logical_name="lan-po"
+    ).blockers
+
+
+async def test_bridge_group_member_needs_a_switched_zone(fmc: respx.MockRouter) -> None:
+    """Live: a ROUTED zone on a BVI member was refused by FMC (400, recorded); the preview didn't catch it."""
+    kinds = recorded()
+    member = unconfigured("Ethernet0/4", 4)
+    member["ifname"] = "bvi-m1"
+    kinds["physical"] += [member]
+    bvi = {**LIVE["bvi"], "selectedInterfaces": [{"id": member["id"], "name": "Ethernet0/4"}]}
+    kinds["bridge_group"] = [bvi]
+    mock_device(fmc, kinds)
+    routed, switched = ZONES[1], {"id": "aaaaaaaa-0000-0000-0000-00000000000b", "name": "lan-sw"}
+    fmc.get(f"{CFG}/object/securityzones").mock(
+        return_value=items([*ZONES, {**switched, "type": "SecurityZone"}])
+    )
+    fmc.get(f"{CFG}/object/securityzones/{routed['id']}").mock(
+        return_value=httpx.Response(200, json={**routed, "interfaceMode": "ROUTED"})
+    )
+    fmc.get(f"{CFG}/object/securityzones/{switched['id']}").mock(
+        return_value=httpx.Response(
+            200, json={**switched, "type": "SecurityZone", "interfaceMode": "SWITCHED"}
+        )
+    )
+    args = {"device": "mcp-ftd1", "interface": "Ethernet0/4"}
+    out = await preview_of("fmc_update_interface", {**args, "security_zone": "mcp-test-ftd-in"})
+    assert out["status"] == "blocked"
+    [why] = [b for b in out["blockers"] if "SWITCHED" in b]
+    assert "member of BVI1" in why and "'mcp-test-ftd-in' is ROUTED" in why
+    assert LIVE["bvi_member_routed_zone_error"].split(" for interface")[0] in why
+    ok = await preview_of("fmc_update_interface", {**args, "security_zone": "lan-sw"})
+    assert ok["status"] == "preview"
+    # deleting the BVI: FMC keeps the members' logical names (live: they had to be cleared by hand)
+    out = await preview_of("fmc_delete_interface", {"device": "mcp-ftd1", "interface": "BVI1"})
+    note = next(s for s in out["side_effects"] if "Ethernet0/4" in s)
+    assert "keeps their logical names" in note and "logical_name='none'" in note
+    assert "released as unconfigured" not in note
