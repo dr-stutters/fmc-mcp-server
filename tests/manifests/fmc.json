@@ -69,6 +69,64 @@
         "cml"
       ]
     },
+    "fmc_onboard_branch": {
+      "arguments": [
+        "name",
+        "host",
+        "topology",
+        "variables",
+        "template",
+        "access_policy",
+        "wan_interface",
+        "wan_ip",
+        "wan_gateway",
+        "inside_interface",
+        "inside_ip",
+        "inside_host",
+        "test_destination",
+        "domain"
+      ],
+      "references": [
+        "fmc_prove_policy",
+        "fmc_status",
+        "fmc_license_status",
+        "fmc_list_devices",
+        "fmc_get_vpn_topology",
+        "fmc_get_device",
+        "fmc_sdwan_status",
+        "cml_run_commands",
+        "fmc_register_device",
+        "fmc_get_device_template",
+        "fmc_apply_device_template",
+        "fmc_pending_changes",
+        "fmc_list_device_interfaces",
+        "fmc_create_security_zone",
+        "fmc_update_interface",
+        "fmc_create_static_route",
+        "fmc_assign_policy",
+        "fmc_create_nat_policy",
+        "fmc_create_nat_rule",
+        "fmc_rule_lookup",
+        "fmc_update_access_rule",
+        "fmc_create_access_rule",
+        "fmc_run_show_command",
+        "fmc_deploy",
+        "fmc_update_sdwan_topology",
+        "fmc_list_deployments",
+        "fmc_list_vpn_tunnels",
+        "fmc_packet_tracer",
+        "fmc_why_blocked",
+        "fmc_configure_wan_interface",
+        "fmc_create_app_route",
+        "fmc_prove_user_policy"
+      ],
+      "rendered": true,
+      "tier": "dangerous",
+      "uses": [
+        "fmc",
+        "cml"
+      ]
+    },
     "fmc_onboard_ftd": {
       "arguments": [
         "name",
