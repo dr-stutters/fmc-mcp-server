@@ -461,13 +461,30 @@ async def test_wave5_parity_file_policy_on_rule(client: Client[Any]) -> None:
     rules = await call(
         client, "fmc_list_access_rules", {"policy": acp, "action": "ALLOW", "response_format": "json"}
     )
-    rule = rules["results"][0]["name"]
+    row = rules["results"][0]
+    # a file policy the rule doesn't carry yet, so the preview has something to change
+    target = next((p for p in policies if p.get("name") != row.get("file_policy")), None)
+    if target is None:
+        pytest.skip("the domain's only file policy is already on the rule")
     preview = await call(
-        client, "fmc_update_access_rule", {"policy": acp, "rule": rule, "file_policy": policies[0]["name"]}
+        client, "fmc_update_access_rule", {"policy": acp, "rule": row["name"], "file_policy": target["name"]}
     )
-    body = preview_body(preview)
-    assert body["filePolicy"]["id"] == policies[0]["id"], body.get("filePolicy")
-    assert body.get("logFiles") is True, body.get("logFiles")
+    # an update preview shows field changes (from/to), not the PUT body
+    assert preview.get("status") == "preview", preview
+    assert "confirm" in preview  # never used: these tests don't apply anything
+    changes = preview["preview"]["changes"]
+    assert (changed_to(changes, "filePolicy") or {}).get("id") == target["id"], changes
+    logs_files = changes.get("logFiles", {}).get("to", "files" in (row.get("logging") or []))
+    assert logs_files is True, (changes, row.get("logging"))
+
+
+def changed_to(changes: dict[str, Any], field: str) -> Any:
+    """The new value of `field` in a preview's changes: the whole value when it was unset before, else
+    assembled from its dotted sub-fields ('filePolicy.id', 'filePolicy.name')."""
+    if field in changes:
+        return changes[field]["to"]
+    prefix = f"{field}."
+    return {k[len(prefix) :]: v["to"] for k, v in changes.items() if k.startswith(prefix)} or None
 
 
 async def test_wave5_parity_si(client: Client[Any]) -> None:
