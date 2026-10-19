@@ -9,7 +9,8 @@ to find the device when a flow names none.
 User-based flows: the FTD applies user rules from its own user-to-IP mapping, so a flow is traced from
 the user's current IP and the Snort identity phase shows which user the device saw there. When a flow
 gives a user but no source, the IP comes from the user-to-IP lookups in USER_IP_RESOLVERS: FMC's
-identity sessions (identity_sources.user_ips, as fmc_user_ip_lookup reads them).
+identity sessions (identity_sources.user_ips, as fmc_user_ip_lookup reads them, falling back to the
+ancestor domains when a child domain has none: FMC keeps the ISE source's sessions in Global).
 """
 
 # No `from __future__ import annotations`: FastMCP inspects signatures at runtime.
@@ -328,7 +329,10 @@ async def _source_for(app: FmcApp, exp: Expectation, domain: str | None) -> str:
         ips = await resolve(app, exp.user, domain)
         if ips:
             return ips[0]
-    raise InvalidRequest(f"{exp.user} has no active session (no IP found): log the user in first.")
+    raise InvalidRequest(
+        f"{exp.user} has no active session (no IP found in this domain or its ancestors): log the user in "
+        "first, or give the flow's source."
+    )
 
 
 def register(reg: ToolRegistrar) -> None:
@@ -364,8 +368,9 @@ def register(reg: ToolRegistrar) -> None:
         deciding rule, the user the device saw on the source, the device and ingress interface, and a
         summary (all_passed). User rules are decided from the device's live user-to-IP mapping, so
         a user flow is traced from the IP the user is logged in on: give `source`, or leave it out and
-        the IP of the user's newest FMC identity session is used (fmc_user_ip_lookup; the role needs
-        Analysis > Users, else that flow is an error row naming the permission). Packet tracer
+        the IP of the user's newest FMC identity session is used (fmc_user_ip_lookup; in a child domain
+        Global's sessions when the child has none; the role needs Analysis > Users, else that flow is an
+        error row naming the permission). Packet tracer
         simulates the packets (nothing is sent; packet-tracer runs count as rule hits). For one flow in
         depth use fmc_packet_tracer; for the offline view fmc_rule_lookup."""
         app: FmcApp = get_client(ctx)

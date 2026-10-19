@@ -12,13 +12,16 @@ is not supported or entered command is an invalid command", checked live), and t
 - fmc_user_identity_sessions reads FMC's own identity view: analysis/activesessions (user, current IP,
   device, realm, login and last-seen times) and, with history, analysis/useractivity (logins and logoffs).
   Both are plain REST reads (no subscription, ADR-003); the account's role needs the Events & Logs >
-  Analysis > Users permissions.
+  Analysis > Users permissions. FMC keeps an identity source's sessions in the domain that owns the
+  source (FMC 10.0.1 offers the ISE source in Global only), so a child domain's own view is empty: when
+  it is, the readers fall back to the ancestor domains (read_up) and say which domain answered.
 """
 
 # No `from __future__ import annotations`: FastMCP inspects signatures at runtime.
 import ipaddress
 import re
 import time
+from collections.abc import Callable
 from dataclasses import dataclass
 from datetime import datetime
 from typing import Annotated, Any, Literal
@@ -27,7 +30,15 @@ from fastmcp import Context
 from fastmcp.tools import ToolResult
 from pydantic import Field
 
-from fmc_mcp._core import AuthError, InvalidRequest, ResponseFormat, ToolRegistrar, get_client, list_result
+from fmc_mcp._core import (
+    AuthError,
+    InvalidRequest,
+    NotFound,
+    ResponseFormat,
+    ToolRegistrar,
+    get_client,
+    list_result,
+)
 from fmc_mcp._core.http import page_of
 from fmc_mcp.client import FmcApp
 from fmc_mcp.tools.common import Domain
@@ -416,6 +427,58 @@ def _seen(s: dict[str, Any]) -> float:
     return epoch(s.get("lastSeen") or s.get("loginTime"))
 
 
+async def read_up(
+    app: FmcApp,
+    suffix: str,
+    domain: str | None,
+    params: dict[str, Any],
+    cap: int,
+    keep: Callable[[list[dict[str, Any]]], list[dict[str, Any]]] | None = None,
+) -> list[dict[str, Any]]:
+    """FMC's identity view (SESSIONS or ACTIVITY) in `domain`, else in its nearest ancestor that has rows.
+
+    FMC keeps an identity source's sessions and user activity in the domain that owns the source, and
+    FMC 10.0.1 offers the ISE source in Global only: in a child domain both views are empty while the
+    child's firewalls match user rules on Global's sessions (seen live on FMC 10.0.1). So when `domain`
+    has no rows (after `keep`, e.g. a time window), its ancestors are read nearest first, up to Global,
+    and the first with rows answers; those rows carry `_domain` (that domain's name, see
+    sessions_domain). The requested domain is read first and alone, so a domain with rows costs no
+    extra request. Its errors are raised as before (AuthError 403 without the Analysis > Users role);
+    an ancestor this login can't read is skipped."""
+
+    def pick(items: list[dict[str, Any]]) -> list[dict[str, Any]]:
+        return keep(items) if keep else list(items)
+
+    rows = pick((await app.all(await app.config_path(suffix, domain), params, cap=cap)).items)
+    if rows:
+        return rows
+    for uuid in await app.domain_ancestors(domain):
+        try:
+            page = await app.all(await app.config_path(suffix, uuid), params, cap=cap)
+        except (AuthError, NotFound):
+            continue
+        found = pick(page.items)
+        if found:
+            owner = await app.domain_name(uuid)
+            return [{**r, "_domain": owner} for r in found]
+    return []
+
+
+def sessions_domain(rows: list[dict[str, Any]]) -> str | None:
+    """The ancestor domain that answered read_up (rows tagged `_domain`), or None for the requested one."""
+    return next((str(r["_domain"]) for r in rows if r.get("_domain")), None)
+
+
+async def fallback_note(app: FmcApp, domain: str | None, owner: str, what: str = "identity sessions") -> str:
+    """Why the rows came from an ancestor domain (read_up): the requested domain and the one that answered."""
+    asked = await app.domain_name(await app.domain_uuid(domain))
+    return (
+        f"Domain {asked!r} holds no {what} for this query; these come from its ancestor {owner!r}. FMC keeps "
+        "an identity source's sessions in the domain that owns the source (FMC 10.0.1 offers the ISE source "
+        "in Global only), and the firewalls in child domains match user rules on them."
+    )
+
+
 async def session_items(
     app: FmcApp,
     domain: str | None,
@@ -426,7 +489,8 @@ async def session_items(
 ) -> list[dict[str, Any]]:
     """FMC's active identity sessions (user <-> current IP) as FMC returns them, newest activity first,
     filtered server-side (`user` matches as a substring, as FMC does). AuthError (403) when the account's
-    role lacks the Analysis > Users permissions. Also the identity source tools' reader (F34)."""
+    role lacks the Analysis > Users permissions. Also the identity source tools' reader (F34). A child
+    domain without a matching session falls back to its ancestors (read_up; sessions_domain says which)."""
     params: dict[str, Any] = {}
     if ip:
         params["currentIP"] = ip
@@ -434,8 +498,8 @@ async def session_items(
         params["username"] = user
     if device:
         params["device"] = device
-    page = await app.all(await app.config_path(SESSIONS, domain), params, cap=SESSION_CAP)
-    return sorted(page.items, key=_seen, reverse=True)
+    rows = await read_up(app, SESSIONS, domain, params, SESSION_CAP)
+    return sorted(rows, key=_seen, reverse=True)
 
 
 async def activity_items(
@@ -454,7 +518,8 @@ async def activity_items(
     The window is applied here, not with FMC's `time` filter: FMC 10.0.1 answers 422 "Invalid time
     field." to the spec's own `time=after:<epoch>` form (also `after:<epoch>,before:<epoch>`, epoch
     milliseconds and ISO 8601), so the newest ACTIVITY_CAP events are read (sort time:desc) and the ones
-    older than `hours` dropped; an event without a readable time is kept."""
+    older than `hours` dropped; an event without a readable time is kept. A child domain without events
+    in the window falls back to its ancestors (read_up), as session_items does."""
     params: dict[str, Any] = {"sort": "time:desc"}
     if ip:
         params["ipAddress"] = ip
@@ -462,9 +527,12 @@ async def activity_items(
         params["username"] = user
     if device:
         params["device"] = device
-    page = await app.all(await app.config_path(ACTIVITY, domain), params, cap=ACTIVITY_CAP)
     since = clock() - hours * 3600
-    events = [a for a in page.items if not epoch(a.get("time")) or epoch(a.get("time")) >= since]
+
+    def recent(items: list[dict[str, Any]]) -> list[dict[str, Any]]:
+        return [a for a in items if not epoch(a.get("time")) or epoch(a.get("time")) >= since]
+
+    events = await read_up(app, ACTIVITY, domain, params, ACTIVITY_CAP, keep=recent)
     return sorted(events, key=lambda a: epoch(a.get("time")), reverse=True)
 
 
@@ -555,11 +623,13 @@ def register(reg: ToolRegistrar) -> None:
         dev = await resolve_device(app, device, domain)
         notes: list[str] = []
         user_ips: set[str] = set()
+        ips_from: str | None = None  # the ancestor domain whose sessions gave the user's IPs
         if user:
             try:
-                for s in await active_sessions(app, domain, user=user):
-                    if s.get("ip"):
-                        user_ips.add(str(s["ip"]))
+                sessions = await session_items(app, domain, user=user)
+                user_ips.update(str(s["currentIP"]) for s in sessions if s.get("currentIP"))
+                if ips_from := sessions_domain(sessions):
+                    notes.append(await fallback_note(app, domain, ips_from))
             except AuthError as e:
                 if e.status_code != 403:
                     raise
@@ -615,6 +685,8 @@ def register(reg: ToolRegistrar) -> None:
         }
         if user_ips:
             extra["user_ips"] = sorted(user_ips)
+            if ips_from:
+                extra["sessions_domain"] = ips_from
         if simulated:
             extra["packet_tracer_flows"] = simulated
             notes.append(
@@ -677,7 +749,9 @@ def register(reg: ToolRegistrar) -> None:
         last-seen time. With history, also the user's (or the IP's) recent logins and logoffs. The
         FTD CLI has no 'show user-identity' and FMC 10.0.1 refuses it, so this reads FMC's
         analysis/activesessions and analysis/useractivity; the account's role needs the Events &
-        Logs > Analysis > Users permissions (403 otherwise). Use it to list sessions (paged; every
+        Logs > Analysis > Users permissions (403 otherwise). In a child domain with no session, the
+        ancestor domains are read up to Global (where FMC keeps the ISE source's sessions) and
+        `sessions_domain` names the one that answered. Use it to list sessions (paged; every
         session one device reports) and with fmc_live_connections(user=...). For the identity a user or
         group rule sees (the user plus their AD groups) use fmc_user_ip_lookup; fmc_rule_lookup resolves
         the source IP's user itself."""
@@ -686,16 +760,21 @@ def register(reg: ToolRegistrar) -> None:
             raise InvalidRequest("Give an ip, a user or a device to look up sessions for.")
         dev_name = (await resolve_device(app, device, domain)).get("name") if device else None
         try:
-            rows = await active_sessions(app, domain, ip=ip, user=user, device=dev_name)
+            sessions = await session_items(app, domain, ip=ip, user=user, device=dev_name)
         except AuthError as e:
             raise role_error(e) from None
+        rows = [session_row(s) for s in sessions]
         extra: dict[str, Any] = {"sessions": len(rows)}
         if dev_name:
             extra["device"] = dev_name
+        if owner := sessions_domain(sessions):
+            extra["sessions_domain"] = owner
+            extra["note"] = await fallback_note(app, domain, owner)
         if not rows:
             extra["note"] = (
-                "No active session: the user isn't logged in where FMC can see it, or no identity source "
-                "(ISE/pxGrid, passive AD, captive portal, VPN) reports this IP to FMC."
+                "No active session (in this domain or its ancestors): the user isn't logged in where FMC "
+                "can see it, or no identity source (ISE/pxGrid, passive AD, captive portal, VPN) reports "
+                "this IP to FMC."
             )
         if history:
             try:
@@ -703,4 +782,6 @@ def register(reg: ToolRegistrar) -> None:
             except AuthError as e:
                 raise role_error(e, ACTIVITY_WHAT) from None
             extra["history"] = [activity_row(a) for a in events][:50]
+            if owner := sessions_domain(events):
+                extra["history_domain"] = owner
         return list_result(page_of(rows, limit=limit, offset=offset), fmt=response_format, extra=extra)
