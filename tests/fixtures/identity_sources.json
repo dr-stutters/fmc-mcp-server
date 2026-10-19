@@ -154,6 +154,15 @@
    "pages": 1
   }
  },
+ "isesgts_enabled_empty": {
+  "_source": "FMC 10.0.1, GET object/isesecuritygrouptags?limit=5 in Global/<leaf>, 2026-10-19: an ISE identity source saved in Global (its connection failing, no SGT downloaded). Before the save the same GET answered 422 (isesgt_disabled).",
+  "paging": {
+   "offset": 0,
+   "limit": 0,
+   "count": 0,
+   "pages": 0
+  }
+ },
  "realms": {
   "items": [
    {
