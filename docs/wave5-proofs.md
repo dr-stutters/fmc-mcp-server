@@ -1,9 +1,11 @@
 # Wave 5 live proofs (firewall run, 2026-10-18/19)
 
 The Wave 5 tools (F34, F41, F43, F49, F54-F65) run against FMC 10.0.1 with FTDv 10.0 in CML, in domain
-`Global/mcp-test-leaf`, on a server built from the merge-chain head of the 15 Wave 5 PRs (180 tools, 11 prompts).
-Each proof uses the new tool itself, then confirms on the device (`fmc_run_show_command`, packet tracer, the FTD
-console through cml-mcp) or with traffic from the lab hosts.
+`Global/mcp-test-leaf`. Overnight (2026-10-18/19) the server was built from the merge-chain head of the 15 Wave 5 PRs; the
+morning re-proof (2026-10-19, section "Re-proof on main") ran on `main` after all Wave 5 PRs and their follow-up fixes were
+merged (180 tools, 11 prompts), calling every tool through MCP: preview, read, confirm, one call at a time. Each proof uses the
+new tool itself, then confirms on the device (`fmc_run_show_command`, packet tracer, the FTD console through cml-mcp) or with
+traffic from the lab hosts.
 
 Lab addresses and hostnames are not in this file. Placeholders:
 
@@ -13,6 +15,7 @@ Lab addresses and hostnames are not in this file. Placeholders:
 | `<client-net>` | the client's /24 |
 | `<outside-host>` | the web/DNS server outside `mcp-ftd-identity` |
 | `<si-hit>` | a second address on the outside host, listed in the SI IP feed |
+| `<url-feed-host>` | a hostname listed only in the SI URL feed, resolved to `<outside-host>` with `curl --resolve` |
 | `<feed-host>` | the HTTP server that serves the SI feeds (`mcp-fw-feed`) |
 | `<dnd-host>` | the outside host's second address, exempted from decryption |
 | `<branch-wan>`, `<carrier-leg>` | the new branch FTD's WAN address and the internet carrier's leg it routes to |
@@ -24,38 +27,201 @@ Status: **pass**, **fail** (a tool bug; root cause given), **blocked** (a lab, l
 
 ## Summary
 
+Final status after the morning re-proof on `main`. "Overnight" in the evidence column refers to the sections further down.
+
 | # | Item | Status | Evidence (one line) |
 |---|---|---|---|
-| 1 | F59 `fmc_find_address` | blocked | seeds in place (host, group, access rule, unassigned NAT policy, dynamic-object mapping); the tool was not callable (B0) |
-| 2 | F55 `fmc_live_connections` / `fmc_user_identity_sessions` | blocked | buffer logging live on the device with real built/teardown lines for the client's long-lived flow; tool not callable (B0); identity sessions 403 (B1) |
-| 3 | F57 `fmc_device_metrics` | blocked | a 3-minute burst is visible in FMC's raw `health/metrics` (bytes, packets, data-plane CPU); tool not callable (B0) |
-| 4 | F43 file policy | partial | `mcp-fw-file` (block MSEXE, reset) built from the tools' previews via `fmc_api_call` during proof 8: `.exe` over HTTP and HTTPS reset; the tools themselves not callable (B0) |
-| 5 | F63 URL category in access rules | partial | rule with category Gambling (body from the tool's preview, sent via `fmc_api_call`) resets HTTP and decrypted HTTPS to a gambling hostname, rule hit counted; tool not callable (B0) |
-| 6 | F61 SI feeds + custom lists | blocked | tools not callable (B0); FMC downloads a feed from `<feed-host>` at create time (probe), see the feed-status finding |
-| 7 | F62 IPS on traffic + `fmc_threat_defense_review` | split | IPS **pass** (Talos 1:498 and 1:58723 drop the client's requests, normal page loads); posture tool and prompt not callable (B0) |
-| 8 | F64 TLS decryption | pass (traffic), 2 bugs | client trusts the resigning CA; HTTPS to `<outside-host>` re-signed and verified, `.exe` / EICAR / IPS trigger / blocked category reset inside TLS; `<dnd-host>` untouched; `fmc_tls_decryption_check` mis-reads FMC's default certificate-status block (R1); rules need `tlsVersions` or the deploy is refused (R2) |
-| 9 | F41 + F49 VPN status / troubleshoot | pass (status, wrong PSK); dead WAN partial | `mcp-fw-t1` (hub + 3 spokes) built with `fmc_create_sdwan_topology`; `fmc_vpn_status` shows 3 tunnels, both ends' SAs, IPsec counters, BGP routes; wrong PSK named from growing authentication failures; dead WAN reported TUNNEL_DOWN but without the dead-path verdict (R2); false overlay-routing warning on a DVTI hub (R1) |
-| 10 | F54 `fmc_onboard_branch` | pass | prompt followed end to end: register without a key argument, manual path (no template), join `mcp-fw-t1`, deploy hub + branch only; tunnel READY, BGP routes both ends, host pings, packet tracer, `fmc_prove_policy` hand-off 3/3 pass |
-| 11 | F58 interface kinds | pass (loopback, VTI, BVI); EtherChannel blocked | bodies from `fmc_create_interface` previews accepted by FMC; deployed and on the device; FMC refuses EtherChannel on FTDv (the preview should say so, R1); the delete guard (VTI borrows the loopback) works |
-| 12 | F65 HA under traffic | pass | `fmc_ha_failover_check` walked: planned switch hitless (0/600 pings lost, a 5 Mbit/s TCP flow never dipped); active unit powered off: one 15.2 s gap (= the 15 s hold time), the TCP flow resumed on the same connection; `fmc_get_ha_status(live=True)` read the survivor while the other unit was off and named each failover's reason |
-| 13 | F34 ISE identity source | partial; enforcement blocked (B2) | seed script proven in FMC's UI (source saved in Global, identity policy linked); FMC's Test fails because ISE refuses FMC's client certificate (issued by an earlier lab root, B2); `fmc_get_identity_sources` reports the failed connection; `fmc_user_ip_lookup` gives the role 403 (B1) and the user's groups; `fmc_rule_lookup` names the contractors BLOCK rule for bob and the baseline ALLOW for alice; `fmc_why_blocked` leads to the missing user mapping |
-| 14 | F56 `fmc_prove_policy` + `fmc_prove_user_policy` | pass (tool, prompt); alice/bob blocked (B2) | 6-flow table: two 5-tuple flows on `mcp-ftd-identity`, one through `mcp-fw-ha`, one on `mcp-fw-branch1` pass; the alice/bob rows report correctly that the device sees no user on `<client>` (mismatch / fail); the prompt walked to the cause (Snort identity phase: user unknown) |
-| - | Read-only live tests | pass | HA status from the units (F65), interface kinds + create preview (F58), file / NAP reads (F43), SI reads (F61), identity sources (F34): 7 passed, user lookup skipped (B1) |
+| 1 | F59 `fmc_find_address` | **pass** | 12 places for `<client>` ranked exact first (dynamic-object mapping, host, group, access rule, NAT rule), then the networks holding it; with `device=` the device's inherited NAT policy is now searched (overnight R1, fixed by #183) |
+| 2 | F55 `fmc_live_connections` / `fmc_user_identity_sessions` | **pass**; sessions empty (pxGrid); history bug fixed in #211 | 60 connections of `<client>` from the device's buffer (open/closed, bytes, teardown reason); the role fix removed the 403: no session for `<client>` while FMC's ISE source is not connected; `history=true` hit FMC's 422 "Invalid time field." (R1, PR #211) |
+| 3 | F57 `fmc_device_metrics` | **pass** | the overnight HA burst read back from FMC hours later: 155.5 Mbit/s in / 152.9 Mbit/s out, 15,261 pps, peak minute named, per interface |
+| 4 | F43 file policy | **pass** | `fmc_create_file_policy` + three `fmc_create_file_rule` (MSEXE block, EICAR file-type block, BLOCK_MALWARE without reset), attached with `fmc_update_access_rule`: `.exe` reset over HTTP and inside decrypted HTTPS, EICAR reset by the file policy (device file-process drops 4 -> 8) |
+| 5 | F63 URL category in access rules | **pass** (rule mechanics); category lookups beyond the local DB need the cloud | `fmc_create_access_rule(url_categories=[Gambling])` -> HTTP and decrypted HTTPS to `<gambling-hostname>` reset, other hostnames 200, 2 hits; `fmc_rule_lookup(url_category=...)` names the rule; packet tracer can only show it pending (no URL in a trace) |
+| 6 | F61 SI feeds + custom lists | **pass** (traffic); 2 bugs, fix PRs #218, #215 | IP and URL feeds from `<feed-host>` and a custom list in the block list: `<si-hit>` and a URL-feed host blocked, packet tracer "Blocked ... by the reputation preprocessor" (about 30 min after create); feed status misread as "not downloaded yet" (R1), list replace refused (R2) |
+| 7 | F62 IPS on traffic + `fmc_threat_defense_review` | **pass** | IPS drops (overnight); posture + prompt followed on `mcp-fw-threat-acp`: ranked report with a fix per finding |
+| 8 | F64 TLS decryption | **pass** (traffic overnight; R1/R2 fixed by #190/#191 and re-proven); new R3 | `fmc_tls_decryption_check` now names `mcp-fw-resign` -> DECRYPT_RESIGN and `mcp-fw-dnd` -> DO_NOT_DECRYPT; a rule made by `fmc_create_decryption_rule` deploys without FMC's TLS-version refusal; `insert_before` makes FMC answer 500 although the rule is created (R3, fix PR below) |
+| 9 | F41 + F49 VPN status / troubleshoot | **pass** (R1, R2 fixed by #192/#193, re-proven) | `mcp-fw-t1` rebuilt: hub overlay routes resolve through the DVTI's `V` routes, no false warning; dead WAN now **critical** "the peer doesn't answer (dead WAN path ...)" on both ends, the path check confirms it; then torn down |
+| 10 | F54 `fmc_onboard_branch` | **pass** | overnight: prompt end to end, `fmc_prove_policy` hand-off 3/3 |
+| 11 | F58 interface kinds | **pass** (loopback, VTI, BVI); EtherChannel: platform limit, now refused in the preview (#194) | `fmc_create_interface(kind='etherchannel')` on the FTDv branch returns `blocked` with FMC's own message |
+| 12 | F65 HA under traffic | **pass** | overnight: hitless switch, 15.2 s gap on power-off, separate state link |
+| 13 | F34 ISE identity source | **partial**; enforcement **blocked: pxGrid** | tools report the failing source correctly; FMC still presents an old client certificate to ISE (B2, handled separately) |
+| 14 | F56 `fmc_prove_policy` + `fmc_prove_user_policy` | **pass** (tool, prompt); alice/bob rows **blocked: pxGrid** | 4 of 6 flows pass, the 2 user rows report "no user on `<client>`" (true while B2 lasts) |
+| - | Read-only live tests | pass | overnight: 7 passed, 1 skipped (the role 403, since fixed) |
 
-## Proofs
+## Blockers that apply to several proofs
 
-### Blockers that apply to several proofs
+- **B0, stale tool list in the agent's MCP client (overnight only).** The server reported 180 tools (`fmc_status`), but the
+  client session the overnight live agents ran in had connected before the redeploy and still listed main's 153 tools, so no
+  Wave 5 tool or new argument could be called. Resolved for the morning re-proof (the client reconnected).
+- **B1, FMC role (resolved in the morning).** `analysis/activesessions` and `analysis/useractivity` answered 403 "The user is not
+  authorized" for the API role overnight; the role now has Events & Logs > Analysis > Users and both answer.
+- **B2, FMC's pxGrid client certificate (lab, handled separately).** Overnight the lab's FMC client certificate came from an earlier
+  root of the lab CA, so ISE refused it. It was re-issued from the current root and loaded into FMC's certificate object; ISE
+  accepts the new certificate when it is presented directly, but FMC's own Test still fails with "certificate unknown" (FMC keeps
+  presenting the old one). Until that is fixed no user reaches the firewall, so user rules can't be proven on traffic (F34, F56).
 
-- **B0, stale tool list in the agent's MCP client (all new tools).** The server reported 180 tools (`fmc_status`), but the
-  client session the live agent ran in had connected before the redeploy and still listed main's 153 tools, so no Wave 5
-  tool or new argument could be called. Lab-side setup and device-side checks were done with the existing tools; each
-  blocked proof is one tool call once the client reconnects.
-- **B1, FMC role.** `analysis/activesessions` and `analysis/useractivity` answer 403 "The user is not authorized" for the
-  API role (it needs Events & Logs > Analysis > Users).
-- **B2, FMC's pxGrid client certificate (lab).** The lab's FMC client certificate was issued by an earlier root of the lab CA
-  (same name, different key: the CA was rebuilt a day later). ISE trusts only the current root and its pxGrid certificate is
-  signed by it, so ISE refuses FMC's certificate in the TLS handshake. Re-issuing the client certificate needs an ISE and an AD CS
-  write, outside this run. Until then no user reaches the firewall, so user rules can't be proven on traffic.
+## Re-proof on main (2026-10-19 morning)
+
+Server: `main` with every Wave 5 PR and the overnight fix PRs merged (#183 assignment lists, #186 identity hooks, #188/#189 IPS and
+hit-count fixes, #190/#191 decryption, #192/#193 VPN status, #194 interfaces, #195/#196 identity sources), 180 tools, 11 prompts.
+Each write: preview, read, then the same call with the confirm token; deploys name `mcp-ftd-identity` (or the four T1 devices)
+only. New findings got their own fix PRs (#211, #215, #216, #218), listed per item.
+
+### F59 `fmc_find_address` (pass)
+
+- `fmc_find_address('<client>')`: 12 rows. Exact: the dynamic object `mcp-fw-dyn` (mapping), host `mcp-fw-client`, group
+  `mcp-fw-clients-grp` (via the host), access rule `mcp-fw-threat-acp` #4 `mcp-fw-find-client` (source, via group > host), the auto
+  NAT rule of `mcp-fw-nat` (original source). Then "contains": the lab's client network object and the identity FTD's NAT rule on it,
+  the inside supernet, FMC's RFC 1918 objects, two `mcp-test-*` rules on 10/8. 6 matches only through `any` counted, not listed.
+- `device='mcp-ftd-identity'`: searched 1 access policy, **1 NAT policy** and lists the device's NAT rule on `<client-net>` (overnight
+  R1: 0 NAT policies, because FMC lists a Global policy's assignment only in Global's list; fixed by #183).
+- `fmc_find_address('<client-net>')`: the network object and its NAT rule exact, the five seeds `inside`.
+
+### F55 live connections and identity sessions (pass; R1 fixed in #211)
+
+- `fmc_live_connections(device='mcp-ftd-identity', host='<client>')`: 60 connections from the syslog buffer, 2 open (the long-lived
+  download and the newest request), closed ones with bytes, duration and FTD's teardown reason, initiator `inside <client>:<port>`.
+  Nits seen: the reason keeps FTD 10's trailing " -1 -1"; packet-tracer flows show up as connections ("Free the flow created as
+  result of packet injection"; the eval's #214 filters them).
+- `fmc_user_identity_sessions(ip='<client>')`: no 403 any more (role fixed); 0 sessions, "No active session ... no identity source
+  reports this IP" (true: the ISE source isn't connected, B2).
+- **R1 (fail, fixed in #211):** `history=true` (also `fmc_user_ip_lookup(history=true)`) -> FMC 422 "Invalid time field." on
+  `analysis/useractivity`. FMC 10.0.1 refuses the `time=after:<epoch>` filter its own spec documents in every form tried (encoded or
+  raw colon, `after:..,before:..`, milliseconds, ISO 8601); without `time` it answers 200. The fix applies the window in the server.
+
+### F57 `fmc_device_metrics` (pass)
+
+`fmc_device_metrics(device='mcp-fw-ha-a', since=<burst start - 7 min>, until=<burst end + 7 min>, metric='throughput')`, read about
+five hours after the overnight burst: total in 155.5 Mbit/s, out 152.9 Mbit/s, 15,261 pps in, all peaking in the same minute, the
+peak window named; per interface inside (in) and outside (out) carry it, the failover link stays at a few kbit/s.
+
+### F43 file policy (pass)
+
+- `fmc_create_file_policy('mcp-fw-file-av')`, then `fmc_create_file_rule` three times: BLOCK (reset) MSEXE over HTTP downloads
+  (stored as `BLOCK_WITH_RESET`); BLOCK (reset) file type **EICAR**, any protocol and direction (FMC 10.0.1 has an EICAR file type,
+  so no cloud and no custom detection list are needed; the custom detection list's SHA-256 entries are not in FMC's REST API, they are
+  a system object edited in the UI); BLOCK_MALWARE on PDF with `reset=False` (FMC accepts `BLOCK_MALWARE` without reset; overnight
+  this was an open question).
+- `fmc_update_access_rule(file_policy='mcp-fw-file-av')` on `mcp-fw-baseline` and `mcp-fw-lab-extra` (preview: from `mcp-fw-file`
+  to `mcp-fw-file-av`), plus a new ALLOW rule `mcp-fw-file-noips` to `<dnd-host>` tcp/80 with the file policy and no intrusion policy,
+  so EICAR meets the file policy and not IPS rule 1:37732. Deploy `mcp-ftd-identity`: SUCCEEDED.
+
+| From the client | Before | After |
+|---|---|---|
+| `http://<dnd-host>/eicar.com` | `200`, 0 bytes, timeout (IPS drop) | `200`, 0 bytes, **reset** (file policy) |
+| `http://<dnd-host>/test.exe` | reset (overnight file policy) | reset |
+| `http://<outside-host>/test.exe`, `https://<outside-host>/test.exe` (decrypted) | | reset, reset |
+| `http://<dnd-host>/index.html`, `https://<outside-host>/index.html` | `200` | `200` |
+
+FTD console: `show asp drop` "Blocked or blacklisted by the file process preprocessor" 4 -> **8** (the four blocks), IPS
+preprocessor drops unchanged (6). Hit counts: `mcp-fw-file-noips` 3.
+
+Nit: `fmc_get_file_policy(policy=...)` in markdown shows the rules as bare ids (the JSON has protocol, direction, types and action);
+the same flattening hides `fmc_get_intrusion_policy`'s overridden rules. Its `used_by` is empty for a policy two rules use.
+
+### F63 URL category in access rules (pass for the rule mechanics; what needs the cloud)
+
+- `fmc_create_access_rule('mcp-fw-url-block', BLOCK_RESET, zones inside -> outside, url_categories=[{category: 'Gambling',
+  reputation: 'ANY_AND_UNKNOWN'}], insert_before=1)`: preview shows `urlCategoriesWithReputation` with Gambling's id and "every site
+  in the category"; deployed with F43.
+- Client: `curl --resolve <gambling-hostname>:80:<outside-host>` -> `000`, reset; the same over HTTPS (decrypted) -> reset; another
+  hostname to the same server -> `200`. `fmc_get_hit_counts`: `mcp-fw-url-block` 2 hits at the time of the two requests.
+- `fmc_rule_lookup(<client> -> <outside-host> tcp/80, url_category='Gambling', device)`: "Rule 1 'mcp-fw-url-block' -> BLOCK_RESET".
+- `fmc_packet_tracer` for the same 5-tuple: the access list sends the flow to Snort under `mcp-fw-url-block`, Snort says "no url or
+  host" and allows: a trace carries no HTTP host, so it can only show the URL rule as pending (the tool reports `action: allow` with
+  `verdict_rule: mcp-fw-url-block`; nit: it could say the verdict is provisional).
+- What needs the Cisco cloud: the category and reputation of a URL that isn't in the device's local URL database (cloud lookup), and
+  updates to that database. The gambling hostname was already in the local database, so the block worked without cloud access.
+
+### F61 SI feeds and custom lists (pass on traffic; R1, R2 fixed in PRs)
+
+- `fmc_create_si_feed(kind='ip', name='mcp-fw-ip-feed', url='http://<feed-host>/ip-feed.txt', refresh=30)` and the same for
+  `kind='url'` (`mcp-fw-url-feed`); `fmc_upload_si_list(kind='ip')` twice: `mcp-fw-ip-list` (two documentation entries) and
+  `mcp-fw-ip-list-hit` (`<si-hit>`); `fmc_set_si_lists(policy='mcp-fw-threat-acp', list_type='block')` with the feeds and lists
+  (FMC stores the custom lists as `CustomSIIPListObject`; the tool sent the list type from FMC's catalog and FMC accepted it).
+  Deploys of `mcp-ftd-identity` SUCCEEDED.
+- **Traffic.** Right after the deploys (three tries over five minutes) `http://<si-hit>/` still answered `200` and packet tracer had
+  no Security Intelligence phase. About 30 minutes after the feeds were created (the feeds' first refresh, and one more deploy for
+  F64 in between) the device blocked: `http://<si-hit>/` -> `000` (connection refused at once), `curl --resolve
+  <url-feed-host>:80:<outside-host>` (a host only in the URL feed) -> timeout, the decrypted HTTPS page to `<outside-host>` still
+  `200`; `fmc_packet_tracer` to `<si-hit>` tcp/80: **drop, "(reputation) Blocked or blacklisted by the reputation preprocessor"**,
+  phase SNORT. (Nit: the tool still names the access-list rule that handed the flow to Snort as `verdict_rule`.)
+- **R1 (fail, fix PR #218):** `fmc_create_si_feed` and `fmc_get_security_intelligence` say "not downloaded yet, entries 0" for both
+  feeds, before and after the device started blocking. FMC 10.0.1's feed object has `metadata.validEntries` = the feed's lines
+  (read at create time) but keeps `entryCount` 0 and no `feedUpdateTime`; the tool keys only on those two. The fix reports
+  "fetched: N valid entries; FMC doesn't report the load over REST" with a sample, and says how to check (packet tracer, drop reason
+  `reputation`).
+- **R2 (fail, fix PR #215):** replacing a list (`fmc_upload_si_list` again with the same name; the preview correctly says what it
+  replaces) -> FMC 400 "Request UUID and data does not match.": the multipart PUT has no `id` field.
+
+### F62 IPS + `fmc_threat_defense_review` (pass)
+
+The prompt (arguments: `mcp-fw-threat-acp`, the leaf domain) was followed step by step:
+
+1. `fmc_threat_posture`: default action BLOCK; 4 ALLOW rules: `mcp-fw-baseline` and `mcp-fw-lab-extra` with `mcp-fw-ips` (Balanced,
+   PREVENTION) and `mcp-fw-file-av`, `mcp-fw-file-noips` with the file policy only, `mcp-fw-find-client` with neither; network analysis
+   policy Balanced (PREVENTION); decryption `mcp-fw-dec`; identity policy `mcp-fw-idp`; device licences ESSENTIALS, IPS,
+   MALWARE_DEFENSE, URL. Findings: medium `si_no_talos_network`; low `default_action_no_logging`, `allow_no_file_policy`
+   (`mcp-fw-find-client`), `si_no_talos_url`, `dns_no_talos` (FMC's read-only default DNS policy), each with a tool call as the fix.
+2. `fmc_policy_audit(checks=[no_intrusion, no_logging, permissive, shadowed])`: `no_intrusion` (medium) on `mcp-fw-file-noips` and
+   `mcp-fw-find-client`; nothing shadowed or permissive.
+3. `fmc_get_security_intelligence`: the run's feeds and lists in the block lists; both feeds "not downloaded yet" -> **high** per the
+   prompt (the policy blocks less than it shows; see F61).
+4. `fmc_get_intrusion_policy('mcp-fw-ips')`: Balanced base, PREVENTION, one override (1:498 BLOCK); nothing weakened.
+5. `fmc_list_policies(kind='network_analysis')`: the four system NAPs; Balanced is used by this policy.
+6. Report (ranked): high: both SI feeds "not downloaded yet" (as the tool reported them; F61's R1 shows FMC had fetched them and
+   the device blocked their entries later); medium: no Talos network categories, two ALLOW rules without IPS; low: default action
+   not logged, a rule without a file policy, no Talos URL categories, no DNS policy of its own. Fixes were not applied (step 7 offers
+   them one preview at a time).
+
+### F64 TLS decryption (pass; R1, R2 fixed and re-proven; R3 fixed in #216)
+
+- `fmc_tls_decryption_check(<client> -> <outside-host>:443, device)`: **"Rule 2 'mcp-fw-resign' -> DECRYPT_RESIGN"**, inspection
+  "Decrypted ...", readiness: link ok, CA expiry warning (throwaway 30-day CA), TLS 1.3 on, deployed. To `<dnd-host>`: **"Rule 1
+  'mcp-fw-dnd' -> DO_NOT_DECRYPT"**. Overnight both said "default action" (R1, fixed by #190). `fmc_get_decryption_policy` lists no
+  certificate conditions and no TLS-version problem.
+- `fmc_create_decryption_rule('mcp-fw-dnd-doc', DO_NOT_DECRYPT, a documentation address, tcp/443, insert_before=1)`: the body now
+  carries all TLS versions on (R2, fixed by #191) and the deploy of `mcp-ftd-identity` passed FMC's validation.
+- **R3 (fail, fixed in #216):** with `insert_before` FMC 10.0.1 answered 500 "JsonNull" but stored the rule at index 1; the tool
+  reported an error. Nit: `fmc_get_decryption_policy` lists rules in FMC's list order, not by index.
+- HTTPS through the policy after these changes: `.exe` still reset inside TLS (F43 table), index page `200`.
+
+### F41 `fmc_vpn_status` + F49 dead WAN (pass; R1 and R2 fixed and re-proven)
+
+`mcp-fw-t1` rebuilt with `fmc_create_sdwan_topology` (hub + spokes 1-3 on the internet carrier, new DVTI, loopback and pool,
+iBGP overlay, the T1 policy's existing overlay zone) and the four T1 devices deployed (SUCCEEDED).
+
+- `fmc_vpn_status(topology='mcp-fw-t1', device=<hub>)` ten seconds after the deploy: 3 IKEv2 SAs READY (AES-GCM-256, DH 21, PSK),
+  3 IPsec SAs on the DVTI's virtual-access interfaces, the hub's `overlay_routes` = the 3 spoke LANs over BGP via the spokes'
+  tunnel addresses, which now resolve through the DVTI's `V` routes (FTD prints them on two lines; overnight R1, fixed by #192):
+  **no "no routes over the VTIs" warning**. The only warnings: FMC's tunnel monitor still said UNKNOWN while the hub had READY SAs
+  (FMC lags; the tool says so).
+- Dead WAN (the prompt's dead-path case, overnight R2, fixed by #193): spoke2's internet link down in CML, then
+  `fmc_vpn_status(device=<spoke2>)` four times over about two minutes (the server keeps the earlier counter readings):
+  1. 34 s after: the hub already dropped spoke2's IPsec SA and BGP route, the spoke still showed its IKE SA READY (it notices only
+     after DPD); `degraded` empty.
+  2. 89 s: no IKE SA on either end; FMC still TUNNEL_UP -> warning "FMC shows TUNNEL_UP but ... has no IKE SA ... (FMC's tunnel
+     monitor lags the device)".
+  3. 140 s: FMC TUNNEL_DOWN -> **critical**, on both ends: "IKEv2 exchanges time out with no authentication failures: the peer
+     doesn't answer (dead WAN path or UDP 500/4500 blocked)" (retransmit-limit counters grew by 1 in the window, authentication
+     failures 0). Overnight the same case said only "no IKEv2 failures in the last 73 s".
+  4. Path check as the prompt now says: `cml_check_reachability` from spoke2 to its carrier gateway and to the hub's WAN address:
+     0/5 each -> dead WAN path on spoke2, nothing on FMC fixes it. Link restored.
+- Then `mcp-fw-t1` was deleted again (`fmc_delete_s2s_vpn`, the hub's DVTI and loopback with `fmc_delete_interface`, the pool with
+  `fmc_api_call` DELETE) and the four T1 devices deployed (SUCCEEDED).
+
+### F58 `fmc_create_interface` EtherChannel on FTDv (pass)
+
+`fmc_create_interface(device='mcp-fw-branch1', kind='etherchannel', members=[two spare NICs], lacp_mode='active')` returns
+**`blocked`**: "mcp-fw-branch1 is an FTDv (Cisco Secure Firewall Threat Defense for KVM): FMC doesn't support EtherChannel interfaces
+on virtual Threat Defense (FMC 10.0.1 refuses the POST with \"Etherchannel interface is not supported on 'Virtual' Threat
+Defense\"). Use separate interfaces, or a bvi to bridge them." (overnight R1, fixed by #194). Nothing was sent to FMC.
+
+### F34 / F56 user rows (blocked: pxGrid, handled separately)
+
+Not re-run: FMC's ISE source still can't connect (B2). The tools' behaviour against the failing source was proven overnight
+(sections 13 and 14); the alice/bob enforcement rows wait for the pxGrid fix.
+
+## Overnight proofs (chain head, 2026-10-18/19)
 
 ### 1. F59 `fmc_find_address` (blocked: B0)
 
