@@ -57,6 +57,7 @@ def dropped(reason: str, at: str, keep_rules: bool) -> dict[str, Any]:
 def lab(ftd: respx.MockRouter) -> respx.MockRouter:  # noqa: F811
     _catalog(ftd)
     ftd.get(f"{CFG}/policy/accesspolicies/{ACP['id']}/accessrules").mock(return_value=items(RULES))
+    ftd.get(f"{CFG}/devicehapairs/ftddevicehapairs").mock(return_value=items([]))
     return ftd
 
 
@@ -340,3 +341,91 @@ async def test_prompt_listed_and_rendered(lab: respx.MockRouter) -> None:
         )
         body: Any = r.messages[0].content
         assert '"alice" may reach "192.0.2.80" (tcp port 80)' in body.text
+
+
+# --- HA pairs and auto placement (#198) ---------------------------------------------------------------
+# Eval on FMC 10.0.1: with no device, the HA flow went to the standby unit ('(fo-standby) Dropped by standby
+# unit' -> mismatch), the pair's name was refused, and disconnected devices filled the first-10 pool.
+
+
+def ha_lab(lab: respx.MockRouter) -> tuple[dict[str, Any], dict[str, Any]]:
+    """mcp-ftd1 (DEV, interfaces mocked) is the ACTIVE unit of the recorded pair; the standby unit and a
+    disconnected device come first in the device list and have nothing mocked (touching them fails)."""
+    from .test_tools_ftd import DEV
+
+    pair = copy.deepcopy(fixture("ha_failover")["pair"])
+    standby = {
+        **DEV,
+        "id": "0b000000-0000-4000-8000-00000000000b",
+        "name": "mcp-fw-ha-b",
+        "isConnected": True,
+    }
+    offline = {**DEV, "id": "0d000000-0000-4000-8000-00000000000d", "name": "mcp-ftd9", "isConnected": False}
+    pair["primary"].update(id=DEV["id"], name=DEV["name"])
+    pair["metadata"]["primaryStatus"]["device"].update(id=DEV["id"], name=DEV["name"])
+    lab.get(f"{CFG}/devices/devicerecords").mock(
+        return_value=items([offline, standby, {**DEV, "isConnected": True}])
+    )
+    lab.get(f"{CFG}/devicehapairs/ftddevicehapairs").mock(return_value=items([pair]))
+    return pair, standby
+
+
+async def test_auto_placement_skips_standby_and_disconnected_units(lab: respx.MockRouter) -> None:
+    ha_lab(lab)
+    tracer(lab, lambda b: ALLOW)
+    data = await call(
+        {
+            "flows": [
+                {"source": "10.99.1.10", "destination": "192.0.2.10", "protocol": "icmp", "expect": "allow"}
+            ]
+        }
+    )
+    (row,) = data["results"]
+    assert row["result"] == "pass", row
+    assert row["device"] == "mcp-fw-ha (mcp-ftd1, active)"
+
+
+async def test_ha_pair_name_means_the_active_unit(lab: respx.MockRouter) -> None:
+    ha_lab(lab)
+    post = tracer(lab, lambda b: ALLOW)
+    data = await call(
+        {
+            "device": "mcp-fw-ha",
+            "flows": [
+                {"source": "10.99.1.10", "destination": "192.0.2.10", "protocol": "icmp", "expect": "allow"}
+            ],
+        }
+    )
+    (row,) = data["results"]
+    assert row["result"] == "pass" and row["device"] == "mcp-fw-ha (mcp-ftd1, active)", row
+    from .test_tools_ftd import DEV
+
+    assert json.loads(post.calls.last.request.content)["device"]["id"] == DEV["id"]
+
+
+async def test_trace_on_a_standby_unit_is_an_error_not_a_mismatch(lab: respx.MockRouter) -> None:
+    ha_lab(lab)
+    tracer(lab, lambda b: dropped("(fo-standby) Dropped by standby unit", "ROUTE-LOOKUP", True))
+    data = await call(
+        {
+            "device": "mcp-ftd1",
+            "flows": [
+                {"source": "10.99.1.10", "destination": "192.0.2.10", "protocol": "icmp", "expect": "allow"}
+            ],
+        }
+    )
+    (row,) = data["results"]
+    assert row["result"] == "error" and "standby unit" in row["note"], row
+
+
+async def test_no_device_error_names_what_was_left_out(lab: respx.MockRouter) -> None:
+    ha_lab(lab)
+    tracer(lab, lambda b: ALLOW)
+    data = await call(
+        {"flows": [{"source": "172.16.5.5", "destination": "192.0.2.80", "port": 80, "expect": "allow"}]}
+    )
+    (row,) = data["results"]
+    assert row["result"] == "error"
+    assert (
+        "mcp-ftd9 (disconnected)" in row["note"] and "mcp-fw-ha-b (standby unit of mcp-fw-ha)" in row["note"]
+    )
