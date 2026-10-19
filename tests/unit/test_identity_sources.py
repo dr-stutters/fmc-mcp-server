@@ -103,7 +103,7 @@ def mock_status(
     fmc: respx.MockRouter,
     *,
     ise: dict[str, Any] | None = None,
-    sgts: bool = False,
+    sgts: bool | dict[str, Any] = False,
     sessions: list[dict[str, Any]] | None = None,
     bindings: str = "0 / 64000",
     linked: bool = True,
@@ -116,7 +116,10 @@ def mock_status(
         if a["moduleID"] == "SNORT_IDENTITY_MEMORY_USAGE" and a["deviceUUID"] == IDENT and "params" in a:
             a["params"] = a["params"].replace("0 / 64000", bindings)
     fmc.get(f"{CFG}/health/alerts").mock(return_value=ok(alerts))
-    if sgts:
+    if isinstance(sgts, dict):
+        body = {k: v for k, v in sgts.items() if k != "_source"}
+        fmc.get(f"{CFG}/object/isesecuritygrouptags").mock(return_value=ok(body))
+    elif sgts:
         fmc.get(f"{CFG}/object/isesecuritygrouptags").mock(return_value=ok(FX["isesgts"]))
     else:
         fmc.get(f"{CFG}/object/isesecuritygrouptags").mock(
@@ -207,6 +210,23 @@ async def test_identity_sources_without_ise(fmc: respx.MockRouter) -> None:
     assert devs["ftd-down"]["state"] == "Appliance unreachable"
     assert any("configure it in the FMC UI" in n for n in out["next"])
     assert not any("PASSIVE rule" in n for n in out["next"])  # the policy is linked
+
+
+async def test_identity_sources_saved_source_before_the_health_run(fmc: respx.MockRouter) -> None:
+    """Live-3 (FMC 10.0.1): right after the ISE source is saved, the SGT list answers (no more 422) while the
+    ISE health module still says 'ISE is not configured or not enabled' until its next run. The tool says
+    the source is saved and not checked yet, not 'No ISE identity source'."""
+    mock_status(fmc, sgts=FX["isesgts_enabled_empty"])
+    async with Client(server()) as c:
+        out = await run(c, "fmc_get_identity_sources", {})
+    ise = out["ise"]
+    assert ise["state"] == "awaiting_health_check"
+    assert ise["details"] == "ISE is not configured or not enabled" and ise["sgts_downloaded"] == 0
+    assert "sgt_note" not in ise and "configure" not in ise
+    assert out["verdict"].startswith("ISE identity source saved; FMC hasn't checked the connection yet")
+    step = next(n for n in out["next"] if "health monitor's next run" in n)
+    assert "'ISE is not configured or not enabled'" in step and ise["checked"] in step
+    assert not any("No ISE identity source" in n for n in out["next"])
 
 
 async def test_identity_sources_connected_with_sessions_and_bindings(fmc: respx.MockRouter) -> None:
