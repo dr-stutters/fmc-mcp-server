@@ -17,7 +17,7 @@ from fmc_mcp.tools import prove
 from fmc_mcp.tools.prompts import _prove_user_policy_text
 from fmc_mcp.tools.prove import policy_verdict, user_seen
 
-from .conftest import CFG, DOMAIN, fixture, items, make_settings
+from .conftest import CFG, DOMAIN, TOP_CFG, as_leaf, fixture, items, make_settings
 from .test_tools_ftd import ACP, _catalog, ftd  # noqa: F401  (ftd is a fixture)
 
 ALLOW = fixture("ftd_packettracer_allow")
@@ -229,6 +229,30 @@ async def test_user_ip_comes_from_fmc_identity_sessions(lab: respx.MockRouter) -
     lab.get(f"{CFG}/analysis/activesessions").mock(return_value=httpx.Response(403, json={}))
     (row,) = (await call({"device": "mcp-ftd1", "flows": [flow]}))["results"]
     assert row["result"] == "error" and "Analysis > Users" in row["note"]
+
+
+async def test_user_ip_in_a_leaf_comes_from_global_sessions(lab: respx.MockRouter) -> None:
+    """Live on FMC 10.0.1: the ISE source (and so its sessions) lives in Global only; a user flow without a
+    source in the leaf domain takes the IP from Global's session instead of failing 'no active session'."""
+    as_leaf(lab)
+    post = tracer(lab, lambda b: with_user(ALLOW, "alice"))
+    leaf = lab.get(f"{CFG}/analysis/activesessions").mock(return_value=items([]))
+    alice = {"currentIP": "10.99.1.10", "username": "alice", "realmName": "LAB", "lastSeen": 1792334300}
+    top = lab.get(f"{TOP_CFG}/analysis/activesessions").mock(return_value=items([alice]))
+    flow = {"user": "LAB\\alice", "destination": "192.0.2.10", "protocol": "icmp", "expect": "allow"}
+    args = {"device": "mcp-ftd1", "flows": [flow], "domain": "Global/mcp-test-leaf"}
+    (row,) = (await call(args))["results"]
+    assert (row["result"], row["flow"], row["user_seen"]) == (
+        "pass",
+        "icmp 10.99.1.10 -> 192.0.2.10",
+        "LAB\\alice",
+    )
+    assert leaf.called and top.calls.last.request.url.params["username"] == "alice"
+    assert post.calls.last.request.url.path == TRACES  # traced on the leaf's device, as before
+    # nobody logged in anywhere: still an error row, now saying the ancestors were read too
+    top.mock(return_value=items([]))
+    (row,) = (await call(args))["results"]
+    assert row["result"] == "error" and "no active session" in row["note"] and "ancestors" in row["note"]
 
 
 async def test_non_policy_drops_are_mismatches(lab: respx.MockRouter) -> None:

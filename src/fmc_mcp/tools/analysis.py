@@ -31,7 +31,8 @@ LIMITS = (
     "checked against their current IP mappings. FQDN objects can't be resolved offline. Zones are "
     "only checked when you pass them or a device (then they come from its interfaces and routes). "
     "Without `identities`, the user FMC's identity sessions have on the source IP is used (see "
-    "`identity`); when those can't be read, user rules stay conditional."
+    "`identity`; in a child domain without sessions, an ancestor's: `identity.sessions_domain`); when those "
+    "can't be read, user rules stay conditional."
 )
 DYNAMIC_FIELDS = ("sourceDynamicObjects", "destinationDynamicObjects")
 DYNAMIC_CAP = 25  # dynamic objects whose mappings are read per lookup

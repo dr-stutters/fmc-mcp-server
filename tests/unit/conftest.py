@@ -15,6 +15,10 @@ DOMAIN = "e276abec-e0f2-11e3-8169-6d9ed49b625f"
 CHILD = "11111111-2222-3333-4444-555555555555"
 CFG = f"/api/fmc_config/v1/domain/{DOMAIN}"
 DOMAINS = [{"name": "Global", "uuid": DOMAIN}, {"name": "Global/Branch", "uuid": CHILD}]
+# The lab's layout: the login's domain (DOMAIN, so CFG and every mock below) is a leaf under Global (TOP).
+TOP = "99999999-0000-4000-8000-000000000001"
+TOP_CFG = f"/api/fmc_config/v1/domain/{TOP}"
+LEAF_DOMAINS = [{"name": "Global", "uuid": TOP}, {"name": "Global/mcp-test-leaf", "uuid": DOMAIN}]
 
 
 def make_settings(**kw: Any) -> Settings:
@@ -33,7 +37,7 @@ def make_server(**kw: Any) -> FastMCP[Any]:
     return create_server(make_settings(**kw))
 
 
-def login_response(n: int = 1) -> httpx.Response:
+def login_response(n: int = 1, domains: list[dict[str, str]] | None = None) -> httpx.Response:
     return httpx.Response(
         204,
         headers={
@@ -41,9 +45,15 @@ def login_response(n: int = 1) -> httpx.Response:
             "X-auth-refresh-token": f"refresh-{n}",
             "DOMAIN_UUID": DOMAIN,
             "USER_UUID": "u-1",
-            "DOMAINS": json.dumps(DOMAINS),
+            "DOMAINS": json.dumps(DOMAINS if domains is None else domains),
         },
     )
+
+
+def as_leaf(fmc: respx.MockRouter, domains: list[dict[str, str]] = LEAF_DOMAINS) -> None:
+    """Log in to DOMAIN as a leaf below Global (TOP_CFG), like the lab's Global/mcp-test-leaf: the
+    existing CFG mocks stay the leaf's, and Global's own paths are TOP_CFG."""
+    fmc.routes["login"].mock(return_value=login_response(domains=domains))
 
 
 def items(rows: list[dict[str, Any]], total: int | None = None) -> httpx.Response:
