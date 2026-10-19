@@ -15,7 +15,7 @@ from fmc_mcp.rules import OPAQUE_CONDITIONS, flatten_access_rule, has_value
 from fmc_mcp.tools.analysis import shadow_findings
 from fmc_mcp.tools.common import Domain, is_system, ref_label
 from fmc_mcp.tools.deploy import DEPLOYABLE
-from fmc_mcp.tools.policies import ACCESS, all_rules, resolve_policy
+from fmc_mcp.tools.policies import ACCESS, all_rules, policy_assignments, resolve_policy
 from fmc_mcp.tools.troubleshoot import _parse_local, rule_hits
 
 Check = Literal[
@@ -376,10 +376,9 @@ async def assigned_devices(
 ) -> tuple[list[tuple[str, str]], list[str]]:
     """(device id, label) for every device the policy is deployed to, HA pairs expanded to both
     members; plus notes for targets that can't be read (clusters)."""
-    page = await app.all(await app.config_path("assignment/policyassignments", domain), cap=5000)
     devices: list[tuple[str, str]] = []
     notes: list[str] = []
-    for a in page.items:
+    for a in await policy_assignments(app, domain):
         if (a.get("policy") or {}).get("id") != policy_id:
             continue
         for t in a.get("targets") or []:

@@ -39,7 +39,7 @@ from fmc_mcp._core.formatting import max_chars
 from fmc_mcp.client import FmcApp
 from fmc_mcp.tools.common import Domain, type_for
 from fmc_mcp.tools.intrusion import IPS
-from fmc_mcp.tools.policies import ACCESS, NAT, PREFILTER, all_rules, resolve_policy
+from fmc_mcp.tools.policies import ACCESS, NAT, PREFILTER, all_rules, policy_assignments, resolve_policy
 from fmc_mcp.tools.rule_io import CONDITIONS, UNSUPPORTED, export_row
 
 SCHEMA = 1
@@ -344,7 +344,7 @@ class Exporter:
 
     async def nat_policies(self, acp: dict[str, Any], names: list[str] | None) -> dict[str, Any]:
         if names is None:  # the NAT policies of the devices this access policy is assigned to
-            assignments = await self._all("assignment/policyassignments", cap=2000)
+            assignments = await policy_assignments(self.app, self.domain, cap=2000)
             targets = {
                 t.get("id")
                 for a in assignments

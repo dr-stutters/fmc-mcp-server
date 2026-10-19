@@ -15,7 +15,6 @@ from fmc_mcp._core import AuthError
 from fmc_mcp.client import FmcApp
 from fmc_mcp.server import create_server
 from fmc_mcp.tools.identity_sources import (
-    ROLE_HINT,
     cert_row,
     identity_memory,
     ise_state,
@@ -25,7 +24,7 @@ from fmc_mcp.tools.identity_sources import (
     users_on_ip,
 )
 from fmc_mcp.tools.live import active_sessions as live_sessions
-from fmc_mcp.tools.live import session_items
+from fmc_mcp.tools.live import refused, session_items
 
 from .conftest import CFG, empty, fixture, items, make_settings
 
@@ -200,7 +199,7 @@ async def test_identity_sources_without_ise(fmc: respx.MockRouter) -> None:
         "realms": ["corp"],
         "used_by": ["acp"],
     }
-    assert out["sessions"]["error"] == ROLE_HINT
+    assert out["sessions"]["error"] == refused()
     devs = {d["device"]: d for d in out["devices"]}
     assert devs["ftd-identity"]["user_ip_bindings"] == "0 / 64000"
     assert devs["ftd-identity"]["identity_process"] == "Identity Process are disabled"
@@ -286,7 +285,7 @@ async def test_user_lookup_keeps_groups_when_sessions_are_refused(fmc: respx.Moc
     mock_realm_lookups(fmc)
     async with Client(server()) as c:
         out = await run(c, "fmc_user_ip_lookup", {"user": "bob"})
-    assert out["sessions_error"] == ROLE_HINT
+    assert out["sessions_error"] == refused()
     assert out["users"] == [{"user": "bob", "realm": "corp", "groups": ["contractors"]}]
 
 
@@ -455,7 +454,7 @@ async def test_rule_lookup_refused_sessions_keep_user_rules_conditional(fmc: res
     mock_sessions(fmc, None)
     async with Client(server()) as c:
         out = await run(c, "fmc_rule_lookup", FLOW)
-    assert out["identity"]["error"] == ROLE_HINT
+    assert out["identity"]["error"] == refused()
     assert out["may_match_first"][0]["name"] == "contractors-no-web"
     assert out["may_match_first"][0]["depends_on"] == ["users"]
 
