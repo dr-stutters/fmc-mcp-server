@@ -22,6 +22,18 @@ def _q(value: str, what: str) -> str:
     return json.dumps(v)
 
 
+# AD user names may carry the realm ('LAB\\alice'); nothing else beyond _SAFE's word characters.
+_USER = re.compile(r"^[\w.@\\-]{1,100}$")
+
+
+def _qu(value: str, what: str) -> str:
+    """A user name (optionally 'REALM\\user') as a quoted literal."""
+    v = value.strip()
+    if not _USER.match(v):
+        raise InvalidRequest(f"{what} {value!r} is not a user name (letters, digits, . @ - and REALM\\user).")
+    return json.dumps(v)
+
+
 def _why_blocked_text(
     source: str,
     destination: str,
@@ -698,6 +710,101 @@ call it again.
 """
 
 
+def _prove_user_policy_text(
+    client_ip: str,
+    destination: str,
+    allowed_user: str,
+    blocked_user: str,
+    protocol: str,
+    port: int | None,
+    device: str | None,
+    allow_rule: str | None,
+    block_rule: str | None,
+) -> str:
+    """The fmc_prove_user_policy instructions: one client IP, one user who should get through and one who
+    should not, proven offline (fmc_rule_lookup with identities) and live (fmc_prove_policy)."""
+    proto = protocol.strip().lower()
+    if proto not in ("tcp", "udp", "icmp"):
+        raise InvalidRequest(f"protocol must be tcp, udp or icmp, not {protocol!r}.")
+    try:
+        ipaddress.ip_address(client_ip.strip())
+        ipaddress.ip_address(destination.strip())
+    except ValueError as e:
+        raise InvalidRequest(f"client_ip and destination must be IP addresses ({e}).") from None
+    if proto == "icmp":
+        port = None
+    elif port is None:
+        raise InvalidRequest(
+            f"port is required for {proto} (fmc_prove_policy can't trace a {proto} flow without one), "
+            "e.g. 80; use protocol='icmp' for a ping test."
+        )
+    ip, dst = _q(client_ip, "client_ip"), _q(destination, "destination")
+    ok, no = _qu(allowed_user, "allowed_user"), _qu(blocked_user, "blocked_user")
+    dev = _q(device, "device") if device else None
+    port_arg = f", port={port}" if port is not None else ""
+    flow_port = f', "port": {port}' if port is not None else ""
+    flow_dev = f', "device": {dev}' if dev else ""
+    dev_arg = f"device={dev}" if dev else "device=<the FTD between the client and the destination>"
+    find_dev = (
+        f"The firewall is {dev}."
+        if dev
+        else f"Find the FTD the client sits behind: {tool_ref('fmc_rule_lookup')} with device=<candidate> "
+        f"shows under `device.ingress` whether its interfaces cover {ip}, or leave the device out of the "
+        f"{tool_ref('fmc_prove_policy')} flows and it picks the device itself."
+    )
+
+    def expect(user: str, verdict: str, rule: str | None) -> str:
+        r = f', "rule": {_q(rule, "rule")}' if rule else ""
+        label = json.dumps(f"{json.loads(user)} {verdict}")
+        return (
+            f'{{"source": {ip}, "destination": {dst}, "protocol": "{proto}"{flow_port}{flow_dev}, '
+            f'"user": {user}, "expect": "{verdict}"{r}, "name": {label}}}'
+        )
+
+    service = f"{proto} port {port}" if port is not None else proto
+    return f"""Prove the user-based policy for one client: {ok} may reach {dst} ({service}) and {no}
+may not, from client {ip}. The firewall applies user rules from its live user-to-IP mapping (ISE/pxGrid,
+passive AD or captive portal), so each user has to be logged in on {ip} when their flow is traced. Steps 0-2,
+4 and 5 are read-only; step 3 needs the users to log in and out (ask the operator, or in the lab run the
+login/logoff actions); step 6 changes the policy only if the user asks and approves the preview. Keep a
+table of what each step shows.
+
+0. Context. {find_dev} Note its access control policy (from {tool_ref("fmc_get_device")}) and the
+   identity policy linked to it ({tool_ref("fmc_get_identity_policy")}): the identity rule must cover
+   the client's zone and network with the realm that holds both users, or no user is ever seen.
+
+1. What the configuration says, per user (offline): {tool_ref("fmc_rule_lookup")} with {dev_arg},
+   source={ip}, destination={dst}, protocol="{proto}"{port_arg} and identities=[{ok}, <its groups>], then
+   again with identities=[{no}, <its groups>]. Group membership comes from AD ({tool_ref("fmc_get_realm")}
+   lists the downloaded users and groups). Expect {ok}: a definite ALLOW rule; {no}: a BLOCK rule or the
+   default action. If both give the same verdict the policy itself is wrong: stop and report it.
+
+2. Who is on the client now: ISE's active sessions for {ip} ({tool_ref("ise_find_session")} or
+   {tool_ref("ise_list_active_sessions")}) show the user and whether the session reached FMC (pxGrid).
+
+3. Live proof, one user at a time:
+   a. With {ok} logged in on {ip}: {tool_ref("fmc_prove_policy")} with flows=[{
+        expect(ok, "allow", allow_rule)
+    }].
+   b. Log {ok} off and {no} on (same client), wait until ISE shows {no} on {ip}, then
+      {tool_ref("fmc_prove_policy")} with flows=[{expect(no, "block", block_rule)}].
+   Each row must be `pass`: the verdict matches, `user_seen` is the expected user, and (when given) the
+   deciding rule is the expected one. `user_seen` empty or another user means the device's mapping is
+   stale or missing: wait for ISE/pxGrid and retry once before calling it a failure.
+
+4. If a row is fail or mismatch: {tool_ref("fmc_packet_tracer")} with the same flow (verbose) shows every
+   phase including Snort's identity phase; {tool_ref("fmc_get_hit_counts")} on the deciding rule;
+   {tool_ref("fmc_pending_changes")} for the device (an undeployed user rule is the usual cause).
+
+5. Report: a table per user with the offline verdict (step 1), the live verdict and deciding rule (step 3),
+   the user the device saw, and pass/fail; then the cause of anything that failed and the evidence.
+
+6. Fix (only if the user asks for one), preview-first: {tool_ref("fmc_update_access_rule")} (users=[...] on
+   the right rule, or move_to above the rule that wins) or {tool_ref("fmc_create_access_rule")}; show the
+   preview, wait for approval, confirm, {tool_ref("fmc_deploy")} (preview-first), then rerun step 3.
+"""
+
+
 def register(reg: ToolRegistrar) -> None:
     @reg.prompt(
         title="Why is this traffic blocked?",
@@ -950,3 +1057,46 @@ def register(reg: ToolRegistrar) -> None:
         (packet tracer and rule lookup), then names the likely cause with its evidence and proposes
         one previewed fix. Read-only until the user approves the fix."""
         return _vpn_troubleshoot_text(symptom, device, topology, source, destination, protocol, port)
+
+    @reg.prompt(
+        title="Prove a user-based policy",
+        uses=["fmc", "ise"],
+        example={
+            "client_ip": "10.99.1.10",
+            "destination": "192.0.2.80",
+            "allowed_user": "alice",
+            "blocked_user": "bob",
+            "protocol": "tcp",
+            "port": "80",
+            "device": "mcp-ftd-identity",
+            "allow_rule": "mcp-fw-allow-staff",
+            "block_rule": "mcp-fw-block-contractors",
+        },
+    )
+    def fmc_prove_user_policy(
+        client_ip: Annotated[str, Field(description="The client both users log in on, e.g. 10.99.1.10")],
+        destination: Annotated[str, Field(description="Destination IP the users try to reach")],
+        allowed_user: Annotated[str, Field(description="The user who should get through, e.g. alice")],
+        blocked_user: Annotated[str, Field(description="The user who should be blocked, e.g. bob")],
+        protocol: Annotated[Literal["tcp", "udp", "icmp"], Field(description="tcp, udp or icmp")] = "tcp",
+        port: Annotated[
+            int | None, Field(ge=1, le=65535, description="Destination port (required for tcp/udp), e.g. 80")
+        ] = None,
+        device: Annotated[
+            str | None, Field(description="The FTD between client and destination; found if omitted")
+        ] = None,
+        allow_rule: Annotated[
+            str | None, Field(description="The access rule that should allow the allowed user (optional)")
+        ] = None,
+        block_rule: Annotated[
+            str | None, Field(description="The access rule that should block the blocked user (optional)")
+        ] = None,
+    ) -> str:
+        """Prove that user-based access rules work: one client IP, one user who should reach a
+        destination and one who should not. Checks the configuration offline per user (fmc_rule_lookup
+        with identities), who ISE sees on the client, then has each user log in and proves the live
+        verdict with fmc_prove_policy (verdict, deciding rule and the user the firewall saw), and
+        reports a pass/fail table with the cause of any failure."""
+        return _prove_user_policy_text(
+            client_ip, destination, allowed_user, blocked_user, protocol, port, device, allow_rule, block_rule
+        )
