@@ -109,6 +109,79 @@ async def test_set_state_drop_then_default(fmc: respx.MockRouter) -> None:
         assert "overrideState" not in json.loads(put.calls.last.request.content)
 
 
+# Talos 1:498 in a custom policy on Balanced (FMC 10.0.1, live run 2026-10-18; domain/policy ids scrubbed).
+# The policy's rule list says defaultState DISABLE (what Balanced sets); GET and PUT of the single rule say
+# ALERT (the rule's `alert` keyword). metadata.defaultSetBy carries DISABLE in both.
+T498_SET_BY = [
+    {"name": BALANCED["name"], "id": BALANCED["id"], "type": "IntrusionPolicy", "action": "DISABLE"}
+]
+T498 = {
+    "type": "IntrusionRule",
+    "id": "071203ae-609f-59e8-b4fc-e6e02395fb7b",
+    "name": "1:498",
+    "gid": 1,
+    "sid": 498,
+    "revision": 11,
+    "isSystemDefined": True,
+    "msg": "INDICATOR-COMPROMISE id check returned root",
+    "ruleData": (
+        'alert ip any any -> any any ( msg:"INDICATOR-COMPROMISE id check returned root"; '
+        'content:"uid=0|28|root|29|"; metadata:ruleset community; classtype:bad-unknown; sid:498; rev:11; )'
+    ),
+    "metadata": {"domain": GLOBAL, "defaultSetBy": T498_SET_BY},
+    "defaultState": "DISABLE",
+    "ruleGroups": [
+        {"name": "Application Layer Protocol", "id": "d169ad20", "type": "IntrusionRuleGroup"},
+        {"name": "Compromise", "id": "d0ae8e7a", "type": "IntrusionRuleGroup"},
+    ],
+}
+T498_ONE = {**T498, "defaultState": "ALERT"}  # GET .../intrusionrules/{id}
+
+
+async def test_set_state_reports_the_policy_default_not_the_rule_keyword(fmc: respx.MockRouter) -> None:
+    """Live finding: the preview said default DISABLE, the result default_state ALERT (same rule)."""
+    fmc.get(f"{CFG}/policy/intrusionpolicies").mock(return_value=items([IPS]))
+    fmc.get(RULES).mock(return_value=items([T498]))
+    fmc.get(f"{RULES}/{T498['id']}").mock(return_value=httpx.Response(200, json=T498_ONE))
+    put = fmc.put(f"{RULES}/{T498['id']}").mock(
+        return_value=httpx.Response(200, json={**T498_ONE, "overrideState": "BLOCK"})
+    )
+    async with Client(server()) as c:
+        args = {"policy": "mcp-test-ips", "rules": ["1:498"], "state": "BLOCK"}
+        preview = await run(c, "fmc_set_intrusion_rule_state", args)
+        row = preview["preview"]["rules"][0]
+        assert (row["default_state"], row["to"]) == ("DISABLE", "BLOCK")
+        done = await run(c, "fmc_set_intrusion_rule_state", {**args, "confirm": preview["confirm"]})
+        assert done["result"]["rules"][0]["default_state"] == "DISABLE"
+        assert done["result"]["rules"][0]["override_state"] == "BLOCK"
+        assert json.loads(put.calls.last.request.content)["overrideState"] == "BLOCK"
+        # a single-rule answer without metadata (echoed body): the list read's default still wins
+        put.mock(side_effect=lambda req: httpx.Response(200, json=json.loads(req.content)))
+        fmc.get(RULES).mock(return_value=items([{**T498, "overrideState": "BLOCK"}]))
+        args = {**args, "state": "DEFAULT"}
+        preview = await run(c, "fmc_set_intrusion_rule_state", args)
+        assert preview["preview"]["rules"][0]["to"] == "default (DISABLE)"
+        done = await run(c, "fmc_set_intrusion_rule_state", {**args, "confirm": preview["confirm"]})
+        assert done["result"]["rules"][0]["default_state"] == "DISABLE"
+        assert "override_state" not in done["result"]["rules"][0]
+
+
+async def test_find_and_summary_use_default_set_by(fmc: respx.MockRouter) -> None:
+    fmc.get(f"{CFG}/policy/intrusionpolicies").mock(return_value=items([IPS]))
+    fmc.get(RULES).mock(return_value=items([{**T498_ONE, "overrideState": "BLOCK"}]))
+    async with Client(server()) as c:
+        found = await run(
+            c,
+            "fmc_find_intrusion_rules",
+            {"query": "1:498", "policy": "mcp-test-ips", "response_format": "json"},
+        )
+        summary = await run(
+            c, "fmc_get_intrusion_policy", {"policy": "mcp-test-ips", "response_format": "json"}
+        )
+    assert found["results"][0]["default_state"] == "DISABLE"
+    assert summary["overridden_rules"][0]["default_state"] == "DISABLE"
+
+
 async def test_system_policy_is_read_only(fmc: respx.MockRouter) -> None:
     fmc.get(f"{CFG}/policy/intrusionpolicies").mock(return_value=items([BALANCED]))
     fmc.get(f"{CFG}/policy/intrusionpolicies/{BALANCED['id']}/intrusionrules").mock(
