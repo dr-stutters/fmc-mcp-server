@@ -117,7 +117,7 @@ There are 153 tools when every tier is enabled (66 read, 76 write, 11 dangerous;
 | Devices | `fmc_list_devices`, `fmc_get_device`, `fmc_list_device_interfaces`, `fmc_list_routes`, `fmc_get_routing`, `fmc_get_platform_settings`, `fmc_list_ha_pairs`, `fmc_get_ha_status`, `fmc_list_clusters` |
 | VPN | `fmc_list_vpn_topologies` (incl. SD-WAN), `fmc_get_vpn_topology`, `fmc_get_ravpn`, `fmc_vpn_status` (every site-to-site topology's tunnels with each device's IKE and IPsec SAs, traffic each way, last rekey and the routes over the VTIs; degraded tunnels first), `fmc_sdwan_status` (per branch: WAN links with path metrics, the path each app route takes now and why, tunnels and iBGP, ranked degraded links) |
 | Device templates (FMC 7.6+) | `fmc_list_device_templates`, `fmc_get_device_template` (interfaces, variables, model mappings, VPN/SD-WAN settings, overridable objects, devices it was applied to; passwords masked) |
-| Troubleshooting | `fmc_packet_tracer`, `fmc_run_show_command`, `fmc_get_hit_counts`, `fmc_device_health`, `fmc_device_metrics` (CPU, memory, throughput, connections and drops over a window: min/avg/max, peaks, dips and a compact series), `fmc_list_vpn_tunnels` |
+| Troubleshooting | `fmc_packet_tracer`, `fmc_run_show_command`, `fmc_get_hit_counts`, `fmc_device_health`, `fmc_device_metrics` (CPU, memory, throughput, connections and drops over a window: min/avg/max, peaks, dips and a compact series), `fmc_list_vpn_tunnels`, `fmc_live_connections` (a host's or user's connections on one FTD: peers, state, bytes, duration, rule, user), `fmc_user_identity_sessions` (who is on an IP, where a user is logged in) |
 | Policies | `fmc_list_policies`, `fmc_get_access_policy`, `fmc_list_access_rules`, `fmc_get_access_rule`, `fmc_list_nat_rules`, `fmc_list_prefilter_rules`, `fmc_list_policy_assignments` |
 | Objects | `fmc_list_objects`, `fmc_get_object`, `fmc_find_object`, `fmc_where_used`, `fmc_unused_objects`, `fmc_list_dynamic_objects`, `fmc_find_address` (one IP, network or range across objects and groups, dynamic-object mappings, access, prefilter and NAT rules, static routes and VPN endpoints, ranked) |
 | Security Intelligence | `fmc_get_security_intelligence` |
@@ -149,6 +149,13 @@ Notes on some read tools:
   FMC as parameters. Anything else (`show bgp`, `show ospf`, `show path-monitoring`, `show policy-route`,
   `show conn`, `show nat`) is refused before FMC is called, with the alternatives.
 - `fmc_get_hit_counts` refreshes the counters from the device first (packet-tracer packets count too).
+- `fmc_live_connections` answers "what is this host talking to right now?". FMC 10.0.1 refuses `show conn`
+  over its API, so it reads the device's syslog buffer (`show logging`: connection built/teardown messages and
+  Snort connection events with the rule, user and application); the device's platform settings must log to the
+  internal buffer at level informational (the tool says so when they don't). Where FMC's spec lists `show conn`,
+  the live connection table is used instead. `fmc_user_identity_sessions` reads FMC's identity view
+  (`analysis/activesessions`, `analysis/useractivity`; the FTD has no `show user-identity`): the account's role
+  needs Events & Logs > Analysis > Users.
 - `fmc_list_health_alerts` and `fmc_recent_activity` query FMC when called (no background collection):
   health alerts over a window with repeats collapsed, and one timeline of health alerts, audit records
   and deployments. The server never receives syslog or eStreamer; traffic events stay in the FMC UI or

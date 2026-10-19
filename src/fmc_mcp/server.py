@@ -30,6 +30,7 @@ from fmc_mcp.tools import (
     hygiene,
     identity,
     intrusion,
+    live,
     metrics,
     object_import,
     object_writes,
@@ -118,6 +119,9 @@ Workflows:
   tunnels with what each device says: IKE and IPsec SAs, traffic each way, routes over the VTIs;
   degraded tunnels first). "The VPN to X is down": the fmc_vpn_troubleshoot prompt (IKE, IPsec,
   routing over the tunnel, NAT exemption, access rules, then one previewed fix).
+- "What is this host talking to right now, and who is it?": fmc_live_connections (device, host/user/port;
+  from the device's syslog buffer because FMC 10.0.1 refuses 'show conn') -> fmc_user_identity_sessions
+  (user <-> IP from FMC's identity view) -> fmc_packet_tracer for the verdict.
 - Health: fmc_list_devices, fmc_device_health, fmc_list_vpn_tunnels; "what changed or broke in the
   last hour?": fmc_recent_activity (health alerts + audit + deployments), fmc_list_health_alerts.
   A full ranked review of the estate: the fmc_firewall_health_review prompt.
@@ -200,6 +204,7 @@ def create_server(
             dangerous.register,
             troubleshoot.register,
             metrics.register,
+            live.register,
             dynamic_objects.register,
             containment.register,
             ha.register,
