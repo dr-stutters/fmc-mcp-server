@@ -63,7 +63,9 @@ http returns 200.
 **If it goes wrong:** "No earlier successful deployment to roll back to" means the device has only one
 deployment in its history: deploy any harmless change once before the demo. A `snort-blacklist` drop in packet
 tracer is a cached verdict from an earlier blocked flow: repeat with another `source_port`. A deploy refused for
-FMC warnings: read them out; that is the safety rail working.
+FMC warnings: read them out; that is the safety rail working. Right after the rollback the FTD may have lost its
+ARP entry for `<server>`: a trace then shows `allow (drop) no-v4-adjacency`. Let `<client>` connect once, then
+prove again. The next deploy after a rollback pushes the whole device configuration and takes a little longer.
 
 ## Story 2: SD-WAN: add a branch, fail a WAN link
 
@@ -94,7 +96,7 @@ prompt skips registration for a device that is registered, connected and in no t
 | 3 | 8-10 | "Prove the branch works." (`fmc_sdwan_status` branch=`<branch>`, `fmc_vpn_status` device=`<branch>`, then the prompt's hand-off `fmc_prove_policy` flows) and a ping from `<branch-host>` to `<hub-host>` | tunnel up, IKE READY with child-SA counters both ways, the hub's networks over the VTI; prove-policy rows `pass` (branch to hub, hub to branch, one flow the policy blocks) | the new site proven end to end, with a record to re-run after every change |
 | 4 | 10-12 | "Fail the spoke's primary WAN." (`cml_set_link_state` lab=`<the spoke's CML lab>`, link=`<spoke-wan-link>`, state=`down`) then a ping series from `<spoke-host>` to `<hub-host>` (`cml_check_reachability` rounds) and `fmc_sdwan_status` branch=`<spoke>` | the pings keep answering (with ECMP across both tunnels no loss; without it, a gap of about 20-25 s in the reference lab while iBGP moves to the backup tunnel); the primary tunnel down, the backup up, the primary WAN in `degraded` | the overlay survives a dead link |
 | 5 | 12-14 | Prompt `fmc_vpn_troubleshoot` with symptom="the spoke's primary tunnel to the hub is down", device=`<spoke>`, topology=`mcp-fw-demo-sdwan`, source=`<spoke-host>`, destination=`<hub-host>` | `device_says` and the IKEv2 counters: retransmits only, no authentication failures, so a dead path rather than a key mismatch; the route and interface checks; packet tracer leaving by the backup tunnel; the verdict "an upstream path or carrier problem: no FMC change fixes it" | the phase and the evidence named, and an honest answer about what FMC can't fix |
-| 6 | 14-15 | "Bring the link back." (`cml_set_link_state` state=`up`) then `fmc_sdwan_status` a minute later | both tunnels up, `degraded` empty again | recovery confirmed by the same tool that saw the failure |
+| 6 | 14-15 | "Bring the link back." (`cml_set_link_state` state=`up`) then `fmc_sdwan_status` a minute later | both tunnels up (the reference lab: within about 30 s); the primary WAN stays in `degraded` for about 5 minutes, because the health monitor's samples trail the device | recovery confirmed by the same tool that saw the failure |
 
 **Variants:** a brownout instead of a dead link (`cml_apply_link_scenario` brownout, undo with
 `cml_clear_link_scenarios`) shows loss and delay in `fmc_sdwan_status` path metrics when path monitoring is on,
@@ -126,7 +128,7 @@ devices=[`<FTD>`]. Try http from `<client>` a few times so the rule has hits.
 | 4 | 8-10 | "Disable that rule; keep it for the post-mortem." (`fmc_update_access_rule` rule=`mcp-fw-demo-break-web`, enabled=false) then `fmc_pending_changes` | the preview's field change (enabled true -> false); one pending change | the smallest fix, reviewed before it lands |
 | 5 | 10-12 | "Deploy to `<FTD>`." (`fmc_deploy`) | one device, task SUCCEEDED | |
 | 6 | 12-14 | "Prove it, and prove nothing else opened." (`fmc_prove_policy` flows: http `expect: allow` with the baseline rule as `rule`; a flow the policy must still block, e.g. tcp/3389 to `<server>`, `expect: block`) and http from `<client>` | both rows `pass`, deciding rules named; the client gets 200 | fixed, and still closed where it should be |
-| 7 | 14-15 | "Who changed what today?" (`fmc_list_audit_records` since_minutes=1440, text=`mcp-fw-demo-break-web`) | the break and the fix, each with user and time | an audit trail a change board can read |
+| 7 | 14-15 | "Who changed what today?" (`fmc_list_audit_records` since_minutes=60, text=`<policy>`) | the break and the fix as two saves of `<policy>` (FMC logs a rule edit as "Save Policy <policy>:<revision>", without the rule name), each with user and time; `fmc_pending_changes` names the rule before a deploy | an audit trail a change board can read |
 
 ## Vignette: threat-defense review
 
@@ -155,12 +157,14 @@ Everything the stories create is named `mcp-fw-demo-*`, so a reset finds it by n
 (`fmc_list_vpn_topologies`, `fmc_delete_s2s_vpn`; the SD-WAN companion `mcp-fw-demo-sdwan-wan2` too), then
 access rules (`fmc_list_access_rules` per policy, `fmc_delete_access_rule`), then policies (`fmc_delete_policy`;
 FMC refuses one that is still assigned), then groups and objects (`fmc_list_objects` with
-name_or_value=`mcp-fw-demo-`, `fmc_delete_object`) and the SD-WAN spoke pools. Then `fmc_pending_changes` and
+name_or_value=`mcp-fw-demo-`, `fmc_delete_object`) and the SD-WAN spoke pools. A static route that references a
+demo object (story 2's hub return route to the branch) blocks that object's delete: remove the route first
+(`fmc_list_routes`, `fmc_delete_static_route`). Then `fmc_pending_changes` and
 `fmc_deploy` for the devices those touched (the policy's devices; the topology's hub, spokes and branch), named
 one by one. The maintainers' lab has a script for this (`fw_demo_reset.py` in the suite's private lab repo,
 stutters-mcp-lab), dry run by default.
 
 A reset does not undo: edits to objects or rules that existed before (note the old values from the previews),
 a branch's registration and interface configuration (the onboarding prompt reuses a registered, connected
-branch), the hub's DVTIs and loopbacks (the SD-WAN tool reuses them), or a rollback's effect on the device (the
+branch), the hub's DVTIs and loopbacks (the SD-WAN tool reuses them; remove them with `fmc_delete_interface`, DVTI first), or a rollback's effect on the device (the
 next deploy replaces it).
