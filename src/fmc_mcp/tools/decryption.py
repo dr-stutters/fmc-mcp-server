@@ -59,6 +59,11 @@ CERT_CONDITIONS = (
     "tlsVersions",
     "clientThreat",
 )
+# Every TLS/SSL version. FMC 10.0.1 stores all five false for a rule created without `tlsVersions`, then
+# refuses the deploy of DO_NOT_DECRYPT and DECRYPT_RESIGN rules that select versions ("Support for SSL
+# Versions selection for Do not decrypt rule is deprecated", the same for Decrypt - Resign).
+ALL_TLS_VERSIONS = {"sslv3": True, "tls10": True, "tls11": True, "tls12": True, "tls13": True}
+NO_VERSION_SELECTION = {"DO_NOT_DECRYPT": "Do not decrypt", "DECRYPT_RESIGN": "Decrypt - Resign"}
 TrustedParam = Annotated[
     list[str] | None,
     Field(
@@ -131,6 +136,22 @@ def rule_row(r: dict[str, Any]) -> dict[str, Any]:
         "id": r.get("id"),
     }
     return {k: v for k, v in row.items() if v is not None}
+
+
+def version_problem(r: dict[str, Any]) -> str | None:
+    """Why FMC 10 will refuse to deploy this rule's TLS version selection, or None."""
+    action = str(r.get("ruleAction") or "")
+    v = r.get("tlsVersions")
+    flags = {k: f for k, f in v.items() if isinstance(f, bool)} if isinstance(v, dict) else {}
+    if action not in NO_VERSION_SELECTION or not flags or all(flags.values()):
+        return None
+    off = ", ".join(k for k, f in flags.items() if not f) + " off" if any(flags.values()) else "all off"
+    return (
+        f"{action} rule {r.get('name')!r} selects TLS/SSL versions ({off}; FMC stores all off for a rule "
+        "created without them): FMC 10 refuses the deploy ('Support for SSL Versions selection for "
+        f"{NO_VERSION_SELECTION[action]} rule is deprecated'). Turn every version on (fmc_api_call PUT of "
+        "the rule with tlsVersions all true) or re-create it with fmc_create_decryption_rule (sends them)."
+    )
 
 
 def advanced_row(p: dict[str, Any]) -> dict[str, Any]:
@@ -208,6 +229,7 @@ async def readiness(
             notes += [f"Rule {r.get('name')!r}: {m}" for m in ca_problems(ca)]
         if r.get("ruleAction") == "DECRYPT_RESIGN" and not (r.get("decryptionCerts") or {}).get("objects"):
             notes.append(f"DECRYPT_RESIGN rule {r.get('name')!r} has no internal CA.")
+    notes += [m for m in (version_problem(r) for r in enabled) if m]
     return notes
 
 
@@ -479,9 +501,10 @@ def register(reg: ToolRegistrar) -> None:
         confirm: Confirm = None,
     ) -> dict[str, Any]:
         """Add a rule to a decryption policy (at the end, or before rule `insert_before`). DECRYPT_RESIGN
-        needs an internal CA that clients trust; the preview warns when the policy can't decrypt TLS 1.3 or
-        when an exemption would land below a decrypt rule. Takes effect after a deploy of the devices whose
-        access policy uses the decryption policy (fmc_set_decryption_policy)."""
+        needs an internal CA that clients trust; the preview warns when the policy can't decrypt TLS 1.3,
+        when an exemption would land below a decrypt rule, or when an existing rule's TLS version selection
+        will make FMC refuse the deploy. The rule matches every TLS/SSL version. Takes effect after a deploy
+        of the devices whose access policy uses the decryption policy (fmc_set_decryption_policy)."""
         app: FmcApp = get_client(ctx)
         if internal_ca and action != "DECRYPT_RESIGN":
             raise InvalidRequest("internal_ca is only for action='DECRYPT_RESIGN'.")
@@ -501,6 +524,7 @@ def register(reg: ToolRegistrar) -> None:
             "type": "DecryptionPolicyRule",
             "ruleAction": action,
             "enabled": True,
+            "tlsVersions": dict(ALL_TLS_VERSIONS),
         }
         for field, values, kind in (
             ("sourceZones", source_zones, "zone"),
@@ -555,6 +579,7 @@ def register(reg: ToolRegistrar) -> None:
         existing = await all_rules(app, base)
         if any(str(r.get("name", "")).lower() == name.lower() for r in existing.items):
             blockers.append(f"{p.get('name')!r} already has a rule named {name!r}.")
+        warnings += [m for m in (version_problem(r) for r in existing.items if r.get("enabled", True)) if m]
         count = len(existing.items)
         if insert_before is not None and insert_before > count:
             blockers.append(
@@ -619,7 +644,13 @@ def register(reg: ToolRegistrar) -> None:
             owned=[p],
             plan=Plan(
                 f"Add decryption rule {name!r} ({action}) to {p.get('name')!r} {where}",
-                details={"rule": rule_row(body), "position": position, "rules_now": count},
+                details={
+                    # all versions on is no condition (FMC 10's default; it refuses version selection)
+                    "rule": rule_row({k: v for k, v in body.items() if k != "tlsVersions"}),
+                    "tls_versions": "all",
+                    "position": position,
+                    "rules_now": count,
+                },
                 fingerprint={
                     "policy": p["id"],
                     "rules": [r.get("id") for r in existing.items],
