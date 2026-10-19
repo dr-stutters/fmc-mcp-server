@@ -67,7 +67,7 @@ def mock(fmc: respx.MockRouter, macs: list[Any] | None = None) -> respx.MockRout
 async def test_status(fmc: respx.MockRouter) -> None:
     mock(fmc)
     async with Client(server()) as c:
-        out = await run(c, "fmc_get_ha_status", {"ha_pair": "mcp-test-ha"})
+        out = await run(c, "fmc_get_ha_status", {"ha_pair": "mcp-test-ha", "live": False})
     assert out["units"]["primary"] == {"device": "mcp-ftd2", "state": "Active"}
     assert out["failover_link"]["standby_ip"] == "192.168.255.2"
     assert out["monitored_interfaces"][1] == {
