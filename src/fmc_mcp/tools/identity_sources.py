@@ -22,9 +22,9 @@ sessions and adds the user's realm groups: the identity a user/group access rule
 uses the same lookup (resolve_ip_identity) when no `identities` are given. The sessions are read with
 live.session_items, the reader behind fmc_user_identity_sessions (F55), which lists them paged.
 
-Hooks for the other user-aware tools (register once they are on main):
-- find_address.IDENTITY_LOOKUPS.append(identity_sources.users_on_ip)
-- prove.USER_IP_RESOLVERS.append(identity_sources.user_ips)
+The same sessions feed the other user-aware tools: users_on_ip is fmc_find_address's identity lookup
+(find_address.IDENTITY_LOOKUPS) and user_ips gives fmc_prove_policy a user flow's source IP
+(prove.USER_IP_RESOLVERS).
 """
 
 # No `from __future__ import annotations`: FastMCP inspects signatures at runtime.
@@ -46,7 +46,15 @@ from fmc_mcp.tools.common import Domain
 from fmc_mcp.tools.device_config import resolve_device
 from fmc_mcp.tools.devices import DEVICES
 from fmc_mcp.tools.identity import IDENTITY, REALMS, identity_rule_row, policies_using
-from fmc_mcp.tools.live import ACTIVITY, activity_row, session_items, session_row
+from fmc_mcp.tools.live import (
+    ACTIVITY_WHAT,
+    activity_items,
+    activity_row,
+    refused,
+    role_error,
+    session_items,
+    session_row,
+)
 from fmc_mcp.tools.policies import all_rules
 from fmc_mcp.tools.system import iso
 
@@ -64,11 +72,6 @@ POLICY_CAP = 10  # identity policies whose rules are read
 REALM_CAP = 5  # realms whose users/groups are counted
 USER_CAP = 3  # realm users whose groups are looked up per call
 CERT_WARN_DAYS = 30
-ROLE_HINT = (
-    "FMC refused its identity sessions (403): the FMC account's role needs Events & Logs > Analysis > "
-    "Users (Active Sessions, User Activity, Users). Until then ISE shows the same sessions "
-    "(ise_find_session / ise_list_active_sessions on the ISE MCP server)."
-)
 ISE_UI_STEP = (
     "FMC 10.0.1's REST API can't configure it: in the FMC web UI (an admin, or a role with Integrations > "
     "Identity Sources) open Integrations > Other Integrations > Identity Sources > Identity Services Engine "
@@ -276,7 +279,7 @@ async def resolve_ip_identity(app: FmcApp, ip: str, domain: str | None) -> Resol
     try:
         rows = await session_items(app, domain, ip=ip)
     except AuthError as e:
-        res.error = ROLE_HINT if e.status_code == 403 else str(e)
+        res.error = refused() if e.status_code == 403 else str(e)
         return res
     except UpstreamError as e:
         res.error = f"FMC identity sessions unavailable: {e}"
@@ -346,13 +349,6 @@ async def expand_identities(
             have.update(g.lower() for g in new)
             added[ident] = new
     return out, added
-
-
-def role_error(e: AuthError) -> AuthError:
-    """A 403 on FMC's identity sessions, with the permission that fixes it; other errors unchanged."""
-    if e.status_code == 403:
-        return AuthError(ROLE_HINT, 403)
-    return e
 
 
 async def users_on_ip(
@@ -543,7 +539,7 @@ def register(reg: ToolRegistrar) -> None:
                     "framed IPs (ise_list_active_sessions) and that FMC subscribes to Session Directory."
                 )
         except AuthError as e:
-            out["sessions"] = {"error": ROLE_HINT if e.status_code == 403 else str(e)}
+            out["sessions"] = {"error": refused() if e.status_code == 403 else str(e)}
         except UpstreamError as e:
             out["sessions"] = {"error": f"FMC identity sessions unavailable: {e}"}
 
@@ -636,7 +632,8 @@ def register(reg: ToolRegistrar) -> None:
         explaining a user-based block (fmc_rule_lookup already does this lookup itself when you omit
         `identities`). The FMC account's role needs Events & Logs > Analysis > Users; without it the user's
         realm groups still come back. If no source reports users, see fmc_get_identity_sources; to page
-        through every session a device reports, fmc_user_identity_sessions."""
+        through every session a device reports, fmc_user_identity_sessions. fmc_find_address (users on
+        an IP) and fmc_prove_policy (a user flow without a source IP) read the same sessions."""
         app: FmcApp = get_client(ctx)
         if not ip and not user:
             raise InvalidRequest("Give an ip or a user.")
@@ -653,9 +650,9 @@ def register(reg: ToolRegistrar) -> None:
             if e.status_code != 403:
                 raise
             if not user:
-                raise AuthError(ROLE_HINT, 403) from None
+                raise role_error(e) from None
             sessions = None
-            out["sessions_error"] = ROLE_HINT
+            out["sessions_error"] = refused()
         if sessions is not None:
             if name:
                 exact = [
@@ -711,16 +708,11 @@ def register(reg: ToolRegistrar) -> None:
                 "an IP is 'unknown user' to user/group rules."
             )
         if history:
-            params: dict[str, Any] = {"time": f"after:{int(time.time()) - hours * 3600}", "sort": "time:desc"}
-            if query:
-                params["ipAddress"] = query
-            if name:
-                params["username"] = name
-            if dev_name:
-                params["device"] = dev_name
             try:
-                page = await app.all(await app.config_path(ACTIVITY, domain), params, cap=200)
-                out["history"] = [activity_row(a) for a in page.items][:50]
+                events = await activity_items(
+                    app, domain, ip=query, user=name or None, device=dev_name, hours=hours
+                )
+                out["history"] = [activity_row(a) for a in events][:50]
             except AuthError as e:
-                out["history_error"] = ROLE_HINT if e.status_code == 403 else str(e)
+                out["history_error"] = refused(ACTIVITY_WHAT) if e.status_code == 403 else str(e)
         return out

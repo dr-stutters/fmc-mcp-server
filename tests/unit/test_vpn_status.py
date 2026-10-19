@@ -21,7 +21,7 @@ from fmc_mcp.tools.vpn_status import (
     parse_routes,
 )
 
-from .conftest import CFG, fixture, items, make_settings
+from .conftest import CFG, FIXTURES, fixture, items, make_settings
 
 LAB = fixture("vpn_status")
 SHOW = LAB["show"]
@@ -414,3 +414,43 @@ def test_recorded_outputs_without_vpn() -> None:
     assert bgp["via"] == ["10.99.1.2"] and bgp["interfaces"] == []
     assert next(r for r in routes if r["code"] == "O")["interfaces"] == ["inside"]
     assert overlay_routes(routes, {"vti-x"}) == []
+
+
+# FTD 10 `show route` on a dynamic-VTI hub (F41 live proof, addresses and names changed): the routes to the
+# spokes' tunnel addresses are wrapped onto two lines ('V ... 255.255.255.255 ' + 'connected by VPN
+# (advertised), <dvti>_va<N>'), and the BGP routes to the spokes' networks resolve through them.
+DVTI_HUB = (FIXTURES / "ftd_show_route_dvti_hub.txt").read_text()
+
+
+def test_wrapped_vpn_routes_resolve_bgp_next_hops() -> None:
+    routes = parse_routes(DVTI_HUB)
+    by = {r["prefix"]: r for r in routes}
+    assert by["10.255.9.2/32"] == {
+        "code": "V",
+        "protocol": "vpn",
+        "prefix": "10.255.9.2/32",
+        "via": [],
+        "interfaces": ["sdwan-dvti_va9"],
+    }
+    assert by["10.255.9.1/32"]["interfaces"] == ["sdwan-dvti-lo"]
+    assert len(routes) == 18
+    over = overlay_routes(routes, {"sdwan-dvti"})
+    # the BGP routes to the spokes' networks; the V host routes are the peers' tunnel addresses
+    assert over == [
+        {"protocol": "bgp", "prefix": f"10.20.{n}.0/24", "via": [f"10.255.9.{n - 9}"]} for n in (11, 12, 13)
+    ]
+
+
+async def test_dvti_hub_with_bgp_routes_is_not_degraded(fmc: respx.MockRouter) -> None:
+    """The live hub got 'IKE SA(s) READY but no routes over the VTIs' although BGP had the three spokes'
+    networks over the DVTI."""
+    lab(fmc, outputs={"d-b": {"show route": DVTI_HUB.replace("sdwan-dvti", "vti-to-a")}})
+    async with Client(server()) as c:
+        r = await run(c, "fmc_vpn_status", {})
+    whats = {(d["device"], d["what"]) for d in r["degraded"]}
+    assert ("branch-b", "overlay routing") not in whats
+    b = next(d for d in r["devices"] if d["device"] == "branch-b")
+    assert [x["prefix"] for x in b["overlay_routes"]] == ["10.20.11.0/24", "10.20.12.0/24", "10.20.13.0/24"]
+    assert "V 10.255.9.2 255.255.255.255 connected by VPN (advertised), vti-to-a_va9" in [
+        " ".join(ln.split()) for ln in b["evidence"]["show route"]
+    ]
