@@ -15,6 +15,7 @@ from fmc_mcp.rules import OPAQUE_CONDITIONS, flatten_access_rule, has_value
 from fmc_mcp.tools.common import PROTO_NUMBERS, Domain, block_labels
 from fmc_mcp.tools.device_config import resolve_device
 from fmc_mcp.tools.dynamic_objects import mappings_of
+from fmc_mcp.tools.identity_sources import expand_identities, resolve_ip_identity
 from fmc_mcp.tools.policies import ACCESS, all_rules, resolve_policy
 from fmc_mcp.url_categories import url_category_match
 
@@ -28,7 +29,9 @@ LIMITS = (
     "`identities` (the flow's user and its groups), and URL categories unless you pass `url_category` "
     "(a category rule below ANY_AND_UNKNOWN still depends on the site's reputation). Dynamic objects are "
     "checked against their current IP mappings. FQDN objects can't be resolved offline. Zones are "
-    "only checked when you pass them or a device (then they come from its interfaces and routes)."
+    "only checked when you pass them or a device (then they come from its interfaces and routes). "
+    "Without `identities`, the user FMC's identity sessions have on the source IP is used (see "
+    "`identity`); when those can't be read, user rules stay conditional."
 )
 DYNAMIC_FIELDS = ("sourceDynamicObjects", "destinationDynamicObjects")
 DYNAMIC_CAP = 25  # dynamic objects whose mappings are read per lookup
@@ -110,6 +113,24 @@ def _user_match(block: Any, identities: list[str] | None) -> bool | None:
     return False
 
 
+async def _resolve_identities(
+    app: FmcApp, source: str, identities: list[str] | None, domain: str | None
+) -> tuple[list[str] | None, dict[str, Any] | None]:
+    """The identities to evaluate user rules with, and what was looked up (for the output)."""
+    if identities is None:
+        res = await resolve_ip_identity(app, source, domain)
+        return res.identities(), res.as_dict()
+    if not identities:
+        return identities, None
+    try:
+        expanded, added = await expand_identities(app, identities, domain)
+    except UpstreamError as e:
+        return identities, {"note": f"Realm groups not looked up ({e}); evaluated as given."}
+    if not added:
+        return identities, None
+    return expanded, {"groups_added": added, "source": "realm download (object/realmusergroups)"}
+
+
 def _zone_match(rule_block: Any, zone: str | None) -> bool | None:
     """True/False, or None when the rule has zones but the caller gave none."""
     names = [n.lower() for n in block_labels(rule_block)]
@@ -171,7 +192,8 @@ def register(reg: ToolRegistrar) -> None:
             list[str] | None,
             Field(
                 description="The flow's AD/LDAP user and its groups (e.g. ['mcp-bob', 'mcp-contractors']) to "
-                "evaluate user/group rules; [] = no identified user; omit and such rules stay conditional"
+                "evaluate user/group rules; [] = no identified user; omit to use the user FMC has on the "
+                "source IP (resolve_user); if that can't be read, such rules stay conditional"
             ),
         ] = None,
         url_category: Annotated[
@@ -192,6 +214,15 @@ def register(reg: ToolRegistrar) -> None:
             ),
         ] = None,
         domain: Domain = None,
+        resolve_user: Annotated[
+            bool,
+            Field(
+                description="Fill in the identity the firewall would see when rules match on users or "
+                "groups: without `identities`, the user FMC has on the source IP (identity sessions from "
+                "ISE/pxGrid etc.) and their realm groups; with `identities` naming a realm user, that "
+                "user's groups. False = evaluate exactly what you pass"
+            ),
+        ] = True,
     ) -> dict[str, Any]:
         """Work out offline which access control rule would handle a flow (source, destination,
         protocol/port): returns the first rule that definitely matches, any earlier 'conditional'
@@ -200,10 +231,10 @@ def register(reg: ToolRegistrar) -> None:
         under `device`); else pass `policy` and the zones. Objects and nested groups are resolved to
         addresses and ports, dynamic objects to their current mappings (a host contained with
         fmc_contain_host matches the quarantine rules). Best-effort: see `limits` in the output (no
-        prefilter, NAT or parent policy). Rules on AD/LDAP users or groups are evaluated when you pass
-        `identities` (the user and its groups, e.g. from ISE or AD); FMC itself has no REST view of
-        which user is on an IP. URL category rules (with their reputation, in each row's `urls`) are
-        evaluated when you pass `url_category`."""
+        prefilter, NAT or parent policy). Rules on AD/LDAP users or groups are evaluated with the user FMC
+        has on the source IP and their realm groups (shown under `identity`; fmc_user_ip_lookup), or with
+        the `identities` you pass (the user and its groups, e.g. from ISE or AD). URL category rules (with
+        their reputation, in each row's `urls`) are evaluated when you pass `url_category`."""
         app: FmcApp = get_client(ctx)
         src, dst = _ip(source, "source"), _ip(destination, "destination")
         dev = await resolve_device(app, device, domain) if device else None
@@ -242,6 +273,11 @@ def register(reg: ToolRegistrar) -> None:
         dyn = await dynamic_sets(
             app, [r for r in rules.items if r.get("enabled", True) or include_disabled], domain
         )
+        identity: dict[str, Any] | None = None
+        if resolve_user and any(
+            has_value(r.get("users")) for r in rules.items if r.get("enabled", True) or include_disabled
+        ):
+            identities, identity = await _resolve_identities(app, source.strip(), identities, domain)
 
         conditional: list[dict[str, Any]] = []
         monitored: list[dict[str, Any]] = []
@@ -298,6 +334,8 @@ def register(reg: ToolRegistrar) -> None:
         }
         if dev_info:
             out["device"] = dev_info
+        if identity:
+            out["identity"] = identity
         if match is not None:
             out["verdict"] = f"Rule {match.get('index')} '{match.get('name')}' → {match.get('action')}"
             out["matched_rule"] = match
