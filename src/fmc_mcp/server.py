@@ -82,6 +82,10 @@ Workflows:
   -> fmc_deploy (device and hubs) -> fmc_get_vpn_topology.
 - Change safely: make the change -> fmc_pending_changes (what the next deploy pushes) -> fmc_deploy
   -> fmc_run_show_command / fmc_list_deployments; undo a bad deployment with fmc_rollback_deployment.
+- HA: fmc_create_ha_pair (failover link; state_interface for a separate state link) ->
+  fmc_configure_ha_monitoring (standby IPs) -> fmc_deploy the pair -> fmc_get_ha_status (each unit's own
+  state, link status, last failover and why, ready_for_switch) -> fmc_ha_action switch. The
+  fmc_ha_failover_check prompt runs pre-checks, traffic, the switch, verification and a report.
 - "Why is this traffic blocked?": fmc_packet_tracer (live verdict, drop reason and matching rule on
   the device) + fmc_rule_lookup (offline walk of the policy) + fmc_get_hit_counts (is the rule hit?).
   The fmc_why_blocked prompt walks these steps in order. "Prove the policy": fmc_prove_policy traces a

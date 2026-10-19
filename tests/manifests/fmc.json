@@ -35,6 +35,40 @@
         "fmc"
       ]
     },
+    "fmc_ha_failover_check": {
+      "arguments": [
+        "ha_pair",
+        "action",
+        "domain",
+        "source",
+        "destination",
+        "protocol",
+        "port",
+        "lab",
+        "test_node",
+        "target"
+      ],
+      "references": [
+        "fmc_get_ha_status",
+        "fmc_run_show_command",
+        "fmc_pending_changes",
+        "fmc_deploy",
+        "fmc_upgrade_status",
+        "fmc_device_health",
+        "fmc_configure_ha_monitoring",
+        "fmc_create_ha_pair",
+        "fmc_packet_tracer",
+        "cml_check_reachability",
+        "cml_configure_node",
+        "fmc_ha_action"
+      ],
+      "rendered": true,
+      "tier": "dangerous",
+      "uses": [
+        "fmc",
+        "cml"
+      ]
+    },
     "fmc_onboard_ftd": {
       "arguments": [
         "name",
