@@ -17,6 +17,7 @@ from fmc_mcp.server import create_server
 from fmc_mcp.tools.identity_sources import (
     cert_row,
     identity_memory,
+    ise_parts,
     ise_state,
     latest_alerts,
     split_identity,
@@ -187,7 +188,13 @@ async def test_identity_sources_without_ise(fmc: respx.MockRouter) -> None:
     assert out["verdict"].startswith("No ISE identity source; sessions not readable")
     ise = out["ise"]
     assert ise["state"] == "not_configured" and ise["sgts_downloaded"] == 0
-    assert "Integrations > Other Integrations > Identity Sources" in ise["configure"]
+    # FMC 10.0.1's real page: Integrations > Identity > Identity Sources, Global domain only, admin role
+    assert "Integrations > Identity > Identity Sources" in ise["configure"]
+    assert "Other Integrations" not in ise["configure"] + ise["settings"]
+    assert "in Global only" in ise["configure"]
+    assert "child domain every option is disabled" in ise["configure"]
+    assert "only to an administrator" in ise["configure"] and "Global domain" in ise["settings"]
+    assert "parts" not in ise  # the not-configured alert has no params
     assert out["passive_identity_agent"]["details"] == "Passive identity agent not enabled"
     assert out["realms"] == [
         {"name": "corp", "type": "AD", "enabled": True, "ad_domain": "example.com", "users": 2, "groups": 4}
@@ -246,6 +253,31 @@ async def test_identity_sources_failed_ise_and_unlinked_policy(fmc: respx.MockRo
     assert out["identity_policies"][0]["used_by"] == []
     assert any("unhealthy" in n for n in out["next"])
     assert any("PASSIVE rule" in n for n in out["next"])
+
+
+async def test_identity_sources_failed_ise_names_the_ui_test_and_the_parts(fmc: respx.MockRouter) -> None:
+    """Live-3 (FMC 10.0.1): source saved in Global with a client certificate ISE doesn't trust. REST only
+    has the RED health module; the cause (the UI Test's TLS error) is UI-only, and the tool says so."""
+    mock_status(fmc, ise=FX["health_alert_ise_failed"]["items"][0])
+    async with Client(server()) as c:
+        out = await run(c, "fmc_get_identity_sources", {})
+    ise = out["ise"]
+    assert ise["state"] == "failed" and ise["health"] == "RED"
+    assert ise["details"] == "Check connectivity to ISE"
+    assert ise["parts"] == {"ISE Services": "UNKNOWN", "ISEConnection": "DOWN"}
+    assert out["verdict"].startswith("ISE/pxGrid connection FAILED")
+    assert "configure" not in ise
+    step = next(n for n in out["next"] if "unhealthy" in n)
+    assert "REST API doesn't say why" in step and "Test button" in step and "Global domain" in step
+    assert "sslv3 alert certificate unknown" in step and "ise_list_pxgrid_clients" in step
+
+
+def test_ise_parts_from_recorded_params() -> None:
+    assert ise_parts(FX["health_alert_ise_failed"]["items"][0]) == {
+        "ISE Services": "UNKNOWN",
+        "ISEConnection": "DOWN",
+    }
+    assert ise_parts(next(a for a in FX["health_alerts"]["items"] if a["moduleID"] == "ISE")) == {}
 
 
 # --- fmc_user_ip_lookup ---------------------------------------------------------------------------------
