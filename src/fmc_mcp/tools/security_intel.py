@@ -833,7 +833,13 @@ def register(reg: ToolRegistrar) -> None:
         async def apply() -> Any:
             if current is not None:
                 out = await upload_file(
-                    app, f"{lists_path}/{current['id']}", name.strip(), file_name, text, method="PUT"
+                    app,
+                    f"{lists_path}/{current['id']}",
+                    name.strip(),
+                    file_name,
+                    text,
+                    method="PUT",
+                    object_id=str(current["id"]),
                 )
             else:
                 out = await upload_file(app, lists_path, name.strip(), file_name, text)
