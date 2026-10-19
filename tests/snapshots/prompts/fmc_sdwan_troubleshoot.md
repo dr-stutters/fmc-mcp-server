@@ -43,7 +43,9 @@ preview-first and runs only after the user approves it.
    `fmc_list_vpn_tunnels`. A tunnel down or an iBGP neighbor not Established on the chosen
    path sends "Teams" to the hub over another path, or nowhere. For a down tunnel, the reasons in
    `degraded` read the IKEv2 counters: authentication failures growing between two status calls mean
-   a pre-shared key mismatch, retransmits alone mean the peer doesn't answer (dead path). Use
+   a pre-shared key mismatch, retransmits alone mean the peer doesn't answer (dead path); nothing
+   growing within a minute or two doesn't rule out a dead path (the FTD retries IKE only every few
+   minutes once DPD has removed the SA): check the path and call the status again 3-5 minutes later. Use
    `fmc_run_show_command` with device="mcp-sdwan-t1-spoke1" and 'show crypto ikev2 sa', 'show crypto ikev2
    stats' or 'show route bgp' for detail (FMC's tunnel states can lag the device by minutes), and
    `fmc_list_health_alerts` with since_minutes=60, device="mcp-sdwan-t1-spoke1" for interface or tunnel
