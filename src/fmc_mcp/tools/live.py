@@ -422,7 +422,7 @@ def epoch(ts: Any) -> float:
             return 0.0
 
 
-def _seen(s: dict[str, Any]) -> float:
+def session_seen(s: dict[str, Any]) -> float:
     """A session's last activity for sorting: lastSeen, else loginTime (epoch s/ms or ISO 8601)."""
     return epoch(s.get("lastSeen") or s.get("loginTime"))
 
@@ -499,7 +499,7 @@ async def session_items(
     if device:
         params["device"] = device
     rows = await read_up(app, SESSIONS, domain, params, SESSION_CAP)
-    return sorted(rows, key=_seen, reverse=True)
+    return sorted(rows, key=session_seen, reverse=True)
 
 
 async def activity_items(
