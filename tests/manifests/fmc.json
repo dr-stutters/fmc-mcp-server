@@ -12,6 +12,7 @@
       "references": [
         "fmc_list_devices",
         "fmc_device_health",
+        "fmc_device_metrics",
         "fmc_list_ha_pairs",
         "fmc_list_clusters",
         "fmc_get_ha_status",
@@ -453,6 +454,10 @@
     "fmc_device_health": {
       "tier": "read",
       "title": "Device health"
+    },
+    "fmc_device_metrics": {
+      "tier": "read",
+      "title": "Device metrics over time"
     },
     "fmc_diff_policy_bundle": {
       "tier": "read",
