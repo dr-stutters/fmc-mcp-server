@@ -5,6 +5,7 @@ These change FMC's copy of the device configuration only; nothing reaches the FT
 
 # No `from __future__ import annotations`: FastMCP inspects signatures at runtime.
 import ipaddress
+import re
 from dataclasses import dataclass
 from typing import Annotated, Any, Literal
 
@@ -268,6 +269,30 @@ MEMBER_KINDS = {"etherchannel": ("physical",), "bvi": ("physical", "subinterface
 # FMC 10.0.1 spec examples): a BVI's traffic is zoned on its member interfaces.
 NO_ZONE_KINDS = {"loopback", "bridge_group"}
 NO_DHCP_KINDS = {"loopback", "vti"}
+# FTDv (any hypervisor or cloud): FMC names the model "... Threat Defense for KVM" (VMware, AWS, Azure, GCP,
+# OCI, Hyper-V, Nutanix, OpenStack, ...) and gives it an FTDv performance tier.
+VIRTUAL_MODEL = re.compile(
+    r"\bvirtual\b|\bftdv\b|threat defense for (?:vmware|kvm|aws|azure|gcp|google|oci|oracle|hyper-v|"
+    r"nutanix|openstack|alibaba)",
+    re.I,
+)
+
+
+def is_virtual(device: dict[str, Any]) -> bool:
+    """An FTDv, from the device record's performance tier or model."""
+    tier = str(device.get("performanceTier") or "")
+    return tier.upper().startswith("FTDV") or bool(VIRTUAL_MODEL.search(str(device.get("model") or "")))
+
+
+def bridge_group_of(items: list[tuple[str, dict[str, Any]]]) -> dict[str, str]:
+    """Interface id -> the bridge group (BVI) it belongs to."""
+    return {
+        str(m["id"]): str(i.get("name") or i.get("id"))
+        for k, i in items
+        if k == "bridge_group"
+        for m in i.get("selectedInterfaces") or []
+        if m.get("id")
+    }
 
 
 def iref(i: dict[str, Any]) -> dict[str, Any]:
@@ -373,6 +398,13 @@ def plan_logical_interface(
 
     blockers: list[str] = []
     side: list[str] = []
+    if kind == "etherchannel" and is_virtual(device):
+        blockers.append(
+            f"{dname} is an FTDv ({device.get('model') or device.get('performanceTier')}): FMC doesn't "
+            "support EtherChannel interfaces on virtual Threat Defense (FMC 10.0.1 refuses the POST with "
+            "\"Etherchannel interface is not supported on 'Virtual' Threat Defense\"). Use separate "
+            "interfaces, or a bvi to bridge them."
+        )
     mode = str(device.get("ftdMode") or "ROUTED").upper()
     if mode != "ROUTED" and kind in ("loopback", "vti"):
         blockers.append(f"{dname} is in {mode.lower()} mode; loopbacks and VTIs need routed mode.")
@@ -483,8 +515,9 @@ def plan_logical_interface(
                     )
                 if not m.get("ifname"):
                     side.append(
-                        f"Member {label} has no logical name: give it one and a security zone "
-                        "(fmc_update_interface) before it passes traffic."
+                        f"Member {label} has no logical name: give it one and a SWITCHED security zone "
+                        "(fmc_update_interface) before it passes traffic; FMC refuses a ROUTED zone on a "
+                        "bridge-group member."
                     )
         body["selectedInterfaces"] = [iref(m) for m in picked]
         if kind == "etherchannel":
@@ -652,9 +685,8 @@ def register(reg: ToolRegistrar) -> None:
         fmc_deploy. New loopbacks, VTIs, EtherChannels and BVIs: fmc_create_interface."""
         app: FmcApp = get_client(ctx)
         dev = await resolve_device(app, device, domain)
-        kind, current = pick_interface(
-            await device_interfaces(app, dev["id"], domain), interface, dev["name"]
-        )
+        items = await device_interfaces(app, dev["id"], domain)
+        kind, current = pick_interface(items, interface, dev["name"])
         if kind != "physical" and current.get("type") == "PhysicalInterface":
             kind = "physical"
         # FMC's PUT replaces the whole interface: start from the full object, not the list item.
@@ -713,6 +745,20 @@ def register(reg: ToolRegistrar) -> None:
             )
         if kind in NO_DHCP_KINDS and ipv4 and ipv4.strip().lower() == "dhcp":
             blockers.append(f"A {kind} interface takes a static address only, not dhcp.")
+        bvi = bridge_group_of(items).get(str(current.get("id")))
+        new_zone = (
+            desired.get("securityZone") if security_zone and security_zone.strip().lower() != "none" else None
+        )
+        if bvi and new_zone and new_zone.get("id"):
+            zone = await app.api.get(await app.config_path(f"object/securityzones/{new_zone['id']}", domain))
+            zmode = str(zone.get("interfaceMode") or "").upper()
+            if zmode and zmode != "SWITCHED":
+                blockers.append(
+                    f"{current.get('name')} is a member of {bvi}: FMC needs a SWITCHED security zone on a "
+                    f"bridge-group member and {zone.get('name')!r} is {zmode} (FMC refuses it with "
+                    '"Security zone should be in same mode as of Interface mode type"). Use a SWITCHED '
+                    "zone (fmc_create_security_zone interface_mode='SWITCHED')."
+                )
         if kind == "loopback" and mtu is not None:
             blockers.append("A loopback has no MTU setting.")
         if current.get("managementOnly") or str(current.get("name", "")).lower().startswith("management"):
@@ -911,10 +957,11 @@ def register(reg: ToolRegistrar) -> None:
         """Create a logical interface on a device: a loopback (router id, routing source, the address a
         VTI borrows), a static or dynamic VTI for route-based VPN and SD-WAN (sourced from the WAN, with
         its own address or a borrowed loopback one), an EtherChannel (port-channel of physical members,
-        LACP or static) or a bridge group virtual interface (BVI) over member interfaces, with logical
-        name, zone and IPv4. The id defaults to the lowest free one. The preview shows the interface,
-        its members and what blocks it (used names or ids, configured or taken members, overlapping
-        subnets). Change it with fmc_update_interface, remove it with fmc_delete_interface; list it with
+        LACP or static; hardware models only, FMC refuses it on FTDv) or a bridge group virtual
+        interface (BVI) over member interfaces, with logical name, zone and IPv4. The id defaults to the
+        lowest free one. The preview shows the interface, its members and what blocks it (used names or
+        ids, configured or taken members, overlapping subnets, EtherChannel on FTDv). Change it with
+        fmc_update_interface, remove it with fmc_delete_interface; list it with
         fmc_list_device_interfaces(kinds=[...]). Takes effect after fmc_deploy."""
         app: FmcApp = get_client(ctx)
         dev = await resolve_device(app, device, domain)
@@ -1031,7 +1078,14 @@ def register(reg: ToolRegistrar) -> None:
                 blockers.append(f"{label} still has subinterfaces ({names}): delete them first.")
         if current.get("selectedInterfaces"):
             names = ", ".join(ref_label(m) for m in current["selectedInterfaces"])
-            side.append(f"Its members ({names}) are released as unconfigured interfaces.")
+            if kind == "bridge_group":
+                side.append(
+                    f"Its members ({names}) leave the bridge group but FMC keeps their logical names: "
+                    "clear them (fmc_update_interface logical_name='none', and security_zone='none' if "
+                    "they have one) unless they are reused."
+                )
+            else:
+                side.append(f"Its members ({names}) are released as unconfigured interfaces.")
         users: list[str] = []
         ifname = current.get("ifname")
         if ifname:
