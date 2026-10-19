@@ -122,15 +122,15 @@ async def test_host_filter_and_columns(ftd: respx.MockRouter) -> None:
     logging_on(ftd)
     data = await call("fmc_live_connections", {"device": "mcp-ftd1", "host": "10.99.1.10"})
     assert data["source"] == "syslog buffer (show logging)"
-    # the most recently active connection first (a busy buffer's first page is 'right now')
+    # open connections first ('right now'), then the most recently active
     assert [(r["protocol"], r["state"]) for r in data["results"]] == [
-        ("ICMP", "closed"),
         ("TCP", "open"),
+        ("ICMP", "closed"),
         ("TCP", "closed"),
     ]
     assert data["open"] == 1 and data["connections_seen"] == 5
     data = await call("fmc_live_connections", {"device": "mcp-ftd1"})
-    assert [r.get("id", r["protocol"]) for r in data["results"]] == ["99", "ICMP", "103", "102", "101"]
+    assert [r.get("id", r["protocol"]) for r in data["results"]] == ["102", "99", "ICMP", "103", "101"]
     data = await call("fmc_live_connections", {"device": "mcp-ftd1", "host": "10.99.1.0/24", "port": 23})
     assert [r["id"] for r in data["results"]] == ["102"]
     data = await call("fmc_live_connections", {"device": "mcp-ftd1", "protocol": "udp", "state": "closed"})
@@ -261,3 +261,30 @@ async def test_sessions_403_names_the_permission(ftd: respx.MockRouter) -> None:
 async def test_sessions_need_a_filter(ftd: respx.MockRouter) -> None:
     with pytest.raises(ToolError, match="Give an ip"):
         await call("fmc_user_identity_sessions", {})
+
+
+# --- packet-tracer flows and FTD 10's number tail (#202), recorded on FTD 10.0.0 ------------------------
+
+INJECTION = fixture("ftd_logging_injection")["text"]
+
+
+def test_parse_log_buffer_marks_packet_tracer_flows_and_drops_the_number_tail() -> None:
+    conns, _ = parse_log_buffer(INJECTION)
+    rows = {c.conn_id: c for c in conns}
+    assert rows["29"].reason == "TCP FINs from outside" and not rows["29"].simulated
+    assert rows["44"].reason == "Free the flow created as result of packet injection" and rows["44"].simulated
+
+
+async def test_packet_tracer_flows_are_left_out_and_counted(ftd: respx.MockRouter) -> None:
+    out = {"items": [{"commandInput": "show logging", "commandOutput": INJECTION}]}
+    ftd.get(CMD).mock(return_value=httpx.Response(200, json=out))
+    data = await call("fmc_live_connections", {"device": "mcp-ftd1", "host": "10.99.1.10"})
+    assert [r["id"] for r in data["results"]] == ["29"]
+    assert data["results"][0]["started"] == "2026-10-18T23:00:57Z"
+    assert data["packet_tracer_flows"] == 1 and "packet-tracer simulation" in data["note"]
+    md = await call_tool(
+        create_server(make_settings()),
+        "fmc_live_connections",
+        {"device": "mcp-ftd1", "response_format": "markdown"},
+    )
+    assert "| started | ended |" in str(md)
