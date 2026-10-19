@@ -27,7 +27,7 @@ from fmc_mcp.preview import fmc_preview
 from fmc_mcp.refs import RefResolver
 from fmc_mcp.tools.common import Domain, ref_label, resolve_in
 from fmc_mcp.tools.object_writes import applied, editable
-from fmc_mcp.tools.policies import ACCESS
+from fmc_mcp.tools.policies import ACCESS, policy_assignments
 
 PS = "policy/ftdplatformsettingspolicies"
 Severity = Literal["EMERG", "ALERT", "CRIT", "ERR", "WARNING", "NOTICE", "INFO", "DEBUG"]
@@ -128,8 +128,7 @@ def syslog_summary(
 
 
 async def assigned_devices(app: FmcApp, pol_id: str, domain: str | None) -> list[str]:
-    page = await app.all(await app.config_path("assignment/policyassignments", domain), cap=5000)
-    for a in page.items:
+    for a in await policy_assignments(app, domain):
         if (a.get("policy") or {}).get("id") == pol_id:
             return [str(t.get("name") or t.get("id")) for t in a.get("targets") or []]
     return []

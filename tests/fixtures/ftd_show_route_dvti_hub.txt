@@ -1,0 +1,25 @@
+
+Gateway of last resort is not set
+
+C        10.20.1.0 255.255.255.0 is directly connected, inside
+L        10.20.1.1 255.255.255.255 is directly connected, inside
+B        10.20.11.0 255.255.255.0 [200/1] via 10.255.9.2, 00:04:04
+B        10.20.12.0 255.255.255.0 [200/1] via 10.255.9.3, 00:04:05
+B        10.20.13.0 255.255.255.0 [200/1] via 10.255.9.4, 00:04:04
+S        10.31.0.0 255.255.0.0 [1/0] via 10.31.1.1, mpls
+C        10.31.1.0 255.255.255.0 is directly connected, mpls
+L        10.31.1.2 255.255.255.255 is directly connected, mpls
+S        10.32.0.0 255.255.0.0 [1/0] via 10.32.1.1, inet
+C        10.32.1.0 255.255.255.0 is directly connected, inet
+L        10.32.1.2 255.255.255.255 is directly connected, inet
+S        10.33.0.0 255.255.0.0 [1/0] via 10.33.1.1, lte
+C        10.33.1.0 255.255.255.0 is directly connected, lte
+L        10.33.1.2 255.255.255.255 is directly connected, lte
+C        10.255.9.1 255.255.255.255 is directly connected, sdwan-dvti-lo
+V        10.255.9.2 255.255.255.255 
+           connected by VPN (advertised), sdwan-dvti_va9
+V        10.255.9.3 255.255.255.255 
+           connected by VPN (advertised), sdwan-dvti_va6
+V        10.255.9.4 255.255.255.255 
+           connected by VPN (advertised), sdwan-dvti_va8
+
