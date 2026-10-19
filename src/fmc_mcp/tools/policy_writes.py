@@ -103,6 +103,13 @@ async def identity_blockers(
 
 
 BLOCKING = {"BLOCK", "BLOCK_RESET", "BLOCK_INTERACTIVE", "BLOCK_RESET_INTERACTIVE"}
+FILE_POLICIES = "policy/filepolicies"
+
+
+async def file_policy_ref(app: FmcApp, ref: str, domain: str | None) -> dict[str, Any]:
+    """The {id, type, name} reference an access rule takes for a file policy (name or UUID)."""
+    fp = await resolve_in(app, FILE_POLICIES, ref, "file policy", domain)
+    return {"id": fp["id"], "type": "FilePolicy", "name": fp.get("name")}
 
 
 def _log_fields(log: LogMode | None, action: str | None = None) -> dict[str, Any]:
@@ -218,6 +225,14 @@ def register(reg: ToolRegistrar) -> None:
             str | None,
             Field(description="Intrusion policy name for ALLOW rules (fmc_list_policies kind=intrusion)"),
         ] = None,
+        file_policy: Annotated[
+            str | None,
+            Field(
+                description="File policy for an ALLOW rule (fmc_get_file_policy): blocks or looks up the "
+                "files the rule allows, with file events logged. Malware actions need the MALWARE_DEFENSE "
+                "licence on the devices (fmc_set_device_licenses)"
+            ),
+        ] = None,
         section: Annotated[
             Literal["mandatory", "default"] | None, Field(description="Section to add to (default: Default)")
         ] = None,
@@ -272,6 +287,11 @@ def register(reg: ToolRegistrar) -> None:
                 app, "policy/intrusionpolicies", intrusion_policy, "intrusion policy", domain
             )
             body["ipsPolicy"] = {"id": ips["id"], "type": "IntrusionPolicy", "name": ips.get("name")}
+        if file_policy:
+            if action != "ALLOW":
+                raise InvalidRequest("A file policy can only be set on ALLOW rules.")
+            body["filePolicy"] = await file_policy_ref(app, file_policy, domain)
+            body["logFiles"] = log != "none"
         if comment:
             body["newComments"] = [comment]
         params: dict[str, Any] = {}
@@ -327,6 +347,7 @@ def register(reg: ToolRegistrar) -> None:
                 "enabled": enabled,
                 "log": log,
                 "intrusion_policy": intrusion_policy,
+                "file_policy": file_policy,
                 "section": section,
                 "category": category,
                 "insert_before": insert_before,
@@ -365,6 +386,14 @@ def register(reg: ToolRegistrar) -> None:
                 "need the IPS licence (fmc_set_device_licenses)."
             ),
         ] = None,
+        file_policy: Annotated[
+            str | None,
+            Field(
+                description="File policy for an ALLOW rule (name or UUID, fmc_get_file_policy); '' removes "
+                "it. File events are logged unless log='none'. Malware actions need the MALWARE_DEFENSE "
+                "licence."
+            ),
+        ] = None,
         move_to: Annotated[
             int | None, Field(ge=1, description="Move the rule so it sits at this 1-based index")
         ] = None,
@@ -385,7 +414,8 @@ def register(reg: ToolRegistrar) -> None:
             desired["action"] = action
             if action != "ALLOW":
                 desired.pop("ipsPolicy", None)
-                desired.pop("filePolicy", None)
+                if desired.pop("filePolicy", None):
+                    desired["logFiles"] = False  # no file policy, no file events
         if enabled is not None:
             desired["enabled"] = enabled
         removed_ips = desired.pop("ipsPolicy", None) if intrusion_policy == "" else None
@@ -396,6 +426,14 @@ def register(reg: ToolRegistrar) -> None:
                 app, "policy/intrusionpolicies", intrusion_policy, "intrusion policy", domain
             )
             desired["ipsPolicy"] = {"id": ips["id"], "type": "IntrusionPolicy", "name": ips.get("name")}
+        removed_file = desired.pop("filePolicy", None) if file_policy == "" else None
+        if removed_file:
+            desired["logFiles"] = False
+        if file_policy:
+            if desired.get("action") != "ALLOW":
+                raise InvalidRequest("A file policy can only be set on ALLOW rules.")
+            desired["filePolicy"] = await file_policy_ref(app, file_policy, domain)
+            desired["logFiles"] = log != "none"
         new_conditions = await _conditions(
             RefResolver(app, domain),
             {
@@ -414,6 +452,8 @@ def register(reg: ToolRegistrar) -> None:
         cleared: dict[str, Any] = {}
         if removed_ips:
             cleared["ipsPolicy"] = {"from": ref_label(removed_ips), "to": None, "removed": True}
+        if removed_file:
+            cleared["filePolicy"] = {"from": ref_label(removed_file), "to": None, "removed": True}
         for field, block in new_conditions.items():
             if block:
                 desired[field] = block
@@ -483,6 +523,7 @@ def register(reg: ToolRegistrar) -> None:
                 "users": users,
                 "log": log,
                 "intrusion_policy": intrusion_policy,
+                "file_policy": file_policy,
                 "move_to": move_to,
                 "comment": comment,
                 "domain": domain,
