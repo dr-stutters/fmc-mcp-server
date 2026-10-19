@@ -303,3 +303,54 @@ def test_rule_rows_ignore_fmc10_default_cert_blocks() -> None:
     tls12_only = {**resign, "tlsVersions": {k: k == "tls12" for k in resign["tlsVersions"]}}
     assert cert_conditions(tls12_only) == ["tlsVersions"]
     assert cert_conditions({**resign, "issuerDNs": {"objects": [{"name": "dn", "id": "x"}]}}) == ["issuerDNs"]
+
+
+# FMC 10.0.1 (live, 2026-10-19): a decryption rule POST with insertBefore answers 500 "JsonNull"
+# but stores the rule at the requested index.
+OLD = {
+    "id": "r0",
+    "name": "old",
+    "type": "DecryptionPolicyRule",
+    "ruleAction": "DO_NOT_DECRYPT",
+    "enabled": True,
+}
+JSON_NULL = httpx.Response(
+    500, json={"error": {"category": "OTHER", "messages": [{"description": "JsonNull"}]}}
+)
+
+
+def dnd_args(**kw: Any) -> dict[str, Any]:
+    return {
+        "policy": "mcp-test-dec",
+        "name": "dnd-first",
+        "destination_networks": ["192.0.2.10"],
+        "destination_ports": ["tcp/443"],
+        "insert_before": 1,
+        **kw,
+    }
+
+
+async def test_create_rule_500_but_created_is_reported_applied(fmc: respx.MockRouter) -> None:
+    fmc.get(f"{CFG}/policy/decryptionpolicies").mock(return_value=items([DEC]))
+    made = {"id": "r1", "name": "dnd-first", "type": "DecryptionPolicyRule", "metadata": {"ruleIndex": 1}}
+    before = items([{**OLD, "metadata": {"ruleIndex": 1}}])
+    after = items([{**OLD, "metadata": {"ruleIndex": 2}}, made])
+    fmc.get(RULES).mock(side_effect=[before, before, after])
+    post = fmc.post(RULES).mock(return_value=JSON_NULL)
+    async with Client(server()) as c:
+        p = await run(c, "fmc_create_decryption_rule", dnd_args())
+        assert p["status"] == "preview" and p["preview"]["position"] == 1
+        done = await run(c, "fmc_create_decryption_rule", {**dnd_args(), "confirm": p["confirm"]})
+    assert post.calls.last.request.url.params["insertBefore"] == "1"
+    assert done["status"] == "applied" and done["result"]["id"] == "r1"
+    assert "created the rule" in done["result"]["warning"] and "rule 1" in done["result"]["warning"]
+
+
+async def test_create_rule_500_and_not_created_is_an_error(fmc: respx.MockRouter) -> None:
+    fmc.get(f"{CFG}/policy/decryptionpolicies").mock(return_value=items([DEC]))
+    fmc.get(RULES).mock(return_value=items([{**OLD, "metadata": {"ruleIndex": 1}}]))
+    fmc.post(RULES).mock(return_value=JSON_NULL)
+    async with Client(server()) as c:
+        p = await run(c, "fmc_create_decryption_rule", dnd_args())
+        with pytest.raises(ToolError, match="500"):
+            await c.call_tool("fmc_create_decryption_rule", {**dnd_args(), "confirm": p["confirm"]})
