@@ -22,6 +22,7 @@ Lab addresses and hostnames are not in this file. Placeholders:
 | `<gambling-hostname>` | a public hostname in the Gambling URL category, resolved to `<outside-host>` with `curl --resolve` |
 | `<ise-fqdn>`, `<lab-root-ca>`, `<ad-realm>` | ISE's pxGrid node name, the lab's root CA (and FMC's trusted-CA object for it), the AD realm on FMC |
 | `<ha-host>`, `<branch-host>`, `<hub-wan>` | the test host behind `mcp-fw-ha`, the host behind `mcp-fw-branch1`, the T1 hub's internet address |
+| `<hub-host>`, `<spoke-host>` | the hosts behind the T1 hub and behind `mcp-sdwan-t1-spoke1` |
 
 Status: **pass**, **fail** (a tool bug; root cause given), **blocked** (a lab, licence, role or platform limit), or **not run**.
 
@@ -45,6 +46,7 @@ Final status after the morning re-proof on `main`. "Overnight" in the evidence c
 | 12 | F65 HA under traffic | **pass** | overnight: hitless switch, 15.2 s gap on power-off, separate state link |
 | 13 | F34 ISE identity source | **partial**; enforcement **blocked: pxGrid** | tools report the failing source correctly; FMC still presents an old client certificate to ISE (B2, handled separately) |
 | 14 | F56 `fmc_prove_policy` + `fmc_prove_user_policy` | **pass** (tool, prompt); alice/bob rows **blocked: pxGrid** | 4 of 6 flows pass, the 2 user rows report "no user on `<client>`" (true while B2 lasts) |
+| 15 | F60 demo stories (`docs/demos.md`) | **pass** (all three, from a reset; story 2 with the registered branch) | story 1: block rule previewed, deployed, proven, rolled back and proven again; story 2: branch joins a new two-WAN overlay, hand-off 3/3, a spoke WAN down loses no ping, the troubleshoot prompt names a dead path; story 3: the planted rule found by name in all five steps, disabled, proven. Three doc fixes from the runs (see below) |
 | - | Read-only live tests | pass | overnight: 7 passed, 1 skipped (the role 403, since fixed) |
 
 ## Blockers that apply to several proofs
@@ -216,6 +218,24 @@ iBGP overlay, the T1 policy's existing overlay zone) and the four T1 devices dep
 **`blocked`**: "mcp-fw-branch1 is an FTDv (Cisco Secure Firewall Threat Defense for KVM): FMC doesn't support EtherChannel interfaces
 on virtual Threat Defense (FMC 10.0.1 refuses the POST with \"Etherchannel interface is not supported on 'Virtual' Threat
 Defense\"). Use separate interfaces, or a bvi to bridge them." (overnight R1, fixed by #194). Nothing was sent to FMC.
+
+### F60 demo stories (pass, all three from a reset)
+
+Run once each with the MCP tools and the prompts, objects named `mcp-fw-demo-*`, after `fw_demo_reset.py` (lab repo) found
+nothing to reset. Times are tool time, not counting the audience's questions.
+
+| Story | Result | Time | What happened |
+|---|---|---|---|
+| 1 Change with proof and rollback (`mcp-ftd-identity`) | **pass** | ~6 min | prompt `fmc_rule_change_review`: baseline bundle, before verdicts (telnet and http allowed by `mcp-fw-baseline`), `fmc_create_access_rule` preview at position 1, after verdicts (telnet blocked by `mcp-fw-demo-block-telnet`, http unchanged), nothing else pending; deploy; `fmc_prove_policy` 2/2 pass and telnet refused from `<client>`; `fmc_rollback_deployment` to the job before; telnet row `fail` (allowed again) and the client connects; `fmc_diff_policy_bundle` shows the rule still in FMC; rule deleted |
+| 2 SD-WAN: add a branch, fail a WAN link (T1 hub, spoke1, `mcp-fw-branch1`) | **pass** (registration skipped: the branch was registered and in no topology, as the prompt allows) | ~12 min + 3 min setup | `fmc_create_sdwan_topology('mcp-fw-demo-sdwan')` with a second-WAN companion (`-wan2`); prompt `fmc_onboard_branch`: no template fits an FTDv (manual path), the prompt found the missing overlay access rule and the hub's missing return route to `<branch-wan>`, branch-only deploy, underlay ping, `fmc_update_sdwan_topology`, hub + branch deploy, `<branch-host>` reaches `<hub-host>` and `<spoke-host>`, hand-off `fmc_prove_policy` 3/3; spoke1's primary WAN link down: a 0.2 s ping series from `<spoke-host>` to `<hub-host>` lost no reply (ECMP over both tunnels), `fmc_sdwan_status` critical "the peer doesn't answer", prompt `fmc_vpn_troubleshoot` -> dead path on the carrier, packet tracer leaves by the backup tunnel; link up: both IKE SAs READY within ~30 s |
+| 3 Why is it blocked? to fixed (`mcp-ftd-identity`) | **pass**; step 7's audit search needed the policy name | ~5 min | planted `mcp-fw-demo-break-web` (BLOCK, position 1, "CHG-1234"); prompt `fmc_why_blocked`: rule_lookup and packet tracer (acl-drop, same rule and device rule id) name it, 11 hits, nothing pending, the audit names the policy save and the user; tcp/443 and another client are not affected; `enabled=false`, deploy, `fmc_prove_policy` 2/2 pass (http allowed, tcp/3389 still blocked), `<client>` gets 200 |
+
+Doc fixes from the runs (in `docs/demos.md`): (1) story 1: a trace right after the rollback can show `allow (drop)
+no-v4-adjacency` until real traffic has re-learned the server's ARP entry, and the next deploy after a rollback pushes the whole
+device configuration; (2) story 2 step 6: the tunnel is back within about 30 s, but `degraded` keeps the primary WAN for about
+5 minutes (the health monitor's samples trail); (3) story 3 step 7: FMC logs a rule edit as "Save Policy <policy>:<revision>",
+so the audit search uses the policy name and a short window. The reset also needs the hub's static route to `<branch-wan>`
+deleted first (it references a demo host object), and the hub's DVTIs and loopbacks removed by hand, as documented.
 
 ### F34 / F56 user rows (blocked: pxGrid, handled separately)
 
