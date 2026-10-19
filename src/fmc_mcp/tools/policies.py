@@ -9,7 +9,15 @@ from fastmcp import Context
 from fastmcp.tools import ToolResult
 from pydantic import Field
 
-from fmc_mcp._core import InvalidRequest, ResponseFormat, ToolRegistrar, get_client, list_result
+from fmc_mcp._core import (
+    AuthError,
+    InvalidRequest,
+    NotFound,
+    ResponseFormat,
+    ToolRegistrar,
+    get_client,
+    list_result,
+)
 from fmc_mcp._core.http import Page, page_of
 from fmc_mcp.catalog import Catalog, ip_contains
 from fmc_mcp.client import FmcApp, is_uuid
@@ -19,6 +27,7 @@ from fmc_mcp.tools.common import Domain, pick_by_name, ref_label, resolve_in, sl
 ACCESS = "policy/accesspolicies"
 NAT = "policy/ftdnatpolicies"
 PREFILTER = "policy/prefilterpolicies"
+ASSIGNMENTS = "assignment/policyassignments"
 RULE_CAP = 10_000
 
 POLICY_KINDS: dict[str, str] = {
@@ -122,10 +131,31 @@ def nat_address_refs(rule: dict[str, Any]) -> list[tuple[str, dict[str, Any]]]:
     return [(key, rule[f]) for f, key in NAT_ADDRESS_FIELDS.items() if isinstance(rule.get(f), dict)]
 
 
+async def policy_assignments(app: FmcApp, domain: str | None, cap: int = 5000) -> list[dict[str, Any]]:
+    """Every policy assignment that can apply to the domain's devices. FMC lists in a domain only the
+    assignments of policies that domain owns, so a leaf-domain device running a policy inherited from
+    an ancestor (e.g. a Global access or NAT policy) is missing from the leaf's list. The ancestors'
+    lists are read too; their rows carry `_domain` (the owner domain's name). An ancestor this login
+    can't read is skipped."""
+    page = await app.all(await app.config_path(ASSIGNMENTS, domain), cap=cap)
+    rows = list(page.items)
+    seen = {str(a.get("id")) for a in rows}
+    for uuid in await app.domain_ancestors(domain):
+        try:
+            more = await app.all(await app.config_path(ASSIGNMENTS, uuid), cap=cap)
+        except (AuthError, NotFound):
+            continue
+        owner = await app.domain_name(uuid)
+        for a in more.items:
+            if str(a.get("id")) not in seen:
+                seen.add(str(a.get("id")))
+                rows.append({**a, "_domain": owner})
+    return rows
+
+
 async def nat_policy_of(app: FmcApp, device_id: str, domain: str | None) -> str | None:
-    """Id of the NAT policy assigned to a device (policy assignments)."""
-    page = await app.all(await app.config_path("assignment/policyassignments", domain), cap=2000)
-    for a in page.items:
+    """Id of the NAT policy assigned to a device (policy assignments, ancestor domains included)."""
+    for a in await policy_assignments(app, domain, cap=2000):
         pol = a.get("policy") or {}
         if pol.get("type") != "FTDNatPolicy":
             continue
@@ -451,31 +481,32 @@ def register(reg: ToolRegistrar) -> None:
         response_format: ResponseFormat = "markdown",
     ) -> ToolResult:
         """List which policies (access, NAT, platform settings, ...) are assigned to which devices,
-        HA pairs and clusters. Empty when nothing is assigned."""
+        HA pairs and clusters. In a child domain this includes policies inherited from an ancestor
+        domain (`domain` names the owner, e.g. a Global access policy on a leaf device). Empty when
+        nothing is assigned."""
         app: FmcApp = get_client(ctx)
-        page = await app.all(await app.config_path("assignment/policyassignments", domain), cap=5000)
         rows = []
-        for a in page.items:
+        for a in await policy_assignments(app, domain):
             pol = a.get("policy") or {}
             targets = [ref_label(t) for t in a.get("targets") or []]
             if policy and policy.lower() not in str(pol.get("name", "")).lower():
                 continue
             if device and not any(device.lower() in t.lower() for t in targets):
                 continue
-            rows.append(
-                {
-                    "policy": pol.get("name"),
-                    "policy_type": pol.get("type"),
-                    "targets": targets,
-                    "id": a.get("id"),
-                }
-            )
+            row = {
+                "policy": pol.get("name"),
+                "policy_type": pol.get("type"),
+                "targets": targets,
+                "id": a.get("id"),
+            }
+            if a.get("_domain"):
+                row["domain"] = a["_domain"]
+            rows.append(row)
         return list_result(page_of(rows, limit=limit, offset=offset), fmt=response_format)
 
 
 async def _assigned_devices(app: FmcApp, policy_id: str, domain: str | None) -> list[str]:
-    page = await app.all(await app.config_path("assignment/policyassignments", domain), cap=5000)
-    for a in page.items:
+    for a in await policy_assignments(app, domain):
         if (a.get("policy") or {}).get("id") == policy_id or a.get("id") == policy_id:
             return [ref_label(t) for t in a.get("targets") or []]
     return []

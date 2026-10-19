@@ -8,8 +8,8 @@ to find the device when a flow names none.
 
 User-based flows: the FTD applies user rules from its own user-to-IP mapping, so a flow is traced from
 the user's current IP and the Snort identity phase shows which user the device saw there. When a flow
-gives a user but no source, the IP comes from a user-to-IP lookup registered in USER_IP_RESOLVERS (F34 /
-F55 add one); without one the flow needs its source.
+gives a user but no source, the IP comes from the user-to-IP lookups in USER_IP_RESOLVERS: FMC's
+identity sessions (identity_sources.user_ips, as fmc_user_ip_lookup reads them).
 """
 
 # No `from __future__ import annotations`: FastMCP inspects signatures at runtime.
@@ -38,6 +38,7 @@ from fmc_mcp.flow import DeviceContext, device_context
 from fmc_mcp.tools.common import Domain
 from fmc_mcp.tools.device_config import device_interfaces, resolve_device
 from fmc_mcp.tools.devices import DEVICES
+from fmc_mcp.tools.identity_sources import user_ips
 from fmc_mcp.tools.troubleshoot import packet_trace
 
 MAX_FLOWS = 25
@@ -47,9 +48,9 @@ POLICY_DROP = re.compile(r"acl-drop|snort|firewall|deny|denied|block|sec-?intel|
 POLICY_PHASES = ("ACCESS-LIST", "SNORT", "PREFILTER")
 IDENTITY = re.compile(r"username: (?P<user>[^,\s]+)(?:.*?AD domain: (?P<realm>[^,\s]+))?", re.S)
 
-# async (app, user, domain) -> the user's current IPs (F34 / F55 register one).
+# async (app, user, domain) -> the user's current IPs, newest first.
 UserIpResolver = Callable[[FmcApp, str, str | None], Awaitable[list[str]]]
-USER_IP_RESOLVERS: list[UserIpResolver] = []
+USER_IP_RESOLVERS: list[UserIpResolver] = [user_ips]
 
 
 class Expectation(BaseModel):
@@ -59,8 +60,8 @@ class Expectation(BaseModel):
     expect: Literal["allow", "block"] = Field(description="The verdict the policy should give")
     source: str | None = Field(
         None,
-        description="Source IP address; for a user flow, the IP the user is logged in on (may be omitted "
-        "when a user-to-IP lookup is available)",
+        description="Source IP address; for a user flow, the IP the user is logged in on (omit it to use "
+        "the IP of the user's newest FMC identity session, as fmc_user_ip_lookup shows it)",
     )
     port: int | None = Field(None, ge=1, le=65535, description="Destination port (tcp/udp)")
     protocol: Literal["tcp", "udp", "icmp"] = Field("tcp", description="tcp, udp or icmp (echo)")
@@ -272,9 +273,11 @@ def register(reg: ToolRegistrar) -> None:
         entry, or not the expected user on the source IP), or error (could not trace); with the
         deciding rule, the user the device saw on the source, the device and ingress interface, and a
         summary (all_passed). User rules are decided from the device's live user-to-IP mapping, so
-        trace a user flow from the IP the user is logged in on. Packet tracer simulates the packets
-        (nothing is sent; packet-tracer runs count as rule hits). For one flow in depth use
-        fmc_packet_tracer; for the offline view fmc_rule_lookup."""
+        a user flow is traced from the IP the user is logged in on: give `source`, or leave it out and
+        the IP of the user's newest FMC identity session is used (fmc_user_ip_lookup; the role needs
+        Analysis > Users, else that flow is an error row naming the permission). Packet tracer
+        simulates the packets (nothing is sent; packet-tracer runs count as rule hits). For one flow in
+        depth use fmc_packet_tracer; for the offline view fmc_rule_lookup."""
         app: FmcApp = get_client(ctx)
         placer = Placer(app, domain, candidates)
         rows: list[dict[str, Any]] = []
