@@ -28,7 +28,7 @@ from fmc_mcp._core.http import page_of
 from fmc_mcp.client import FmcApp
 from fmc_mcp.preview import fmc_preview
 from fmc_mcp.refs import RefResolver
-from fmc_mcp.rules import app_labels, url_labels
+from fmc_mcp.rules import app_labels, has_value, url_labels
 from fmc_mcp.tools.common import Domain, block_labels, ref_label, resolve_in
 from fmc_mcp.tools.object_writes import applied
 from fmc_mcp.tools.pki import (
@@ -57,6 +57,7 @@ CERT_CONDITIONS = (
     "externalCertificates",
     "cipherSuiteLists",
     "tlsVersions",
+    "clientThreat",
 )
 # Every TLS/SSL version. FMC 10.0.1 stores all five false for a rule created without `tlsVersions`, then
 # refuses the deploy of DO_NOT_DECRYPT and DECRYPT_RESIGN rules that select versions ("Support for SSL
@@ -87,6 +88,31 @@ PropagateParam = Annotated[
 ]
 
 
+def cert_conditions(r: dict[str, Any]) -> list[str]:
+    """The certificate and TLS conditions that really narrow a rule (CERT_CONDITIONS keys).
+
+    FMC 10.0.1 returns every rule with `certificateStatuses` (all ten statuses "ANY"), `tlsVersions` (five
+    flags) and `clientThreat` "ANY", whether the rule uses them or not. A status block counts only when a
+    status is YES or NO; a version block only when some versions are on and others off (all on = every
+    version; all off is what FMC stores for a rule created without versions); a client threat level only
+    when it isn't ANY."""
+    out: list[str] = []
+    for c in CERT_CONDITIONS:
+        v = r.get(c)
+        if c == "certificateStatuses":
+            narrows = isinstance(v, dict) and any(str(s).upper() in ("YES", "NO") for s in v.values())
+        elif c == "tlsVersions":
+            flags = [f for f in v.values() if isinstance(f, bool)] if isinstance(v, dict) else []
+            narrows = any(flags) and not all(flags)
+        elif c == "clientThreat":
+            narrows = isinstance(v, str) and v.upper() not in ("", "ANY")
+        else:
+            narrows = has_value(v)
+        if narrows:
+            out.append(c)
+    return out
+
+
 def rule_row(r: dict[str, Any]) -> dict[str, Any]:
     meta = r.get("metadata") or {}
     row = {
@@ -105,7 +131,7 @@ def rule_row(r: dict[str, Any]) -> dict[str, Any]:
         "users": block_labels(r.get("users")) or None,
         "applications": app_labels(r.get("applications")) or None,
         "urls": url_labels(r.get("urls")) or None,
-        "cert_conditions": [c for c in CERT_CONDITIONS if r.get(c)] or None,
+        "cert_conditions": cert_conditions(r) or None,
         "log": True if (r.get("logging") or {}).get("logEnd") else None,
         "id": r.get("id"),
     }
