@@ -128,6 +128,16 @@ def test_feed_status() -> None:
     assert feed_status(ip_feed(now - 600, entries=0), now).startswith("downloaded but empty")
     off = {**ip_feed(now - 30 * 86400), "updateFrequency": 0}
     assert feed_status(off, now) == "ok (automatic refresh off)"
+    # FMC 10.0.1 (live, 2026-10-19): validEntries filled, entryCount 0, no feedUpdateTime,
+    # also after the devices had started to block the feed's entries
+    fetched = ip_feed(None, entries=0)
+    fetched["metadata"]["validEntries"] = ["192.0.2.10", "198.51.100.0/24", "203.0.113.66"]
+    status = feed_status(fetched, now)
+    assert status.startswith("fetched: FMC read 3 valid entries") and "not downloaded" not in status
+    assert "every 60 min" in status and "fmc_packet_tracer" in status
+    row = source_row("ip", "feed", fetched, now)
+    assert row["fetched_entries"] == 3 and row["fetched_sample"][0] == "192.0.2.10" and row["entries"] == 0
+    assert "fetched_entries" not in source_row("ip", "feed", ip_feed(None), now)
     row = source_row("ip", "feed", ip_feed(1792320000), now)
     assert row["last_update"].endswith("Z") and row["url"] == "http://feed.example.test/ip.txt"
     assert source_row("url", "custom", url_list())["uploaded_by_this_server"] is True
