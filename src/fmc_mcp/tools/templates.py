@@ -359,7 +359,8 @@ def register(reg: ToolRegistrar) -> None:
         passwords masked), model mappings (template interface -> model interface per FTD model), VPN
         settings (SD-WAN/S2S topology, hub or spoke role, tunnel interfaces and addresses),
         overridable objects, and the devices it was applied to with the last apply and sync status.
-        About 7 FMC requests."""
+        Use it before fmc_apply_device_template to see which variables a branch needs. About 7 FMC
+        requests."""
         app: FmcApp = get_client(ctx)
         t = await template_with_metadata(app, template, domain)
         return object_result(await template_detail(app, t, domain), shape=False)
@@ -507,7 +508,7 @@ def register(reg: ToolRegistrar) -> None:
         ctx: Context, template: TemplateRef, domain: Domain = None, confirm: Confirm = None
     ) -> dict[str, Any]:
         """Delete a device template. Devices it was applied to keep their configuration; they only
-        lose the link to the template."""
+        lose the link to the template (fmc_get_device_template lists them first)."""
         app: FmcApp = get_client(ctx)
         t = await resolve_template(app, template, domain)
         base = await app.config_path(f"{TEMPLATES}/{t['id']}", domain)
