@@ -67,15 +67,21 @@ def rule_row(r: dict[str, Any]) -> dict[str, Any]:
 
 
 async def upload_file(
-    app: FmcApp, path: str, name: str, file_name: str, text: str, *, method: str = "POST"
+    app: FmcApp,
+    path: str,
+    name: str,
+    file_name: str,
+    text: str,
+    *,
+    method: str = "POST",
+    object_id: str | None = None,
 ) -> dict[str, Any]:
     """Send a custom Security Intelligence list (IP, URL or DNS) as FMC takes it: a multipart upload with
-    the fields `name` and `payloadFile` (one entry per line)."""
-    req = httpx.Request(
-        method,
-        "http://upload/",
-        files={"name": (None, name), "payloadFile": (file_name, text.encode(), "text/plain")},
-    )
+    the fields `name` and `payloadFile` (one entry per line). A replace (PUT on .../{id}) also carries the
+    list's `id`: FMC 10.0.1 refuses a PUT without it with 400 "Request UUID and data does not match."."""
+    fields: dict[str, Any] = {"id": (None, object_id)} if object_id else {}
+    fields.update(name=(None, name), payloadFile=(file_name, text.encode(), "text/plain"))
+    req = httpx.Request(method, "http://upload/", files=fields)
     content = req.read()
     out: dict[str, Any] = await app.api.request(
         method, path, content=content, headers={"Content-Type": req.headers["content-type"]}

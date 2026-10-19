@@ -267,21 +267,30 @@ async def test_upload_list_is_multipart(fmc: respx.MockRouter) -> None:
         done = await run(c, "fmc_upload_si_list", {**args, "confirm": p["confirm"]})
     req = up.calls.last.request
     assert req.headers["content-type"].startswith("multipart/form-data")
+    assert b'name="id"' not in req.content  # a new list has no id yet
     assert b'name="payloadFile"' in req.content and b"203.0.113.7\n198.51.100.0/24\n" in req.content
     assert done["result"]["entries"] == 2
 
 
+def fmc_list_put(request: httpx.Request) -> httpx.Response:
+    """FMC 10.0.1 (live, 2026-10-19): a multipart PUT on a custom SI list without the list's `id` field
+    -> 400 'Request UUID and data does not match.'"""
+    if f'name="id"\r\n\r\n{LIST_ID}\r\n'.encode() not in request.content:
+        msg = {"description": "Request UUID and data does not match."}
+        return httpx.Response(400, json={"error": {"category": "OTHER", "messages": [msg]}})
+    return httpx.Response(200, json={**url_list(), "metadata": {"entryCount": 1}})
+
+
 async def test_upload_replaces_own_list_and_refuses_foreign(fmc: respx.MockRouter) -> None:
     mock_catalogs(fmc, {}, {"url": [url_list()]})
-    put = fmc.put(f"{CFG}/object/customsiurllists/{LIST_ID}").mock(
-        return_value=httpx.Response(200, json={**url_list(), "metadata": {"entryCount": 1}})
-    )
+    put = fmc.put(f"{CFG}/object/customsiurllists/{LIST_ID}").mock(side_effect=fmc_list_put)
     args = {"kind": "url", "name": "mcp-fw-list-url", "entries": ["bad.example.com"]}
     async with Client(server()) as c:
         p = await run(c, "fmc_upload_si_list", args)
         assert p["preview"]["replaces"]["entries"] == 2
-        await run(c, "fmc_upload_si_list", {**args, "confirm": p["confirm"]})
+        done = await run(c, "fmc_upload_si_list", {**args, "confirm": p["confirm"]})
     assert put.called and b"bad.example.com" in put.calls.last.request.content
+    assert done["status"] == "applied" and done["result"]["entries"] == 1
 
     mock_catalogs(fmc, {}, {"url": [url_list("theirs.txt")]})
     async with Client(server()) as c:
