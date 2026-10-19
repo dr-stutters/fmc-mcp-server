@@ -182,12 +182,12 @@ docker-compose.mock.yml exec fmc-mcp-server fmc-mcp-server check` checks both, a
 ## 8. Upgrades
 
 - Images: `ghcr.io/dr-stutters/fmc-mcp-server:<version>` (and `:latest`); release candidates are
-  `:<version>-rcN` and `:rc`, never `:latest`. Pin a version on a shared host (`MCP_IMAGE_TAG=0.13.2`), read the
+  `:<version>-rcN` and `:rc`, never `:latest`. Pin a version on a shared host (`MCP_IMAGE_TAG=0.14.0`), read the
   [CHANGELOG](../CHANGELOG.md), then `docker compose pull && docker compose up -d`.
 - Verify what you run (keyless cosign signature from the release workflow, plus a signed SBOM):
 
   ```bash
-  cosign verify ghcr.io/dr-stutters/fmc-mcp-server:0.13.2 \
+  cosign verify ghcr.io/dr-stutters/fmc-mcp-server:0.14.0 \
     --certificate-identity-regexp '^https://github.com/dr-stutters/stutters-mcp-core/.github/workflows/publish-image.yml@' \
     --certificate-oidc-issuer https://token.actions.githubusercontent.com \
     --certificate-github-workflow-repository dr-stutters/fmc-mcp-server
