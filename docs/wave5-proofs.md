@@ -15,6 +15,7 @@ Lab addresses and hostnames are not in this file. Placeholders:
 | `<si-hit>` | a second address on the outside host, listed in the SI IP feed |
 | `<feed-host>` | the HTTP server that serves the SI feeds (`mcp-fw-feed`) |
 | `<dnd-host>` | the outside host's second address, exempted from decryption |
+| `<branch-wan>`, `<carrier-leg>` | the new branch FTD's WAN address and the internet carrier's leg it routes to |
 | `<gambling-hostname>` | a public hostname in the Gambling URL category, resolved to `<outside-host>` with `curl --resolve` |
 
 Status: **pass**, **fail** (a tool bug; root cause given), **blocked** (a lab, licence, role or platform limit), or **not run**.
@@ -32,8 +33,8 @@ Status: **pass**, **fail** (a tool bug; root cause given), **blocked** (a lab, l
 | 7 | F62 IPS on traffic + `fmc_threat_defense_review` | split | IPS **pass** (Talos 1:498 and 1:58723 drop the client's requests, normal page loads); posture tool and prompt not callable (B0) |
 | 8 | F64 TLS decryption | pass (traffic), 2 bugs | client trusts the resigning CA; HTTPS to `<outside-host>` re-signed and verified, `.exe` / EICAR / IPS trigger / blocked category reset inside TLS; `<dnd-host>` untouched; `fmc_tls_decryption_check` mis-reads FMC's default certificate-status block (R1); rules need `tlsVersions` or the deploy is refused (R2) |
 | 9 | F41 + F49 VPN status / troubleshoot | pass (status, wrong PSK); dead WAN partial | `mcp-fw-t1` (hub + 3 spokes) built with `fmc_create_sdwan_topology`; `fmc_vpn_status` shows 3 tunnels, both ends' SAs, IPsec counters, BGP routes; wrong PSK named from growing authentication failures; dead WAN reported TUNNEL_DOWN but without the dead-path verdict (R2); false overlay-routing warning on a DVTI hub (R1) |
-| 10 | F54 `fmc_onboard_branch` | not run | |
-| 11 | F58 interface kinds | not run | |
+| 10 | F54 `fmc_onboard_branch` | pass | prompt followed end to end: register without a key argument, manual path (no template), join `mcp-fw-t1`, deploy hub + branch only; tunnel READY, BGP routes both ends, host pings, packet tracer, `fmc_prove_policy` hand-off 3/3 pass |
+| 11 | F58 interface kinds | pass (loopback, VTI, BVI); EtherChannel blocked | bodies from `fmc_create_interface` previews accepted by FMC; deployed and on the device; FMC refuses EtherChannel on FTDv (the preview should say so, R1); the delete guard (VTI borrows the loopback) works |
 | 12 | F65 HA under traffic | not run | |
 | 13 | F34 ISE identity source | not run | |
 | 14 | F56 `fmc_prove_policy` | not run | |
@@ -178,4 +179,47 @@ Dead WAN (the spoke's internet link down in CML): **critical TUNNEL_DOWN**, but 
   "compare the IKE policies". Pinging the spoke's carrier gateway (no answer) is what names the dead path. The tool should treat
   "no SA, no authentication failures, retransmit / initial-exchange failures on record" as "the peer doesn't answer", and the prompt
   should check the path before the IKE policies when nothing grows.
+
+### 10. F54 `fmc_onboard_branch` (pass)
+
+Lab fix first: the internet carrier of the T1 lab (Docker IOL, console silent) got its new leg toward the bridge through its day-0
+configuration (`cml_set_node_config` on the wiped node, the recipe's config without the lines that hold secrets, plus the new
+interface) and a restart; the leg answered on the bridge. The branch FTD (`mcp-fw-branch` lab) was wiped and given four more NICs
+before registration (proof 11).
+
+The prompt (`name='mcp-fw-branch1'`, `topology='mcp-fw-t1'`, `access_policy='mcp-fw-base-acp'`, WAN `<branch-wan>/18` via
+`<carrier-leg>`, inside `/24`, test destination = the hub's host) was followed step by step:
+
+| Step | Tool calls | Result |
+|---|---|---|
+| 0 | `fmc_license_status`, `fmc_list_devices`, `fmc_get_device` (a spoke) | licence authorised; branch not registered; spokes FTDv5 ESSENTIALS |
+| 1 | `cml_run_commands` 'show managers' | FMC listed, registration Pending (day-0 holds the server's key) |
+| 2 | `fmc_register_device(..., no reg_key)` | preview: "registration_key: from server config (FMC_FTD_REG_KEY)"; discovery succeeded; six data interfaces seen |
+| 3 | `fmc_list_device_templates` | none: manual path |
+| 4 | `fmc_update_interface` x2, `fmc_create_static_route` (default via the carrier leg), `fmc_create_access_rule` (inside <-> overlay zone), hub return route (`show route <branch-wan>` was "% Network not in table") | branch-only deploy OK; underlay pings to the carrier OK |
+| 5 | `fmc_update_sdwan_topology(add_spokes=[branch on inet, inside])` | endpoint added; hubs + branch to deploy |
+| 6 | `fmc_pending_changes` (hub: the topology, spoke, route and object only), `fmc_deploy([hub, branch])` | both SUCCEEDED |
+| 7 | `show crypto ikev2 sa`, `show route bgp` (both ends), `cml_check_reachability`, `fmc_packet_tracer`, `fmc_sdwan_status(branch)` | IKEv2 READY; branch learns the hub and the 3 spoke LANs, hub learns the branch LAN via the branch's tunnel address; branch host -> hub host and spoke1 host 3/3 at the first attempt; tracer: allow, egress the SD-WAN VTI, rule `mcp-fw-branch-overlay`; `degraded` empty |
+| 8 | `fmc_prove_policy` with the hand-off flows | **3/3 pass**: branch -> hub icmp allow (`mcp-fw-branch-overlay`), hub -> branch icmp allow (the T1 policy's overlay rule), branch -> hub tcp/25 block (default action) |
+
+Nit: `fmc_update_sdwan_topology`'s preview doesn't show the new spoke's tunnel address (the prompt's step 5 says it does).
+
+### 11. F58 `fmc_create_interface` (pass for loopback, VTI, BVI; EtherChannel blocked by the platform; R1)
+
+On `mcp-fw-branch1` (four spare NICs added in CML before registration). B0 applied: each body came from the new tool's preview
+and was sent unchanged with `fmc_api_call`; FMC accepted it.
+
+- Loopback10 `mcp-fw-lo` (/32), static VTI Tunnel20 `mcp-fw-vti` (source the WAN, borrowing the loopback's address, zoned) and
+  BVI1 `mcp-fw-bvi` (bridge group 1 on two spare NICs, /29). Branch-only deploy SUCCEEDED. `show interface ip brief`: BVI1 and
+  Loopback10 up/up, Tunnel20 down/down (no VPN uses it yet, as the tool's side effect says). `show running-config interface`:
+  `ip unnumbered mcp-fw-lo` + `tunnel source interface inet` on Tunnel20, `bridge-group 1` on both members.
+- **EtherChannel:** the preview passed, FMC refused the POST: "Etherchannel interface is not supported on 'Virtual' Threat
+  Defense." **R1:** the preview should block `kind='etherchannel'` on FTDv.
+- The new `fmc_delete_interface` guard works: deleting the loopback is blocked while the VTI borrows it. Nit: the BVI delete
+  preview says its members are released unconfigured, but FMC keeps their logical names.
+- A ROUTED security zone on a bridge-group member is refused by FMC ("Security zone should be in same mode as of Interface mode
+  type"): members need a SWITCHED zone.
+
+Then `mcp-fw-t1` was torn down (topology, hub DVTI and loopback, pool, the hub's return route, the overlay rule, the F58
+interfaces) and the five devices deployed; the hub has no IKEv2 SAs left. `mcp-fw-branch1` stays registered.
 
