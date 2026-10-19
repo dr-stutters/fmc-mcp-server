@@ -26,6 +26,10 @@ live.session_items, the reader behind fmc_user_identity_sessions (F55), which li
 The same sessions feed the other user-aware tools: users_on_ip is fmc_find_address's identity lookup
 (find_address.IDENTITY_LOOKUPS) and user_ips gives fmc_prove_policy a user flow's source IP
 (prove.USER_IP_RESOLVERS).
+
+FMC keeps the ISE source's sessions in Global (the only domain that can own it on FMC 10.0.1), so in a
+child domain every one of these lookups falls back to the ancestor domains when the child has no session
+(live.read_up) and reports the domain that answered (`sessions_domain`).
 """
 
 # No `from __future__ import annotations`: FastMCP inspects signatures at runtime.
@@ -51,10 +55,12 @@ from fmc_mcp.tools.live import (
     ACTIVITY_WHAT,
     activity_items,
     activity_row,
+    fallback_note,
     refused,
     role_error,
     session_items,
     session_row,
+    sessions_domain,
 )
 from fmc_mcp.tools.policies import all_rules
 from fmc_mcp.tools.system import iso
@@ -269,6 +275,7 @@ class Resolution:
     groups: list[str] = field(default_factory=list)
     others: list[str] = field(default_factory=list)  # other users with a session on the same IP
     session: dict[str, Any] | None = None
+    domain: str | None = None  # the ancestor domain whose sessions answered (none in the requested one)
     error: str | None = None
     note: str | None = None
 
@@ -285,6 +292,8 @@ class Resolution:
         if self.error:
             out["error"] = self.error
             return out
+        if self.domain:
+            out["sessions_domain"] = self.domain
         out["user"] = self.user
         if self.user:
             out["realm"] = self.realm
@@ -300,7 +309,8 @@ class Resolution:
 
 async def resolve_ip_identity(app: FmcApp, ip: str, domain: str | None) -> Resolution:
     """The identity FMC applies to traffic from `ip`: the newest active session's user and its realm
-    groups. Errors (403 without the role) come back in `error`, never raised."""
+    groups (sessions from an ancestor domain when the requested one has none: `domain`). Errors (403
+    without the role) come back in `error`, never raised."""
     res = Resolution(ip=ip)
     try:
         rows = await session_items(app, domain, ip=ip)
@@ -311,6 +321,7 @@ async def resolve_ip_identity(app: FmcApp, ip: str, domain: str | None) -> Resol
         res.error = f"FMC identity sessions unavailable: {e}"
         return res
     rows = [s for s in rows if str(s.get("currentIP", "")) == ip] or rows
+    res.domain = sessions_domain(rows)
     if not rows:
         res.note = (
             f"No identity session on {ip}: the firewall sees an unknown user there, so user/group rules "
@@ -381,16 +392,19 @@ async def users_on_ip(
     app: FmcApp, ip: ipaddress.IPv4Address | ipaddress.IPv6Address, domain: str | None
 ) -> list[dict[str, Any]]:
     """fmc_find_address hook (find_address.IDENTITY_LOOKUPS): one row per user FMC has a session for on
-    `ip`. A 403 (role without Analysis > Users) raises AuthError with the permission to add, which
+    `ip` (from an ancestor domain's sessions when the requested domain has none, named in `via`). A
+    403 (role without Analysis > Users) raises AuthError with the permission to add, which
     fmc_find_address reports as a warning."""
     try:
         rows = await session_items(app, domain, ip=str(ip))
     except AuthError as e:
         raise role_error(e) from None
+    owner = sessions_domain(rows)
+    where = f" in domain {owner!r}" if owner else ""
     return [
         {
             "where": f"user {qualified(s.get('realmName'), str(s.get('username') or s.get('user')))}",
-            "via": f"identity session ({s.get('authenticationType') or 'session'})",
+            "via": f"identity session ({s.get('authenticationType') or 'session'}){where}",
             "value": s.get("currentIP"),
         }
         for s in rows
@@ -400,7 +414,8 @@ async def users_on_ip(
 
 async def user_ips(app: FmcApp, user: str, domain: str | None) -> list[str]:
     """fmc_prove_policy hook (prove.USER_IP_RESOLVERS): the IPs `user` (or 'realm\\user') has sessions on,
-    newest first; [] when the user has none. A 403 raises AuthError naming the missing permission."""
+    newest first, from an ancestor domain's sessions when the requested domain has none; [] when the
+    user has none anywhere. A 403 raises AuthError naming the missing permission."""
     realm, name = split_identity(user)
     if not name:
         return []
@@ -572,6 +587,9 @@ def register(reg: ToolRegistrar) -> None:
                 k = f"{s.get('authenticationType') or '?'} / {s.get('discoveryApplication') or '?'}"
                 by[k] = by.get(k, 0) + 1
             out["sessions"] = {"active": len(sessions), "by_source": by}
+            if owner := sessions_domain(sessions):
+                out["sessions"]["domain"] = owner
+                out["sessions"]["note"] = await fallback_note(app, domain, owner)
             if not sessions and state == "connected":
                 todo.append(
                     "ISE is connected but FMC holds no user session: check that ISE has sessions with "
@@ -637,8 +655,11 @@ def register(reg: ToolRegistrar) -> None:
             "unknown": "ISE state unknown (no ISE health alert; is the module in the health policy?)",
         }[state]
         n_sessions = out["sessions"].get("active")
+        held_in = f" (in {out['sessions']['domain']})" if out["sessions"].get("domain") else ""
         verdict += (
-            f"; {n_sessions} user sessions on FMC" if n_sessions is not None else "; sessions not readable"
+            f"; {n_sessions} user sessions on FMC{held_in}"
+            if n_sessions is not None
+            else "; sessions not readable"
         )
         if active:
             verdict += f"; {len(bound)} of {len(active)} reporting devices hold user-IP bindings"
@@ -672,8 +693,11 @@ def register(reg: ToolRegistrar) -> None:
         explaining a user-based block (fmc_rule_lookup already does this lookup itself when you omit
         `identities`). The FMC account's role needs Events & Logs > Analysis > Users; without it the user's
         realm groups still come back. If no source reports users, see fmc_get_identity_sources; to page
-        through every session a device reports, fmc_user_identity_sessions. fmc_find_address (users on
-        an IP) and fmc_prove_policy (a user flow without a source IP) read the same sessions."""
+        through every session a device reports, fmc_user_identity_sessions. In a child domain with no
+        session the ancestor domains are read up to Global, where FMC keeps the ISE source's sessions
+        (FMC 10.0.1 configures it in Global only); `sessions_domain` names the domain that answered.
+        fmc_find_address (users on an IP), fmc_rule_lookup and fmc_prove_policy (a user flow without a
+        source IP) read the same sessions."""
         app: FmcApp = get_client(ctx)
         if not ip and not user:
             raise InvalidRequest("Give an ip or a user.")
@@ -710,6 +734,9 @@ def register(reg: ToolRegistrar) -> None:
             out["sessions"] = [session_row(s) for s in sessions[:100]]
             if len(sessions) > 100:
                 out["sessions_truncated"] = f"{len(sessions)} sessions; showing the 100 newest"
+            if owner := sessions_domain(sessions):
+                out["sessions_domain"] = owner
+                out["sessions_note"] = await fallback_note(app, domain, owner)
 
         # the identity per user (realm groups), at most USER_CAP users
         wanted: list[tuple[str, str | None]] = []
@@ -743,9 +770,9 @@ def register(reg: ToolRegistrar) -> None:
         elif sessions == []:
             what = f"{query}" if query else f"user {user}"
             out["note"] = (
-                f"FMC has no active identity session for {what}: the user isn't logged in where a source "
-                "sees it, or no identity source reports to FMC (fmc_get_identity_sources). Traffic from such "
-                "an IP is 'unknown user' to user/group rules."
+                f"FMC has no active identity session for {what} (in this domain or its ancestors): the user "
+                "isn't logged in where a source sees it, or no identity source reports to FMC "
+                "(fmc_get_identity_sources). Traffic from such an IP is 'unknown user' to user/group rules."
             )
         if history:
             try:
@@ -753,6 +780,8 @@ def register(reg: ToolRegistrar) -> None:
                     app, domain, ip=query, user=name or None, device=dev_name, hours=hours
                 )
                 out["history"] = [activity_row(a) for a in events][:50]
+                if owner := sessions_domain(events):
+                    out["history_domain"] = owner
             except AuthError as e:
                 out["history_error"] = refused(ACTIVITY_WHAT) if e.status_code == 403 else str(e)
         return out
