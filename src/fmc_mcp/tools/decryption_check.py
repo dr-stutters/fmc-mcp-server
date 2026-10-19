@@ -27,6 +27,7 @@ from fmc_mcp.tools.decryption import (
     cert_conditions,
     rule_row,
     trusted_labels,
+    version_problem,
 )
 from fmc_mcp.tools.deploy import deployable, deployable_row
 from fmc_mcp.tools.device_config import resolve_device
@@ -360,6 +361,10 @@ def register(reg: ToolRegistrar) -> None:
                     "detail": f"Trusted CAs: {', '.join(trusted) or 'none'}. {detail}",
                 }
             )
+        # any rule of the policy, matched or not: FMC refuses the deploy of the whole policy
+        versions = [m for m in (version_problem(r) for r in rules.items if r.get("enabled", True)) if m]
+        if versions:
+            checks.append({"check": "TLS versions", "ok": False, "detail": " ".join(versions[:3])})
         if decrypting:
             tls13 = adv.get("tls13_decryption")
             checks.append(
