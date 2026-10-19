@@ -60,6 +60,7 @@ from fmc_mcp.tools.live import (
     role_error,
     session_items,
     session_row,
+    session_seen,
     sessions_domain,
 )
 from fmc_mcp.tools.policies import all_rules
@@ -412,10 +413,24 @@ async def users_on_ip(
     ]
 
 
+def _ip_kind(ip: str) -> tuple[bool, bool]:
+    """(link-local, IPv6) for ordering a user's session IPs; an unparsable value counts as IPv6."""
+    try:
+        addr = ipaddress.ip_address(ip)
+    except ValueError:
+        return False, True
+    return addr.is_link_local, addr.version == 6
+
+
 async def user_ips(app: FmcApp, user: str, domain: str | None) -> list[str]:
     """fmc_prove_policy hook (prove.USER_IP_RESOLVERS): the IPs `user` (or 'realm\\user') has sessions on,
     newest first, from an ancestor domain's sessions when the requested domain has none; [] when the
-    user has none anywhere. A 403 raises AuthError naming the missing permission."""
+    user has none anywhere. A 403 raises AuthError naming the missing permission.
+
+    ISE reports a dual-stack client's IPv4 and IPv6 link-local addresses as two sessions with the same
+    lastSeen (seen live on FMC 10.0.1), and prove traces from the first IP: sessions seen at the same
+    time list IPv4 before IPv6, and link-local addresses (fe80::/10, 169.254/16), which no firewall
+    routes, come back only when the user has no other IP."""
     realm, name = split_identity(user)
     if not name:
         return []
@@ -423,7 +438,7 @@ async def user_ips(app: FmcApp, user: str, domain: str | None) -> list[str]:
         rows = await session_items(app, domain, user=name)
     except AuthError as e:
         raise role_error(e) from None
-    out: list[str] = []
+    seen: dict[str, float] = {}  # IP -> its newest session (rows are newest first)
     for s in rows:
         uname = str(s.get("username") or s.get("user") or "")
         if uname.lower() != name.lower():
@@ -431,9 +446,10 @@ async def user_ips(app: FmcApp, user: str, domain: str | None) -> list[str]:
         if realm and str(s.get("realmName") or "").lower() != realm.lower():
             continue
         ip = str(s.get("currentIP") or "")
-        if ip and ip not in out:
-            out.append(ip)
-    return out
+        if ip and ip not in seen:
+            seen[ip] = session_seen(s)
+    routable = [ip for ip in seen if not _ip_kind(ip)[0]]
+    return sorted(routable or seen, key=lambda ip: (-seen[ip], _ip_kind(ip)[1]))
 
 
 def _parse_ip(value: str) -> str:
@@ -738,14 +754,24 @@ def register(reg: ToolRegistrar) -> None:
                 out["sessions_domain"] = owner
                 out["sessions_note"] = await fallback_note(app, domain, owner)
 
-        # the identity per user (realm groups), at most USER_CAP users
+        # the identity per user (realm groups), at most USER_CAP users. The queried user is looked up once:
+        # without a realm in the query, in the realm of their newest session (the identity the firewall
+        # applies), else in any realm
         wanted: list[tuple[str, str | None]] = []
         if name:
             wanted.append((name, realm))
         for s in sessions or []:
-            u = str(s.get("username") or s.get("user") or "")
-            if u and (u, s.get("realmName")) not in wanted:
-                wanted.append((u, s.get("realmName")))
+            u, r = str(s.get("username") or s.get("user") or ""), s.get("realmName")
+            if (
+                name
+                and u.lower() == name.lower()
+                and (realm is None or str(r or "").lower() == realm.lower())
+            ):
+                if realm is None and wanted[0][1] is None:
+                    wanted[0] = (u, r)
+                continue
+            if u and (u, r) not in wanted:
+                wanted.append((u, r))
         users: list[dict[str, Any]] = []
         for u, r in wanted[:USER_CAP]:
             ug = await user_groups(app, u, r, domain)
