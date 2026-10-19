@@ -231,6 +231,18 @@ async def test_user_ip_comes_from_fmc_identity_sessions(lab: respx.MockRouter) -
     assert row["result"] == "error" and "Analysis > Users" in row["note"]
 
 
+async def test_user_ip_skips_an_ipv6_link_local_session(lab: respx.MockRouter) -> None:
+    """Live on FMC 10.0.1: ISE gave a dual-stack client an IPv4 and an IPv6 link-local session with the same
+    lastSeen, link-local listed first; the flow is traced from the IPv4 address."""
+    post = tracer(lab, lambda b: with_user(ALLOW, "alice"))
+    v4 = {"currentIP": "10.99.1.10", "username": "alice", "realmName": "LAB", "lastSeen": 1792334300}
+    lab.get(f"{CFG}/analysis/activesessions").mock(return_value=items([{**v4, "currentIP": "fe80::a"}, v4]))
+    flow = {"user": "LAB\\alice", "destination": "192.0.2.10", "protocol": "icmp", "expect": "allow"}
+    (row,) = (await call({"device": "mcp-ftd1", "flows": [flow]}))["results"]
+    assert (row["result"], row["flow"]) == ("pass", "icmp 10.99.1.10 -> 192.0.2.10")
+    assert json.loads(post.calls.last.request.content)["sourceIPValue"] == "10.99.1.10"
+
+
 async def test_user_ip_in_a_leaf_comes_from_global_sessions(lab: respx.MockRouter) -> None:
     """Live on FMC 10.0.1: the ISE source (and so its sessions) lives in Global only; a user flow without a
     source in the leaf domain takes the IP from Global's session instead of failing 'no active session'."""
