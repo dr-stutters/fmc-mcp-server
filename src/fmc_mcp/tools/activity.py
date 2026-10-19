@@ -14,7 +14,7 @@ from pydantic import Field
 
 from fmc_mcp._core import ResponseFormat, ToolRegistrar, UpstreamError, get_client, list_result
 from fmc_mcp._core.http import page_of
-from fmc_mcp.audit import audit_time, compact_message, coverage_note, fetch_audit, is_read
+from fmc_mcp.audit import audit_time, compact_message, coverage_note, device_in, fetch_audit, is_read
 from fmc_mcp.client import FmcApp
 from fmc_mcp.tools.common import Domain, resolve_in
 from fmc_mcp.tools.deploy import JOBS
@@ -313,7 +313,7 @@ def register(reg: ToolRegistrar) -> None:
                 {
                     "time": iso(a.get("time")),
                     "source": "audit",
-                    "device": None,
+                    "device": device_in(a),
                     "summary": f"{a.get('subSystem')}: {compact_message(a.get('message'))}"[:300],
                     "user": a.get("username"),
                     "status": None,

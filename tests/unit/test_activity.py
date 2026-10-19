@@ -212,3 +212,28 @@ def test_condense_audit_keeps_unrelated_and_failed_writes() -> None:
         ),
     ]
     assert [r["auditId"] for r in condense_audit(recs, deploy_ok=True)] == ["a1", "a2", "a3", "a4", "a5"]
+
+
+async def test_packet_tracer_runs_are_not_changes(fmc: respx.MockRouter) -> None:
+    """#201: FMC logs each packet-tracer run under Devices > Troubleshoot > Packet Tracer (recorded on FMC
+    10.0.1); it changes nothing, so it is a read, and with include_audit_reads it names its device."""
+    import time
+
+    from fmc_mcp.audit import device_in, is_read
+
+    from .conftest import fixture
+
+    trace = {**fixture("audit_packet_tracer")["record"], "time": int(time.time()) - 120}
+    assert is_read(trace) and device_in(trace) == "mcp-ftd1"
+    edit = {"time": int(time.time()) - 60, "username": "admin", "subSystem": "Access Control", "message": "x"}
+    fmc.get(PLATFORM_AUDIT).mock(return_value=items([edit, trace]))
+    _alerts_route(fmc, [])
+    fmc.get(f"{CFG}/deployment/jobhistories").mock(return_value=items([]))
+    async with Client(create_server(make_settings())) as c:
+        r = await c.call_tool("fmc_recent_activity", {"response_format": "json"})
+        out = r.structured_content or json.loads(r.content[0].text)  # type: ignore[union-attr]
+        assert [x["summary"] for x in out["results"]] == ["Access Control: x"]
+        r = await c.call_tool("fmc_recent_activity", {"response_format": "json", "include_audit_reads": True})
+        out = r.structured_content or json.loads(r.content[0].text)  # type: ignore[union-attr]
+    traced = [x for x in out["results"] if "packet-tracer" in x["summary"]]
+    assert len(traced) == 1 and traced[0]["device"] == "mcp-ftd1"
