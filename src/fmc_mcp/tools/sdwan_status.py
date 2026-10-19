@@ -287,22 +287,48 @@ def parse_route_bgp(text: str) -> list[dict[str, Any]]:
     return rows
 
 
-# Last IKEv2 counters seen per device record id: (monotonic time, counters), for growth between calls.
-_IKE_SEEN: dict[str, tuple[float, dict[str, Any]]] = {}
+# IKEv2 counters seen per device record id: [(monotonic time, counters)], oldest first, for growth between
+# calls. Kept for IKE_HORIZON_S: after DPD has removed an SA, FTD retries IKE only every few minutes, so a
+# dead path's retransmits often don't grow between two calls a minute apart but do against an older one.
+_IKE_SEEN: dict[str, list[tuple[float, dict[str, Any]]]] = {}
+IKE_HORIZON_S = 900
+IKE_SNAPSHOTS = 20
+_IKE_KEYS = ("authentication_failures", "retransmit_limit_exceeded", "initial_exchange_failed")
 
 
 def ike_growth(device_id: str, now: dict[str, Any]) -> dict[str, Any] | None:
-    """How the IKEv2 failure counters grew since the previous fmc_sdwan_status call (None the first
-    time, or when the counters were cleared in between)."""
-    before = _IKE_SEEN.get(device_id)
-    _IKE_SEEN[device_id] = (time.monotonic(), now)
-    if before is None:
+    """How the IKEv2 failure counters grew since the previous call (None the first time, or when the
+    counters were cleared in between). When nothing grew since the previous call, the growth since the
+    oldest reading of the last IKE_HORIZON_S seconds, if that shows any."""
+    t = time.monotonic()
+    seen = [(at, c) for at, c in _IKE_SEEN.get(device_id, []) if t - at <= IKE_HORIZON_S]
+    if seen and any(now.get(k, 0) < seen[-1][1].get(k, 0) for k in _IKE_KEYS):
+        seen = []  # cleared in between: older readings no longer compare
+    _IKE_SEEN[device_id] = [*seen, (t, now)][-IKE_SNAPSHOTS:]
+    if not seen:
         return None
-    then, old = before
-    keys = ("authentication_failures", "retransmit_limit_exceeded", "initial_exchange_failed")
-    if any(now.get(k, 0) < old.get(k, 0) for k in keys):
-        return None
-    return {"seconds": round(time.monotonic() - then)} | {k: now.get(k, 0) - old.get(k, 0) for k in keys}
+
+    def since(at: float, old: dict[str, Any]) -> dict[str, Any]:
+        return {"seconds": round(t - at)} | {k: now.get(k, 0) - old.get(k, 0) for k in _IKE_KEYS}
+
+    last = since(*seen[-1])
+    if not any(last[k] for k in _IKE_KEYS) and len(seen) > 1:
+        wider = since(*seen[0])
+        if any(wider[k] for k in _IKE_KEYS):
+            return wider
+    return last
+
+
+# Said when nothing grew: FTD's retry interval makes a quiet minute meaningless, and FMC can't ping.
+QUIET_WINDOW = (
+    "which doesn't rule out a dead path: once DPD has removed the SA, the FTD retries IKE only every few "
+    "minutes"
+)
+PATH_FIRST = (
+    "Check the path to the peer first: FMC's API runs only show commands, so ping the peer's WAN address "
+    "and the WAN gateway from the device's CLI or the WAN router (a link down beyond the FTD, such as a "
+    "carrier or a lab link, leaves its interface up/up and its routes in place)"
+)
 
 
 def tunnel_down_cause(ike: dict[str, Any] | None, tool: str = "fmc_sdwan_status") -> str | None:
@@ -322,7 +348,23 @@ def tunnel_down_cause(ike: dict[str, Any] | None, tool: str = "fmc_sdwan_status"
                 "IKEv2 exchanges time out with no authentication failures: the peer doesn't answer "
                 "(dead WAN path or UDP 500/4500 blocked)"
             )
-        return f"no IKEv2 failures in the last {grew['seconds']} s"
+        timeouts = int(ike.get("retransmit_limit_exceeded") or 0) + int(
+            ike.get("initial_exchange_failed") or 0
+        )
+        lean = (
+            ": exchanges from this end have timed out before and authentication never failed, so the path "
+            "is the likelier cause, not the key"
+            if timeouts and not ike.get("authentication_failures")
+            else ""
+        )
+        return (
+            f"no new IKEv2 failures in the last {grew['seconds']} s, {QUIET_WINDOW}. Counters "
+            f"({ike.get('counters_since', 'since the last clear')}): Retransmit limit exceeded "
+            f"{ike.get('retransmit_limit_exceeded', '?')}, Initial exchange failed "
+            f"{ike.get('initial_exchange_failed', '?')}, Authentication Failures "
+            f"{ike.get('authentication_failures', '?')}{lean}. {PATH_FIRST}; call {tool} again in a few "
+            "minutes to catch the next attempt"
+        )
     return (
         f"IKEv2 counters ({ike.get('counters_since', 'since the last clear')}): "
         f"Authentication Failures {ike.get('authentication_failures', '?')}, Retransmit limit exceeded "
