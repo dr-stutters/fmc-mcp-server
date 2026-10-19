@@ -641,8 +641,8 @@ def register(reg: ToolRegistrar) -> None:
         from a dead path, retransmits only), FMC and the device disagreeing (FMC's monitor lags by
         minutes), one-way traffic (encrypting without decrypting: routing, NAT exemption or an access
         rule on one side), IPsec errors, a route-based endpoint with no routes over its VTIs, and an HA
-        pair without a working standby. Use it for "is the VPN to X up?" or "why is the tunnel down?";
-        SD-WAN WAN-link metrics and app routes: fmc_sdwan_status.
+        pair without a working standby. Use it for "is the VPN to X up?" and as the first step of the
+        fmc_vpn_troubleshoot prompt; SD-WAN WAN-link metrics and app routes: fmc_sdwan_status.
         Read-only; queried when called: one FMC request per topology plus 4-5 show commands per device
         (limit them with device, topology or max_devices)."""
         app: FmcApp = get_client(ctx)

@@ -106,7 +106,7 @@ Changes made in FMC reach the firewalls only after a **deployment** (`fmc_deploy
 
 ## Tools
 
-There are 153 tools when every tier is enabled (66 read, 76 write, 11 dangerous; the dangerous tier turns `fmc_api_call` into a raw call), and six workflow prompts (`fmc_why_blocked`, `fmc_firewall_health_review`, `fmc_sdwan_troubleshoot`; `fmc_rule_change_review` and `fmc_policy_cleanup`, write tier; `fmc_onboard_ftd`, dangerous tier).
+There are 153 tools when every tier is enabled (66 read, 76 write, 11 dangerous; the dangerous tier turns `fmc_api_call` into a raw call), and seven workflow prompts (`fmc_why_blocked`, `fmc_firewall_health_review`, `fmc_sdwan_troubleshoot`, `fmc_vpn_troubleshoot`; `fmc_rule_change_review` and `fmc_policy_cleanup`, write tier; `fmc_onboard_ftd`, dangerous tier).
 
 **Read**
 
@@ -231,6 +231,9 @@ MD5 password, because FMC returns it masked and a PUT would replace it, unless y
   (creates the hub's loopback, DVTI and spoke pool when missing, then the AUTO_VPN topology, IKEv2 and the
   endpoints; a failed step deletes what it created) -> `fmc_deploy` hubs and spokes -> `fmc_get_vpn_topology`,
   `show route bgp`. New branch: `fmc_update_sdwan_topology add_spokes=[...]`, then deploy the spoke and the hubs.
+- **"The VPN to X is down":** the `fmc_vpn_troubleshoot` prompt starts from `fmc_vpn_status` and walks IKE (key
+  mismatch vs dead path), IPsec (one-way traffic), routing over the tunnel, NAT exemption and access rules
+  (`fmc_packet_tracer`, `fmc_rule_lookup`), then proposes one previewed fix.
 - **"Teams is slow at branch Y":** the `fmc_sdwan_troubleshoot` prompt walks `fmc_sdwan_status` (path metrics,
   degraded links) -> the app-route rule and the interface it picks now -> the overlay tunnels and BGP ->
   `fmc_packet_tracer`, then proposes one previewed fix.
