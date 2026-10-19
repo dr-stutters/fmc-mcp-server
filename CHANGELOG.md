@@ -1,5 +1,101 @@
 # Changelog
 
+## 0.14.0 (2026-10-19)
+
+Wave 5: scenarios, depth and demos, built and proven live in the firewall run of 2026-10-18/19 on FMC 10.0.1 with FTDv 10.0
+in CML ([docs/wave5-proofs.md](docs/wave5-proofs.md): every item with its evidence, the overnight results and the morning
+re-proof on `main`). 27 new tools and five new prompts: one address across the whole configuration, live connections and
+identity sessions, device metrics over time, VPN status and troubleshooting, file/malware and network analysis policies,
+Security Intelligence feeds and lists, URL categories in rules, TLS decryption readiness, the threat-defense review, HA
+failover checks, interface kinds, policy proofs (also per user), branch onboarding into SD-WAN, `FMC_TOOLSETS`, and three
+demo stories. 180 tools (79 read, 90 write, 11 dangerous) and eleven prompts.
+
+### Added
+- **`fmc_find_address`** (F59, #152): one IP, network or range across objects and groups, dynamic-object mappings,
+  access/prefilter/NAT rules, static routes and VPN endpoints, ranked (exact, inside, contains, overlaps) with the object
+  chain; with an identity source, the users FMC has a session for on the address (#186).
+- **`fmc_live_connections` and `fmc_user_identity_sessions`** (F55, #156): a host's or user's connections on one FTD from
+  its syslog buffer (FMC 10.0.1 refuses `show conn` over the API), open first, with bytes and teardown reason; FMC's
+  active identity sessions and user activity.
+- **`fmc_device_metrics`** (F57, #157): CPU, memory, throughput, connections and drops over a window from FMC's health
+  monitor, summarised (min/avg/max, peaks, dips) with a compact series; used by `fmc_firewall_health_review` and
+  pointed to by `fmc_sdwan_status`.
+- **`fmc_vpn_status`** (F41, #151): every site-to-site, route-based and SD-WAN topology's tunnels with each device's IKE
+  and IPsec SAs, traffic each way, rekey times and routes over the VTIs, degraded tunnels first; IKEv2 counters tell a
+  key mismatch from a dead path. Prompt **`fmc_vpn_troubleshoot`** (F49, #154): a VPN symptom walked through IKE, IPsec,
+  routing, NAT exemption and access rules to the cause and one previewed fix.
+- **File/malware and network analysis policies** (F43, #153): `fmc_get_file_policy` (with the file type catalogue),
+  `fmc_create_file_policy`, `fmc_create_file_rule`, `fmc_delete_file_rule`, `file_policy=` on access rules,
+  `fmc_get_network_analysis_policy`, `fmc_create_network_analysis_policy`.
+- **URL categories in access rules** (F63, #155): `url_categories=[{category, reputation}]` on `fmc_create_access_rule` /
+  `fmc_update_access_rule` (levels from FMC's spec), `url_category` in `fmc_rule_lookup`.
+- **Security Intelligence feeds and custom lists** (F61, #159): `fmc_create_si_feed` (IP, URL, DNS), `fmc_upload_si_list`,
+  `fmc_set_si_lists` (block, do-not-block; DNS monitor), `fmc_delete_si_object`, feed and list status in
+  `fmc_get_security_intelligence`.
+- **`fmc_threat_posture`** and prompt **`fmc_threat_defense_review`** (F62, #160): an access policy's intrusion and file
+  coverage, inspection bypasses, SI/DNS, decryption, network analysis and device licences, each finding with its fix.
+- **TLS decryption** (F64, #179): `fmc_create_internal_ca`, `fmc_install_internal_ca_cert`, `fmc_import_certificate_files`
+  (keys read from `FMC_PKI_DIR`, never through MCP), `fmc_get_certificate`, `fmc_delete_certificate`, DECRYPT_RESIGN and
+  DECRYPT_KNOWN_KEY rules, `fmc_update_decryption_policy` (trusted CAs, TLS 1.3), and `fmc_tls_decryption_check` (what
+  decryption does to a flow, rollout readiness).
+- **HA under traffic** (F65, #180): `fmc_get_ha_status` reads each unit's own failover state (standby ready, links, last
+  failover and why, replication, `ready_for_switch`), `fmc_create_ha_pair` takes a separate state link, prompt
+  **`fmc_ha_failover_check`** (pre-checks, traffic, switch or lab failure, verify, report).
+- **`fmc_create_interface`** (F58, #181): loopbacks, static and dynamic VTIs, EtherChannels and BVIs; `fmc_update_interface`
+  and `fmc_delete_interface` understand those kinds.
+- **`fmc_prove_policy`** and prompt **`fmc_prove_user_policy`** (F56, #158): a table of flows with expected verdicts, each
+  packet-traced on the FTD it crosses: pass, fail or mismatch with the deciding rule and the user the device saw; a user
+  flow without a source is traced from the user's current IP (#186).
+- **ISE identity source** (F34, #178): `fmc_get_identity_sources` (ISE/pxGrid state, realms, identity policies, sessions,
+  bindings, certificates) and `fmc_user_ip_lookup`; `fmc_rule_lookup` and `fmc_why_blocked` resolve the user on the
+  source IP.
+- Prompt **`fmc_onboard_branch`** (F54, #177): register a branch FTD with the server's key, configure it from a device
+  template or by hand, join it to an SD-WAN topology, deploy hubs and branch, verify, and hand off `fmc_prove_policy` flows.
+- **`FMC_TOOLSETS`** (F46, #187): load only some of 17 areas of the tool surface (`core` always on; the tiers still
+  apply), listed in `fmc_status`; clearer descriptions for the tools added since v0.9.0.
+- **[docs/demos.md](docs/demos.md)** (F60, #184): three 15-minute PoC stories (change with proof and rollback; SD-WAN
+  add-a-branch and fail a WAN link; why is it blocked? to fixed) and a threat-defense vignette, with the `mcp-fw-demo-*`
+  naming and the reset. All three were run on the reference lab from a reset.
+- Read-only live tests for the Wave 5 tools and preview-parity tests against FMC's request models (#185).
+
+### Changed
+- Policy assignments include policies inherited from an ancestor domain (#183): `fmc_assign_policy`'s preview names a
+  device's current policy in a leaf domain (was `from: null`), and `fmc_list_policy_assignments`, `fmc_find_address`
+  (device-scoped NAT), threat posture, platform settings and bundle export see Global-owned assignments.
+- `fmc_get_identity_sources` names FMC 10.0.1's ISE page (Integrations > Identity > Identity Sources, Global domain,
+  administrator only), shows the ISE health parts and says a failed connection's cause is only in the UI's Test (#195);
+  a just-saved source is `awaiting_health_check` instead of "No ISE identity source" (#196).
+
+### Fixed
+- `fmc_set_intrusion_rule_state` reported a Talos rule's keyword (e.g. ALERT) as its default state after a change; rows
+  take the default from FMC's `defaultSetBy` (#188).
+- `fmc_get_hit_counts` left out the default action once it had been hit (FMC's `fetchZeroHitCount` lists only never-hit
+  rows); it is read by id and labelled `default` (#189).
+- `fmc_tls_decryption_check` and `fmc_get_decryption_policy` counted FMC 10's default certificate fields as rule
+  conditions, so every rule looked conditional (#190).
+- `fmc_create_decryption_rule` sends every TLS version: FMC 10 stores none otherwise and refuses the deploy; existing
+  rules with that problem are named (#191).
+- `fmc_vpn_status` gave a DVTI hub a false "no routes over the VTIs" warning (FTD prints `V` routes on two lines) (#192).
+- On a dead WAN, `fmc_vpn_status` / `fmc_sdwan_status` said only "no IKEv2 failures in the last N s" and
+  `fmc_vpn_troubleshoot` went to the IKE policies; the counters are compared over 15 minutes and the path is checked
+  first (#193).
+- `fmc_create_interface` previewed EtherChannels on FTDv, which FMC refuses; the preview blocks them. A bridge-group member
+  needs a SWITCHED zone; deleting a BVI says FMC keeps the members' logical names (#194).
+
+### Known issues (fix PRs open at release time)
+- `fmc_user_identity_sessions(history=true)` / `fmc_user_ip_lookup(history=true)`: FMC 10.0.1 answers 422 "Invalid time
+  field." to the documented time filter (#199, fix #211).
+- `fmc_get_security_intelligence` says "not downloaded yet" for a feed FMC has fetched (FMC 10.0.1 never fills
+  `entryCount`), fix #218; replacing a custom SI list is refused (400), fix #215.
+- `fmc_create_decryption_rule` with `insert_before`: FMC answers 500 but creates the rule (fix #216).
+- From the operator eval (29 of 42 asks pass, 12 partial, 1 fail): `fmc_unused_objects` lists inherited built-ins in a
+  leaf domain (#197, fix #212); `fmc_prove_policy` can pick an HA standby unit (#198, fix #217); packet-tracer runs show
+  as changes and connections (#201/#202, fix #214); markdown hides nested rows of single-object tools (#200);
+  #203-#210 open.
+- FMC 10.0.1 platform limits met on the way (documented in the tools): no EtherChannel on FTDv, no REST to link a
+  network analysis policy, to manage the custom detection list or to unlink a decryption policy from an access policy;
+  malware and URL lookups for URLs outside the local database need the Cisco cloud.
+
 ## 0.13.2 (2026-10-18)
 
 SD-WAN polish from the 0.13.1 re-proof: `fmc_create_sdwan_topology(overlay='ospf')` builds a working OSPF overlay
