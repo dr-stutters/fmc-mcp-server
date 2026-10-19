@@ -38,7 +38,7 @@ Final status after the morning re-proof on `main`. "Overnight" in the evidence c
 | 5 | F63 URL category in access rules | **pass** (rule mechanics); category lookups beyond the local DB need the cloud | `fmc_create_access_rule(url_categories=[Gambling])` -> HTTP and decrypted HTTPS to `<gambling-hostname>` reset, other hostnames 200, 2 hits; `fmc_rule_lookup(url_category=...)` names the rule; packet tracer can only show it pending (no URL in a trace) |
 | 6 | F61 SI feeds + custom lists | **pass** (traffic); 2 bugs, fix PRs #218, #215 | IP and URL feeds from `<feed-host>` and a custom list in the block list: `<si-hit>` and a URL-feed host blocked, packet tracer "Blocked ... by the reputation preprocessor" (about 30 min after create); feed status misread as "not downloaded yet" (R1), list replace refused (R2) |
 | 7 | F62 IPS on traffic + `fmc_threat_defense_review` | **pass** | IPS drops (overnight); posture + prompt followed on `mcp-fw-threat-acp`: ranked report with a fix per finding |
-| 8 | F64 TLS decryption | **pass** (traffic overnight; R1/R2 fixed by #190/#191 and re-proven); new R3 | `fmc_tls_decryption_check` now names `mcp-fw-resign` -> DECRYPT_RESIGN and `mcp-fw-dnd` -> DO_NOT_DECRYPT; a rule made by `fmc_create_decryption_rule` deploys without FMC's TLS-version refusal; `insert_before` makes FMC answer 500 although the rule is created (R3, fix PR below) |
+| 8 | F64 TLS decryption | **pass** (traffic overnight; R1/R2 fixed by #190/#191 and re-proven); new R3 | `fmc_tls_decryption_check` now names `mcp-fw-resign` -> DECRYPT_RESIGN and `mcp-fw-dnd` -> DO_NOT_DECRYPT; a rule made by `fmc_create_decryption_rule` deploys without FMC's TLS-version refusal; `insert_before` makes FMC answer 500 although the rule is created (R3, fix PR #216) |
 | 9 | F41 + F49 VPN status / troubleshoot | **pass** (R1, R2 fixed by #192/#193, re-proven) | `mcp-fw-t1` rebuilt: hub overlay routes resolve through the DVTI's `V` routes, no false warning; dead WAN now **critical** "the peer doesn't answer (dead WAN path ...)" on both ends, the path check confirms it; then torn down |
 | 10 | F54 `fmc_onboard_branch` | **pass** | overnight: prompt end to end, `fmc_prove_policy` hand-off 3/3 |
 | 11 | F58 interface kinds | **pass** (loopback, VTI, BVI); EtherChannel: platform limit, now refused in the preview (#194) | `fmc_create_interface(kind='etherchannel')` on the FTDv branch returns `blocked` with FMC's own message |
@@ -113,7 +113,8 @@ peak window named; per interface inside (in) and outside (out) carry it, the fai
 | `http://<dnd-host>/index.html`, `https://<outside-host>/index.html` | `200` | `200` |
 
 FTD console: `show asp drop` "Blocked or blacklisted by the file process preprocessor" 4 -> **8** (the four blocks), IPS
-preprocessor drops unchanged (6). Hit counts: `mcp-fw-file-noips` 3.
+preprocessor drops unchanged (6). Hit counts: `mcp-fw-file-noips` 3; `fmc_get_hit_counts` now lists the Default Action row too
+(overnight nit, fixed by #189).
 
 Nit: `fmc_get_file_policy(policy=...)` in markdown shows the rules as bare ids (the JSON has protocol, direction, types and action);
 the same flattening hides `fmc_get_intrusion_policy`'s overridden rules. Its `used_by` is empty for a policy two rules use.
