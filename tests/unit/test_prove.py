@@ -191,6 +191,7 @@ async def test_user_flows_check_the_user_the_device_saw(lab: respx.MockRouter) -
 async def test_user_without_source(lab: respx.MockRouter, monkeypatch: pytest.MonkeyPatch) -> None:
     post = tracer(lab, lambda b: with_user(ALLOW, "alice"))
     flow = {"user": "alice", "destination": "192.0.2.10", "protocol": "icmp", "expect": "allow"}
+    monkeypatch.setattr(prove, "USER_IP_RESOLVERS", [])
     (row,) = (await call({"device": "mcp-ftd1", "flows": [flow]}))["results"]
     assert row["result"] == "error" and "no user-to-IP lookup" in row["note"]
     assert not post.calls
@@ -206,6 +207,27 @@ async def test_user_without_source(lab: respx.MockRouter, monkeypatch: pytest.Mo
     tracer(lab, lambda b: with_user(ALLOW, "bob"))
     (row,) = (await call({"device": "mcp-ftd1", "flows": [flow]}))["results"]
     assert row["result"] == "mismatch" and "sees LAB\\bob on 10.99.1.10, not alice" in row["note"]
+
+
+async def test_user_ip_comes_from_fmc_identity_sessions(lab: respx.MockRouter) -> None:
+    """The wired-in resolver (identity_sources.user_ips): the user's newest FMC session gives the source."""
+    tracer(lab, lambda b: with_user(ALLOW, "alice"))
+    sessions = [
+        {"currentIP": "10.99.1.10", "username": "alice", "realmName": "LAB", "lastSeen": 1792334300},
+        {"currentIP": "10.99.1.99", "username": "alice", "realmName": "LAB", "lastSeen": 1792330000},
+        {"currentIP": "10.99.1.20", "username": "malice", "realmName": "LAB", "lastSeen": 1792339999},
+    ]
+    route = lab.get(f"{CFG}/analysis/activesessions").mock(return_value=items(sessions))
+    flow = {"user": "LAB\\alice", "destination": "192.0.2.10", "protocol": "icmp", "expect": "allow"}
+    (row,) = (await call({"device": "mcp-ftd1", "flows": [flow]}))["results"]
+    assert (row["result"], row["flow"]) == ("pass", "icmp 10.99.1.10 -> 192.0.2.10")
+    assert route.calls.last.request.url.params["username"] == "alice"
+    # no session for the user, then the API role without Analysis > Users: error rows that say why
+    (row,) = (await call({"device": "mcp-ftd1", "flows": [{**flow, "user": "carol"}]}))["results"]
+    assert row["result"] == "error" and "no active session" in row["note"]
+    lab.get(f"{CFG}/analysis/activesessions").mock(return_value=httpx.Response(403, json={}))
+    (row,) = (await call({"device": "mcp-ftd1", "flows": [flow]}))["results"]
+    assert row["result"] == "error" and "Analysis > Users" in row["note"]
 
 
 async def test_non_policy_drops_are_mismatches(lab: respx.MockRouter) -> None:
