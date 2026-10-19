@@ -17,6 +17,8 @@ Lab addresses and hostnames are not in this file. Placeholders:
 | `<dnd-host>` | the outside host's second address, exempted from decryption |
 | `<branch-wan>`, `<carrier-leg>` | the new branch FTD's WAN address and the internet carrier's leg it routes to |
 | `<gambling-hostname>` | a public hostname in the Gambling URL category, resolved to `<outside-host>` with `curl --resolve` |
+| `<ise-fqdn>`, `<lab-root-ca>`, `<ad-realm>` | ISE's pxGrid node name, the lab's root CA (and FMC's trusted-CA object for it), the AD realm on FMC |
+| `<ha-host>`, `<branch-host>`, `<hub-wan>` | the test host behind `mcp-fw-ha`, the host behind `mcp-fw-branch1`, the T1 hub's internet address |
 
 Status: **pass**, **fail** (a tool bug; root cause given), **blocked** (a lab, licence, role or platform limit), or **not run**.
 
@@ -36,8 +38,9 @@ Status: **pass**, **fail** (a tool bug; root cause given), **blocked** (a lab, l
 | 10 | F54 `fmc_onboard_branch` | pass | prompt followed end to end: register without a key argument, manual path (no template), join `mcp-fw-t1`, deploy hub + branch only; tunnel READY, BGP routes both ends, host pings, packet tracer, `fmc_prove_policy` hand-off 3/3 pass |
 | 11 | F58 interface kinds | pass (loopback, VTI, BVI); EtherChannel blocked | bodies from `fmc_create_interface` previews accepted by FMC; deployed and on the device; FMC refuses EtherChannel on FTDv (the preview should say so, R1); the delete guard (VTI borrows the loopback) works |
 | 12 | F65 HA under traffic | pass | `fmc_ha_failover_check` walked: planned switch hitless (0/600 pings lost, a 5 Mbit/s TCP flow never dipped); active unit powered off: one 15.2 s gap (= the 15 s hold time), the TCP flow resumed on the same connection; `fmc_get_ha_status(live=True)` read the survivor while the other unit was off and named each failover's reason |
-| 13 | F34 ISE identity source | not run | |
-| 14 | F56 `fmc_prove_policy` | not run | |
+| 13 | F34 ISE identity source | partial; enforcement blocked (B2) | seed script proven in FMC's UI (source saved in Global, identity policy linked); FMC's Test fails because ISE refuses FMC's client certificate (issued by an earlier lab root, B2); `fmc_get_identity_sources` reports the failed connection; `fmc_user_ip_lookup` gives the role 403 (B1) and the user's groups; `fmc_rule_lookup` names the contractors BLOCK rule for bob and the baseline ALLOW for alice; `fmc_why_blocked` leads to the missing user mapping |
+| 14 | F56 `fmc_prove_policy` + `fmc_prove_user_policy` | pass (tool, prompt); alice/bob blocked (B2) | 6-flow table: two 5-tuple flows on `mcp-ftd-identity`, one through `mcp-fw-ha`, one on `mcp-fw-branch1` pass; the alice/bob rows report correctly that the device sees no user on `<client>` (mismatch / fail); the prompt walked to the cause (Snort identity phase: user unknown) |
+| - | Read-only live tests | pass | HA status from the units (F65), interface kinds + create preview (F58), file / NAP reads (F43), SI reads (F61), identity sources (F34): 7 passed, user lookup skipped (B1) |
 
 ## Proofs
 
@@ -49,6 +52,10 @@ Status: **pass**, **fail** (a tool bug; root cause given), **blocked** (a lab, l
   blocked proof is one tool call once the client reconnects.
 - **B1, FMC role.** `analysis/activesessions` and `analysis/useractivity` answer 403 "The user is not authorized" for the
   API role (it needs Events & Logs > Analysis > Users).
+- **B2, FMC's pxGrid client certificate (lab).** The lab's FMC client certificate was issued by an earlier root of the lab CA
+  (same name, different key: the CA was rebuilt a day later). ISE trusts only the current root and its pxGrid certificate is
+  signed by it, so ISE refuses FMC's certificate in the TLS handshake. Re-issuing the client certificate needs an ISE and an AD CS
+  write, outside this run. Until then no user reaches the firewall, so user rules can't be proven on traffic.
 
 ### 1. F59 `fmc_find_address` (blocked: B0)
 
@@ -260,3 +267,70 @@ body from the tool's preview (`state_interface='Ethernet0/3'`, its own /30; sent
   inside (`monitoring_config`); restoring them with `fmc_configure_ha_monitoring` and deploying the pair cleared every warning.
   Traffic through the pair passes as before.
 
+### 13. F34 ISE identity source (partial; enforcement blocked: B2)
+
+FMC 10.0.1's REST API has no identity-source object, so the lab seed script configures it in the web UI (Playwright) and the new
+read tools check it. The script's selectors were unproven; the live run fixed them:
+
+- The lab's UI service role has no Identity Sources page (Integrations shows only Dynamic Attributes Connector and Realms), so the
+  step ran as the FMC administrator. FMC 10.0.1 offers the ISE source **in the Global domain only**: in a leaf domain the page is
+  read-only (every service type disabled). The source and the internal certificate it references live in Global; the identity
+  policy and the access-policy link stay in the leaf.
+- Page: Integrations > Identity > Identity Sources (`/ui/identity-sources/ise`), Advanced Configuration: primary host, pxGrid
+  Client Certificate, MNT Server CA, pxGrid Server CA (searchable comboboxes), Session Directory and SXP topics, Test (a Status modal
+  with Additional Logs), Save. FMC refuses an identity policy description with a comma (alphanumerics, `_`, `.`, `-` and spaces).
+- Created: internal certificate `mcp-fw-fmc-pxgrid` (Global), identity policy `mcp-fw-idp` with a PASSIVE rule for `<ad-realm>` on
+  `<client-net>` (leaf), the ISE source (host `<ise-fqdn>`, client certificate `mcp-fw-fmc-pxgrid`, both server CAs = the existing
+  trusted CA for `<lab-root-ca>`), `mcp-fw-idp` selected in `mcp-fw-threat-acp`; deployed to `mcp-ftd-identity` only.
+- FMC's Test: "Primary host: Failure ... sslv3 alert certificate unknown ... AccountActivate failed: Request failed with a timeout".
+  FMC reaches the node and resolves its name; ISE refuses the client certificate (B2). ISE lists no pxGrid client for FMC, so there
+  was nothing to approve. Saved anyway so the remaining steps could run; the fix is to replace the certificate object.
+
+| Step | Tool | Result |
+|---|---|---|
+| before | `fmc_get_identity_sources` | ISE `not_configured` with the UI steps under `configure`; realm with 5 users and 5 groups; sessions: the B1 403 text; every device 0 user-IP bindings |
+| after Save | `fmc_get_identity_sources` | first sample: still `not_configured` (FMC's health module lags about 10 minutes, although the SGT list no longer answers "disabled"); then **`failed`, RED "Check connectivity to ISE"**, verdict "ISE/pxGrid connection FAILED", `next` names the certificate checks |
+| alice logged in (recipe action) | `fmc_user_ip_lookup(ip=<client>, history=true)` | the 403 with the missing permission named (B1) |
+| | `fmc_user_ip_lookup(user='mcp-bob')` | realm user with group `mcp-contractors`, plus `sessions_error` |
+| rule `mcp-fw-contractors-telnet` (BLOCK_RESET, group `mcp-contractors`, tcp/23) above the baseline, deployed | `fmc_rule_lookup(device, <client> -> <outside-host>, tcp/23)` | no identities: `identity.error` (403), the contractors rule listed as conditional on users, baseline ALLOW; `identities=['mcp-bob']`: groups added from the realm download, **rule 1 contractors -> BLOCK_RESET**; `identities=['mcp-alice']`: group `mcp-employees`, **baseline -> ALLOW** |
+| bob logged in | client `telnet` check, `fmc_packet_tracer` | port 23 **open**; tracer: the access list hands the flow to Snort for the user rule, Snort allows it by the baseline with "user 9999999" (no user on the IP) |
+| | prompt `fmc_why_blocked` (followed) | rule lookup with the user from ISE -> contractors block; tracer -> allow, no user; hit counts: contractors 0; nothing pending; audit: the policy saves. Report: the policy blocks bob, the device can't, because it has no user for `<client>` (B2) |
+
+The tools behave as designed against a failing identity source; the alice/bob enforcement proof waits for B2. Re-run after the fix:
+replace `mcp-fw-fmc-pxgrid` with the re-issued certificate, Test in the UI, then repeat the table above (expect `connected`, SGTs,
+bindings on `mcp-ftd-identity`, and bob's telnet reset).
+
+**Findings:** R1 (wording): `fmc_get_identity_sources`' `configure`/`settings` text names "Integrations > Other Integrations >
+Identity Sources"; FMC 10.0.1 has Integrations > Identity > Identity Sources, in Global only, for an admin-type role.
+R2 (minor): right after Save the state stays `not_configured` until FMC's health module runs, although the SGT list is readable.
+
+### 14. F56 `fmc_prove_policy` and `fmc_prove_user_policy` (pass; alice/bob blocked: B2)
+
+One call, six flows, each with its device:
+
+| # | Flow | Device | Expect | Result | Deciding rule |
+|---|---|---|---|---|---|
+| 1 | alice: `<client>` -> `<outside-host>` tcp/23 (user `mcp-alice`) | `mcp-ftd-identity` | allow | mismatch | baseline; "the device sees no user on `<client>`, not mcp-alice" |
+| 2 | bob: same flow (user `mcp-bob`, rule = contractors) | `mcp-ftd-identity` | block | fail | baseline (allow); "sees no user" |
+| 3 | `<client>` -> `<outside-host>` tcp/80 | `mcp-ftd-identity` | allow | pass | baseline |
+| 4 | `<client>` -> `<outside-host>` tcp/25 | `mcp-ftd-identity` | block | pass | default action (drop) |
+| 5 | `<ha-host>` -> `<feed-host>` tcp/80 | `mcp-fw-ha-a` (active) | allow | pass | `mcp-fw-inside-to-outside` |
+| 6 | `<branch-host>` -> `<hub-wan>` tcp/443 | `mcp-fw-branch1` | allow | pass | `mcp-fw-inside-to-outside` |
+
+Rows 1 and 2 are the real state (B2): the tool's user check turns "right verdict for an unknown host" into a mismatch instead of
+a false pass. On the hosts: the client's tcp/80 answers 200, tcp/25 doesn't connect, tcp/23 connects for both users; the HA host
+fetches a file from `<feed-host>`; the branch's default route points at the carrier.
+
+The prompt `fmc_prove_user_policy` (allowed alice, blocked bob, tcp/23, both rules named) was followed: device and identity policy
+(linked, PASSIVE rule for the realm); offline lookups per user (alice ALLOW by the baseline, bob BLOCK_RESET by the contractors
+rule: the policy is right); ISE sessions for each user on `<client>`; live rows per user after each login (bob retried once after
+60 s): mismatch / fail, no user seen; verbose packet tracer: Snort's identity phase "user id: unknown ... username: none";
+contractors rule 0 hits; nothing pending. Report: the policy is right, the device has no user-IP mapping, cause B2.
+
+### Read-only live tests (run on the chain head)
+
+`uv run pytest -m live -k ...` (leaf domain, device `mcp-fw-branch1` for the interface test): **7 passed, 1 skipped** in 35 s:
+`test_ha_failover_state_from_the_units` (F65, the re-formed pair), `test_ha_status_when_paired`, `test_vpn_and_ravpn_reads`,
+`test_interface_kinds_and_create_preview` (F58), `test_file_and_network_analysis_reads` (F43), `test_si_feeds_and_lists_read`
+(F61), `test_identity_sources_read` (F34, state `failed`); `test_user_ip_lookup_live` skipped on the B1 role 403. The tests log in as
+the test user; the server's own FMC session was not ended (its login count did not change).
