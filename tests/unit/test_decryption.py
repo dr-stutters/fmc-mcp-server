@@ -10,6 +10,7 @@ from fastmcp import Client
 from fastmcp.exceptions import ToolError
 
 from fmc_mcp.server import create_server
+from fmc_mcp.tools.decryption import cert_conditions, rule_row
 
 from .conftest import CFG, fixture, items, make_settings
 
@@ -288,3 +289,17 @@ async def test_get_policy_shows_settings_and_readiness(fmc: respx.MockRouter) ->
     assert out["rules"][1]["resign_ca"] == ["mcp-test-resign-ca"]
     assert any("TLS 1.3 decryption is off" in n for n in out["readiness"])
     assert listing["results"][0]["used_by"] == "acp"
+
+
+def test_rule_rows_ignore_fmc10_default_cert_blocks() -> None:
+    """fmc_get_decryption_policy's rows: FMC 10.0.1's all-ANY statuses and all-on (or, as created, all-off)
+    TLS versions are not conditions; a YES/NO status or a partial version list is."""
+    live = fixture("decryption_fmc10")
+    dnd, resign = live["decryption_rules"]
+    assert "cert_conditions" not in rule_row(dnd) and "cert_conditions" not in rule_row(resign)
+    assert cert_conditions(live["resign_rule_post_response"]) == []
+    expired = {**resign, "certificateStatuses": {**resign["certificateStatuses"], "expired": "NO"}}
+    assert rule_row(expired)["cert_conditions"] == ["certificateStatuses"]
+    tls12_only = {**resign, "tlsVersions": {k: k == "tls12" for k in resign["tlsVersions"]}}
+    assert cert_conditions(tls12_only) == ["tlsVersions"]
+    assert cert_conditions({**resign, "issuerDNs": {"objects": [{"name": "dn", "id": "x"}]}}) == ["issuerDNs"]
