@@ -1,0 +1,53 @@
+{
+ "_source": "FMC 10.0.1 / FTDv for KVM 10.0.0 (F58 live proof, 2026-10-19): the device record's model fields (GET devicerecords/{id}, read-only), FMC's answer to the BVI POST that fmc_create_interface previewed, and the two 400 messages FMC returned: the EtherChannel POST on the FTDv, and a PUT giving a bridge-group member a ROUTED zone. Names, addresses and ids replaced.",
+ "device": {
+  "id": "00000000-0000-0ed3-0000-000000000d58",
+  "type": "Device",
+  "name": "branch-ftdv",
+  "model": "Cisco Secure Firewall Threat Defense for KVM",
+  "modelId": "B",
+  "modelNumber": "75",
+  "modelType": "Sensor",
+  "sw_version": "10.0.0",
+  "performanceTier": "FTDv5",
+  "ftdMode": "ROUTED",
+  "license_caps": [
+   "ESSENTIALS"
+  ],
+  "isConnected": true
+ },
+ "bvi": {
+  "metadata": {
+   "timestamp": 0
+  },
+  "type": "BridgeGroupInterface",
+  "bridgeGroupId": 1,
+  "selectedInterfaces": [
+   {
+    "id": "00000000-0000-0ed3-0000-000000000e04",
+    "name": "Ethernet0/4",
+    "type": "PhysicalInterface"
+   },
+   {
+    "id": "00000000-0000-0ed3-0000-000000000e05",
+    "name": "Ethernet0/5",
+    "type": "PhysicalInterface"
+   }
+  ],
+  "name": "BVI1",
+  "ifname": "bvi-lan",
+  "mode": "NONE",
+  "ipv4": {
+   "static": {
+    "address": "198.51.100.73",
+    "netmask": "29"
+   }
+  },
+  "ipv6": {},
+  "priority": 0,
+  "description": "bridged LAN",
+  "id": "00000000-0000-0ed3-0000-000000000b11"
+ },
+ "etherchannel_error": "Etherchannel interface is not supported on 'Virtual' Threat Defense.",
+ "bvi_member_routed_zone_error": "Security zone should be in same mode as of Interface mode type for interface bvi-m1."
+}

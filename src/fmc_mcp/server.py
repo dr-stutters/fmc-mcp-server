@@ -1,12 +1,15 @@
 """Server definition: SPEC, instructions and create_server()."""
 
+from collections.abc import Callable
+from dataclasses import replace
 from typing import Any
 
 import httpx
 from fastmcp import FastMCP
 from fastmcp.server.auth import AuthProvider
 
-from fmc_mcp._core import ServerSpec, build_server
+from fmc_mcp import toolsets
+from fmc_mcp._core import ServerSpec, ToolRegistrar, build_server
 from fmc_mcp._core.spec import SpecSource
 from fmc_mcp.client import SPEC_PATH, FmcApp
 from fmc_mcp.config import Settings
@@ -215,66 +218,75 @@ def spec_sources(app: FmcApp) -> list[SpecSource]:
     ]
 
 
+REGISTER: list[Callable[[ToolRegistrar], None]] = [
+    system.register,
+    devices.register,
+    policies.register,
+    objects.register,
+    analysis.register,
+    find_address.register,
+    hygiene.register,
+    threat_posture.register,
+    deploy.register,
+    device_config.register,
+    object_writes.register,
+    object_import.register,
+    policy_writes.register,
+    dangerous.register,
+    troubleshoot.register,
+    metrics.register,
+    live.register,
+    prove.register,
+    dynamic_objects.register,
+    containment.register,
+    ha.register,
+    vpn.register,
+    sdwan.register,
+    templates.register,
+    sdwan_status.register,
+    vpn_status.register,
+    activity.register,
+    platform_settings.register,
+    platform_access.register,
+    routing.register,
+    app_routing.register,
+    intrusion.register,
+    file_policy.register,
+    network_analysis.register,
+    admin.register,
+    prefilter.register,
+    security_intel.register,
+    rule_io.register,
+    bundle.register,
+    bundle_import.register,
+    tickets.register,
+    pki.register,
+    decryption.register,
+    decryption_check.register,
+    dns.register,
+    identity.register,
+    identity_sources.register,
+    prompts.register,
+]
+
+
 def create_server(
     settings: Settings,
     *,
     auth: AuthProvider | None = None,
     transport: httpx.AsyncBaseTransport | None = None,
 ) -> FastMCP[Any]:
+    selected = toolsets.parse(settings.toolsets)
+    spec = SPEC
+    register = REGISTER
+    if selected is not None:  # FMC_TOOLSETS: only these areas (core always)
+        spec = replace(SPEC, instructions=SPEC.instructions + toolsets.instructions_note(selected))
+        register = [toolsets.filtered(fn, selected) for fn in REGISTER]
     return build_server(
-        SPEC,
+        spec,
         settings,
         client_factory=lambda s: FmcApp(s, transport=transport),
-        register=[
-            system.register,
-            devices.register,
-            policies.register,
-            objects.register,
-            analysis.register,
-            find_address.register,
-            hygiene.register,
-            threat_posture.register,
-            deploy.register,
-            device_config.register,
-            object_writes.register,
-            object_import.register,
-            policy_writes.register,
-            dangerous.register,
-            troubleshoot.register,
-            metrics.register,
-            live.register,
-            prove.register,
-            dynamic_objects.register,
-            containment.register,
-            ha.register,
-            vpn.register,
-            sdwan.register,
-            templates.register,
-            sdwan_status.register,
-            vpn_status.register,
-            activity.register,
-            platform_settings.register,
-            platform_access.register,
-            routing.register,
-            app_routing.register,
-            intrusion.register,
-            file_policy.register,
-            network_analysis.register,
-            admin.register,
-            prefilter.register,
-            security_intel.register,
-            rule_io.register,
-            bundle.register,
-            bundle_import.register,
-            tickets.register,
-            pki.register,
-            decryption.register,
-            decryption_check.register,
-            dns.register,
-            identity.register,
-            identity_sources.register,
-            prompts.register,
-        ],
+        register=register,
         status=FmcApp.status,
         spec_sources=spec_sources,
         auth=auth,

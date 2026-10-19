@@ -119,6 +119,27 @@
    "pages": 1
   }
  },
+ "health_alert_ise_failed": {
+  "_source": "FMC 10.0.1, GET health/alerts?filter=moduleIDs:ISE;deviceUUIDs:0&expanded=true in Global/<leaf>, 2026-10-19, after an ISE identity source was saved in Global with a pxGrid client certificate ISE does not trust (the UI's Test: 'sslv3 alert certificate unknown').",
+  "items": [
+   {
+    "deviceUUID": "0",
+    "moduleID": "ISE",
+    "moduleUUID": "5bbe3968-1334-4a0b-9e01-b9183353799f",
+    "timestamp": 1792373249,
+    "params": "<params><type>Identity Services Engine</type><iseloop><module>ISE Services</module><status>UNKNOWN</status></iseloop><iseloop><module>ISEConnection</module><status>DOWN</status></iseloop></params>",
+    "status": "RED",
+    "details": "Check connectivity to ISE",
+    "type": "Alert"
+   }
+  ],
+  "paging": {
+   "offset": 0,
+   "limit": 25,
+   "count": 1,
+   "pages": 1
+  }
+ },
  "isesgt_disabled": {
   "error": {
    "category": "FRAMEWORK",
@@ -152,6 +173,15 @@
    "limit": 25,
    "count": 2,
    "pages": 1
+  }
+ },
+ "isesgts_enabled_empty": {
+  "_source": "FMC 10.0.1, GET object/isesecuritygrouptags?limit=5 in Global/<leaf>, 2026-10-19: an ISE identity source saved in Global (its connection failing, no SGT downloaded). Before the save the same GET answered 422 (isesgt_disabled).",
+  "paging": {
+   "offset": 0,
+   "limit": 0,
+   "count": 0,
+   "pages": 0
   }
  },
  "realms": {

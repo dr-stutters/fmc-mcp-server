@@ -127,9 +127,10 @@ def register(reg: ToolRegistrar) -> None:
         domain: Domain = None,
         confirm: Confirm = None,
     ) -> dict[str, Any]:
-        """Work with FMC change-management tickets: open a ticket (every later change from this server
-        carries it as ticket-id, for all callers), submit it for approval, discard it, or release it from
-        this server. Approval happens in the FMC UI."""
+        """Work with FMC change-management tickets (FMC 7.6+): open a ticket (every later change from this
+        server carries it as ticket-id, for all callers), submit it for approval, discard it (its changes are
+        reverted), or release it from this server. Approval happens in the FMC UI. A ticket's pending changes
+        and FMC's validation results: fmc_change_tickets."""
         app: FmcApp = get_client(ctx)
         path = await app.config_path(TICKETS, domain)
         if action == "release":

@@ -12,6 +12,7 @@ from typing import Any
 
 import httpx
 
+from fmc_mcp import toolsets
 from fmc_mcp._core import AuthError, InvalidRequest, NotFound
 from fmc_mcp._core.http import (
     ApiClient,
@@ -304,6 +305,21 @@ class FmcApp:
         c, a = names.get(child.lower()), names.get(ancestor.lower())
         return bool(c and a and c.startswith(a + "/"))
 
+    async def domain_ancestors(self, domain: str | None = None) -> list[str]:
+        """UUIDs of the domain's ancestors that this login lists, nearest first, from the names
+        ('Global/A/B' -> 'Global/A', 'Global'). Empty for Global or a single-domain FMC."""
+        uuid = (await self.domain_uuid(domain)).lower()
+        domains = await self._known_domains()
+        by_name = {d["name"]: d["uuid"] for d in domains}
+        name = next((d["name"] for d in domains if d["uuid"].lower() == uuid), "")
+        parts = name.split("/")
+        out: list[str] = []
+        for i in range(len(parts) - 1, 0, -1):
+            parent = by_name.get("/".join(parts[:i]))
+            if parent and parent.lower() != uuid:
+                out.append(parent)
+        return out
+
     async def platform_path(self, suffix: str, domain: str | None = None) -> str:
         return f"/api/fmc_platform/v1/domain/{await self.domain_uuid(domain)}/{suffix.lstrip('/')}"
 
@@ -376,6 +392,7 @@ class FmcApp:
         self._version = str(info.get("serverVersion", "unknown"))
         default = await self.domain_uuid(None)
         devices = await self.api.get(await self.config_path("devices/devicerecords"), {"limit": 1})
+        selected = toolsets.describe(toolsets.parse(getattr(self.settings, "toolsets", None)))
         return {
             "version": self._version,
             "hostname": info.get("hostname"),
@@ -391,6 +408,7 @@ class FmcApp:
                 "per_minute": self.limiter.per_minute,
                 "max_concurrency": self.limiter.max_concurrency,
             },
+            **({"toolsets": selected} if selected else {}),
         }
 
 

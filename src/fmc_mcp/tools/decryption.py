@@ -28,7 +28,7 @@ from fmc_mcp._core.http import page_of
 from fmc_mcp.client import FmcApp
 from fmc_mcp.preview import fmc_preview
 from fmc_mcp.refs import RefResolver
-from fmc_mcp.rules import app_labels, url_labels
+from fmc_mcp.rules import app_labels, has_value, url_labels
 from fmc_mcp.tools.common import Domain, block_labels, ref_label, resolve_in
 from fmc_mcp.tools.object_writes import applied
 from fmc_mcp.tools.pki import (
@@ -57,7 +57,13 @@ CERT_CONDITIONS = (
     "externalCertificates",
     "cipherSuiteLists",
     "tlsVersions",
+    "clientThreat",
 )
+# Every TLS/SSL version. FMC 10.0.1 stores all five false for a rule created without `tlsVersions`, then
+# refuses the deploy of DO_NOT_DECRYPT and DECRYPT_RESIGN rules that select versions ("Support for SSL
+# Versions selection for Do not decrypt rule is deprecated", the same for Decrypt - Resign).
+ALL_TLS_VERSIONS = {"sslv3": True, "tls10": True, "tls11": True, "tls12": True, "tls13": True}
+NO_VERSION_SELECTION = {"DO_NOT_DECRYPT": "Do not decrypt", "DECRYPT_RESIGN": "Decrypt - Resign"}
 TrustedParam = Annotated[
     list[str] | None,
     Field(
@@ -82,6 +88,31 @@ PropagateParam = Annotated[
 ]
 
 
+def cert_conditions(r: dict[str, Any]) -> list[str]:
+    """The certificate and TLS conditions that really narrow a rule (CERT_CONDITIONS keys).
+
+    FMC 10.0.1 returns every rule with `certificateStatuses` (all ten statuses "ANY"), `tlsVersions` (five
+    flags) and `clientThreat` "ANY", whether the rule uses them or not. A status block counts only when a
+    status is YES or NO; a version block only when some versions are on and others off (all on = every
+    version; all off is what FMC stores for a rule created without versions); a client threat level only
+    when it isn't ANY."""
+    out: list[str] = []
+    for c in CERT_CONDITIONS:
+        v = r.get(c)
+        if c == "certificateStatuses":
+            narrows = isinstance(v, dict) and any(str(s).upper() in ("YES", "NO") for s in v.values())
+        elif c == "tlsVersions":
+            flags = [f for f in v.values() if isinstance(f, bool)] if isinstance(v, dict) else []
+            narrows = any(flags) and not all(flags)
+        elif c == "clientThreat":
+            narrows = isinstance(v, str) and v.upper() not in ("", "ANY")
+        else:
+            narrows = has_value(v)
+        if narrows:
+            out.append(c)
+    return out
+
+
 def rule_row(r: dict[str, Any]) -> dict[str, Any]:
     meta = r.get("metadata") or {}
     row = {
@@ -100,11 +131,27 @@ def rule_row(r: dict[str, Any]) -> dict[str, Any]:
         "users": block_labels(r.get("users")) or None,
         "applications": app_labels(r.get("applications")) or None,
         "urls": url_labels(r.get("urls")) or None,
-        "cert_conditions": [c for c in CERT_CONDITIONS if r.get(c)] or None,
+        "cert_conditions": cert_conditions(r) or None,
         "log": True if (r.get("logging") or {}).get("logEnd") else None,
         "id": r.get("id"),
     }
     return {k: v for k, v in row.items() if v is not None}
+
+
+def version_problem(r: dict[str, Any]) -> str | None:
+    """Why FMC 10 will refuse to deploy this rule's TLS version selection, or None."""
+    action = str(r.get("ruleAction") or "")
+    v = r.get("tlsVersions")
+    flags = {k: f for k, f in v.items() if isinstance(f, bool)} if isinstance(v, dict) else {}
+    if action not in NO_VERSION_SELECTION or not flags or all(flags.values()):
+        return None
+    off = ", ".join(k for k, f in flags.items() if not f) + " off" if any(flags.values()) else "all off"
+    return (
+        f"{action} rule {r.get('name')!r} selects TLS/SSL versions ({off}; FMC stores all off for a rule "
+        "created without them): FMC 10 refuses the deploy ('Support for SSL Versions selection for "
+        f"{NO_VERSION_SELECTION[action]} rule is deprecated'). Turn every version on (fmc_api_call PUT of "
+        "the rule with tlsVersions all true) or re-create it with fmc_create_decryption_rule (sends them)."
+    )
 
 
 def advanced_row(p: dict[str, Any]) -> dict[str, Any]:
@@ -182,6 +229,7 @@ async def readiness(
             notes += [f"Rule {r.get('name')!r}: {m}" for m in ca_problems(ca)]
         if r.get("ruleAction") == "DECRYPT_RESIGN" and not (r.get("decryptionCerts") or {}).get("objects"):
             notes.append(f"DECRYPT_RESIGN rule {r.get('name')!r} has no internal CA.")
+    notes += [m for m in (version_problem(r) for r in enabled) if m]
     return notes
 
 
@@ -329,7 +377,8 @@ def register(reg: ToolRegistrar) -> None:
         """Change a decryption policy's settings: default action, trusted CAs (the issuers the FTD accepts
         for server certificates; a private or lab server's CA must be here for its re-signed certificate to
         look trusted), TLS 1.3 decryption and how untrusted server certificates are handled. Rules are
-        unchanged. Takes effect after a deploy of the devices whose access policy uses it."""
+        unchanged. Current settings: fmc_get_decryption_policy; the effect on one flow:
+        fmc_tls_decryption_check. Takes effect after a deploy of the devices whose access policy uses it."""
         app: FmcApp = get_client(ctx)
         p = await resolve_in(app, DECRYPTION, policy, "decryption policy", domain)
         path = await app.config_path(f"{DECRYPTION}/{p['id']}", domain)
@@ -453,9 +502,10 @@ def register(reg: ToolRegistrar) -> None:
         confirm: Confirm = None,
     ) -> dict[str, Any]:
         """Add a rule to a decryption policy (at the end, or before rule `insert_before`). DECRYPT_RESIGN
-        needs an internal CA that clients trust; the preview warns when the policy can't decrypt TLS 1.3 or
-        when an exemption would land below a decrypt rule. Takes effect after a deploy of the devices whose
-        access policy uses the decryption policy (fmc_set_decryption_policy)."""
+        needs an internal CA that clients trust; the preview warns when the policy can't decrypt TLS 1.3,
+        when an exemption would land below a decrypt rule, or when an existing rule's TLS version selection
+        will make FMC refuse the deploy. The rule matches every TLS/SSL version. Takes effect after a deploy
+        of the devices whose access policy uses the decryption policy (fmc_set_decryption_policy)."""
         app: FmcApp = get_client(ctx)
         if internal_ca and action != "DECRYPT_RESIGN":
             raise InvalidRequest("internal_ca is only for action='DECRYPT_RESIGN'.")
@@ -475,6 +525,7 @@ def register(reg: ToolRegistrar) -> None:
             "type": "DecryptionPolicyRule",
             "ruleAction": action,
             "enabled": True,
+            "tlsVersions": dict(ALL_TLS_VERSIONS),
         }
         for field, values, kind in (
             ("sourceZones", source_zones, "zone"),
@@ -529,6 +580,7 @@ def register(reg: ToolRegistrar) -> None:
         existing = await all_rules(app, base)
         if any(str(r.get("name", "")).lower() == name.lower() for r in existing.items):
             blockers.append(f"{p.get('name')!r} already has a rule named {name!r}.")
+        warnings += [m for m in (version_problem(r) for r in existing.items if r.get("enabled", True)) if m]
         count = len(existing.items)
         if insert_before is not None and insert_before > count:
             blockers.append(
@@ -593,7 +645,13 @@ def register(reg: ToolRegistrar) -> None:
             owned=[p],
             plan=Plan(
                 f"Add decryption rule {name!r} ({action}) to {p.get('name')!r} {where}",
-                details={"rule": rule_row(body), "position": position, "rules_now": count},
+                details={
+                    # all versions on is no condition (FMC 10's default; it refuses version selection)
+                    "rule": rule_row({k: v for k, v in body.items() if k != "tlsVersions"}),
+                    "tls_versions": "all",
+                    "position": position,
+                    "rules_now": count,
+                },
                 fingerprint={
                     "policy": p["id"],
                     "rules": [r.get("id") for r in existing.items],

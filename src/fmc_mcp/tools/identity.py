@@ -286,7 +286,8 @@ def register(reg: ToolRegistrar) -> None:
         API has no AD/LDAP realm test. It is in the read tier because it changes nothing, but it logs in
         to FMC's web UI (ending that UI user's other UI session). FMC only says pass/fail; on failure
         check the host and port from FMC's side, the bind user/password, and for LDAPS the CA
-        certificate and the server name in it."""
+        certificate and the server name in it (fmc_get_realm shows them). After a pass:
+        fmc_download_realm."""
         app: FmcApp = get_client(ctx)
         r = await resolve_realm(app, realm, domain)
         full = await app.api.get(await app.config_path(f"{REALMS}/{r['id']}", domain))
@@ -334,7 +335,8 @@ def register(reg: ToolRegistrar) -> None:
         authentication: PASSIVE (ISE/pxGrid, passive agent, TS agent), ACTIVE (captive portal) or NO) and
         the access control policies that use it. Linking an identity policy to an access policy is not
         possible through FMC's REST API (it silently drops identityPolicySetting); do it in the access
-        policy editor: Identity step > choose the policy > Apply > Save."""
+        policy editor: Identity step > choose the policy > Apply > Save. Add rules with
+        fmc_create_identity_rule; whether sessions reach FMC at all: fmc_get_identity_sources."""
         app: FmcApp = get_client(ctx)
         if not policy:
             page = await app.all(await app.config_path(IDENTITY, domain))
@@ -377,7 +379,9 @@ def register(reg: ToolRegistrar) -> None:
         confirm: Confirm = None,
     ) -> dict[str, Any]:
         """Import a CA certificate as a trusted CA object (Objects > PKI > Trusted CAs), e.g. the AD root
-        CA so a realm can use LDAPS or STARTTLS (fmc_create_realm ca_certificate=...)."""
+        CA so a realm can use LDAPS or STARTTLS (fmc_create_realm ca_certificate=...), or a server's issuer
+        a decryption policy should trust (fmc_update_decryption_policy add_trusted_cas=...). List them
+        with fmc_get_certificate(kind='trusted_ca')."""
         app: FmcApp = get_client(ctx)
         if "PRIVATE KEY" in pem:
             raise InvalidRequest("That text contains a private key; give only the CA certificate.")
@@ -575,7 +579,7 @@ def register(reg: ToolRegistrar) -> None:
         """Download an AD/LDAP realm's users and groups now (the realm page's download button), so new
         directory groups can be used in access rules. Changes no policy; devices get new memberships with
         the next deploy of a policy using the realm. Needs FMC_UI_USERNAME: FMC's REST API can't start an
-        AD/LDAP download."""
+        AD/LDAP download. Check the result with fmc_get_realm (users, groups, last sync)."""
         app: FmcApp = get_client(ctx)
         r = await resolve_realm(app, realm, domain)
         before = await members_of(app, r["id"], domain)
@@ -663,7 +667,7 @@ def register(reg: ToolRegistrar) -> None:
         confirm: Confirm = None,
     ) -> dict[str, Any]:
         """Delete an AD/LDAP realm and its downloaded users and groups. Refused while identity rules or
-        access rules use it (remove those first)."""
+        access rules use it (remove those first: fmc_get_identity_policy shows the identity rules)."""
         app: FmcApp = get_client(ctx)
         r = await resolve_realm(app, realm, domain)
         blockers = []
@@ -874,8 +878,8 @@ def register(reg: ToolRegistrar) -> None:
         domain: Domain = None,
         confirm: Confirm = None,
     ) -> dict[str, Any]:
-        """Delete an identity rule. FMC refuses it while access rules still use a user or group of the
-        rule's realm in an access policy that uses this identity policy."""
+        """Delete an identity rule (fmc_get_identity_policy lists them). FMC refuses it while access rules
+        still use a user or group of the rule's realm in an access policy that uses this identity policy."""
         app: FmcApp = get_client(ctx)
         p = await resolve_in(app, IDENTITY, policy, "identity policy", domain)
         base = await app.config_path(f"{IDENTITY}/{p['id']}/identityrules", domain)
