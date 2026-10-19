@@ -119,7 +119,7 @@ There are 153 tools when every tier is enabled (66 read, 76 write, 11 dangerous;
 | Device templates (FMC 7.6+) | `fmc_list_device_templates`, `fmc_get_device_template` (interfaces, variables, model mappings, VPN/SD-WAN settings, overridable objects, devices it was applied to; passwords masked) |
 | Troubleshooting | `fmc_packet_tracer`, `fmc_run_show_command`, `fmc_get_hit_counts`, `fmc_device_health`, `fmc_list_vpn_tunnels` |
 | Policies | `fmc_list_policies`, `fmc_get_access_policy`, `fmc_list_access_rules`, `fmc_get_access_rule`, `fmc_list_nat_rules`, `fmc_list_prefilter_rules`, `fmc_list_policy_assignments` |
-| Objects | `fmc_list_objects`, `fmc_get_object`, `fmc_find_object`, `fmc_where_used`, `fmc_unused_objects`, `fmc_list_dynamic_objects` |
+| Objects | `fmc_list_objects`, `fmc_get_object`, `fmc_find_object`, `fmc_where_used`, `fmc_unused_objects`, `fmc_list_dynamic_objects`, `fmc_find_address` (one IP, network or range across objects and groups, dynamic-object mappings, access, prefilter and NAT rules, static routes and VPN endpoints, ranked) |
 | Security Intelligence | `fmc_get_security_intelligence` |
 | Decryption / DNS | `fmc_get_decryption_policy`, `fmc_get_dns_policy` |
 | Identity (AD/LDAP) | `fmc_get_realm` (directories, downloaded users and groups), `fmc_test_realm` (bind test from FMC; needs `FMC_UI_USERNAME`), `fmc_get_identity_policy` (rules, access policies using it) |
@@ -135,7 +135,11 @@ Notes on some read tools:
 
 - `fmc_list_policies` covers access, NAT, prefilter, intrusion, file, platform settings, DNS,
   identity, decryption, health, FlexConfig and VPN policies.
-- `fmc_find_object` finds objects by IP address, subnet or port.
+- `fmc_find_object` finds objects by IP address, subnet or port. `fmc_find_address` answers "where does
+  10.1.2.3 appear?" in one call: objects and the groups that hold it, dynamic-object mappings, access and
+  prefilter rules (either side; literal, object, nested group or dynamic object), NAT rules, static routes
+  (destination or gateway) and VPN protected networks and extranet peers, exact matches first, each with the
+  object chain it was found through. Narrow it with `device`, `access_policy` or `nat_policy`.
 - `fmc_rule_lookup` works out, offline, which access rule handles traffic from a source to a
   destination and port. `fmc_packet_tracer` asks the device itself (FMC runs packet-tracer; nothing
   is transmitted) and names the rule that allowed or dropped the packet and why.
