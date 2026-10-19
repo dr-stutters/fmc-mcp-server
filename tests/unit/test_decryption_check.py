@@ -15,6 +15,7 @@ from fmc_mcp.tools.decryption_check import host_matches
 from .conftest import CFG, fixture, items, make_settings
 
 FX = fixture("decryption_pki")
+LIVE = fixture("decryption_fmc10")  # FMC 10.0.1 answers from the F64 live proof
 POL = FX["decryption_policy"]
 RULES = FX["decryption_rules"]
 PRULES = f"{CFG}/policy/decryptionpolicies/{POL['id']}/decryptionpolicyrules"
@@ -27,7 +28,13 @@ DEV = {
 }
 
 
-def mock(fmc: respx.MockRouter, rules: list[dict[str, Any]] | None = None, linked: bool = True) -> None:
+def mock(
+    fmc: respx.MockRouter,
+    rules: list[dict[str, Any]] | None = None,
+    linked: bool = True,
+    policy: dict[str, Any] | None = None,
+) -> None:
+    pol = policy or POL
     for p in (
         "networkaddresses",
         "ranges",
@@ -38,14 +45,16 @@ def mock(fmc: respx.MockRouter, rules: list[dict[str, Any]] | None = None, linke
         "portobjectgroups",
     ):
         fmc.get(f"{CFG}/object/{p}").mock(return_value=items([]))
-    fmc.get(f"{CFG}/policy/decryptionpolicies").mock(return_value=items([POL]))
-    fmc.get(f"{CFG}/policy/decryptionpolicies/{POL['id']}").mock(return_value=httpx.Response(200, json=POL))
-    fmc.get(PRULES).mock(return_value=items(RULES if rules is None else rules))
+    fmc.get(f"{CFG}/policy/decryptionpolicies").mock(return_value=items([pol]))
+    fmc.get(f"{CFG}/policy/decryptionpolicies/{pol['id']}").mock(return_value=httpx.Response(200, json=pol))
+    fmc.get(f"{CFG}/policy/decryptionpolicies/{pol['id']}/decryptionpolicyrules").mock(
+        return_value=items(RULES if rules is None else rules)
+    )
     ca = FX["internal_ca"]
     fmc.get(f"{CFG}/object/internalcas/{ca['id']}").mock(return_value=httpx.Response(200, json=ca))
     acp = {
         **ACP,
-        "decryptionPolicySetting": {"id": POL["id"], "name": POL["name"], "type": "DecryptionPolicy"},
+        "decryptionPolicySetting": {"id": pol["id"], "name": pol["name"], "type": "DecryptionPolicy"},
     }
     fmc.get(f"{CFG}/policy/accesspolicies").mock(return_value=items([acp if linked else ACP]))
     fmc.get(f"{CFG}/policy/accesspolicies/{ACP['id']}").mock(
@@ -199,3 +208,43 @@ async def test_device_with_pending_changes(fmc: respx.MockRouter) -> None:
     assert out["access_policy"] == "mcp-test-tls-acp" and out["action"] == "DECRYPT_RESIGN"
     deployed = next(c for c in out["readiness"] if c["check"] == "deployed")
     assert deployed["ok"] is False and "DecryptionPolicy:mcp-test-tls" in deployed["detail"]
+
+
+async def test_fmc10_default_cert_blocks_are_not_conditions(fmc: respx.MockRouter) -> None:
+    """F64 live proof: FMC 10.0.1 returns certificateStatuses (all ten 'ANY'), tlsVersions and clientThreat
+    'ANY' on every rule. They used to make every rule conditional, so the check fell through to the default
+    action (DO_NOT_DECRYPT) for a flow the device re-signed."""
+    dnd, resign = LIVE["decryption_rules"]
+    mock(fmc, rules=[dnd, resign], policy=LIVE["decryption_policy"])
+    flow = {"source": "192.0.2.100", "access_policy": "mcp-test-tls-acp"}
+    out = await run({**flow, "destination": "203.0.113.10"})
+    assert out["verdict"] == "Rule 2 'mcp-fw-resign' -> DECRYPT_RESIGN"
+    assert out["action"] == "DECRYPT_RESIGN" and "may_match_first" not in out
+    assert "cert_conditions" not in out["matched_rule"]
+    checks = {c["check"]: c for c in out["readiness"]}
+    assert checks["internal CA"]["ok"] is True and checks["TLS 1.3 decryption"]["ok"] is True
+    exempt = await run({**flow, "destination": "203.0.113.66"})
+    assert exempt["verdict"] == "Rule 1 'mcp-fw-dnd' -> DO_NOT_DECRYPT" and "may_match_first" not in exempt
+    # as FMC stored the rule when it was created without tlsVersions (all five false)
+    mock(fmc, rules=[dnd, LIVE["resign_rule_post_response"]], policy=LIVE["decryption_policy"])
+    created = await run({**flow, "destination": "203.0.113.10"})
+    assert created["action"] == "DECRYPT_RESIGN" and "may_match_first" not in created
+
+
+async def test_real_cert_conditions_stay_conditional(fmc: respx.MockRouter) -> None:
+    dnd, resign = LIVE["decryption_rules"]
+    narrowed = {
+        **resign,
+        "certificateStatuses": {**resign["certificateStatuses"], "selfSigned": "YES"},
+        "tlsVersions": {**resign["tlsVersions"], "sslv3": False, "tls10": False},
+        "clientThreat": "HIGH",
+    }
+    mock(fmc, rules=[dnd, narrowed], policy=LIVE["decryption_policy"])
+    out = await run(
+        {"source": "192.0.2.100", "destination": "203.0.113.10", "access_policy": "mcp-test-tls-acp"}
+    )
+    assert out["action"] == "DO_NOT_DECRYPT" and "default action" in out["verdict"]
+    first = out["may_match_first"][0]
+    assert first["name"] == "mcp-fw-resign"
+    assert first["depends_on"] == ["certificateStatuses", "tlsVersions", "clientThreat"]
+    assert first["cert_conditions"] == ["certificateStatuses", "tlsVersions", "clientThreat"]

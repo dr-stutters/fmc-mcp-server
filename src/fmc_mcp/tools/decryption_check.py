@@ -21,10 +21,10 @@ from fmc_mcp.rules import has_value
 from fmc_mcp.tools.analysis import _ip, _net_match, _port_match, _user_match, _zone_match
 from fmc_mcp.tools.common import PROTO_NUMBERS, Domain, block_labels, ref_label, resolve_in
 from fmc_mcp.tools.decryption import (
-    CERT_CONDITIONS,
     DECRYPTION,
     _index,
     advanced_row,
+    cert_conditions,
     rule_row,
     trusted_labels,
 )
@@ -37,8 +37,9 @@ URL_PATHS = {"Url": "object/urls", "UrlGroup": "object/urlgroups"}
 URL_LOOKUP_CAP = 20  # URL objects/groups read per check
 LIMITS = (
     "Offline, best-effort walk of the decryption policy only. URL categories, applications and certificate "
-    "conditions (issuer/subject DN, certificate status, TLS version, cipher suites) can't be known before "
-    "the handshake, so rules using them are 'conditional'; URL objects are matched against server_name "
+    "conditions (issuer/subject DN, certificate status, TLS version, cipher suites, client threat level) "
+    "can't be known before the handshake, so rules using them are 'conditional' (FMC's defaults, all "
+    "statuses ANY and all TLS versions, don't count); URL objects are matched against server_name "
     "(the SNI) when you give it. Users are evaluated only with `identities`. What the access policy then "
     "does with the (decrypted) flow: fmc_rule_lookup; the device's live verdict: fmc_packet_tracer."
 )
@@ -258,7 +259,8 @@ def register(reg: ToolRegistrar) -> None:
             if any(v is False for v in tests.values()):
                 continue
             unknown = [k for k, v in tests.items() if v is None]
-            unknown += [c for c in ("applications", "vlanTags", *CERT_CONDITIONS) if has_value(r.get(c))]
+            unknown += [c for c in ("applications", "vlanTags") if has_value(r.get(c))]
+            unknown += cert_conditions(r)
             row = rule_row(r)
             if unknown:
                 conditional.append({**row, "depends_on": unknown})
