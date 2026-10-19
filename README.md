@@ -161,7 +161,8 @@ Notes on some read tools:
   internal buffer at level informational (the tool says so when they don't). Where FMC's spec lists `show conn`,
   the live connection table is used instead. `fmc_user_identity_sessions` reads FMC's identity view
   (`analysis/activesessions`, `analysis/useractivity`; the FTD has no `show user-identity`): the account's role
-  needs Events & Logs > Analysis > Users.
+  needs Events & Logs > Analysis > Users. In a child domain these lookups fall back to the ancestor domains
+  (see [Multi-domain FMC](#multi-domain-fmc-f19)).
 - `fmc_prove_policy` proves a policy in one call: each flow (source, destination, port, protocol, optional user,
   device and expected rule) is traced on its device (given, or the one whose connected subnets and routes carry
   it) and judged `pass`, `fail`, `mismatch` (right verdict for the wrong reason: another rule, a non-policy drop
@@ -315,7 +316,8 @@ MD5 password, because FMC returns it masked and a PUT would replace it, unless y
   in that page's Test result. `fmc_get_identity_sources` shows whether it works end to end (FMC's ISE health
   module, SGTs downloaded, sessions by source, user-IP bindings on each device, certificate expiry) and what
   to fix; `fmc_user_ip_lookup` answers "who is on 192.0.2.57?" and "where is alice?". Reading FMC's identity
-  sessions needs Events & Logs > Analysis > Users in the account's role.
+  sessions needs Events & Logs > Analysis > Users in the account's role. FMC keeps the source's sessions in
+  Global; called in a child domain, the session lookups read Global when the child has none (below).
 - **Baseline a policy and see what changed:** `fmc_export_policy_bundle(policy)` returns one YAML bundle
   (schema 1): the access policy's settings and ordered rules, its prefilter, decryption, identity, NAT and
   intrusion policies (custom ones in full, built-in ones by name), and every object, group member, zone,
@@ -351,6 +353,14 @@ is a leaf, and the devices in each one. FMC's rules, which the tools follow:
 - **Objects and policies are inherited downwards, read-only.** A leaf sees Global's objects and policies but
   can't change them: the preview is blocked and names the domain to use. Objects created in a leaf are not
   visible in Global.
+- **Identity sessions live in the identity source's domain.** FMC keeps `analysis/activesessions` and
+  `analysis/useractivity` in the domain that owns the identity source, and FMC 10.0.1 offers the ISE source in
+  Global only, so a leaf's own view is empty while its devices match user rules on Global's sessions. Every
+  session lookup (`fmc_user_ip_lookup`, `fmc_user_identity_sessions`, `fmc_get_identity_sources`,
+  `fmc_find_address`, `fmc_rule_lookup`, `fmc_live_connections(user=...)`, and `fmc_prove_policy` for a user
+  flow without `source`) therefore reads the requested domain first and, only when it has no matching session,
+  its ancestors up to Global (nearest first); `sessions_domain` (`history_domain` for login history) names the
+  domain that answered. Read-only, and no extra request when the requested domain has sessions.
 - Every write preview shows the `domain` it changes.
 - The API user's role applies to the domain where it is assigned and the domains below it.
 - Several FMCs per server: core `FMC_INSTANCES` (an `instance` argument on every tool).

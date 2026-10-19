@@ -21,14 +21,15 @@ from fmc_mcp.tools.identity_sources import (
     ise_parts,
     ise_state,
     latest_alerts,
+    resolve_ip_identity,
     split_identity,
     user_ips,
     users_on_ip,
 )
 from fmc_mcp.tools.live import active_sessions as live_sessions
-from fmc_mcp.tools.live import refused, session_items
+from fmc_mcp.tools.live import activity_items, refused, session_items, sessions_domain
 
-from .conftest import CFG, empty, fixture, items, make_settings
+from .conftest import CFG, DOMAIN, TOP, TOP_CFG, as_leaf, empty, fixture, items, make_settings
 
 FX = fixture("identity_sources")
 IDENT = FX["devices"][0]["id"]
@@ -59,9 +60,9 @@ def by_filter(responses: dict[str, Any], default: Any = None) -> Any:
     return answer
 
 
-def mock_sessions(fmc: respx.MockRouter, rows: list[dict[str, Any]] | None) -> respx.Route:
-    """rows=None: 403 like the lab's API role."""
-    route = fmc.get(f"{CFG}/analysis/activesessions")
+def mock_sessions(fmc: respx.MockRouter, rows: list[dict[str, Any]] | None, base: str = CFG) -> respx.Route:
+    """rows=None: 403 like the lab's API role. `base`: the domain's config path (CFG, TOP_CFG)."""
+    route = fmc.get(f"{base}/analysis/activesessions")
     if rows is None:
         return route.mock(return_value=httpx.Response(403, json=FX["activesessions_403"]))
 
@@ -539,3 +540,152 @@ async def test_rule_lookup_without_user_rules_reads_no_sessions(
     async with Client(server()) as c:
         out = await run(c, "fmc_rule_lookup", {**FLOW, "resolve_user": resolve_user})
     assert out["matched_rule"]["name"] == "allow-all" and not sessions.called and "identity" not in out
+
+
+# --- child domain: FMC keeps the ISE source's sessions in Global ---------------------------------------
+# Live on FMC 10.0.1 (2026-10-19): the ISE identity source can only live in Global, and activesessions /
+# useractivity in Global/mcp-test-leaf answered empty while Global had mcp-bob on the client IP.
+
+ALICE = FX["activesessions"]["items"]
+
+
+async def test_leaf_without_sessions_reads_them_from_global(fmc: respx.MockRouter) -> None:
+    as_leaf(fmc)
+    leaf = mock_sessions(fmc, [])
+    top = mock_sessions(fmc, ALICE, base=TOP_CFG)
+    mock_realm_lookups(fmc)  # the realm (inherited from Global) answers in the leaf, as live
+    async with Client(server()) as c:
+        out = await run(c, "fmc_user_ip_lookup", {"ip": "192.0.2.57", "domain": "Global/mcp-test-leaf"})
+    assert out["sessions"][0]["user"] == "alice" and out["identities"] == ["corp\\alice", "corp\\employees"]
+    assert out["sessions_domain"] == "Global"
+    assert "'Global/mcp-test-leaf' holds no identity sessions" in out["sessions_note"]
+    assert "come from its ancestor 'Global'" in out["sessions_note"]
+    assert leaf.call_count == 1 and top.call_count == 1
+    assert top.calls.last.request.url.params["currentIP"] == "192.0.2.57"
+
+
+async def test_leaf_with_a_session_reads_no_ancestor(fmc: respx.MockRouter) -> None:
+    as_leaf(fmc)
+    mock_sessions(fmc, ALICE)
+    top = mock_sessions(fmc, [BOB], base=TOP_CFG)
+    mock_realm_lookups(fmc)
+    async with Client(server()) as c:
+        out = await run(c, "fmc_user_ip_lookup", {"ip": "192.0.2.57"})
+        listed = await run(c, "fmc_user_identity_sessions", {"user": "alice", "response_format": "json"})
+    assert out["sessions"][0]["user"] == "alice" and "sessions_domain" not in out
+    assert listed["results"][0]["user"] == "alice" and "sessions_domain" not in listed
+    app = FmcApp(make_settings())
+    try:
+        assert await user_ips(app, "alice", None) == ["192.0.2.57"]
+        rows = await users_on_ip(app, ipaddress.ip_address("192.0.2.57"), None)
+        assert rows[0]["via"] == "identity session (Passive Authentication)"
+    finally:
+        await app.aclose()
+    assert not top.called
+
+
+async def test_no_session_anywhere_reads_each_domain_once(fmc: respx.MockRouter) -> None:
+    as_leaf(fmc)
+    leaf, top = mock_sessions(fmc, ALICE), mock_sessions(fmc, ALICE, base=TOP_CFG)
+    async with Client(server()) as c:
+        out = await run(c, "fmc_user_ip_lookup", {"ip": "192.0.2.99"})
+    assert out["sessions"] == [] and "its ancestors" in out["note"] and "sessions_domain" not in out
+    assert leaf.call_count == 1 and top.call_count == 1
+
+
+async def test_nearest_ancestor_first_and_unreadable_ancestors_skipped(fmc: respx.MockRouter) -> None:
+    mid = "99999999-0000-4000-8000-000000000002"
+    mid_cfg = f"/api/fmc_config/v1/domain/{mid}"
+    as_leaf(
+        fmc,
+        [
+            {"name": "Global", "uuid": TOP},
+            {"name": "Global/Region", "uuid": mid},
+            {"name": "Global/Region/Leaf", "uuid": DOMAIN},
+        ],
+    )
+    mock_sessions(fmc, [])
+    region = mock_sessions(fmc, None, base=mid_cfg)  # 403: this login can't read Global/Region's view
+    top = mock_sessions(fmc, ALICE, base=TOP_CFG)
+    app = FmcApp(make_settings())
+    try:
+        got = await session_items(app, None, ip="192.0.2.57")
+        assert [s["username"] for s in got] == ["alice"] and sessions_domain(got) == "Global"
+        assert region.called and top.called
+        mock_sessions(fmc, [BOB], base=mid_cfg)
+        top.reset()
+        got = await session_items(app, "Global/Region/Leaf", user="bob")
+        assert sessions_domain(got) == "Global/Region" and not top.called
+        # Global itself has no ancestor to read: none of its empty answers costs a second request
+        top.reset()
+        assert await session_items(app, "Global", ip="192.0.2.99") == [] and top.call_count == 1
+    finally:
+        await app.aclose()
+
+
+async def test_leaf_history_and_session_list_come_from_global(
+    fmc: respx.MockRouter, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    login = FX["useractivity"]["items"][0]
+    monkeypatch.setattr(live, "clock", lambda: login["time"] + 600)
+    as_leaf(fmc)
+    mock_sessions(fmc, [])
+    mock_sessions(fmc, ALICE, base=TOP_CFG)
+    # the leaf's only event is older than the window: as good as none, so Global's are read
+    old = {**login, "time": login["time"] - 48 * 3600}
+    leaf_hist = fmc.get(f"{CFG}/analysis/useractivity").mock(return_value=items([old]))
+    top_hist = fmc.get(f"{TOP_CFG}/analysis/useractivity").mock(return_value=ok(FX["useractivity"]))
+    async with Client(server()) as c:
+        out = await run(
+            c, "fmc_user_identity_sessions", {"user": "alice", "history": True, "response_format": "json"}
+        )
+    assert out["results"][0]["user"] == "alice" and out["sessions_domain"] == "Global"
+    assert "come from its ancestor 'Global'" in out["note"]
+    assert out["history"][0]["event"] == "User Login" and out["history_domain"] == "Global"
+    assert leaf_hist.called and top_hist.calls.last.request.url.params["username"] == "alice"
+    app = FmcApp(make_settings())
+    try:
+        events = await activity_items(app, None, user="alice", hours=72)  # the leaf's event is in this window
+        assert [e["time"] for e in events] == [old["time"]] and sessions_domain(events) is None
+    finally:
+        await app.aclose()
+
+
+async def test_leaf_hooks_and_rule_lookup_name_the_answering_domain(fmc: respx.MockRouter) -> None:
+    """fmc_find_address (users_on_ip), fmc_prove_policy (user_ips) and fmc_rule_lookup
+    (resolve_ip_identity) share the reader, so all of them fall back."""
+    as_leaf(fmc)
+    mock_policy(fmc)
+    mock_sessions(fmc, [])
+    mock_sessions(fmc, [BOB], base=TOP_CFG)
+    mock_realm_lookups(fmc)
+    app = FmcApp(make_settings())
+    try:
+        rows = await users_on_ip(app, ipaddress.ip_address("192.0.2.57"), None)
+        assert rows == [
+            {
+                "where": "user corp\\bob",
+                "via": "identity session (Passive Authentication) in domain 'Global'",
+                "value": "192.0.2.57",
+            }
+        ]
+        assert await user_ips(app, "corp\\bob", None) == ["192.0.2.57"]
+        res = await resolve_ip_identity(app, "192.0.2.57", None)
+        assert (res.user, res.domain, res.as_dict()["sessions_domain"]) == ("bob", "Global", "Global")
+    finally:
+        await app.aclose()
+    async with Client(server()) as c:
+        out = await run(c, "fmc_rule_lookup", FLOW)
+    assert out["matched_rule"]["name"] == "contractors-no-web"
+    assert out["identity"]["user"] == "bob" and out["identity"]["sessions_domain"] == "Global"
+
+
+async def test_leaf_identity_sources_count_global_sessions(fmc: respx.MockRouter) -> None:
+    as_leaf(fmc)
+    mock_status(fmc, ise={"details": "Connected to ISE primary host"}, sgts=True, sessions=[])
+    mock_sessions(fmc, ALICE, base=TOP_CFG)
+    async with Client(server()) as c:
+        out = await run(c, "fmc_get_identity_sources", {})
+    assert out["sessions"]["active"] == 1 and out["sessions"]["domain"] == "Global"
+    assert "1 user sessions on FMC (in Global)" in out["verdict"]
+    assert not any("holds no user session" in n for n in out["next"])
