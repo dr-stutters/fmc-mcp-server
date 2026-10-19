@@ -1,0 +1,340 @@
+{
+ "_source": "Recorded read-only 2026-10-18 from mcp-ftd1 (FTDv for KVM 10.0.0) in FMC 10.0.1, domain Global/mcp-test-leaf, with fmc_api_call GET ...?expanded=true (links dropped, lab addresses scrubbed to 192.0.2.10). The device has no loopback, VTI, EtherChannel or bridge group: those collections answer 200 with an empty page on FTDv, VLAN interfaces answer 405. `created` holds the FMC 10.0.1 spec's POST response examples for the four logical kinds (no live create in Stage 1).",
+ "device": {
+  "id": "43d57cc8-c9c6-11f1-858d-a03accd83568",
+  "name": "mcp-ftd1",
+  "type": "Device",
+  "ftdMode": "ROUTED",
+  "model": "Cisco Secure Firewall Threat Defense for KVM",
+  "sw_version": "10.0.0"
+ },
+ "physicalinterfaces": {
+  "items": [
+   {
+    "metadata": {
+     "timestamp": 1792205999127,
+     "domain": {
+      "name": "Global \\ mcp-test-leaf",
+      "id": "a1c73df0-8353-8db7-1097-000000000000",
+      "type": "Domain"
+     },
+     "state": "COMMITTED",
+     "virtualRouter": {
+      "name": "Global",
+      "id": "42e95fbf-fd5a-42bf-a95f-bffd5a42bfd6",
+      "type": "VirtualRouter"
+     }
+    },
+    "type": "PhysicalInterface",
+    "nveOnly": false,
+    "MTU": 1500,
+    "mode": "NONE",
+    "enabled": true,
+    "name": "Ethernet0/0",
+    "id": "00000000-0000-0ed3-0000-021474837527",
+    "enableSGTPropagate": false,
+    "pathMonitoring": {
+     "enable": false
+    },
+    "applicationMonitoring": {
+     "enable": true
+    },
+    "ifname": "outside",
+    "managementOnly": false,
+    "securityZone": {
+     "id": "d1686144-c9d6-11f1-a4e0-98786f180443",
+     "type": "SecurityZone"
+    },
+    "ipv4": {
+     "static": {
+      "address": "192.0.2.10",
+      "netmask": "18"
+     }
+    },
+    "ipv6": {
+     "enableIPV6": false
+    },
+    "priority": 0
+   },
+   {
+    "metadata": {
+     "timestamp": 1792206009818,
+     "domain": {
+      "name": "Global \\ mcp-test-leaf",
+      "id": "a1c73df0-8353-8db7-1097-000000000000",
+      "type": "Domain"
+     },
+     "state": "COMMITTED",
+     "virtualRouter": {
+      "name": "Global",
+      "id": "42e95fbf-fd5a-42bf-a95f-bffd5a42bfd6",
+      "type": "VirtualRouter"
+     }
+    },
+    "type": "PhysicalInterface",
+    "nveOnly": false,
+    "MTU": 1500,
+    "mode": "NONE",
+    "enabled": true,
+    "name": "Ethernet0/1",
+    "id": "00000000-0000-0ed3-0000-021474837528",
+    "enableSGTPropagate": false,
+    "pathMonitoring": {
+     "enable": false
+    },
+    "applicationMonitoring": {
+     "enable": true
+    },
+    "ifname": "inside",
+    "managementOnly": false,
+    "securityZone": {
+     "id": "d06d930e-c9d6-11f1-a4e0-98786f180443",
+     "type": "SecurityZone"
+    },
+    "ipv4": {
+     "static": {
+      "address": "10.99.1.1",
+      "netmask": "24"
+     }
+    },
+    "ipv6": {
+     "enableIPV6": false
+    },
+    "priority": 0
+   },
+   {
+    "metadata": {
+     "readOnly": {
+      "state": true,
+      "reason": "SYSTEM"
+     },
+     "timestamp": 1792202177988,
+     "domain": {
+      "name": "Global \\ mcp-test-leaf",
+      "id": "a1c73df0-8353-8db7-1097-000000000000",
+      "type": "Domain"
+     },
+     "state": "COMMITTED",
+     "virtualRouter": {
+      "name": "Global",
+      "id": "42e95fbf-fd5a-42bf-a95f-bffd5a42bfd6",
+      "type": "VirtualRouter"
+     }
+    },
+    "type": "PhysicalInterface",
+    "nveOnly": false,
+    "MTU": 1500,
+    "mode": "NONE",
+    "enabled": true,
+    "name": "Management0/0",
+    "id": "00000000-0000-0ed3-0000-021474837529",
+    "enableSGTPropagate": true,
+    "ifname": "management",
+    "managementOnly": true,
+    "ipv6": {},
+    "priority": 0
+   }
+  ],
+  "paging": {
+   "offset": 0,
+   "limit": 25,
+   "count": 3,
+   "pages": 1
+  }
+ },
+ "subinterfaces": {
+  "items": [
+   {
+    "metadata": {
+     "timestamp": 1792206158379,
+     "domain": {
+      "name": "Global \\ mcp-test-leaf",
+      "id": "a1c73df0-8353-8db7-1097-000000000000",
+      "type": "Domain"
+     },
+     "state": "COMMITTED",
+     "virtualRouter": {
+      "name": "Global",
+      "id": "42e95fbf-fd5a-42bf-a95f-bffd5a42bfd6",
+      "type": "VirtualRouter"
+     }
+    },
+    "type": "SubInterface",
+    "subIntfId": 100,
+    "vlanId": 100,
+    "enableSGTPropagate": false,
+    "ifname": "mcp-dmz",
+    "MTU": 1500,
+    "mode": "NONE",
+    "securityZone": {
+     "id": "30ea0d2a-c9d7-11f1-8ee6-9b786f180443",
+     "type": "SecurityZone"
+    },
+    "ipv4": {
+     "static": {
+      "address": "10.99.100.1",
+      "netmask": "24"
+     }
+    },
+    "ipv6": {},
+    "enabled": true,
+    "priority": 0,
+    "name": "Ethernet0/1",
+    "id": "00000000-0000-0ed3-0000-021474842317"
+   }
+  ],
+  "paging": {
+   "offset": 0,
+   "limit": 25,
+   "count": 1,
+   "pages": 1
+  }
+ },
+ "etherchannelinterfaces": {
+  "paging": {
+   "offset": 0,
+   "limit": 0,
+   "count": 0,
+   "pages": 0
+  }
+ },
+ "bridgegroupinterfaces": {
+  "paging": {
+   "offset": 0,
+   "limit": 0,
+   "count": 0,
+   "pages": 0
+  }
+ },
+ "loopbackinterfaces": {
+  "paging": {
+   "offset": 0,
+   "limit": 0,
+   "count": 0,
+   "pages": 0
+  }
+ },
+ "virtualtunnelinterfaces": {
+  "paging": {
+   "offset": 0,
+   "limit": 0,
+   "count": 0,
+   "pages": 0
+  }
+ },
+ "vlaninterfaces": {
+  "status": 405,
+  "description": "VLAN Interface type is not supported on this device model"
+ },
+ "created": {
+  "loopbackinterfaces": {
+   "name": "Loopback5",
+   "type": "LoopbackInterface",
+   "loopbackId": 5,
+   "enabled": true,
+   "ifname": "loopback-5",
+   "ipv4": {
+    "static": {
+     "address": "169.254.100.1",
+     "netmask": "255.255.255.252"
+    }
+   },
+   "id": "00000000-0000-0ed3-0000-206158430258"
+  },
+  "virtualtunnelinterfaces": {
+   "name": "Tunnel5",
+   "type": "VTIInterface",
+   "tunnelSource": {
+    "name": "GigabitEthernet0/0",
+    "type": "PhysicalInterface",
+    "id": "interface UUID"
+   },
+   "tunnelType": "STATIC",
+   "tunnelId": 5,
+   "enabled": true,
+   "ifname": "tunnel-5",
+   "securityZone": {
+    "id": "<security-zone-uuid>",
+    "type": "SecurityZone"
+   },
+   "ipv4": {
+    "static": {
+     "address": "169.254.100.1",
+     "netmask": "255.255.255.252"
+    }
+   },
+   "ipsecMode": "ipv4",
+   "id": "00000000-0000-0ed3-0000-206158430258",
+   "metadata": {
+    "timestamp": 1458597038,
+    "vpnTopologyName": "s2s-4",
+    "destinationIpAddress": "192.0.2.10"
+   }
+  },
+  "etherchannelinterfaces": {
+   "type": "EtherChannelInterface",
+   "mode": "NONE",
+   "lacpMode": "ACTIVE",
+   "lacpRate": "DEFAULT",
+   "maxActivePhysicalInterface": 8,
+   "minActivePhysicalInterface": 1,
+   "selectedInterfaces": [
+    {
+     "type": "PhysicalInterface",
+     "name": "Ethernet1/1",
+     "id": "00505686-443A-0ed3-0000-008589950164"
+    }
+   ],
+   "loadBalancing": "SRC_IP_PORT",
+   "etherChannelId": 1,
+   "enabled": true,
+   "MTU": 1500,
+   "managementOnly": false,
+   "nveOnly": false,
+   "securityZone": {
+    "id": "9b166c16-570f-11f0-a047-d6acff6d3662",
+    "type": "SecurityZone"
+   },
+   "ifname": "NewEthChannel",
+   "ipv4": {
+    "static": {
+     "address": "1.2.3.5",
+     "netmask": "25"
+    }
+   },
+   "name": "Port-channel1",
+   "id": "etherchannelIntfUUID",
+   "metadata": {
+    "timestamp": 0
+   }
+  },
+  "bridgegroupinterfaces": {
+   "type": "BridgeGroupInterface",
+   "selectedInterfaces": [
+    {
+     "type": "PhysicalInterface",
+     "name": "Ethernet0/1",
+     "id": "00505686-443A-0ed3-0000-008589935473"
+    }
+   ],
+   "enabled": true,
+   "MTU": 1500,
+   "ifname": "bridgeGroupIntf1",
+   "name": "BVI1",
+   "mode": "NONE",
+   "managementOnly": false,
+   "ipAddress": "1.2.3.4",
+   "bridgeGroupId": 1,
+   "ipv4": {
+    "static": {
+     "address": "1.2.3.4",
+     "netmask": "25"
+    }
+   },
+   "id": "005056B9-1CC8-0ed3-0000-034211017460",
+   "metadata": {
+    "timestamp": 0
+   }
+  }
+ }
+}
