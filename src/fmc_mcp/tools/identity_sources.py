@@ -135,7 +135,9 @@ def module_row(a: dict[str, Any]) -> dict[str, Any]:
 
 
 def ise_state(alert: dict[str, Any] | None) -> str:
-    """not_configured / connected / degraded / failed / unknown, from FMC's ISE health module."""
+    """not_configured / connected / degraded / failed / unknown, from FMC's ISE health module. The module is
+    a periodic sample: fmc_get_identity_sources turns a stale not_configured into awaiting_health_check
+    when FMC already answers the SGT list (a source was saved since the last health run)."""
     if alert is None:
         return "unknown"
     details = clean_details(alert.get("details")).lower()
@@ -441,8 +443,9 @@ def register(reg: ToolRegistrar) -> None:
         domain: Domain = None,
     ) -> dict[str, Any]:
         """Is FMC getting user identities, and from where? One status view of the identity sources user and
-        group rules depend on: the ISE/pxGrid connection (FMC's ISE health module: connected, failed, or not
-        configured, and when FMC last checked), whether FMC downloads ISE SGTs, the passive identity agent,
+        group rules depend on: the ISE/pxGrid connection (FMC's ISE health module: connected, failed, not
+        configured, or saved but not checked yet, and when FMC last checked), whether FMC downloads ISE
+        SGTs, the passive identity agent,
         AD/LDAP realms (users and groups downloaded), identity policies (passive rules, which access policies
         use them), how many user sessions FMC holds by source, each device's user-IP bindings and identity
         process, and FMC's internal certificates (the pxGrid client certificate) with their expiry. Ends with
@@ -478,6 +481,10 @@ def register(reg: ToolRegistrar) -> None:
             ise["sgts_downloaded"] = len(sgts.items)
             if sgts.items:
                 ise["sgts"] = sorted(f"{s.get('name')} ({s.get('tag')})" for s in sgts.items)[:20]
+            if state == "not_configured":
+                # FMC 10.0.1 refuses the SGT list (422) while ISE is disabled and answers it as soon as a
+                # source is saved; the ISE health module only notices on its next run (minutes later)
+                state = ise["state"] = "awaiting_health_check"
         except UpstreamError as e:
             if "disabled" in str(e).lower():
                 ise["sgts_downloaded"] = 0
@@ -489,6 +496,15 @@ def register(reg: ToolRegistrar) -> None:
         if state == "not_configured":
             ise["configure"] = ISE_UI_STEP
             todo.append("No ISE identity source: configure it in the FMC UI (see ise.configure).")
+        elif state == "awaiting_health_check":
+            todo.append(
+                "An ISE identity source is saved (FMC answers the SGT list, which it refuses while ISE is "
+                f"disabled), but FMC's ISE health module last reported {ise.get('details')!r} at "
+                f"{ise.get('checked')}, before the save. It shows connected or failed after the health "
+                "monitor's next run, a few minutes later: call fmc_get_identity_sources again then. The Test "
+                "button on the ISE identity source in the FMC UI shows the connection result now. If a later "
+                "run still says not configured, the source isn't enabled."
+            )
         elif state in ("failed", "degraded"):
             todo.append(FAILED_STEP)
         out["ise"] = ise
@@ -615,6 +631,7 @@ def register(reg: ToolRegistrar) -> None:
         verdict = {
             "connected": "ISE/pxGrid is connected",
             "not_configured": "No ISE identity source",
+            "awaiting_health_check": "ISE identity source saved; FMC hasn't checked the connection yet",
             "failed": "ISE/pxGrid connection FAILED",
             "degraded": "ISE/pxGrid connection degraded",
             "unknown": "ISE state unknown (no ISE health alert; is the module in the health policy?)",
