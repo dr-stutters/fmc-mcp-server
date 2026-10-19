@@ -81,20 +81,25 @@ demo stories. 180 tools (79 read, 90 write, 11 dangerous) and eleven prompts.
   first (#193).
 - `fmc_create_interface` previewed EtherChannels on FTDv, which FMC refuses; the preview blocks them. A bridge-group member
   needs a SWITCHED zone; deleting a BVI says FMC keeps the members' logical names (#194).
-
-### Known issues (fix PRs open at release time)
 - `fmc_user_identity_sessions(history=true)` / `fmc_user_ip_lookup(history=true)`: FMC 10.0.1 answers 422 "Invalid time
-  field." to the documented time filter (#199, fix #211).
-- `fmc_get_security_intelligence` says "not downloaded yet" for a feed FMC has fetched (FMC 10.0.1 never fills
-  `entryCount`), fix #218; replacing a custom SI list is refused (400), fix #215.
-- `fmc_create_decryption_rule` with `insert_before`: FMC answers 500 but creates the rule (fix #216).
-- From the operator eval (29 of 42 asks pass, 12 partial, 1 fail): `fmc_unused_objects` lists inherited built-ins in a
-  leaf domain (#197, fix #212); `fmc_prove_policy` can pick an HA standby unit (#198, fix #217); packet-tracer runs show
-  as changes and connections (#201/#202, fix #214); markdown hides nested rows of single-object tools (#200);
-  #203-#210 open.
+  field." to the documented `time=after:` filter, so the window is applied in the server (#199, #211).
+- `fmc_get_security_intelligence` said "not downloaded yet" for a feed FMC had fetched (FMC 10.0.1 never fills
+  `entryCount` or `feedUpdateTime`); it now counts the fetched entries (#218). Replacing a custom SI list sends the list's
+  id, which FMC requires (#215).
+- `fmc_create_decryption_rule` with `insert_before`: FMC answers 500 but creates the rule; the tool now reports the rule it
+  finds (#216).
+- From the operator eval: `fmc_unused_objects` no longer lists built-ins inherited from Global in a leaf domain (#197, #212);
+  `fmc_prove_policy` traces an HA pair on its active unit (#198, #217); packet-tracer runs no longer show as changes or
+  connections (#201/#202, #214). The Wave 5 parity live test reads update previews' `changes` (#213).
+
+### Known issues
+- From the operator eval (29 of 42 asks passed before the fixes above): markdown hides nested rows of single-object tools
+  (#200); #203-#210 open.
 - FMC 10.0.1 platform limits met on the way (documented in the tools): no EtherChannel on FTDv, no REST to link a
   network analysis policy, to manage the custom detection list or to unlink a decryption policy from an access policy;
   malware and URL lookups for URLs outside the local database need the Cisco cloud.
+- FMC's ISE (pxGrid) identity source in the lab still presents a stale client certificate, so user-based enforcement
+  (F34) and `fmc_prove_user_policy`'s user rows are proven only up to the tools (#79, #123).
 
 ## 0.13.2 (2026-10-18)
 
