@@ -31,6 +31,7 @@ from fmc_mcp.tools import (
     ha,
     hygiene,
     identity,
+    identity_sources,
     intrusion,
     live,
     metrics,
@@ -128,7 +129,11 @@ Workflows:
   fmc_test_realm -> fmc_download_realm -> fmc_create_identity_policy + fmc_create_identity_rule (PASSIVE
   needs ISE/pxGrid or an agent for user-IP mappings) -> select the identity policy in the access policy
   editor (FMC's REST API can't) -> fmc_create_access_rule users=[group] -> fmc_deploy;
-  fmc_rule_lookup identities=[user, groups] evaluates such rules.
+  fmc_rule_lookup evaluates such rules with the user FMC has on the source IP (or identities=[...]).
+- ISE as identity source (pxGrid): fmc_get_identity_sources (ISE connection, SGT download, realms, identity
+  policies, sessions, per-device user-IP bindings, certificates, what to fix); the ISE connection itself is
+  set in the FMC UI (REST can't). "Who is on 192.0.2.57 / where is alice?" with the user's AD groups as
+  rules see them: fmc_user_ip_lookup (every session a device reports, paged: fmc_user_identity_sessions).
 - TLS decryption (decrypt-resign): fmc_create_internal_ca (FMC generates the key; self-signed, or a CSR
   your CA signs -> fmc_install_internal_ca_cert) -> install its certificate (fmc_get_certificate) as a
   trusted root on the clients -> fmc_create_decryption_policy (tls13_decryption=true; trusted_cas for
@@ -266,6 +271,7 @@ def create_server(
             decryption_check.register,
             dns.register,
             identity.register,
+            identity_sources.register,
             prompts.register,
         ],
         status=FmcApp.status,
