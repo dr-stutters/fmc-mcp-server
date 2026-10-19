@@ -1,5 +1,20 @@
 # Changelog
 
+## 0.14.1 (2026-10-19)
+
+User identity in a leaf domain, and the last two Wave 5 proofs. With FMC's ISE (pxGrid) source connected, F34 and F56 are proven
+on traffic: `fmc_prove_policy` passes 4 of 4 flows on mcp-ftd-identity (alice allowed by the baseline rule, bob dropped by the
+contractors rule, `user_seen` on both), and `fmc_user_ip_lookup` names each user with their AD group.
+
+### Fixed
+- Identity-session lookups in a child domain (`fmc_user_ip_lookup`, `fmc_user_identity_sessions`, `fmc_get_identity_sources`,
+  `fmc_find_address`, `fmc_rule_lookup`, `fmc_live_connections(user=)`, `fmc_prove_policy` user flows without a source) fall back
+  to the ancestor domains up to Global when the child has none (FMC keeps the ISE source's sessions in Global), and say which domain
+  answered (`sessions_domain`) (#220).
+- `fmc_user_ip_lookup(user=...)` without a realm lists the user once, in the realm of their newest session; `fmc_prove_policy` user
+  flows without a source take an IPv4 address over an IPv6 one seen at the same time, and never a link-local address when the user
+  has another IP (#221).
+
 ## 0.14.0 (2026-10-19)
 
 Wave 5: scenarios, depth and demos, built and proven live in the firewall run of 2026-10-18/19 on FMC 10.0.1 with FTDv 10.0
