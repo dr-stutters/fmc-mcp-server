@@ -447,6 +447,10 @@
       "tier": "write",
       "title": "Create security zone"
     },
+    "fmc_create_si_feed": {
+      "tier": "write",
+      "title": "Create Security Intelligence feed"
+    },
     "fmc_create_static_route": {
       "tier": "write",
       "title": "Create static route"
@@ -526,6 +530,10 @@
     "fmc_delete_s2s_vpn": {
       "tier": "write",
       "title": "Delete site-to-site VPN"
+    },
+    "fmc_delete_si_object": {
+      "tier": "write",
+      "title": "Delete Security Intelligence feed or list"
     },
     "fmc_delete_static_route": {
       "tier": "write",
@@ -867,6 +875,10 @@
       "tier": "write",
       "title": "Link prefilter policy to access policy"
     },
+    "fmc_set_si_lists": {
+      "tier": "write",
+      "title": "Use SI feeds and lists in a policy"
+    },
     "fmc_shadowed_rules": {
       "tier": "read",
       "title": "Find shadowed access rules"
@@ -926,6 +938,10 @@
     "fmc_upgrade_status": {
       "tier": "read",
       "title": "Version and upgrade status"
+    },
+    "fmc_upload_si_list": {
+      "tier": "write",
+      "title": "Upload Security Intelligence list"
     },
     "fmc_user_identity_sessions": {
       "tier": "read",

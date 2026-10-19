@@ -102,6 +102,10 @@ Workflows:
   fmc_contain_host / fmc_release_host do this for one host with the quarantine object (and propose
   the block rules if they are missing). Blocking IPs/URLs policy-wide with logging (needs a deploy):
   fmc_si_block (Security Intelligence); fmc_get_security_intelligence shows the lists.
+- Threat intelligence feeds and lists: fmc_create_si_feed (FMC downloads IPs, URLs or domains from a URL
+  on a schedule) or fmc_upload_si_list (a fixed list) -> fmc_set_si_lists (an access policy's SI block or
+  do-not-block list; Talos categories by name too; DNS ones go into its DNS policy, which can also only
+  monitor) -> fmc_deploy -> fmc_get_security_intelligence (entries and last update of each feed).
 - Tune intrusion prevention: fmc_find_intrusion_rules (gid:sid or text) -> fmc_get_intrusion_policy ->
   fmc_set_intrusion_rule_state in a custom policy (fmc_create_intrusion_policy on top of a system one;
   fmc_update_access_rule intrusion_policy=... puts it on an ALLOW rule) -> fmc_deploy. Custom Snort 3
