@@ -1,0 +1,123 @@
+{
+  "_source": "FMC 10.0.1 GET policy/accesspolicies/{acp}/operational/hitcounts?filter=deviceId:{dev}&expanded=true, live run 2026-10-19 (leaf domain scrubbed to Global). With fetchZeroHitCount:true and no ids FMC returned only mcp-fw-find-client (the only row with 0 hits).",
+  "items": [
+    {
+      "metadata": {
+        "domain": {
+          "uuid": "e276abec-e0f2-11e3-8169-6d9ed49b625f",
+          "name": "Global",
+          "id": "e276abec-e0f2-11e3-8169-6d9ed49b625f",
+          "type": "Domain"
+        },
+        "policy": {
+          "description": "FW overnight run: threat-defense ACP",
+          "name": "mcp-fw-threat-acp",
+          "id": "00000000-0000-0ed3-0000-021474901848"
+        },
+        "deviceRuleId": "268434484",
+        "ruleIndex": 1
+      },
+      "lastFetchTimeStamp": "2026-10-18T19:08:31Z",
+      "rule": {
+        "name": "mcp-fw-baseline",
+        "id": "00000000-0000-0ed3-0000-000268434484",
+        "type": "AccessRule"
+      },
+      "firstHitTimeStamp": "2026-10-18T09:42:41Z",
+      "lastHitTimeStamp": "2026-10-18T19:08:05Z",
+      "lastDeployedTimeStamp": "2026-10-18T19:07:27Z",
+      "type": "HitCount",
+      "hitCount": 34
+    },
+    {
+      "metadata": {
+        "domain": {
+          "uuid": "e276abec-e0f2-11e3-8169-6d9ed49b625f",
+          "name": "Global",
+          "id": "e276abec-e0f2-11e3-8169-6d9ed49b625f",
+          "type": "Domain"
+        },
+        "policy": {
+          "description": "FW overnight run: threat-defense ACP",
+          "name": "mcp-fw-threat-acp",
+          "id": "00000000-0000-0ed3-0000-021474901848"
+        },
+        "deviceRuleId": "268434485",
+        "ruleIndex": 2
+      },
+      "lastFetchTimeStamp": "2026-10-18T19:08:31Z",
+      "rule": {
+        "name": "mcp-fw-lab-extra",
+        "id": "00000000-0000-0ed3-0000-000268434485",
+        "type": "AccessRule"
+      },
+      "firstHitTimeStamp": "2026-10-18T09:42:29Z",
+      "lastHitTimeStamp": "2026-10-18T19:00:59Z",
+      "lastDeployedTimeStamp": "2026-10-18T19:07:27Z",
+      "type": "HitCount",
+      "hitCount": 8
+    },
+    {
+      "metadata": {
+        "domain": {
+          "uuid": "e276abec-e0f2-11e3-8169-6d9ed49b625f",
+          "name": "Global",
+          "id": "e276abec-e0f2-11e3-8169-6d9ed49b625f",
+          "type": "Domain"
+        },
+        "policy": {
+          "description": "FW overnight run: threat-defense ACP",
+          "name": "mcp-fw-threat-acp",
+          "id": "00000000-0000-0ed3-0000-021474901848"
+        },
+        "deviceRuleId": "268434490",
+        "ruleIndex": 3
+      },
+      "lastFetchTimeStamp": "2026-10-18T19:08:31Z",
+      "rule": {
+        "name": "mcp-fw-find-client",
+        "id": "00000000-0000-0ed3-0000-000268434490",
+        "type": "AccessRule"
+      },
+      "firstHitTimeStamp": " ",
+      "lastHitTimeStamp": " ",
+      "lastDeployedTimeStamp": "2026-10-18T19:07:27Z",
+      "type": "HitCount",
+      "hitCount": 0
+    },
+    {
+      "metadata": {
+        "domain": {
+          "uuid": "e276abec-e0f2-11e3-8169-6d9ed49b625f",
+          "name": "Global",
+          "id": "e276abec-e0f2-11e3-8169-6d9ed49b625f",
+          "type": "Domain"
+        },
+        "policy": {
+          "description": "FW overnight run: threat-defense ACP",
+          "name": "mcp-fw-threat-acp",
+          "id": "00000000-0000-0ed3-0000-021474901848"
+        },
+        "deviceRuleId": "268434483",
+        "ruleIndex": 4
+      },
+      "lastFetchTimeStamp": "2026-10-18T19:08:31Z",
+      "rule": {
+        "name": "Default Action",
+        "id": "00000000-0000-0ed3-0000-000268434483",
+        "type": "AccessPolicyDefaultAction"
+      },
+      "firstHitTimeStamp": "2026-10-18T19:05:14Z",
+      "lastHitTimeStamp": "2026-10-18T19:05:14Z",
+      "lastDeployedTimeStamp": "2026-10-18T19:07:27Z",
+      "type": "HitCount",
+      "hitCount": 1
+    }
+  ],
+  "paging": {
+    "offset": 0,
+    "limit": 25,
+    "count": 4,
+    "pages": 1
+  }
+}

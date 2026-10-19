@@ -57,11 +57,23 @@ def matches(rule: dict[str, Any], ref: str) -> bool:
     return str(rule.get("sid")) == sid and (gid is None or str(rule.get("gid")) == gid)
 
 
+def policy_default(r: dict[str, Any]) -> str | None:
+    """The rule's default state in the policy, i.e. what its base policy sets.
+
+    FMC 10.0.1 fills `defaultState` with that in a policy's rule list, but GET and PUT of a single rule
+    (.../intrusionrules/{id}) put the rule's own keyword there (ALERT for an `alert ...` Talos rule that
+    Balanced disables). `metadata.defaultSetBy` names the base policy and its action in both answers,
+    so it wins when it gives one action."""
+    set_by = (r.get("metadata") or {}).get("defaultSetBy") or []
+    actions = {s.get("action") for s in set_by if isinstance(s, dict) and s.get("action")}
+    return actions.pop() if len(actions) == 1 else r.get("defaultState")
+
+
 def rule_row(r: dict[str, Any], *, text: bool = False) -> dict[str, Any]:
     row: dict[str, Any] = {
         "rule": r.get("name") or f"{r.get('gid')}:{r.get('sid')}",
         "msg": r.get("msg"),
-        "default_state": r.get("defaultState"),
+        "default_state": policy_default(r),
         "override_state": r.get("overrideState"),
         "custom": True if r.get("isSystemDefined") is False else None,
         "groups": [g.get("name") for g in (r.get("ruleGroups") or [])][:4] or None,
@@ -194,7 +206,7 @@ def register(reg: ToolRegistrar) -> None:
         changes = [
             {
                 **rule_row(r),
-                "to": f"default ({r.get('defaultState')})" if new is None else new,
+                "to": f"default ({policy_default(r)})" if new is None else new,
             }
             for r in found
         ]
@@ -215,7 +227,11 @@ def register(reg: ToolRegistrar) -> None:
                         if new is not None:
                             body["overrideState"] = new
                         res = await app.api.put(f"{base}/{r['id']}", body)
-                        done.append(rule_row(res if isinstance(res, dict) else cur))
+                        row = rule_row(res if isinstance(res, dict) else cur)
+                        if default := policy_default(r):
+                            # the single-rule answer may lack defaultSetBy; the list read is right
+                            row["default_state"] = default
+                        done.append(row)
                     except UpstreamError as e:
                         left = [str(x.get("name")) for x in todo[i:]]
                         changed = [str(d.get("rule")) for d in done] or "none"

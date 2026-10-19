@@ -43,9 +43,18 @@ call it again.
      address>' (it must leave by the outside interface), 'show interface ip brief', and
      `fmc_list_health_alerts` with since_minutes=60, device="mcp-sdwan-t1-spoke1" for a down interface.
      UDP 500/4500 blocked or NATed upstream gives the same picture: say so when the path looks fine.
-   - SAs that stay IN-NEG, or no failures at all: compare the IKE policies (cipher, integrity, DH
-     group) of both ends in `fmc_get_vpn_topology`; an extranet peer must offer one of
-     them.
+   - nothing grew ("no new IKEv2 failures in the last N s"): that proves little. Once DPD has removed
+     the SA the FTD retries IKE only every few minutes, so a dead path is often quiet for a minute or
+     two. Check the path first, as in the bullet above, and have the peer's WAN address and the WAN
+     gateway pinged from the device's CLI or the WAN router (FMC's API runs only show commands): a link
+     that is down beyond the FTD (a carrier, a lab link) leaves the FTD's interface up/up and its route
+     in place, so neither 'show interface ip brief' nor 'show route' shows it. Call
+     `fmc_vpn_status` again 3-5 minutes after the first call: it compares the counters with
+     every reading of the last 15 minutes and catches the next attempt. Retransmits counted before with
+     no authentication failures also point to the path.
+   - SAs that stay IN-NEG, or the path answers and still no failures: compare the IKE policies (cipher,
+     integrity, DH group) of both ends in `fmc_get_vpn_topology`; an extranet peer must
+     offer one of them.
 
 3. IPsec (phase 2): IKE is READY but traffic fails. In `device_says` and the devices' `ipsec_sas`:
    - no child SA: the IPsec proposals or PFS group don't match (`fmc_get_vpn_topology`

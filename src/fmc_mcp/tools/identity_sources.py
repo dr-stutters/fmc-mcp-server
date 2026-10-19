@@ -3,9 +3,10 @@ agent, AD realms), and who is on an IP right now.
 
 FMC 10.0.1's REST API has no identity-source object: the ISE/pxGrid connection (primary/secondary pxGrid
 node, pxGrid and MNT server CAs, FMC's client certificate, the session and SXP topics) is configured only
-in the web UI (Integrations > Other Integrations > Identity Sources > Identity Services Engine), and the
-UI's identity endpoints don't accept REST tokens. So fmc_get_identity_sources assembles the state from
-what REST does show:
+in the web UI (FMC 10.0.1: Integrations > Identity > Identity Sources > Identity Services Engine, in the
+Global domain only, by an administrator), and the UI's identity endpoints don't accept REST tokens. REST
+also doesn't say why a connection fails: only the UI's Test button shows FMC's error. So
+fmc_get_identity_sources assembles the state from what REST does show:
 
 - FMC health modules (one health/alerts read, filtered by module): `ISE` (pxGrid connection status, or
   "ISE is not configured or not enabled"), the passive identity agent, the user agent and unresolved
@@ -22,9 +23,9 @@ sessions and adds the user's realm groups: the identity a user/group access rule
 uses the same lookup (resolve_ip_identity) when no `identities` are given. The sessions are read with
 live.session_items, the reader behind fmc_user_identity_sessions (F55), which lists them paged.
 
-Hooks for the other user-aware tools (register once they are on main):
-- find_address.IDENTITY_LOOKUPS.append(identity_sources.users_on_ip)
-- prove.USER_IP_RESOLVERS.append(identity_sources.user_ips)
+The same sessions feed the other user-aware tools: users_on_ip is fmc_find_address's identity lookup
+(find_address.IDENTITY_LOOKUPS) and user_ips gives fmc_prove_policy a user flow's source IP
+(prove.USER_IP_RESOLVERS).
 """
 
 # No `from __future__ import annotations`: FastMCP inspects signatures at runtime.
@@ -46,7 +47,15 @@ from fmc_mcp.tools.common import Domain
 from fmc_mcp.tools.device_config import resolve_device
 from fmc_mcp.tools.devices import DEVICES
 from fmc_mcp.tools.identity import IDENTITY, REALMS, identity_rule_row, policies_using
-from fmc_mcp.tools.live import ACTIVITY, activity_row, session_items, session_row
+from fmc_mcp.tools.live import (
+    ACTIVITY_WHAT,
+    activity_items,
+    activity_row,
+    refused,
+    role_error,
+    session_items,
+    session_row,
+)
 from fmc_mcp.tools.policies import all_rules
 from fmc_mcp.tools.system import iso
 
@@ -64,26 +73,37 @@ POLICY_CAP = 10  # identity policies whose rules are read
 REALM_CAP = 5  # realms whose users/groups are counted
 USER_CAP = 3  # realm users whose groups are looked up per call
 CERT_WARN_DAYS = 30
-ROLE_HINT = (
-    "FMC refused its identity sessions (403): the FMC account's role needs Events & Logs > Analysis > "
-    "Users (Active Sessions, User Activity, Users). Until then ISE shows the same sessions "
-    "(ise_find_session / ise_list_active_sessions on the ISE MCP server)."
+UI_PAGE = (
+    "the FMC web UI, Integrations > Identity > Identity Sources (FMC 10.0.1), in the Global domain: "
+    "FMC 10.0.1 offers the ISE identity source in Global only (in a child domain every option is disabled), "
+    "and only to an administrator (a custom role without the Identity Sources permission doesn't see the "
+    "page)"
 )
 ISE_UI_STEP = (
-    "FMC 10.0.1's REST API can't configure it: in the FMC web UI (an admin, or a role with Integrations > "
-    "Identity Sources) open Integrations > Other Integrations > Identity Sources > Identity Services Engine "
-    "and set the primary pxGrid host (the ISE node's FQDN, as in its pxGrid certificate), pxGrid Server CA "
-    "and MNT Server CA (trusted CA objects: fmc_create_trusted_ca), the FMC Server Certificate (an internal "
-    "certificate with its private key), subscribe to Session Directory (and SXP for SGT mappings), Test, "
-    "Save. Then approve FMC's pxGrid client in ISE (ise_list_pxgrid_clients / ise_approve_pxgrid_client) "
-    "unless ISE auto-approves certificate-based clients."
+    f"FMC 10.0.1's REST API can't configure it. Open {UI_PAGE}. Choose Identity Services Engine, Advanced "
+    "Configuration, and set the Primary Host (the ISE node's FQDN, as in its pxGrid certificate), the pxGrid "
+    "Client Certificate (an internal certificate with its private key), the MNT Server CA and pxGrid Server "
+    "CA (trusted CA objects: fmc_create_trusted_ca); the drop-downs list only objects Global can see, so "
+    "create the certificate and CAs in Global. Tick Session Directory Topic (and SXP Topic for SGT "
+    "mappings), Test, Save. Then approve FMC's pxGrid client in ISE (ise_list_pxgrid_clients / "
+    "ise_approve_pxgrid_client) unless ISE auto-approves certificate-based clients."
 )
 SETTINGS_NOTE = (
-    "The pxGrid host, server CAs, FMC client certificate and topics are visible only in the FMC UI "
-    "(Integrations > Other Integrations > Identity Sources): FMC 10.0.1's REST API has no identity-source "
-    "object. ISE's side: ise_pxgrid_status / ise_list_pxgrid_clients on the ISE MCP server."
+    f"The pxGrid host, server CAs, FMC client certificate and topics are visible only in {UI_PAGE}. FMC "
+    "10.0.1's REST API has no identity-source object. ISE's side: ise_pxgrid_status / "
+    "ise_list_pxgrid_clients on the ISE MCP server."
+)
+FAILED_STEP = (
+    "FMC's ISE connection is unhealthy and FMC 10.0.1's REST API doesn't say why: the Test button on the ISE "
+    "identity source (Integrations > Identity > Identity Sources, Global domain) shows FMC's error. Check "
+    "that FMC reaches the pxGrid node on 8910, the pxGrid/MNT server CAs, FMC's client certificate (expiry "
+    "below) and FMC's pxGrid client in ISE (ise_list_pxgrid_clients). No FMC client in ISE means FMC's "
+    "request never got through (name resolution, port 8910 or TLS); 'sslv3 alert certificate unknown' in "
+    "the Test result is ISE refusing FMC's client certificate, whose issuer ISE doesn't trust "
+    "(ise_list_certificates, trusted store). A pending client needs ise_approve_pxgrid_client."
 )
 _VAL = re.compile(r"<(?P<tag>\w+loop)>\s*<val>(?P<val>[^<]*)</val>\s*</(?P=tag)>")
+_ISE_PART = re.compile(r"<iseloop>\s*<module>(?P<part>[^<]*)</module>\s*<status>(?P<status>[^<]*)</status>")
 
 
 # --- shaping ------------------------------------------------------------------------------------------
@@ -131,6 +151,13 @@ def ise_state(alert: dict[str, Any] | None) -> str:
     if status in ("GREEN", "RECOVERED"):  # RECOVERED: FMC's marker for a return to normal
         return "connected"
     return "unknown"
+
+
+def ise_parts(alert: dict[str, Any]) -> dict[str, str]:
+    """The ISE module's per-part status from its params, e.g. {'ISE Services': 'UNKNOWN',
+    'ISEConnection': 'DOWN'} on FMC 10.0.1 when the pxGrid connection fails."""
+    params = str(alert.get("params") or "")
+    return {m["part"].strip(): m["status"].strip() for m in _ISE_PART.finditer(params)}
 
 
 def identity_memory(alert: dict[str, Any]) -> dict[str, Any]:
@@ -278,7 +305,7 @@ async def resolve_ip_identity(app: FmcApp, ip: str, domain: str | None) -> Resol
     try:
         rows = await session_items(app, domain, ip=ip)
     except AuthError as e:
-        res.error = ROLE_HINT if e.status_code == 403 else str(e)
+        res.error = refused() if e.status_code == 403 else str(e)
         return res
     except UpstreamError as e:
         res.error = f"FMC identity sessions unavailable: {e}"
@@ -348,13 +375,6 @@ async def expand_identities(
             have.update(g.lower() for g in new)
             added[ident] = new
     return out, added
-
-
-def role_error(e: AuthError) -> AuthError:
-    """A 403 on FMC's identity sessions, with the permission that fixes it; other errors unchanged."""
-    if e.status_code == 403:
-        return AuthError(ROLE_HINT, 403)
-    return e
 
 
 async def users_on_ip(
@@ -431,7 +451,8 @@ def register(reg: ToolRegistrar) -> None:
         process, and FMC's internal certificates (the pxGrid client certificate) with their expiry. Ends with
         a verdict and what to fix. Use it when user-based rules don't match, before relying on
         fmc_user_ip_lookup, or after setting up ISE. FMC 10.0.1's REST API can't show or set the ISE
-        connection settings themselves (pxGrid node, CAs); those are in the FMC UI (see `ise.configure`)."""
+        connection settings themselves (pxGrid node, CAs) or say why a connection fails; those are in the
+        FMC UI, Global domain only (see `ise.configure` and `ise.settings`)."""
         app: FmcApp = get_client(ctx)
         dev = await resolve_device(app, device, domain) if device else None
         out: dict[str, Any] = {}
@@ -450,6 +471,8 @@ def register(reg: ToolRegistrar) -> None:
         ise: dict[str, Any] = {"state": state}
         if ise_alert is not None:
             ise.update(module_row(ise_alert))
+            if parts := ise_parts(ise_alert):
+                ise["parts"] = parts
         ise["settings"] = SETTINGS_NOTE
 
         # SGTs over pxGrid
@@ -483,11 +506,7 @@ def register(reg: ToolRegistrar) -> None:
                 "run still says not configured, the source isn't enabled."
             )
         elif state in ("failed", "degraded"):
-            todo.append(
-                "FMC's ISE connection is unhealthy: check the pxGrid node is reachable on 8910 from FMC, "
-                "the pxGrid/MNT CAs and FMC's client certificate (expiry below), and that FMC's pxGrid "
-                "client is approved in ISE (ise_list_pxgrid_clients)."
-            )
+            todo.append(FAILED_STEP)
         out["ise"] = ise
         for mod, key in FMC_MODULES.items():
             if mod != "ISE" and mod in fmc_alerts:
@@ -559,7 +578,7 @@ def register(reg: ToolRegistrar) -> None:
                     "framed IPs (ise_list_active_sessions) and that FMC subscribes to Session Directory."
                 )
         except AuthError as e:
-            out["sessions"] = {"error": ROLE_HINT if e.status_code == 403 else str(e)}
+            out["sessions"] = {"error": refused() if e.status_code == 403 else str(e)}
         except UpstreamError as e:
             out["sessions"] = {"error": f"FMC identity sessions unavailable: {e}"}
 
@@ -653,7 +672,8 @@ def register(reg: ToolRegistrar) -> None:
         explaining a user-based block (fmc_rule_lookup already does this lookup itself when you omit
         `identities`). The FMC account's role needs Events & Logs > Analysis > Users; without it the user's
         realm groups still come back. If no source reports users, see fmc_get_identity_sources; to page
-        through every session a device reports, fmc_user_identity_sessions."""
+        through every session a device reports, fmc_user_identity_sessions. fmc_find_address (users on
+        an IP) and fmc_prove_policy (a user flow without a source IP) read the same sessions."""
         app: FmcApp = get_client(ctx)
         if not ip and not user:
             raise InvalidRequest("Give an ip or a user.")
@@ -670,9 +690,9 @@ def register(reg: ToolRegistrar) -> None:
             if e.status_code != 403:
                 raise
             if not user:
-                raise AuthError(ROLE_HINT, 403) from None
+                raise role_error(e) from None
             sessions = None
-            out["sessions_error"] = ROLE_HINT
+            out["sessions_error"] = refused()
         if sessions is not None:
             if name:
                 exact = [
@@ -728,16 +748,11 @@ def register(reg: ToolRegistrar) -> None:
                 "an IP is 'unknown user' to user/group rules."
             )
         if history:
-            params: dict[str, Any] = {"time": f"after:{int(time.time()) - hours * 3600}", "sort": "time:desc"}
-            if query:
-                params["ipAddress"] = query
-            if name:
-                params["username"] = name
-            if dev_name:
-                params["device"] = dev_name
             try:
-                page = await app.all(await app.config_path(ACTIVITY, domain), params, cap=200)
-                out["history"] = [activity_row(a) for a in page.items][:50]
+                events = await activity_items(
+                    app, domain, ip=query, user=name or None, device=dev_name, hours=hours
+                )
+                out["history"] = [activity_row(a) for a in events][:50]
             except AuthError as e:
-                out["history_error"] = ROLE_HINT if e.status_code == 403 else str(e)
+                out["history_error"] = refused(ACTIVITY_WHAT) if e.status_code == 403 else str(e)
         return out
