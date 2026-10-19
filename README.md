@@ -328,6 +328,9 @@ MD5 password, because FMC returns it masked and a PUT would replace it, unless y
   written.
 - **Send FTD logs to a SIEM:** `fmc_configure_syslog` -> `fmc_assign_policy(kind='platform_settings')`
   -> `fmc_deploy` -> `fmc_run_show_command('show running-config logging')`.
+- **Show it in a PoC:** [docs/demos.md](docs/demos.md) has three 15-minute stories as prompt sequences (a change
+  with proof and rollback; adding an SD-WAN branch and failing a WAN link; "why is it blocked?" to fixed) and a
+  threat-defense vignette, with what to point at and the `mcp-fw-demo-*` naming a reset relies on.
 
 Tools accept **names or UUIDs**. Rule conditions accept object names or literal values:
 
