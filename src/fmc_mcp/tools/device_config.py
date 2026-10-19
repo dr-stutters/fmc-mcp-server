@@ -38,7 +38,7 @@ from fmc_mcp.tools.devices import (
     zone_names,
 )
 from fmc_mcp.tools.object_writes import applied, editable
-from fmc_mcp.tools.policies import POLICY_KINDS
+from fmc_mcp.tools.policies import POLICY_KINDS, policy_assignments
 
 # Interface kinds an interface reference is searched in (in this order).
 NAMED_KINDS = ["physical", "subinterface", "etherchannel", "vlan", "vti", "loopback", "bridge_group"]
@@ -1292,27 +1292,37 @@ def register(reg: ToolRegistrar) -> None:
         confirm: Confirm = None,
     ) -> dict[str, Any]:
         """Assign an access control, NAT or platform settings policy to devices. A device has one policy
-        of each type, so this replaces its current one (shown in the preview). The new policy reaches
-        the device on the next fmc_deploy. Current assignments: fmc_list_policy_assignments."""
+        of each type, so this replaces its current one (the preview's `from`, also when it is a policy
+        inherited from an ancestor domain). The new policy reaches the device on the next fmc_deploy.
+        Current assignments: fmc_list_policy_assignments."""
         app: FmcApp = get_client(ctx)
         pol = await resolve_in(app, POLICY_KINDS[kind], policy, f"{kind} policy", domain)
         targets: list[dict[str, Any]] = []
+        records: dict[str, dict[str, Any]] = {}
         for ref in dict.fromkeys(d.strip() for d in devices):
             try:
                 d = await resolve_device(app, ref, domain)
             except NotFound:
                 d = await resolve_in(app, "devicehapairs/ftddevicehapairs", ref, "device or HA pair", domain)
             targets.append({"id": d["id"], "type": d.get("type") or "Device", "name": d.get("name")})
-        assignments = await app.all(await app.config_path("assignment/policyassignments", domain), cap=5000)
-        mine = next((a for a in assignments.items if (a.get("policy") or {}).get("id") == pol["id"]), None)
+            records[d["id"]] = d
+        # the leaf's own list misses policies inherited from Global: policy_assignments reads both
+        assignments = await policy_assignments(app, domain)
+        found = next((a for a in assignments if (a.get("policy") or {}).get("id") == pol["id"]), None)
+        mine = {k: v for k, v in found.items() if k != "_domain"} if found else None
         policy_type = ASSIGNABLE[kind]
         current: dict[str, str] = {}
-        for a in assignments.items:
+        for a in assignments:
             p = a.get("policy") or {}
             if p.get("type") != policy_type:
                 continue
             for t in a.get("targets") or []:
                 current[str(t.get("id"))] = str(p.get("name"))
+        if kind == "access":  # the device record names its access policy even when no list shows it
+            for tid, rec in records.items():
+                acp = rec.get("accessPolicy") or {}
+                if tid not in current and acp.get("name"):
+                    current[tid] = str(acp["name"])
         existing = list((mine or {}).get("targets") or [])
         have = {t.get("id") for t in existing}
         new = [t for t in targets if t["id"] not in have]
@@ -1324,6 +1334,7 @@ def register(reg: ToolRegistrar) -> None:
             "targets": [{"id": t.get("id"), "type": t.get("type")} for t in existing]
             + [{"id": t["id"], "type": t["type"]} for t in new],
         }
+        owner = (found or {}).get("_domain")
         if mine:
             body["id"] = mine["id"]
             path = await app.config_path(f"assignment/policyassignments/{mine['id']}", domain)
@@ -1342,10 +1353,18 @@ def register(reg: ToolRegistrar) -> None:
             confirm=confirm,
             plan=Plan(
                 f"Assign {kind} policy {pol.get('name')!r} to {len(new)} device(s)",
-                details={"changes": changes},
+                details={"changes": changes, **({"policy_domain": owner} if owner else {})},
                 fingerprint={"assignment": mine and editable(mine), "current": current},
                 blockers=blockers,
-                side_effects=["The devices get the new policy on the next deployment."],
+                side_effects=["The devices get the new policy on the next deployment."]
+                + (
+                    [
+                        f"{pol.get('name')} belongs to domain {owner!r} (inherited here); its assignment "
+                        f"keeps its {len(existing)} other target(s)."
+                    ]
+                    if owner
+                    else []
+                ),
             ),
             apply=apply,
         )
