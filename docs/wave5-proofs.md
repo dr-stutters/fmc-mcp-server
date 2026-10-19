@@ -35,7 +35,7 @@ Status: **pass**, **fail** (a tool bug; root cause given), **blocked** (a lab, l
 | 9 | F41 + F49 VPN status / troubleshoot | pass (status, wrong PSK); dead WAN partial | `mcp-fw-t1` (hub + 3 spokes) built with `fmc_create_sdwan_topology`; `fmc_vpn_status` shows 3 tunnels, both ends' SAs, IPsec counters, BGP routes; wrong PSK named from growing authentication failures; dead WAN reported TUNNEL_DOWN but without the dead-path verdict (R2); false overlay-routing warning on a DVTI hub (R1) |
 | 10 | F54 `fmc_onboard_branch` | pass | prompt followed end to end: register without a key argument, manual path (no template), join `mcp-fw-t1`, deploy hub + branch only; tunnel READY, BGP routes both ends, host pings, packet tracer, `fmc_prove_policy` hand-off 3/3 pass |
 | 11 | F58 interface kinds | pass (loopback, VTI, BVI); EtherChannel blocked | bodies from `fmc_create_interface` previews accepted by FMC; deployed and on the device; FMC refuses EtherChannel on FTDv (the preview should say so, R1); the delete guard (VTI borrows the loopback) works |
-| 12 | F65 HA under traffic | not run | |
+| 12 | F65 HA under traffic | pass | `fmc_ha_failover_check` walked: planned switch hitless (0/600 pings lost, a 5 Mbit/s TCP flow never dipped); active unit powered off: one 15.2 s gap (= the 15 s hold time), the TCP flow resumed on the same connection; `fmc_get_ha_status(live=True)` read the survivor while the other unit was off and named each failover's reason |
 | 13 | F34 ISE identity source | not run | |
 | 14 | F56 `fmc_prove_policy` | not run | |
 
@@ -222,4 +222,30 @@ and was sent unchanged with `fmc_api_call`; FMC accepted it.
 
 Then `mcp-fw-t1` was torn down (topology, hub DVTI and loopback, pool, the hub's return route, the overlay rule, the F58
 interfaces) and the five devices deployed; the hub has no IKEv2 SAs left. `mcp-fw-branch1` stays registered.
+
+### 12. F65 HA under traffic, `fmc_ha_failover_check` (pass)
+
+Pair `mcp-fw-ha` (two FTDv, failover and state on one link, outside/inside/management monitored with standby addresses). Test
+host behind the pair; target: the bridge gateway; long-lived flow: `iperf -c <feed-host> -b 5M` (TCP).
+
+The prompt (`action='switch'`) was followed step by step:
+
+| Step | What | Result |
+|---|---|---|
+| 1 | `fmc_get_ha_status(live=True, history=5)` | primary Active, secondary Standby Ready, link up (shared with state), versions equal, HEALTHY_CONFIG, 11 checks ok, `ready_for_switch` true |
+| 2 | `fmc_packet_tracer` on the active unit, `cml_check_reachability` x10 | allow (inside-to-outside rule, PAT); 10/10 |
+| 4 | ping series (600 x 0.2 s) + iperf started, then `fmc_ha_action(switch)` | FMC task "Successfully switched active peer"; device history: switch 1 s after the confirm |
+| 5 | `fmc_get_ha_status` (34 s after the switch) | secondary **Active**, primary **Standby Ready** already; `last_failover`: secondary "Other unit wants me Active (Set by the config command)", primary "Set by the config command (no failover active)" |
+| 6 | tracer on the new active unit, 10 pings, the logs | allow; **600/600 replies, 0 % loss** (max RTT 26 ms); iperf: 132 one-second samples, none below 5.24 Mbit/s: the flow never noticed |
+
+Unplanned (`action='fail_active'` done by hand: `cml_set_node_state stop` on the active unit's node, then start):
+
+- Ping series: one gap of **76 probes = 15.2 s** (the pair's 15 s peer hold time), 824/900 received; iperf at 0 bit/s for 25 s
+  (TCP backoff after the 15 s gap) and then back to 5.24 Mbit/s **on the same connection** (no reset): the replicated state kept it.
+- `fmc_get_ha_status(live=True)` with that unit powered off **fell back to the survivor** (its show commands for the dead unit came
+  back as FMC 500 "No response from device", kept as notes): survivor Active, other unit Failed ("Comm Failure"), `last_failover`
+  "HELLO not heard from peer (failover link up, no response from peer)", blocker `standby_ready` failed, and a note that FMC's
+  own unit states still showed the pre-failover roles (FMC lags; the units are current). The call takes about 80 s while one
+  unit is off (its commands time out one by one).
+- The stopped unit was started again and rejoined as standby (App Sync, then Standby Ready).
 
