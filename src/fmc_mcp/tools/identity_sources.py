@@ -3,9 +3,10 @@ agent, AD realms), and who is on an IP right now.
 
 FMC 10.0.1's REST API has no identity-source object: the ISE/pxGrid connection (primary/secondary pxGrid
 node, pxGrid and MNT server CAs, FMC's client certificate, the session and SXP topics) is configured only
-in the web UI (Integrations > Other Integrations > Identity Sources > Identity Services Engine), and the
-UI's identity endpoints don't accept REST tokens. So fmc_get_identity_sources assembles the state from
-what REST does show:
+in the web UI (FMC 10.0.1: Integrations > Identity > Identity Sources > Identity Services Engine, in the
+Global domain only, by an administrator), and the UI's identity endpoints don't accept REST tokens. REST
+also doesn't say why a connection fails: only the UI's Test button shows FMC's error. So
+fmc_get_identity_sources assembles the state from what REST does show:
 
 - FMC health modules (one health/alerts read, filtered by module): `ISE` (pxGrid connection status, or
   "ISE is not configured or not enabled"), the passive identity agent, the user agent and unresolved
@@ -72,21 +73,37 @@ POLICY_CAP = 10  # identity policies whose rules are read
 REALM_CAP = 5  # realms whose users/groups are counted
 USER_CAP = 3  # realm users whose groups are looked up per call
 CERT_WARN_DAYS = 30
+UI_PAGE = (
+    "the FMC web UI, Integrations > Identity > Identity Sources (FMC 10.0.1), in the Global domain: "
+    "FMC 10.0.1 offers the ISE identity source in Global only (in a child domain every option is disabled), "
+    "and only to an administrator (a custom role without the Identity Sources permission doesn't see the "
+    "page)"
+)
 ISE_UI_STEP = (
-    "FMC 10.0.1's REST API can't configure it: in the FMC web UI (an admin, or a role with Integrations > "
-    "Identity Sources) open Integrations > Other Integrations > Identity Sources > Identity Services Engine "
-    "and set the primary pxGrid host (the ISE node's FQDN, as in its pxGrid certificate), pxGrid Server CA "
-    "and MNT Server CA (trusted CA objects: fmc_create_trusted_ca), the FMC Server Certificate (an internal "
-    "certificate with its private key), subscribe to Session Directory (and SXP for SGT mappings), Test, "
-    "Save. Then approve FMC's pxGrid client in ISE (ise_list_pxgrid_clients / ise_approve_pxgrid_client) "
-    "unless ISE auto-approves certificate-based clients."
+    f"FMC 10.0.1's REST API can't configure it. Open {UI_PAGE}. Choose Identity Services Engine, Advanced "
+    "Configuration, and set the Primary Host (the ISE node's FQDN, as in its pxGrid certificate), the pxGrid "
+    "Client Certificate (an internal certificate with its private key), the MNT Server CA and pxGrid Server "
+    "CA (trusted CA objects: fmc_create_trusted_ca); the drop-downs list only objects Global can see, so "
+    "create the certificate and CAs in Global. Tick Session Directory Topic (and SXP Topic for SGT "
+    "mappings), Test, Save. Then approve FMC's pxGrid client in ISE (ise_list_pxgrid_clients / "
+    "ise_approve_pxgrid_client) unless ISE auto-approves certificate-based clients."
 )
 SETTINGS_NOTE = (
-    "The pxGrid host, server CAs, FMC client certificate and topics are visible only in the FMC UI "
-    "(Integrations > Other Integrations > Identity Sources): FMC 10.0.1's REST API has no identity-source "
-    "object. ISE's side: ise_pxgrid_status / ise_list_pxgrid_clients on the ISE MCP server."
+    f"The pxGrid host, server CAs, FMC client certificate and topics are visible only in {UI_PAGE}. FMC "
+    "10.0.1's REST API has no identity-source object. ISE's side: ise_pxgrid_status / "
+    "ise_list_pxgrid_clients on the ISE MCP server."
+)
+FAILED_STEP = (
+    "FMC's ISE connection is unhealthy and FMC 10.0.1's REST API doesn't say why: the Test button on the ISE "
+    "identity source (Integrations > Identity > Identity Sources, Global domain) shows FMC's error. Check "
+    "that FMC reaches the pxGrid node on 8910, the pxGrid/MNT server CAs, FMC's client certificate (expiry "
+    "below) and FMC's pxGrid client in ISE (ise_list_pxgrid_clients). No FMC client in ISE means FMC's "
+    "request never got through (name resolution, port 8910 or TLS); 'sslv3 alert certificate unknown' in "
+    "the Test result is ISE refusing FMC's client certificate, whose issuer ISE doesn't trust "
+    "(ise_list_certificates, trusted store). A pending client needs ise_approve_pxgrid_client."
 )
 _VAL = re.compile(r"<(?P<tag>\w+loop)>\s*<val>(?P<val>[^<]*)</val>\s*</(?P=tag)>")
+_ISE_PART = re.compile(r"<iseloop>\s*<module>(?P<part>[^<]*)</module>\s*<status>(?P<status>[^<]*)</status>")
 
 
 # --- shaping ------------------------------------------------------------------------------------------
@@ -132,6 +149,13 @@ def ise_state(alert: dict[str, Any] | None) -> str:
     if status in ("GREEN", "RECOVERED"):  # RECOVERED: FMC's marker for a return to normal
         return "connected"
     return "unknown"
+
+
+def ise_parts(alert: dict[str, Any]) -> dict[str, str]:
+    """The ISE module's per-part status from its params, e.g. {'ISE Services': 'UNKNOWN',
+    'ISEConnection': 'DOWN'} on FMC 10.0.1 when the pxGrid connection fails."""
+    params = str(alert.get("params") or "")
+    return {m["part"].strip(): m["status"].strip() for m in _ISE_PART.finditer(params)}
 
 
 def identity_memory(alert: dict[str, Any]) -> dict[str, Any]:
@@ -424,7 +448,8 @@ def register(reg: ToolRegistrar) -> None:
         process, and FMC's internal certificates (the pxGrid client certificate) with their expiry. Ends with
         a verdict and what to fix. Use it when user-based rules don't match, before relying on
         fmc_user_ip_lookup, or after setting up ISE. FMC 10.0.1's REST API can't show or set the ISE
-        connection settings themselves (pxGrid node, CAs); those are in the FMC UI (see `ise.configure`)."""
+        connection settings themselves (pxGrid node, CAs) or say why a connection fails; those are in the
+        FMC UI, Global domain only (see `ise.configure` and `ise.settings`)."""
         app: FmcApp = get_client(ctx)
         dev = await resolve_device(app, device, domain) if device else None
         out: dict[str, Any] = {}
@@ -443,6 +468,8 @@ def register(reg: ToolRegistrar) -> None:
         ise: dict[str, Any] = {"state": state}
         if ise_alert is not None:
             ise.update(module_row(ise_alert))
+            if parts := ise_parts(ise_alert):
+                ise["parts"] = parts
         ise["settings"] = SETTINGS_NOTE
 
         # SGTs over pxGrid
@@ -463,11 +490,7 @@ def register(reg: ToolRegistrar) -> None:
             ise["configure"] = ISE_UI_STEP
             todo.append("No ISE identity source: configure it in the FMC UI (see ise.configure).")
         elif state in ("failed", "degraded"):
-            todo.append(
-                "FMC's ISE connection is unhealthy: check the pxGrid node is reachable on 8910 from FMC, "
-                "the pxGrid/MNT CAs and FMC's client certificate (expiry below), and that FMC's pxGrid "
-                "client is approved in ISE (ise_list_pxgrid_clients)."
-            )
+            todo.append(FAILED_STEP)
         out["ise"] = ise
         for mod, key in FMC_MODULES.items():
             if mod != "ISE" and mod in fmc_alerts:
