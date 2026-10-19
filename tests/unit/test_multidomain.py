@@ -256,3 +256,59 @@ async def test_nat_policy_of_a_leaf_device_inherited_from_global(fmc: respx.Mock
         assert await nat_policy_of(app, SIBLING["id"], "Branch") is None
     finally:
         await app.aclose()
+
+
+# --- unused objects in a child domain (#197) ---------------------------------------------------------
+# A child domain sees Global's objects as readOnly with reason DOMAIN, FMC's built-ins included; only
+# Global's own listing says SYSTEM (recorded in the lab, fixture unused_inherited_builtins.json).
+
+UNUSED_TYPES = (
+    "hosts",
+    "networks",
+    "ranges",
+    "fqdns",
+    "networkgroups",
+    "portobjectgroups",
+    "urls",
+    "urlgroups",
+)
+
+
+def unused_mocks(fmc: respx.MockRouter) -> Any:
+    from .conftest import empty, fixture
+
+    rec = fixture("unused_inherited_builtins")
+    leaf_own = {
+        "id": "00000000-0000-0ed3-0000-000000000099",
+        "name": "leaf-unused",
+        "type": "ProtocolPortObject",
+        "protocol": "TCP",
+        "port": "8081",
+        "metadata": {"domain": CHILD_REF},
+    }
+    fmc.get(f"{CHILD_CFG}/object/protocolportobjects", params={"filter": "unusedOnly:true"}).mock(
+        return_value=items([*rec["leaf_unused"], leaf_own])
+    )
+    for path in UNUSED_TYPES:
+        fmc.get(f"{CHILD_CFG}/object/{path}", params={"filter": "unusedOnly:true"}).mock(return_value=empty())
+    return rec
+
+
+async def test_unused_objects_in_child_domain_skip_inherited_builtins(fmc: respx.MockRouter) -> None:
+    rec = unused_mocks(fmc)
+    owner = fmc.get(f"{CFG}/object/protocolportobjects").mock(return_value=items(rec["global_list"]))
+    async with Client(server()) as c:
+        out = await run(c, "fmc_unused_objects", {"domain": "Branch", "response_format": "json"})
+    names = [r["name"] for r in out["results"]]
+    assert names == ["mcp-test-udp-5000s", "leaf-unused"], names  # AOL and Bittorrent are FMC built-ins
+    assert owner.call_count == 1  # one read of the owner's list per type, only for types with inherited rows
+    assert "note" not in out
+
+
+async def test_unused_objects_owner_unreadable_keeps_rows_with_a_note(fmc: respx.MockRouter) -> None:
+    unused_mocks(fmc)
+    fmc.get(f"{CFG}/object/protocolportobjects").mock(return_value=httpx.Response(403, json={"error": "no"}))
+    async with Client(server()) as c:
+        out = await run(c, "fmc_unused_objects", {"domain": "Branch", "response_format": "json"})
+    assert len(out["results"]) == 4
+    assert "Couldn't read Global" in out["note"], out

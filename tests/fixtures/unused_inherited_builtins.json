@@ -1,0 +1,147 @@
+{
+  "_source": "FMC 10.0.1, 2026-10-19 (F46 eval, #197): GET object/protocolportobjects?filter=unusedOnly:true&expanded=true in a child domain (leaf_unused) and the same objects in Global (global_list: AOL/Bittorrent from Global's unusedOnly list, mcp-test-udp-5000s by id). lastUser scrubbed.",
+  "leaf_unused": [
+    {
+      "metadata": {
+        "readOnly": {
+          "state": true,
+          "reason": "DOMAIN"
+        },
+        "timestamp": 1775157449079,
+        "lastUser": {
+          "name": "apiuser"
+        },
+        "domain": {
+          "name": "Global",
+          "id": "e276abec-e0f2-11e3-8169-6d9ed49b625f",
+          "type": "Domain"
+        },
+        "parentType": "Port"
+      },
+      "type": "ProtocolPortObject",
+      "port": "5190",
+      "protocol": "TCP",
+      "overridable": false,
+      "name": "AOL",
+      "id": "1834d812-38bb-11e2-86aa-62f0c593a59a"
+    },
+    {
+      "metadata": {
+        "readOnly": {
+          "state": true,
+          "reason": "DOMAIN"
+        },
+        "timestamp": 1775157449080,
+        "lastUser": {
+          "name": "apiuser"
+        },
+        "domain": {
+          "name": "Global",
+          "id": "e276abec-e0f2-11e3-8169-6d9ed49b625f",
+          "type": "Domain"
+        },
+        "parentType": "Port"
+      },
+      "type": "ProtocolPortObject",
+      "port": "6881-6889",
+      "protocol": "TCP",
+      "overridable": false,
+      "name": "Bittorrent",
+      "id": "1834e5f0-38bb-11e2-86aa-62f0c593a59a"
+    },
+    {
+      "metadata": {
+        "readOnly": {
+          "state": true,
+          "reason": "DOMAIN"
+        },
+        "timestamp": 1792202019260,
+        "lastUser": {
+          "name": "apiuser"
+        },
+        "domain": {
+          "name": "Global",
+          "id": "e276abec-e0f2-11e3-8169-6d9ed49b625f",
+          "type": "Domain"
+        },
+        "parentType": "Port"
+      },
+      "type": "ProtocolPortObject",
+      "port": "5000-5100",
+      "protocol": "UDP",
+      "overridable": false,
+      "name": "mcp-test-udp-5000s",
+      "id": "00000000-0000-0ed3-0000-021474836658"
+    }
+  ],
+  "global_list": [
+    {
+      "metadata": {
+        "readOnly": {
+          "state": true,
+          "reason": "SYSTEM"
+        },
+        "timestamp": 1775157449079,
+        "lastUser": {
+          "name": "apiuser"
+        },
+        "domain": {
+          "name": "Global",
+          "id": "e276abec-e0f2-11e3-8169-6d9ed49b625f",
+          "type": "Domain"
+        },
+        "parentType": "Port"
+      },
+      "type": "ProtocolPortObject",
+      "port": "5190",
+      "protocol": "TCP",
+      "overridable": false,
+      "name": "AOL",
+      "id": "1834d812-38bb-11e2-86aa-62f0c593a59a"
+    },
+    {
+      "metadata": {
+        "readOnly": {
+          "state": true,
+          "reason": "SYSTEM"
+        },
+        "timestamp": 1775157449080,
+        "lastUser": {
+          "name": "apiuser"
+        },
+        "domain": {
+          "name": "Global",
+          "id": "e276abec-e0f2-11e3-8169-6d9ed49b625f",
+          "type": "Domain"
+        },
+        "parentType": "Port"
+      },
+      "type": "ProtocolPortObject",
+      "port": "6881-6889",
+      "protocol": "TCP",
+      "overridable": false,
+      "name": "Bittorrent",
+      "id": "1834e5f0-38bb-11e2-86aa-62f0c593a59a"
+    },
+    {
+      "metadata": {
+        "timestamp": 1792202019260,
+        "lastUser": {
+          "name": "apiuser"
+        },
+        "domain": {
+          "name": "Global",
+          "id": "e276abec-e0f2-11e3-8169-6d9ed49b625f",
+          "type": "Domain"
+        },
+        "parentType": "Port"
+      },
+      "type": "ProtocolPortObject",
+      "port": "5000-5100",
+      "protocol": "UDP",
+      "overridable": false,
+      "name": "mcp-test-udp-5000s",
+      "id": "00000000-0000-0ed3-0000-021474836658"
+    }
+  ]
+}
