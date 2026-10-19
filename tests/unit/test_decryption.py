@@ -10,6 +10,7 @@ from fastmcp import Client
 from fastmcp.exceptions import ToolError
 
 from fmc_mcp.server import create_server
+from fmc_mcp.tools.decryption import version_problem
 
 from .conftest import CFG, fixture, items, make_settings
 
@@ -288,3 +289,30 @@ async def test_get_policy_shows_settings_and_readiness(fmc: respx.MockRouter) ->
     assert out["rules"][1]["resign_ca"] == ["mcp-test-resign-ca"]
     assert any("TLS 1.3 decryption is off" in n for n in out["readiness"])
     assert listing["results"][0]["used_by"] == "acp"
+
+
+async def test_rule_sends_every_tls_version_and_flags_rules_fmc_refuses(fmc: respx.MockRouter) -> None:
+    """F64 live proof: a rule created without tlsVersions is stored by FMC 10.0.1 with all five false, and the
+    deploy is then refused ('Support for SSL Versions selection for Decrypt - Resign rule is deprecated')."""
+    rec = fixture("decryption_rule_versions_fmc10")
+    created, fixed = rec["resign_as_created"], rec["dnd_fixed"]
+    mock_tls(fmc, rules=[fixed, created])
+    post = fmc.post(PRULES).mock(return_value=httpx.Response(201, json={"id": "r9"}))
+    args = {"policy": "mcp-test-tls", "name": "dnd-bank", "destination_networks": ["203.0.113.77"]}
+    async with Client(server()) as c:
+        p = await run(c, "fmc_create_decryption_rule", args)
+        assert p["status"] == "preview" and p["preview"]["tls_versions"] == "all"
+        assert "cert_conditions" not in p["preview"]["rule"]
+        refused = [s for s in p["side_effects"] if "refuses the deploy" in s]
+        assert len(refused) == 1 and "'mcp-fw-resign'" in refused[0] and "all off" in refused[0]
+        assert "Decrypt - Resign rule is deprecated" in refused[0]
+        await run(c, "fmc_create_decryption_rule", {**args, "confirm": p["confirm"]})
+        got = await run(c, "fmc_get_decryption_policy", {"policy": "mcp-test-tls", "response_format": "json"})
+    body = json.loads(post.calls.last.request.content)
+    assert body["tlsVersions"] == {"sslv3": True, "tls10": True, "tls11": True, "tls12": True, "tls13": True}
+    versions = [n for n in got["readiness"] if "SSL Versions selection" in n]
+    assert len(versions) == 1 and "'mcp-fw-resign'" in versions[0]  # the fixed DND rule is fine
+    partial = {**fixed, "tlsVersions": {**fixed["tlsVersions"], "sslv3": False, "tls10": False}}
+    assert "sslv3, tls10 off" in str(version_problem(partial))
+    assert version_problem({**created, "ruleAction": "BLOCK"}) is None
+    assert version_problem({k: v for k, v in created.items() if k != "tlsVersions"}) is None
