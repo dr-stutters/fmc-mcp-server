@@ -1,0 +1,146 @@
+{
+ "_source": "FMC 10.0.1 (2026-10-19, F64 live proof): a DECRYPT_RESIGN rule's POST answer when created without tlsVersions (FMC stored all five false and then refused the deploy: 'Support for SSL Versions selection for Decrypt - Resign rule is deprecated'), and the DO_NOT_DECRYPT rule as read after the fix (tlsVersions all true; deploy succeeded). Addresses moved to 203.0.113.0/24, ids replaced with placeholders.",
+ "resign_as_created": {
+  "metadata": {
+   "ruleIndex": 2,
+   "category": {
+    "name": "standard_category"
+   }
+  },
+  "enabled": true,
+  "replacePublicKey": false,
+  "decryptionCerts": {
+   "objects": [
+    {
+     "id": "00000000-0000-0ed3-0000-000000000ca1",
+     "name": "mcp-fw-resign-ca",
+     "type": "InternalCA"
+    }
+   ]
+  },
+  "sourceNetworks": {},
+  "destinationNetworks": {
+   "literals": [
+    {
+     "value": "203.0.113.10",
+     "type": "Host"
+    }
+   ]
+  },
+  "sourcePorts": {},
+  "destinationPorts": {
+   "literals": [
+    {
+     "type": "PortLiteral",
+     "port": "443",
+     "protocol": "6"
+    }
+   ]
+  },
+  "sourceZones": {
+   "objects": []
+  },
+  "destinationZones": {
+   "objects": []
+  },
+  "vlanTags": {},
+  "logging": {
+   "logEnd": true,
+   "sendEvents": true
+  },
+  "issuerDNs": {},
+  "subjectDNs": {},
+  "urls": {},
+  "certificateStatuses": {
+   "notYetValid": "ANY",
+   "invalidIssuer": "ANY",
+   "invalidSignature": "ANY",
+   "selfSigned": "ANY",
+   "invalidCertificate": "ANY",
+   "serverMismatch": "ANY",
+   "invalidCrl": "ANY",
+   "valid": "ANY",
+   "expired": "ANY",
+   "revoked": "ANY"
+  },
+  "cipherSuiteLists": {},
+  "applications": {},
+  "externalCertificates": {},
+  "tlsVersions": {
+   "sslv3": false,
+   "tls10": false,
+   "tls11": false,
+   "tls12": false,
+   "tls13": false
+  },
+  "users": {},
+  "clientThreat": "ANY",
+  "ruleAction": "DECRYPT_RESIGN",
+  "id": "00000000-0000-0ed3-0000-000000000c02",
+  "name": "mcp-fw-resign",
+  "type": "DecryptionPolicyRule"
+ },
+ "dnd_fixed": {
+  "metadata": {
+   "ruleIndex": 1,
+   "category": {
+    "name": "standard_category"
+   }
+  },
+  "enabled": true,
+  "replacePublicKey": false,
+  "sourceNetworks": {},
+  "destinationNetworks": {
+   "literals": [
+    {
+     "value": "203.0.113.66",
+     "type": "Host"
+    }
+   ]
+  },
+  "sourcePorts": {},
+  "destinationPorts": {},
+  "sourceZones": {
+   "objects": []
+  },
+  "destinationZones": {
+   "objects": []
+  },
+  "vlanTags": {},
+  "logging": {
+   "logEnd": false,
+   "sendEvents": false
+  },
+  "issuerDNs": {},
+  "subjectDNs": {},
+  "urls": {},
+  "certificateStatuses": {
+   "notYetValid": "ANY",
+   "invalidIssuer": "ANY",
+   "invalidSignature": "ANY",
+   "selfSigned": "ANY",
+   "invalidCertificate": "ANY",
+   "serverMismatch": "ANY",
+   "invalidCrl": "ANY",
+   "valid": "ANY",
+   "expired": "ANY",
+   "revoked": "ANY"
+  },
+  "cipherSuiteLists": {},
+  "applications": {},
+  "externalCertificates": {},
+  "tlsVersions": {
+   "sslv3": true,
+   "tls10": true,
+   "tls11": true,
+   "tls12": true,
+   "tls13": true
+  },
+  "users": {},
+  "clientThreat": "ANY",
+  "ruleAction": "DO_NOT_DECRYPT",
+  "id": "00000000-0000-0ed3-0000-000000000c01",
+  "name": "mcp-fw-dnd",
+  "type": "DecryptionPolicyRule"
+ }
+}

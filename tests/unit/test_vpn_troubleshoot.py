@@ -126,3 +126,16 @@ async def test_prompt_listed_and_rendered(fmc: respx.MockRouter) -> None:
     body: Any = r.messages[0].content
     assert '"tunnel to hq-asa down"' in body.text and 'device="branch-a"' in body.text
     assert 'protocol="icmp"' in body.text
+
+
+def test_quiet_counters_send_to_the_path_before_ike_policies() -> None:
+    """Live (dead WAN on a spoke): fmc_vpn_status saw no IKEv2 failures within 1-2 minutes, and step 2 sent
+    'no failures at all' to 'compare the IKE policies'. Nothing growing now goes to the path checks first."""
+    step2 = text().split("2. IKE", 1)[1].split("3. IPsec", 1)[0]
+    quiet = step2.index('nothing grew ("no new IKEv2 failures')
+    assert quiet < step2.index("compare the IKE policies")
+    bullet = " ".join(step2[quiet:].split())
+    assert "retries IKE only every few minutes" in bullet and "Check the path first" in bullet
+    assert "WAN gateway pinged" in bullet and "up/up" in bullet and "3-5 minutes" in bullet
+    assert "or the path answers and still no failures: compare the IKE policies" in " ".join(step2.split())
+    assert "no failures at all" not in step2
