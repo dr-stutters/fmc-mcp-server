@@ -249,3 +249,14 @@ Unplanned (`action='fail_active'` done by hand: `cml_set_node_state stop` on the
   unit is off (its commands time out one by one).
 - The stopped unit was started again and rejoined as standby (App Sync, then Standby Ready).
 
+Separate state link (new `fmc_create_ha_pair` parameters): the pair was broken (`fmc_ha_action break`) and formed again with the
+body from the tool's preview (`state_interface='Ethernet0/3'`, its own /30; sent with `fmc_api_call` under B0).
+
+- FMC first refused it: "Primary and Secondary devices are not compatible. One or both Peers are dirty, One or both peer
+  deployment is in progress" (the primary had an undeployed policy change). After deploying that unit the same body was accepted
+  and the pair formed in about 8 minutes. **R1 (gap):** the preview should check that both units have nothing pending.
+- `fmc_get_ha_status(live=True)` afterwards: failover link Ethernet0/2 up with `same_link_for_state: false`, state link Ethernet0/3
+  up, primary Active, secondary Standby Ready. It also warned that re-forming had dropped the standby addresses of outside and
+  inside (`monitoring_config`); restoring them with `fmc_configure_ha_monitoring` and deploying the pair cleared every warning.
+  Traffic through the pair passes as before.
+
