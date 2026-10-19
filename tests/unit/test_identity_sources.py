@@ -689,3 +689,89 @@ async def test_leaf_identity_sources_count_global_sessions(fmc: respx.MockRouter
     assert out["sessions"]["active"] == 1 and out["sessions"]["domain"] == "Global"
     assert "1 user sessions on FMC (in Global)" in out["verdict"]
     assert not any("holds no user session" in n for n in out["next"])
+
+
+# --- a dual-stack user: one identity row, a routable source IP ------------------------------------------
+# Live on FMC 10.0.1 (2026-10-19): ISE reported a logged-in client as two sessions, its IPv4 address and its
+# IPv6 link-local one, with the same lastSeen; fmc_user_ip_lookup(user=...) listed the user twice in `users`.
+
+BOB_V4 = {**BOB, "id": "bob-v4"}
+BOB_LL = {**BOB, "id": "bob-ll", "currentIP": "fe80::a"}  # same lastSeen as BOB_V4
+BOB_V6 = {**BOB, "id": "bob-v6", "currentIP": "2001:db8::57"}
+
+
+def realm_user_calls(fmc: respx.MockRouter, path: str) -> list[str]:
+    """The `filter` of each call to object/<path> (realmusers, realmusergroups)."""
+    return [
+        str(c.request.url.params.get("filter"))
+        for c in fmc.calls
+        if c.request.url.path == f"{CFG}/object/{path}"
+    ]
+
+
+@pytest.mark.parametrize("user", ["bob", "BOB"])
+async def test_user_lookup_without_realm_lists_the_user_once(fmc: respx.MockRouter, user: str) -> None:
+    mock_sessions(fmc, [BOB_LL, BOB_V4])
+    mock_realm_lookups(fmc)
+    async with Client(server()) as c:
+        out = await run(c, "fmc_user_ip_lookup", {"user": user})
+    assert [s["ip"] for s in out["sessions"]] == ["fe80::a", "192.0.2.57"]
+    assert out["users"] == [{"user": "bob", "realm": "corp", "groups": ["contractors"]}]
+    assert realm_user_calls(fmc, "realmusers") == ["name:bob"]
+    assert realm_user_calls(fmc, "realmusergroups") == ["userId:2"]
+
+
+async def test_user_lookup_without_realm_uses_the_session_realm(fmc: respx.MockRouter) -> None:
+    """bob is downloaded in two realms: the row shows the realm FMC maps the session to (the identity the
+    firewall applies, as the IP lookup reports it), not whichever realm FMC lists first."""
+    corp_bob = FX["realmusers"]["items"][1]
+    lab_bob = {**corp_bob, "id": "3", "realm": {"id": "lab-realm", "type": "Realm", "name": "lab"}}
+    mock_sessions(fmc, [{**BOB, "realmName": "lab"}])
+    fmc.get(f"{CFG}/object/realmusers").mock(return_value=items([corp_bob, lab_bob]))
+    lab_admins = {
+        "items": [{"id": "9", "type": "RealmUserGroup", "name": "lab-admins"}],
+        "paging": {"count": 1},
+    }
+    fmc.get(f"{CFG}/object/realmusergroups").mock(
+        side_effect=by_filter({"userId:2": FX["groups_user2"], "userId:3": lab_admins})
+    )
+    async with Client(server()) as c:
+        out = await run(c, "fmc_user_ip_lookup", {"user": "bob"})
+        both = await run(c, "fmc_user_ip_lookup", {"user": "bob", "ip": "192.0.2.57"})
+    assert out["users"] == [{"user": "bob", "realm": "lab", "groups": ["lab-admins"]}]
+    assert both["identities"] == ["lab\\bob", "lab\\lab-admins"]
+
+
+async def test_user_lookup_with_a_realm_keeps_other_realms_sessions(fmc: respx.MockRouter) -> None:
+    """'corp\\bob' with only a session in another realm: that session's user still gets its own row."""
+    mock_sessions(fmc, [{**BOB, "realmName": "lab"}])
+    mock_realm_lookups(fmc)
+    async with Client(server()) as c:
+        out = await run(c, "fmc_user_ip_lookup", {"user": "corp\\bob"})
+    assert [(u["user"], u["realm"]) for u in out["users"]] == [("bob", "corp"), ("bob", "lab")]
+
+
+@pytest.mark.parametrize(
+    ("sessions", "want"),
+    [
+        pytest.param([BOB_LL, BOB_V4], ["192.0.2.57"], id="link-local-listed-first"),
+        pytest.param([BOB_V4, BOB_LL], ["192.0.2.57"], id="ipv4-listed-first"),
+        pytest.param([BOB_LL], ["fe80::a"], id="only-link-local"),
+        pytest.param([{**BOB, "currentIP": "169.254.7.7"}, BOB_V4], ["192.0.2.57"], id="ipv4-link-local"),
+        pytest.param([BOB_V6, BOB_V4], ["192.0.2.57", "2001:db8::57"], id="ipv4-before-ipv6-same-time"),
+        pytest.param(
+            [{**BOB_V6, "lastSeen": BOB["lastSeen"] + 60}, BOB_V4],
+            ["2001:db8::57", "192.0.2.57"],
+            id="newer-ipv6-first",
+        ),
+    ],
+)
+async def test_user_ips_prefer_a_routable_ipv4_among_equal_sessions(
+    fmc: respx.MockRouter, sessions: list[dict[str, Any]], want: list[str]
+) -> None:
+    mock_sessions(fmc, sessions)
+    app = FmcApp(make_settings())
+    try:
+        assert await user_ips(app, "corp\\bob", None) == want
+    finally:
+        await app.aclose()
