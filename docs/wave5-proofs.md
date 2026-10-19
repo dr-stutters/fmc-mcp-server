@@ -15,6 +15,7 @@ Lab addresses and hostnames are not in this file. Placeholders:
 | `<si-hit>` | a second address on the outside host, listed in the SI IP feed |
 | `<feed-host>` | the HTTP server that serves the SI feeds (`mcp-fw-feed`) |
 | `<dnd-host>` | the outside host's second address, exempted from decryption |
+| `<gambling-hostname>` | a public hostname in the Gambling URL category, resolved to `<outside-host>` with `curl --resolve` |
 
 Status: **pass**, **fail** (a tool bug; root cause given), **blocked** (a lab, licence, role or platform limit), or **not run**.
 
@@ -30,7 +31,7 @@ Status: **pass**, **fail** (a tool bug; root cause given), **blocked** (a lab, l
 | 6 | F61 SI feeds + custom lists | blocked | tools not callable (B0); FMC downloads a feed from `<feed-host>` at create time (probe), see the feed-status finding |
 | 7 | F62 IPS on traffic + `fmc_threat_defense_review` | split | IPS **pass** (Talos 1:498 and 1:58723 drop the client's requests, normal page loads); posture tool and prompt not callable (B0) |
 | 8 | F64 TLS decryption | pass (traffic), 2 bugs | client trusts the resigning CA; HTTPS to `<outside-host>` re-signed and verified, `.exe` / EICAR / IPS trigger / blocked category reset inside TLS; `<dnd-host>` untouched; `fmc_tls_decryption_check` mis-reads FMC's default certificate-status block (R1); rules need `tlsVersions` or the deploy is refused (R2) |
-| 9 | F41 + F49 VPN status / troubleshoot | not run | |
+| 9 | F41 + F49 VPN status / troubleshoot | pass (status, wrong PSK); dead WAN partial | `mcp-fw-t1` (hub + 3 spokes) built with `fmc_create_sdwan_topology`; `fmc_vpn_status` shows 3 tunnels, both ends' SAs, IPsec counters, BGP routes; wrong PSK named from growing authentication failures; dead WAN reported TUNNEL_DOWN but without the dead-path verdict (R2); false overlay-routing warning on a DVTI hub (R1) |
 | 10 | F54 `fmc_onboard_branch` | not run | |
 | 11 | F58 interface kinds | not run | |
 | 12 | F65 HA under traffic | not run | |
@@ -148,3 +149,33 @@ and, after the deploy, `deployed: ok`, but its verdict was wrong:
 - **R2 (fail):** a decryption rule created without `tlsVersions` is stored with every version `false`, and FMC's pre-deploy validation
   then refuses the deploy: "Support for SSL Versions selection for Do not decrypt rule is deprecated ..." (same for Decrypt - Resign).
   With all five versions `true` in the rule the deploy passes. `fmc_create_decryption_rule` should send that block.
+
+### 9. F41 `fmc_vpn_status` + F49 `fmc_vpn_troubleshoot` (pass; R1, R2)
+
+Built with the released tools: `fmc_create_sdwan_topology('mcp-fw-t1')` on `mcp-sdwan-t1-hub` + spokes 1-3, hub DVTI `mcp-fw-dvti` on
+the internet carrier with a new loopback `mcp-fw-dvti-lo` and pool `mcp-fw-t1-pool`, iBGP overlay, the existing overlay zone of the
+T1 access policy; one deploy of the four devices.
+
+- Device side: the hub has 3 IKEv2 SAs READY (AES-GCM-256, DH 21, PSK) and BGP routes to the three spoke LANs via the spokes' tunnel
+  addresses; host-to-host pings across the overlay 3/3.
+- `fmc_vpn_status(topology='mcp-fw-t1')`: 3 tunnels TUNNEL_UP; per tunnel `device_says` READY on both ends with IPsec packet
+  counts; per device the IKE SAs, IPsec SAs (the hub's virtual-access interfaces), l2l sessions, IKEv2 counters; the spokes'
+  `overlay_routes` list the 3 BGP routes over the tunnel. `device=<spoke>, tunnel_details=True` limits the view to that spoke;
+  its `fmc_details` came back empty (no reason given; nit).
+- **R1 (fail):** a false warning on the hub: "3 IKE SA(s) READY but no routes over the VTIs (mcp-fw-dvti)". FTD prints the routes to
+  a DVTI's peers as two-line `V` entries (`V <addr> 255.255.255.255` then `connected by VPN (advertised), <dvti>_va<N>`), and the route
+  parser doesn't attach the second line's interface, so the hub's BGP next hops don't resolve to the VTI.
+
+Wrong pre-shared key (topology switched to a manual key, deployed to one spoke only, its SA cleared): the `fmc_vpn_troubleshoot`
+prompt's step 1/2 walk with two `fmc_vpn_status` calls a minute apart gives **critical TUNNEL_DOWN** with "IKEv2 authentication
+failures rose by 3 in the last 73 s: a pre-shared key (or certificate) mismatch, not a dead path" on both ends, and
+`fmc_pending_changes` on the hub shows the undeployed IKEv2 authentication change: verdict "key mismatch, one end not deployed",
+fix "deploy both ends". Restored (automatic keys, four devices deployed).
+
+Dead WAN (the spoke's internet link down in CML): **critical TUNNEL_DOWN**, but "no IKEv2 failures in the last 73 s" (and 133 s).
+- **R2 (gap):** after DPD removes the SA, the spoke re-initiates IKE only every few minutes, so the retransmit counters rarely grow
+  between two calls a minute or two apart; the CML link-down also leaves the FTD interface up/up. The prompt then points at
+  "compare the IKE policies". Pinging the spoke's carrier gateway (no answer) is what names the dead path. The tool should treat
+  "no SA, no authentication failures, retransmit / initial-exchange failures on record" as "the peer doesn't answer", and the prompt
+  should check the path before the IKE policies when nothing grows.
+
