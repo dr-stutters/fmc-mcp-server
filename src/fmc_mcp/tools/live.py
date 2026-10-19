@@ -40,6 +40,7 @@ from fmc_mcp.tools.troubleshoot import run_show
 SESSIONS = "analysis/activesessions"
 ACTIVITY = "analysis/useractivity"
 SESSION_CAP = 1000
+ACTIVITY_CAP = 200
 ROLE_HINT = (
     "The FMC account's role needs the Events & Logs > Analysis > Users permissions (Active Sessions, User "
     "Activity, Users) for FMC's identity view; until then ISE shows the same sessions (ise_find_session / "
@@ -386,15 +387,27 @@ def activity_row(a: dict[str, Any]) -> dict[str, Any]:
     return {k: v for k, v in row.items() if v not in (None, "")}
 
 
-def _seen(s: dict[str, Any]) -> float:
-    """A session's last activity for sorting: lastSeen, else loginTime (epoch s/ms or ISO 8601)."""
-    ts = s.get("lastSeen") or s.get("loginTime")
+def clock() -> float:
+    """Now, in epoch seconds (a function so tests can fix the clock)."""
+    return time.time()
+
+
+def epoch(ts: Any) -> float:
+    """An FMC timestamp (epoch seconds or milliseconds, or ISO 8601) as epoch seconds; 0.0 if unreadable."""
     try:
         n = float(ts or 0)
         return n / 1000 if n > 10**11 else n  # milliseconds, as iso() reads them
     except (TypeError, ValueError):
         stamp = iso(ts)
-        return datetime.fromisoformat(stamp.replace("Z", "+00:00")).timestamp() if stamp else 0.0
+        try:
+            return datetime.fromisoformat(stamp.replace("Z", "+00:00")).timestamp() if stamp else 0.0
+        except ValueError:
+            return 0.0
+
+
+def _seen(s: dict[str, Any]) -> float:
+    """A session's last activity for sorting: lastSeen, else loginTime (epoch s/ms or ISO 8601)."""
+    return epoch(s.get("lastSeen") or s.get("loginTime"))
 
 
 async def session_items(
@@ -429,17 +442,24 @@ async def activity_items(
     hours: int = 24,
 ) -> list[dict[str, Any]]:
     """FMC's user activity (identity logins and logoffs) of the last `hours`, newest first, filtered
-    server-side. AuthError (403) when the role lacks the Analysis > Users permissions. Also the reader
-    behind fmc_user_ip_lookup's history (F34)."""
-    params: dict[str, Any] = {"time": f"after:{int(time.time()) - hours * 3600}", "sort": "time:desc"}
+    server-side by ip/user/device. AuthError (403) when the role lacks the Analysis > Users permissions.
+    Also the reader behind fmc_user_ip_lookup's history (F34).
+
+    The window is applied here, not with FMC's `time` filter: FMC 10.0.1 answers 422 "Invalid time
+    field." to the spec's own `time=after:<epoch>` form (also `after:<epoch>,before:<epoch>`, epoch
+    milliseconds and ISO 8601), so the newest ACTIVITY_CAP events are read (sort time:desc) and the ones
+    older than `hours` dropped; an event without a readable time is kept."""
+    params: dict[str, Any] = {"sort": "time:desc"}
     if ip:
         params["ipAddress"] = ip
     if user:
         params["username"] = user
     if device:
         params["device"] = device
-    page = await app.all(await app.config_path(ACTIVITY, domain), params, cap=200)
-    return list(page.items)
+    page = await app.all(await app.config_path(ACTIVITY, domain), params, cap=ACTIVITY_CAP)
+    since = clock() - hours * 3600
+    events = [a for a in page.items if not epoch(a.get("time")) or epoch(a.get("time")) >= since]
+    return sorted(events, key=lambda a: epoch(a.get("time")), reverse=True)
 
 
 async def active_sessions(
