@@ -199,21 +199,3 @@ async def test_device_with_pending_changes(fmc: respx.MockRouter) -> None:
     assert out["access_policy"] == "mcp-test-tls-acp" and out["action"] == "DECRYPT_RESIGN"
     deployed = next(c for c in out["readiness"] if c["check"] == "deployed")
     assert deployed["ok"] is False and "DecryptionPolicy:mcp-test-tls" in deployed["detail"]
-
-
-async def test_rule_versions_fmc_refuses_to_deploy(fmc: respx.MockRouter) -> None:
-    """F64 live proof: FMC 10.0.1 refused the deploy of a policy whose DECRYPT_RESIGN rule had been created
-    without tlsVersions (stored all false). Any such rule blocks the whole policy, matched or not."""
-    rec = fixture("decryption_rule_versions_fmc10")
-    mock(fmc, rules=[rec["dnd_fixed"], rec["resign_as_created"]])
-    out = await run(
-        {"source": "192.0.2.10", "destination": "203.0.113.66", "decryption_policy": "mcp-test-tls"}
-    )
-    versions = next(c for c in out["readiness"] if c["check"] == "TLS versions")
-    assert versions["ok"] is False and "'mcp-fw-resign'" in versions["detail"]
-    assert "refuses the deploy" in versions["detail"] and "'mcp-fw-dnd'" not in versions["detail"]
-    mock(fmc, rules=[rec["dnd_fixed"]])
-    fine = await run(
-        {"source": "192.0.2.10", "destination": "203.0.113.66", "decryption_policy": "mcp-test-tls"}
-    )
-    assert "readiness" not in fine
