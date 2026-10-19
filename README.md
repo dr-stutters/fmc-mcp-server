@@ -127,7 +127,7 @@ There are 153 tools when every tier is enabled (66 read, 76 write, 11 dangerous;
 | File / malware, network analysis | `fmc_get_file_policy` (settings and file rules; `catalog=true` lists file categories and types), `fmc_get_network_analysis_policy` (base, mode, access policies using it, inspector overrides) |
 | Change management | `fmc_change_tickets` (status, tickets, a ticket's changes and validation) |
 | Admin | `fmc_upgrade_status` (versions, upgrade history, packages), `fmc_list_backups`, `fmc_get_health_policy`, `fmc_list_users`, `fmc_list_object_overrides` |
-| Analysis | `fmc_rule_lookup`, `fmc_shadowed_rules`, `fmc_policy_audit` (ranked hygiene findings with a fix each), `fmc_export_access_rules` (rows or CSV, re-importable) |
+| Analysis | `fmc_rule_lookup`, `fmc_shadowed_rules`, `fmc_policy_audit` (ranked hygiene findings with a fix each), `fmc_threat_posture` (intrusion and file policies and modes, TRUST/fastpath bypasses, SI and DNS coverage, decryption, device licences; findings with a fix each), `fmc_export_access_rules` (rows or CSV, re-importable) |
 | Policy bundles | `fmc_export_policy_bundle` (an access policy with everything it references, as versioned YAML), `fmc_diff_policy_bundle` (two bundles, or a bundle against live FMC), `fmc_plan_policy_bundle_import` (what an import would create, reuse, update or need first) |
 | Deployment | `fmc_list_deployable_devices`, `fmc_pending_changes`, `fmc_list_deployments` |
 | API spec | `fmc_search_spec`, `fmc_get_definition`, `fmc_api_call` (GET only) |
@@ -268,6 +268,12 @@ MD5 password, because FMC returns it masked and a PUT would replace it, unless y
 - **Clean up a policy:** the `fmc_policy_cleanup` prompt turns `fmc_policy_audit` findings into grouped,
   approved changes, verifies them with `fmc_diff_policy_bundle` against a baseline bundle and a re-audit, and
   keeps the baseline for `fmc_import_policy_bundle` as a rollback.
+- **How well does this policy stop threats?** The `fmc_threat_defense_review` prompt combines
+  `fmc_threat_posture` (intrusion and file policies and their modes, TRUST and fastpath bypasses, SI and DNS
+  coverage, decryption, device licences) with `fmc_policy_audit`, `fmc_get_security_intelligence` (feed status)
+  and `fmc_get_intrusion_policy`, and ranks the findings with a fix and the tool that applies it.
+- **Threat feeds and lists:** `fmc_create_si_feed` or `fmc_upload_si_list` -> `fmc_set_si_lists` (block,
+  allow; DNS also monitor) -> `fmc_deploy` -> `fmc_get_security_intelligence` (entries and last update).
 - **PoC to production:** `fmc_export_policy_bundle` -> `fmc_plan_policy_bundle_import` in the target domain or
   FMC -> `fmc_import_policy_bundle` -> `fmc_diff_policy_bundle` -> assign and `fmc_deploy`.
 - **Rules on AD users and groups:** `fmc_create_trusted_ca` (for LDAPS) -> `fmc_create_realm` ->
