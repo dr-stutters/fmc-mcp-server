@@ -428,6 +428,10 @@
       "tier": "write",
       "title": "Create interface"
     },
+    "fmc_create_internal_ca": {
+      "tier": "write",
+      "title": "Create internal CA (key generated on FMC)"
+    },
     "fmc_create_intrusion_policy": {
       "tier": "write",
       "title": "Create intrusion policy"
@@ -507,6 +511,10 @@
     "fmc_delete_app_route": {
       "tier": "write",
       "title": "Delete application route"
+    },
+    "fmc_delete_certificate": {
+      "tier": "write",
+      "title": "Delete certificate object"
     },
     "fmc_delete_decryption_rule": {
       "tier": "write",
@@ -628,6 +636,10 @@
       "tier": "read",
       "title": "Get access rule"
     },
+    "fmc_get_certificate": {
+      "tier": "read",
+      "title": "Certificates for TLS decryption"
+    },
     "fmc_get_decryption_policy": {
       "tier": "read",
       "title": "Decryption policies"
@@ -716,6 +728,10 @@
       "tier": "write",
       "title": "Import access rules"
     },
+    "fmc_import_certificate_files": {
+      "tier": "write",
+      "title": "Import certificate and key files (FMC_PKI_DIR)"
+    },
     "fmc_import_objects": {
       "tier": "write",
       "title": "Import objects"
@@ -723,6 +739,10 @@
     "fmc_import_policy_bundle": {
       "tier": "dangerous",
       "title": "Import a policy bundle"
+    },
+    "fmc_install_internal_ca_cert": {
+      "tier": "write",
+      "title": "Install signed certificate on an internal CA"
     },
     "fmc_license_status": {
       "tier": "read",
@@ -936,6 +956,10 @@
       "tier": "write",
       "title": "Open, submit or discard a ticket"
     },
+    "fmc_tls_decryption_check": {
+      "tier": "read",
+      "title": "What TLS decryption does to a flow"
+    },
     "fmc_unused_objects": {
       "tier": "read",
       "title": "Find unused objects"
@@ -943,6 +967,10 @@
     "fmc_update_access_rule": {
       "tier": "write",
       "title": "Update access rule"
+    },
+    "fmc_update_decryption_policy": {
+      "tier": "write",
+      "title": "Update decryption policy settings"
     },
     "fmc_update_group": {
       "tier": "write",
