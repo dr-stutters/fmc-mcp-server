@@ -20,6 +20,7 @@ from fmc_mcp._core import (
     Plan,
     ResponseFormat,
     ToolRegistrar,
+    UpstreamError,
     get_client,
     list_result,
     object_result,
@@ -620,6 +621,24 @@ def register(reg: ToolRegistrar) -> None:
                 )
         where = f"before rule {insert_before}" if insert_before else "at the end"
         params = {"insertBefore": insert_before} if insert_before else None
+        known = {r.get("id") for r in existing.items}
+
+        async def create() -> Any:
+            try:
+                return await app.api.post(base, body, params=params)
+            except UpstreamError as e:
+                if (e.status_code or 0) < 500:
+                    raise
+                made = await created_anyway(app, base, name, known)
+                if made is None:
+                    raise
+                return {
+                    **made,
+                    "warning": f"FMC answered {e.status_code} ({e}) but created the rule (FMC 10.0.1 does "
+                    f"this for a POST with insertBefore); it is rule {_index(made)}. Check it with "
+                    "fmc_get_decryption_policy; don't create it again.",
+                }
+
         return await fmc_preview(
             ctx,
             tool="fmc_create_decryption_rule",
@@ -660,7 +679,7 @@ def register(reg: ToolRegistrar) -> None:
                 blockers=blockers,
                 side_effects=[*warnings, "Takes effect on devices after the next deployment."],
             ),
-            apply=lambda: applied(app, lambda: app.api.post(base, body, params=params)),
+            apply=lambda: applied(app, create),
         )
 
     @reg.write(title="Delete decryption rule", destructive=True)
@@ -757,6 +776,19 @@ def register(reg: ToolRegistrar) -> None:
             ),
             apply=apply,
         )
+
+
+async def created_anyway(app: FmcApp, base: str, name: str, known: set[Any]) -> dict[str, Any] | None:
+    """After a 5xx on a rule POST: the new rule named `name` if FMC created it anyway (not one of the
+    `known` ids from before the POST), else None. FMC 10.0.1 answers 500 "JsonNull" to a decryption rule
+    POST with insertBefore but stores the rule at the requested index."""
+    rules = await all_rules(app, base)
+    made = [
+        r
+        for r in rules.items
+        if r.get("id") not in known and str(r.get("name", "")).lower() == name.strip().lower()
+    ]
+    return made[0] if len(made) == 1 else None
 
 
 def _index(r: dict[str, Any]) -> int | None:

@@ -122,15 +122,15 @@ async def test_host_filter_and_columns(ftd: respx.MockRouter) -> None:
     logging_on(ftd)
     data = await call("fmc_live_connections", {"device": "mcp-ftd1", "host": "10.99.1.10"})
     assert data["source"] == "syslog buffer (show logging)"
-    # the most recently active connection first (a busy buffer's first page is 'right now')
+    # open connections first ('right now'), then the most recently active
     assert [(r["protocol"], r["state"]) for r in data["results"]] == [
-        ("ICMP", "closed"),
         ("TCP", "open"),
+        ("ICMP", "closed"),
         ("TCP", "closed"),
     ]
     assert data["open"] == 1 and data["connections_seen"] == 5
     data = await call("fmc_live_connections", {"device": "mcp-ftd1"})
-    assert [r.get("id", r["protocol"]) for r in data["results"]] == ["99", "ICMP", "103", "102", "101"]
+    assert [r.get("id", r["protocol"]) for r in data["results"]] == ["102", "99", "ICMP", "103", "101"]
     data = await call("fmc_live_connections", {"device": "mcp-ftd1", "host": "10.99.1.0/24", "port": 23})
     assert [r["id"] for r in data["results"]] == ["102"]
     data = await call("fmc_live_connections", {"device": "mcp-ftd1", "protocol": "udp", "state": "closed"})
@@ -182,7 +182,8 @@ def test_alternatives_point_at_the_new_tools() -> None:
 # --- fmc_user_identity_sessions ------------------------------------------------------------------------
 
 
-async def test_sessions_by_ip_with_history(ftd: respx.MockRouter) -> None:
+async def test_sessions_by_ip_with_history(ftd: respx.MockRouter, monkeypatch: pytest.MonkeyPatch) -> None:
+    monkeypatch.setattr(live, "clock", lambda: LIVE["useractivity"]["items"][0]["time"] + 600)
     sessions = ftd.get(SESSIONS).mock(return_value=httpx.Response(200, json=LIVE["activesessions"]))
     activity = ftd.get(ACTIVITY).mock(return_value=httpx.Response(200, json=LIVE["useractivity"]))
     data = await call("fmc_user_identity_sessions", {"ip": "10.99.1.12", "history": True, "hours": 2})
@@ -202,8 +203,46 @@ async def test_sessions_by_ip_with_history(ftd: respx.MockRouter) -> None:
     ]
     assert sessions.calls.last.request.url.params["currentIP"] == "10.99.1.12"
     p = activity.calls.last.request.url.params
-    assert p["ipAddress"] == "10.99.1.12" and p["sort"] == "time:desc" and p["time"].startswith("after:")
+    assert p["ipAddress"] == "10.99.1.12" and p["sort"] == "time:desc" and "time" not in p
     assert data["history"][0]["event"] == "User Login"
+
+
+INVALID_TIME = {"error": {"category": "VALIDATION", "messages": [{"description": "Invalid time field."}]}}
+
+
+def activity(at: int | None, event: str = "User Login") -> dict[str, Any]:
+    row = {**LIVE["useractivity"]["items"][0], "time": at, "event": event}
+    return row if at is not None else {k: v for k, v in row.items() if k != "time"}
+
+
+async def test_history_window_is_applied_here(ftd: respx.MockRouter, monkeypatch: pytest.MonkeyPatch) -> None:
+    """FMC 10.0.1 answers 422 'Invalid time field.' to the spec's time=after:<epoch> filter (live,
+    2026-10-19; also after:..,before:.., epoch ms and ISO 8601), so the window is cut from the newest
+    events here."""
+    now = 1792380000
+    monkeypatch.setattr(live, "clock", lambda: now)
+    ftd.get(SESSIONS).mock(return_value=items([]))
+
+    def answer(request: httpx.Request) -> httpx.Response:
+        if "time" in request.url.params:
+            return httpx.Response(422, json=INVALID_TIME)
+        rows = [
+            activity(now - 7200, "User Logoff"),
+            activity(now - 3 * 86400),
+            activity(now - 60),
+            activity(None),
+        ]
+        return items(rows)
+
+    route = ftd.get(ACTIVITY).mock(side_effect=answer)
+    data = await call("fmc_user_identity_sessions", {"ip": "10.99.1.12", "history": True, "hours": 24})
+    assert route.called and "time" not in route.calls.last.request.url.params
+    # newest first, the 3-day-old event dropped, the one without a time kept (last)
+    assert [(h.get("time"), h["event"]) for h in data["history"]] == [
+        ("2026-10-19T03:19:00Z", "User Login"),
+        ("2026-10-19T01:20:00Z", "User Logoff"),
+        (None, "User Login"),
+    ]
 
 
 async def test_sessions_by_device_name(ftd: respx.MockRouter) -> None:
@@ -222,3 +261,30 @@ async def test_sessions_403_names_the_permission(ftd: respx.MockRouter) -> None:
 async def test_sessions_need_a_filter(ftd: respx.MockRouter) -> None:
     with pytest.raises(ToolError, match="Give an ip"):
         await call("fmc_user_identity_sessions", {})
+
+
+# --- packet-tracer flows and FTD 10's number tail (#202), recorded on FTD 10.0.0 ------------------------
+
+INJECTION = fixture("ftd_logging_injection")["text"]
+
+
+def test_parse_log_buffer_marks_packet_tracer_flows_and_drops_the_number_tail() -> None:
+    conns, _ = parse_log_buffer(INJECTION)
+    rows = {c.conn_id: c for c in conns}
+    assert rows["29"].reason == "TCP FINs from outside" and not rows["29"].simulated
+    assert rows["44"].reason == "Free the flow created as result of packet injection" and rows["44"].simulated
+
+
+async def test_packet_tracer_flows_are_left_out_and_counted(ftd: respx.MockRouter) -> None:
+    out = {"items": [{"commandInput": "show logging", "commandOutput": INJECTION}]}
+    ftd.get(CMD).mock(return_value=httpx.Response(200, json=out))
+    data = await call("fmc_live_connections", {"device": "mcp-ftd1", "host": "10.99.1.10"})
+    assert [r["id"] for r in data["results"]] == ["29"]
+    assert data["results"][0]["started"] == "2026-10-18T23:00:57Z"
+    assert data["packet_tracer_flows"] == 1 and "packet-tracer simulation" in data["note"]
+    md = await call_tool(
+        create_server(make_settings()),
+        "fmc_live_connections",
+        {"device": "mcp-ftd1", "response_format": "markdown"},
+    )
+    assert "| started | ended |" in str(md)

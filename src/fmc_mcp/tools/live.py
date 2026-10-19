@@ -40,6 +40,7 @@ from fmc_mcp.tools.troubleshoot import run_show
 SESSIONS = "analysis/activesessions"
 ACTIVITY = "analysis/useractivity"
 SESSION_CAP = 1000
+ACTIVITY_CAP = 200
 ROLE_HINT = (
     "The FMC account's role needs the Events & Logs > Analysis > Users permissions (Active Sessions, User "
     "Activity, Users) for FMC's identity view; until then ISE shows the same sessions (ise_find_session / "
@@ -86,6 +87,10 @@ ICMP = re.compile(
 )
 SNORT_FIELD = re.compile(r"(?:^|, )([A-Za-z][\w ]*?): (.*?)(?=, [A-Za-z][\w ]*?: |$)")
 TEARDOWN_USER = re.compile(r"^(?P<reason>.*?)\s*(?:\((?P<user>[^()]*\\[^()]*)\))?\s*$")
+# FTD 10 ends 302013/302014 lines with two numbers (' -1 -1', ' 0 0'); not part of the teardown reason.
+NUM_TAIL = re.compile(r"(?:\s+-?\d+)+\s*$")
+# The teardown reason of the flow packet tracer (fmc_packet_tracer, fmc_prove_policy) injects: a simulation.
+INJECTED = "packet injection"
 
 
 @dataclass
@@ -113,6 +118,7 @@ class Conn:
     started: str | None = None
     ended: str | None = None
     seq: int = 0  # line of the buffer that last mentioned it (newest activity sorts first)
+    simulated: bool = False  # a packet-tracer flow, not real traffic
 
     def row(self) -> dict[str, Any]:
         out = {
@@ -210,9 +216,10 @@ def parse_log_buffer(text: str) -> tuple[list[Conn], bool]:
                 order.append(c)
             c.state, c.ended = "closed", when
             c.duration, c.bytes = t["duration"], int(t["bytes"])
-            rest = TEARDOWN_USER.match(t["rest"] or "")
+            rest = TEARDOWN_USER.match(NUM_TAIL.sub("", t["rest"] or ""))
             if rest:
                 c.reason = rest["reason"] or None
+                c.simulated = INJECTED in (c.reason or "").lower()
                 c.user = c.user or _user(rest["user"], t["auser"], t["buser"])
         elif msg in ("302020", "302021"):
             i = ICMP.match(body)
@@ -386,15 +393,27 @@ def activity_row(a: dict[str, Any]) -> dict[str, Any]:
     return {k: v for k, v in row.items() if v not in (None, "")}
 
 
-def _seen(s: dict[str, Any]) -> float:
-    """A session's last activity for sorting: lastSeen, else loginTime (epoch s/ms or ISO 8601)."""
-    ts = s.get("lastSeen") or s.get("loginTime")
+def clock() -> float:
+    """Now, in epoch seconds (a function so tests can fix the clock)."""
+    return time.time()
+
+
+def epoch(ts: Any) -> float:
+    """An FMC timestamp (epoch seconds or milliseconds, or ISO 8601) as epoch seconds; 0.0 if unreadable."""
     try:
         n = float(ts or 0)
         return n / 1000 if n > 10**11 else n  # milliseconds, as iso() reads them
     except (TypeError, ValueError):
         stamp = iso(ts)
-        return datetime.fromisoformat(stamp.replace("Z", "+00:00")).timestamp() if stamp else 0.0
+        try:
+            return datetime.fromisoformat(stamp.replace("Z", "+00:00")).timestamp() if stamp else 0.0
+        except ValueError:
+            return 0.0
+
+
+def _seen(s: dict[str, Any]) -> float:
+    """A session's last activity for sorting: lastSeen, else loginTime (epoch s/ms or ISO 8601)."""
+    return epoch(s.get("lastSeen") or s.get("loginTime"))
 
 
 async def session_items(
@@ -429,17 +448,24 @@ async def activity_items(
     hours: int = 24,
 ) -> list[dict[str, Any]]:
     """FMC's user activity (identity logins and logoffs) of the last `hours`, newest first, filtered
-    server-side. AuthError (403) when the role lacks the Analysis > Users permissions. Also the reader
-    behind fmc_user_ip_lookup's history (F34)."""
-    params: dict[str, Any] = {"time": f"after:{int(time.time()) - hours * 3600}", "sort": "time:desc"}
+    server-side by ip/user/device. AuthError (403) when the role lacks the Analysis > Users permissions.
+    Also the reader behind fmc_user_ip_lookup's history (F34).
+
+    The window is applied here, not with FMC's `time` filter: FMC 10.0.1 answers 422 "Invalid time
+    field." to the spec's own `time=after:<epoch>` form (also `after:<epoch>,before:<epoch>`, epoch
+    milliseconds and ISO 8601), so the newest ACTIVITY_CAP events are read (sort time:desc) and the ones
+    older than `hours` dropped; an event without a readable time is kept."""
+    params: dict[str, Any] = {"sort": "time:desc"}
     if ip:
         params["ipAddress"] = ip
     if user:
         params["username"] = user
     if device:
         params["device"] = device
-    page = await app.all(await app.config_path(ACTIVITY, domain), params, cap=200)
-    return list(page.items)
+    page = await app.all(await app.config_path(ACTIVITY, domain), params, cap=ACTIVITY_CAP)
+    since = clock() - hours * 3600
+    events = [a for a in page.items if not epoch(a.get("time")) or epoch(a.get("time")) >= since]
+    return sorted(events, key=lambda a: epoch(a.get("time")), reverse=True)
 
 
 async def active_sessions(
@@ -517,12 +543,13 @@ def register(reg: ToolRegistrar) -> None:
         device's syslog buffer ('show logging': connection built/teardown messages and Snort
         connection events); if the buffer is off the answer says how to turn it on. Where FMC's API
         lists 'show conn' (read from its spec at run time) the live connection table is used instead.
-        From the buffer, the most recently active connections come first; filter by host, user, port,
-        protocol or state. The buffer needs the device's platform settings to log to the internal buffer
-        at informational, with the connection messages 302013-302021 enabled (FTD ships them off) and a
-        buffer larger than the 4 KiB default; fmc_get_platform_settings shows the destinations. Pair with
-        fmc_packet_tracer (why a flow is allowed or dropped) and fmc_user_identity_sessions (who is on an
-        IP)."""
+        From the buffer, open connections come first, then the most recently active (with start and end
+        times when the device timestamps its logs); packet-tracer simulations are left out (counted in
+        `packet_tracer_flows`); filter by host, user, port, protocol or state. The buffer needs the
+        device's platform settings to log to the internal buffer at informational, with the connection
+        messages 302013-302021 enabled (FTD ships them off) and a buffer larger than the 4 KiB default;
+        fmc_get_platform_settings shows the destinations. Pair with fmc_packet_tracer (why a flow is
+        allowed or dropped) and fmc_user_identity_sessions (who is on an IP)."""
         app: FmcApp = get_client(ctx)
         net = _host_filter(host)
         dev = await resolve_device(app, device, domain)
@@ -553,13 +580,15 @@ def register(reg: ToolRegistrar) -> None:
         else:
             text = await run_show(app, dev["id"], "show logging", domain, supported)
             conns, enabled = parse_log_buffer(text)
-            conns.sort(key=lambda c: -c.seq)  # most recent activity first
+            # open connections first ('right now'), then the most recent activity
+            conns.sort(key=lambda c: (c.state != "open", -c.seq))
             source = "syslog buffer (show logging)"
             if not enabled:
                 off = {"device": dev.get("name"), "source": source, "available": False, "note": BUFFER_HINT}
                 return list_result(page_of([], limit=limit, offset=offset), fmt=response_format, extra=off)
 
         rows = []
+        simulated = 0
         for c in conns:
             ips = c.ips()
             if net is not None and not any(_in(net, ip) for ip in ips):
@@ -574,6 +603,9 @@ def register(reg: ToolRegistrar) -> None:
                 named = bool(c.user and user.lower() in c.user.lower())
                 if not named and not (user_ips & set(ips)):
                     continue
+            if c.simulated:
+                simulated += 1
+                continue
             rows.append(c.row())
         extra: dict[str, Any] = {
             "device": dev.get("name"),
@@ -583,6 +615,12 @@ def register(reg: ToolRegistrar) -> None:
         }
         if user_ips:
             extra["user_ips"] = sorted(user_ips)
+        if simulated:
+            extra["packet_tracer_flows"] = simulated
+            notes.append(
+                f"{simulated} packet-tracer simulation(s) left out: fmc_packet_tracer and fmc_prove_policy "
+                "inject a flow the device logs like a connection ('packet injection')."
+            )
         if source.startswith("syslog"):
             notes.append(
                 "From the log buffer: 'open' means no teardown logged yet; bytes and duration arrive with "
@@ -600,6 +638,8 @@ def register(reg: ToolRegistrar) -> None:
             "bytes",
             "duration",
             "reason",
+            "started",
+            "ended",
         ]
         if source.startswith("show conn"):
             columns = ["protocol", "initiator", "responder", "flags", "idle", "duration", "bytes", "rule"]

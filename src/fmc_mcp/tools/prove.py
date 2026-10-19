@@ -25,6 +25,7 @@ from pydantic import BaseModel, Field
 
 from fmc_mcp._core import (
     InvalidRequest,
+    NotFound,
     ResponseFormat,
     ToolRegistrar,
     UpstreamError,
@@ -37,12 +38,14 @@ from fmc_mcp.client import FmcApp
 from fmc_mcp.flow import DeviceContext, device_context
 from fmc_mcp.tools.common import Domain
 from fmc_mcp.tools.device_config import device_interfaces, resolve_device
-from fmc_mcp.tools.devices import DEVICES
+from fmc_mcp.tools.devices import DEVICES, HA_PAIRS
 from fmc_mcp.tools.identity_sources import user_ips
 from fmc_mcp.tools.troubleshoot import packet_trace
 
 MAX_FLOWS = 25
 AUTO_DEVICE_CAP = 10  # devices whose interfaces and routes are read to place a flow with no device
+# The drop of a trace run on an HA standby unit: it drops everything, so says nothing about the policy.
+FO_STANDBY = "fo-standby"
 # Drops that are the policy's decision (access/prefilter rule, Snort verdict, Security Intelligence).
 POLICY_DROP = re.compile(r"acl-drop|snort|firewall|deny|denied|block|sec-?intel|prefilter", re.I)
 POLICY_PHASES = ("ACCESS-LIST", "SNORT", "PREFILTER")
@@ -70,7 +73,9 @@ class Expectation(BaseModel):
         description="The user expected on the source IP (AD name, e.g. alice or LAB\\alice): the row checks "
         "the device saw this user",
     )
-    device: str | None = Field(None, description="FTD to trace on (name/UUID); default: the call's device")
+    device: str | None = Field(
+        None, description="FTD or HA pair to trace on (name/UUID); default: the call's device"
+    )
     input_interface: str | None = Field(None, description="Ingress interface; default: from the source IP")
     rule: str | None = Field(
         None, description="The rule expected to decide it (name); a different one = mismatch"
@@ -100,11 +105,56 @@ class Placer:
     interfaces: dict[str, list[tuple[str, dict[str, Any]]]] = field(default_factory=dict)
     pool: list[dict[str, Any]] | None = None
     catalog: Catalog | None = None
+    ha: list[dict[str, Any]] | None = None
+    unit_pair: dict[str, tuple[str, str | None]] = field(default_factory=dict)  # unit id -> (pair, state)
+    left_out: list[str] = field(default_factory=list)
+
+    async def pairs(self) -> list[dict[str, Any]]:
+        """The domain's HA pairs (read once), and which pair and failover state each unit has."""
+        if self.ha is None:
+            try:
+                self.ha = (
+                    await self.app.all(await self.app.config_path(HA_PAIRS, self.domain), cap=500)
+                ).items
+            except UpstreamError:
+                self.ha = []
+            for pair in self.ha:
+                for unit in ha_units(pair):
+                    self.unit_pair[unit["id"]] = (str(pair.get("name")), unit["state"])
+        return self.ha
 
     async def named(self, ref: str) -> dict[str, Any]:
+        """A device by name or UUID; an HA pair's name or UUID means its active unit (FMC's failover
+        state; the primary when FMC knows no active unit)."""
         if ref not in self.devices:
-            self.devices[ref] = await resolve_device(self.app, ref, self.domain)
+            try:
+                self.devices[ref] = await resolve_device(self.app, ref, self.domain)
+            except (InvalidRequest, NotFound):
+                want = ref.strip().lower()
+                pair = next(
+                    (
+                        p
+                        for p in await self.pairs()
+                        if want in (str(p.get("name", "")).lower(), str(p.get("id", "")).lower())
+                    ),
+                    None,
+                )
+                units = ha_units(pair) if pair else []
+                if not units:
+                    raise
+                unit = next((u for u in units if unit_kind(u["state"]) == "active"), units[0])
+                self.devices[ref] = await resolve_device(self.app, unit["id"], self.domain)
+        await self.pairs()
         return self.devices[ref]
+
+    def label(self, dev: dict[str, Any]) -> str:
+        """'mcp-fw-ha (mcp-fw-ha-a, active)' for an HA unit, else the device name."""
+        name = str(dev.get("name"))
+        pair = self.unit_pair.get(str(dev.get("id", "")).lower())
+        if not pair:
+            return name
+        state = unit_kind(pair[1])
+        return f"{pair[0]} ({name}, {state})" if state else f"{pair[0]} ({name})"
 
     async def context(self, dev: dict[str, Any]) -> DeviceContext:
         if dev["id"] not in self.contexts:
@@ -124,10 +174,23 @@ class Placer:
             if self.candidates:
                 self.pool = [await self.named(c) for c in self.candidates]
             else:
-                page = await self.app.all(
-                    await self.app.config_path(DEVICES, self.domain), cap=AUTO_DEVICE_CAP
-                )
-                self.pool = page.items
+                # Connected devices only, and no HA standby unit (it drops every packet it traces).
+                page = await self.app.all(await self.app.config_path(DEVICES, self.domain), cap=1000)
+                await self.pairs()
+                usable = []
+                for d in page.items:
+                    pair = self.unit_pair.get(str(d.get("id", "")).lower())
+                    if d.get("isConnected") is False:
+                        self.left_out.append(f"{d.get('name')} (disconnected)")
+                    elif pair and unit_kind(pair[1]) == "standby":
+                        self.left_out.append(f"{d.get('name')} (standby unit of {pair[0]})")
+                    else:
+                        usable.append(d)
+                self.pool = usable[:AUTO_DEVICE_CAP]
+                self.left_out += [
+                    f"{d.get('name')} (over the first {AUTO_DEVICE_CAP}; pass `candidates`)"
+                    for d in usable[AUTO_DEVICE_CAP:]
+                ]
         src, dst = ipaddress.ip_address(source), ipaddress.ip_address(destination)
         best: tuple[int, dict[str, Any], str] | None = None
         for dev in self.pool:
@@ -141,13 +204,36 @@ class Placer:
             score = 2 if ingress.how.startswith("connected") else 1
             if best is None or score > best[0]:
                 best = (score, dev, f"{ingress.how} -> {egress.how}")
+            if score == 2:
+                break  # the source's own subnet: no other device can beat it
         if best is None:
             where = ", ".join(str(d.get("name")) for d in self.pool) or "none"
+            skipped = f"; left out: {', '.join(self.left_out)}" if self.left_out else ""
             raise InvalidRequest(
                 f"No device routes {source} -> {destination} through two of its interfaces "
-                f"(checked: {where}); give the flow's device."
+                f"(checked: {where}{skipped}); give the flow's device."
             )
         return best[1], best[2]
+
+
+def ha_units(pair: dict[str, Any] | None) -> list[dict[str, Any]]:
+    """An HA pair's units with FMC's failover state (metadata.<side>Status.currentStatus)."""
+    meta = (pair or {}).get("metadata") or {}
+    out = []
+    for side in ("primary", "secondary"):
+        unit = (pair or {}).get(side) or {}
+        if unit.get("id"):
+            state = (meta.get(f"{side}Status") or {}).get("currentStatus")
+            out.append({"id": str(unit["id"]).lower(), "name": unit.get("name"), "state": state})
+    return out
+
+
+def unit_kind(state: str | None) -> str | None:
+    """'active', 'standby' or FMC's own word ('Failed', ...) for a unit's failover state."""
+    s = str(state or "").strip().lower()
+    if not s:
+        return None
+    return "standby" if "standby" in s else "active" if "active" in s else s
 
 
 def user_seen(trace: dict[str, Any]) -> str | None:
@@ -252,13 +338,17 @@ def register(reg: ToolRegistrar) -> None:
         flows: Flows,
         device: Annotated[
             str | None,
-            Field(description="FTD to trace every flow on unless the flow names its own (name or UUID)"),
+            Field(
+                description="FTD to trace every flow on unless the flow names its own (name or UUID; an HA "
+                "pair's name means its active unit)"
+            ),
         ] = None,
         candidates: Annotated[
             list[str] | None,
             Field(
                 description="Devices to choose from for flows without a device (default: the first "
-                f"{AUTO_DEVICE_CAP} managed devices); the one with the source on a connected subnet wins"
+                f"{AUTO_DEVICE_CAP} connected managed devices, HA standby units left out); the one with the "
+                "source on a connected subnet wins"
             ),
         ] = None,
         domain: Domain = None,
@@ -291,7 +381,7 @@ def register(reg: ToolRegistrar) -> None:
                     dev, found = await placer.named(dev_ref), None
                 else:
                     dev, found = await placer.find(source, exp.destination)
-                base["device"] = dev.get("name")
+                base["device"] = placer.label(dev)
                 if found:
                     base["device_found_by"] = found
                 ctx_ = await placer.context(dev) if not exp.input_interface else None
@@ -322,6 +412,14 @@ def register(reg: ToolRegistrar) -> None:
                         "note": "packet tracer returned nothing",
                     }
                 )
+                continue
+            if FO_STANDBY in str(traces[0].get("drop_reason") or ""):
+                note = (
+                    f"traced on a standby unit ({traces[0].get('drop_reason')}): a standby unit drops "
+                    "everything, so this says nothing about the policy; trace on the active unit or give "
+                    "the HA pair's name"
+                )
+                rows.append({**base, "result": "error", "expect": exp.expect, "note": note})
                 continue
             row = {**base, **judge(exp, traces[0], source), "input_interface": out.get("input_interface")}
             if len(traces) > 1:

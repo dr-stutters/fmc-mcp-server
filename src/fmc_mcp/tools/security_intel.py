@@ -102,12 +102,30 @@ def _age(seconds: float) -> str:
     return f"{m // 1440} days"
 
 
+def _valid_entries(meta: dict[str, Any]) -> list[str]:
+    """The entries FMC 10.0.1 lists under metadata.validEntries: what it read from the feed URL (it fetches a
+    feed when it is created). FMC doesn't fill entryCount or feedUpdateTime for such a feed over REST."""
+    got = meta.get("validEntries")
+    return [str(e) for e in got] if isinstance(got, list) else []
+
+
 def feed_status(obj: dict[str, Any], now: float | None = None) -> str:
-    """'ok', 'not downloaded yet', 'stale ...' or 'downloaded but empty' for an SI feed object."""
+    """'ok', 'fetched ...', 'not downloaded yet', 'stale ...' or 'downloaded but empty' for an SI feed."""
     meta = obj.get("metadata") or {}
     last = _epoch(meta.get("feedUpdateTime"))
     freq = obj.get("updateFrequency")
     if last is None:
+        valid = _valid_entries(meta)
+        if valid:
+            # FMC 10.0.1 (live): validEntries filled, entryCount 0 and no feedUpdateTime, also after the
+            # devices had started to block the feed's entries
+            every = f" (every {freq} min)" if isinstance(freq, int) and freq > 0 else ""
+            return (
+                f"fetched: FMC read {len(valid)} valid entries from the feed URL; FMC 10.0.1 doesn't "
+                "report over REST when Security Intelligence loads them (entryCount 0, no update time). "
+                f"Devices can take until the feed's next refresh{every} and a deploy to block them: check "
+                "with fmc_packet_tracer to one entry (drop reason 'reputation')"
+            )
         return "not downloaded yet (FMC fetches a feed when it is created and at every refresh)"
     age = (now or time.time()) - last
     if isinstance(freq, int) and freq > 0 and age > max(2 * freq * 60, 3600):
@@ -132,6 +150,9 @@ def source_row(kind: str, source: str, obj: dict[str, Any], now: float | None = 
             last_update=_when(meta.get("feedUpdateTime")),
             status=feed_status(obj, now),
         )
+        valid = _valid_entries(meta)
+        if valid:
+            row.update(fetched_entries=len(valid), fetched_sample=valid[:5])
     else:
         file_name = str(obj.get("fileName") or "")
         row.update(
@@ -833,7 +854,13 @@ def register(reg: ToolRegistrar) -> None:
         async def apply() -> Any:
             if current is not None:
                 out = await upload_file(
-                    app, f"{lists_path}/{current['id']}", name.strip(), file_name, text, method="PUT"
+                    app,
+                    f"{lists_path}/{current['id']}",
+                    name.strip(),
+                    file_name,
+                    text,
+                    method="PUT",
+                    object_id=str(current["id"]),
                 )
             else:
                 out = await upload_file(app, lists_path, name.strip(), file_name, text)
