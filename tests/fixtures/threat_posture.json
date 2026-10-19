@@ -1,0 +1,637 @@
+{
+  "_source": "FMC 10.0.1, domain Global/mcp-test-leaf, read-only GETs through fmc-mcp (2026-10-18) for mcp-fw-threat-acp: the policy, its rules, the intrusion policies (usage lists trimmed), its assignment, the assigned device (address and serial redacted), the network analysis policies (expanded: metadata.usage.asscoiatedAcPolicies names the access policies using each; re-read in review). The Default Prefilter Policy had no rules.",
+  "access_policy": {
+    "metadata": {
+      "inherit": false,
+      "lockingStatus": {
+        "status": "UNLOCKED"
+      },
+      "timestamp": 1792330616435,
+      "lastUser": {
+        "name": "mcp-api-svc"
+      },
+      "domain": {
+        "name": "Global \\ mcp-test-leaf",
+        "id": "a1c73df0-8353-8db7-1097-000000000000",
+        "type": "Domain"
+      }
+    },
+    "type": "AccessPolicy",
+    "rules": {
+      "refType": "list",
+      "type": "AccessRule"
+    },
+    "securityIntelligence": {
+      "id": "00000000-0000-0ed3-0000-021474901902",
+      "type": "SecurityIntelligencePolicy"
+    },
+    "advancedLoggingSetting": {
+      "type": "AdvancedLoggingSetting",
+      "id": "00000000-0000-0ed3-0000-021474901856"
+    },
+    "eveSetting": {
+      "id": "00000000-0000-0ed3-0000-021474901858",
+      "type": "EVESetting",
+      "enabled": false,
+      "inheritFromParent": false,
+      "isLockedForChild": false
+    },
+    "prefilterPolicySetting": {
+      "type": "PrefilterPolicy",
+      "name": "Default Prefilter Policy",
+      "id": "4897c8f4-e211-4661-b0a4-25b0826cded9"
+    },
+    "loggingPolicySetting": {
+      "isLockedForChild": false,
+      "syslogConfigFromPlatformSetting": false,
+      "enableFileAndMalwareSyslog": false,
+      "inheritFromParent": false,
+      "enableipsSyslog": false,
+      "enableSplunk": true,
+      "type": "LoggingSetting",
+      "id": "00000000-0000-0ed3-0000-021474901878"
+    },
+    "defaultAction": {
+      "sendEventsToFMC": false,
+      "enableSyslog": false,
+      "logBegin": false,
+      "logEnd": false,
+      "action": "BLOCK",
+      "type": "AccessPolicyDefaultAction",
+      "id": "00000000-0000-0ed3-0000-000268434483"
+    },
+    "name": "mcp-fw-threat-acp",
+    "description": "FW overnight run: threat-defense ACP for mcp-ftd-identity (baseline copied from mcp-test-identity-acp)",
+    "id": "00000000-0000-0ed3-0000-021474901848"
+  },
+  "access_rules": {
+    "items": [
+      {
+        "metadata": {
+          "ruleIndex": 1,
+          "section": "Default",
+          "category": "--Undefined--",
+          "accessPolicy": {
+            "name": "mcp-fw-threat-acp",
+            "id": "00000000-0000-0ed3-0000-021474901848",
+            "type": "AccessPolicy"
+          },
+          "timestamp": 1792330616084,
+          "domain": {
+            "name": "Global \\ mcp-test-leaf",
+            "id": "a1c73df0-8353-8db7-1097-000000000000",
+            "type": "Domain"
+          }
+        },
+        "enabled": true,
+        "advancedLogging": {},
+        "sendEventsToFMC": true,
+        "enableSyslog": false,
+        "destinationDynamicObjects": {},
+        "logBegin": false,
+        "logEnd": true,
+        "logFiles": false,
+        "sourceDynamicObjects": {},
+        "commentHistoryList": [
+          {
+            "date": "2026-10-18T13:36:45.000+0000",
+            "comment": "FW run: copy of mcp-test-identity-baseline (inside -> outside telnet/http)",
+            "user": {
+              "name": "mcp-api-svc",
+              "type": "User"
+            }
+          }
+        ],
+        "destinationZones": {
+          "objects": [
+            {
+              "name": "mcp-test-identity-outside",
+              "id": "2481a77e-c9d6-11f1-8e93-9a786f180443",
+              "type": "SecurityZone",
+              "subType": "Routed"
+            }
+          ]
+        },
+        "sourceZones": {
+          "objects": [
+            {
+              "name": "mcp-test-identity-inside",
+              "id": "20d5bbce-c9d6-11f1-8e93-9a786f180443",
+              "type": "SecurityZone",
+              "subType": "Routed"
+            }
+          ]
+        },
+        "vlanTags": {},
+        "destinationPorts": {
+          "literals": [
+            {
+              "type": "PortLiteral",
+              "port": "23",
+              "protocol": "6"
+            },
+            {
+              "type": "PortLiteral",
+              "port": "80",
+              "protocol": "6"
+            }
+          ]
+        },
+        "action": "ALLOW",
+        "variableSet": {
+          "name": "Default-Set",
+          "id": "76fa83ea-c972-11e2-8be8-8e45bb1343c0",
+          "type": "VariableSet"
+        },
+        "type": "AccessRule",
+        "name": "mcp-fw-baseline",
+        "id": "00000000-0000-0ed3-0000-000268434484"
+      },
+      {
+        "metadata": {
+          "ruleIndex": 2,
+          "section": "Default",
+          "category": "--Undefined--",
+          "accessPolicy": {
+            "name": "mcp-fw-threat-acp",
+            "id": "00000000-0000-0ed3-0000-021474901848",
+            "type": "AccessPolicy"
+          },
+          "timestamp": 1792330616078,
+          "domain": {
+            "name": "Global \\ mcp-test-leaf",
+            "id": "a1c73df0-8353-8db7-1097-000000000000",
+            "type": "Domain"
+          }
+        },
+        "enabled": true,
+        "advancedLogging": {},
+        "sendEventsToFMC": true,
+        "enableSyslog": false,
+        "destinationDynamicObjects": {},
+        "logBegin": false,
+        "logEnd": true,
+        "logFiles": false,
+        "sourceDynamicObjects": {},
+        "commentHistoryList": [
+          {
+            "date": "2026-10-18T13:36:55.000+0000",
+            "comment": "FW run: https, dns, iperf3 and ping to the outside host for the Stage 2 proofs",
+            "user": {
+              "name": "mcp-api-svc",
+              "type": "User"
+            }
+          }
+        ],
+        "destinationZones": {
+          "objects": [
+            {
+              "name": "mcp-test-identity-outside",
+              "id": "2481a77e-c9d6-11f1-8e93-9a786f180443",
+              "type": "SecurityZone",
+              "subType": "Routed"
+            }
+          ]
+        },
+        "sourceZones": {
+          "objects": [
+            {
+              "name": "mcp-test-identity-inside",
+              "id": "20d5bbce-c9d6-11f1-8e93-9a786f180443",
+              "type": "SecurityZone",
+              "subType": "Routed"
+            }
+          ]
+        },
+        "vlanTags": {},
+        "destinationPorts": {
+          "literals": [
+            {
+              "type": "PortLiteral",
+              "port": "443",
+              "protocol": "6"
+            },
+            {
+              "type": "PortLiteral",
+              "port": "53",
+              "protocol": "17"
+            },
+            {
+              "type": "PortLiteral",
+              "port": "5201",
+              "protocol": "6"
+            },
+            {
+              "type": "ICMPv4PortLiteral",
+              "protocol": "1",
+              "icmpType": "Any"
+            }
+          ]
+        },
+        "action": "ALLOW",
+        "variableSet": {
+          "name": "Default-Set",
+          "id": "76fa83ea-c972-11e2-8be8-8e45bb1343c0",
+          "type": "VariableSet"
+        },
+        "type": "AccessRule",
+        "name": "mcp-fw-lab-extra",
+        "id": "00000000-0000-0ed3-0000-000268434485"
+      }
+    ],
+    "paging": {
+      "offset": 0,
+      "limit": 25,
+      "count": 2,
+      "pages": 1
+    }
+  },
+  "intrusion_policies": {
+    "items": [
+      {
+        "name": "Balanced Security and Connectivity",
+        "id": "6c66b83c-bc23-55b6-879d-c4d847443503",
+        "type": "intrusionpolicy",
+        "description": "Balanced Security and Connectivity",
+        "inlineDrop": 1,
+        "inspectionMode": "PREVENTION",
+        "isSystemDefined": true,
+        "metadata": {
+          "usage": {
+            "accesspolicy": 0,
+            "zerotrustpolicy": 0,
+            "devices": 0
+          },
+          "domain": {
+            "name": "Global",
+            "id": "e276abec-e0f2-11e3-8169-6d9ed49b625f",
+            "type": "Domain"
+          },
+          "snortEngine": "SNORT3"
+        }
+      },
+      {
+        "name": "Connectivity Over Security",
+        "id": "4cba6c52-6a07-54cd-a324-5bb7be06a484",
+        "type": "intrusionpolicy",
+        "description": "Connectivity Over Security",
+        "inlineDrop": 1,
+        "inspectionMode": "PREVENTION",
+        "isSystemDefined": true,
+        "metadata": {
+          "usage": {
+            "accesspolicy": 0,
+            "zerotrustpolicy": 0,
+            "devices": 0
+          },
+          "domain": {
+            "name": "Global",
+            "id": "e276abec-e0f2-11e3-8169-6d9ed49b625f",
+            "type": "Domain"
+          },
+          "snortEngine": "SNORT3"
+        }
+      },
+      {
+        "name": "Maximum Detection",
+        "id": "3c7d3f87-c264-504e-9a16-4a9cd5fc502c",
+        "type": "intrusionpolicy",
+        "description": "Maximum Detection",
+        "inlineDrop": 1,
+        "inspectionMode": "PREVENTION",
+        "isSystemDefined": true,
+        "metadata": {
+          "usage": {
+            "accesspolicy": 0,
+            "zerotrustpolicy": 0,
+            "devices": 0
+          },
+          "domain": {
+            "name": "Global",
+            "id": "e276abec-e0f2-11e3-8169-6d9ed49b625f",
+            "type": "Domain"
+          },
+          "snortEngine": "SNORT3"
+        }
+      },
+      {
+        "name": "No Rules Active",
+        "id": "ba8dc24f-f2a4-53dc-86b3-5252e5682579",
+        "type": "intrusionpolicy",
+        "description": "No Rules Active",
+        "inlineDrop": 1,
+        "inspectionMode": "PREVENTION",
+        "isSystemDefined": true,
+        "metadata": {
+          "usage": {
+            "accesspolicy": 0,
+            "zerotrustpolicy": 0,
+            "devices": 0
+          },
+          "domain": {
+            "name": "Global",
+            "id": "e276abec-e0f2-11e3-8169-6d9ed49b625f",
+            "type": "Domain"
+          },
+          "snortEngine": "SNORT3"
+        }
+      },
+      {
+        "name": "Security Over Connectivity",
+        "id": "0f9e8294-d03d-5b1f-a70c-549ca9213405",
+        "type": "intrusionpolicy",
+        "description": "Security Over Connectivity",
+        "inlineDrop": 1,
+        "inspectionMode": "PREVENTION",
+        "isSystemDefined": true,
+        "metadata": {
+          "usage": {
+            "accesspolicy": 0,
+            "zerotrustpolicy": 0,
+            "devices": 0
+          },
+          "domain": {
+            "name": "Global",
+            "id": "e276abec-e0f2-11e3-8169-6d9ed49b625f",
+            "type": "Domain"
+          },
+          "snortEngine": "SNORT3"
+        }
+      }
+    ],
+    "paging": {
+      "offset": 0,
+      "limit": 20,
+      "count": 5,
+      "pages": 1
+    }
+  },
+  "assignments": {
+    "items": [
+      {
+        "type": "PolicyAssignment",
+        "policy": {
+          "type": "AccessPolicy",
+          "name": "mcp-fw-threat-acp",
+          "id": "00000000-0000-0ed3-0000-021474901848"
+        },
+        "targets": [
+          {
+            "id": "71f24ba4-c9c6-11f1-b39a-f8b1a0356797",
+            "type": "Device",
+            "name": "mcp-ftd-identity",
+            "keepLocalEvents": false
+          }
+        ],
+        "name": "mcp-fw-threat-acp",
+        "id": "00000000-0000-0ed3-0000-021474901848"
+      }
+    ],
+    "paging": {
+      "offset": 0,
+      "limit": 50,
+      "count": 1,
+      "pages": 1
+    }
+  },
+  "device": {
+    "deploymentStatus": "DEPLOYED",
+    "id": "71f24ba4-c9c6-11f1-b39a-f8b1a0356797",
+    "type": "Device",
+    "name": "mcp-ftd-identity",
+    "model": "Cisco Secure Firewall Threat Defense for KVM",
+    "sw_version": "10.0.0",
+    "accessPolicy": {
+      "name": "mcp-fw-threat-acp",
+      "id": "00000000-0000-0ed3-0000-021474901848",
+      "type": "AccessPolicy"
+    },
+    "hostName": "192.0.2.10",
+    "license_caps": [
+      "ESSENTIALS",
+      "MALWARE_DEFENSE",
+      "IPS",
+      "URL"
+    ],
+    "performanceTier": "FTDv5",
+    "isConnected": true,
+    "ftdMode": "ROUTED",
+    "metadata": {
+      "readOnly": {
+        "state": false
+      },
+      "deviceSerialNumber": "REDACTED",
+      "domain": {
+        "name": "mcp-test-leaf",
+        "id": "a1c73df0-8353-8db7-1097-000000000000",
+        "type": "Domain"
+      },
+      "snortVersion": "3.9.3.1-61"
+    },
+    "snortEngine": "SNORT3",
+    "managementState": "MANAGED"
+  },
+  "network_analysis_policies": {
+    "items": [
+      {
+        "name": "Balanced Security and Connectivity",
+        "id": "db7dc865-16b5-5eab-8b5a-c85f3a61690b",
+        "type": "NetworkAnalysisPolicy",
+        "description": "Balanced Security and Connectivity",
+        "inspectionMode": "PREVENTION",
+        "isSystemDefined": true,
+        "metadata": {
+          "mappedPolicy": {
+            "name": "Balanced Security and Connectivity",
+            "id": "abba00a0-cf29-425c-9d75-49699aadc898",
+            "type": "NetworkAnalysisPolicy",
+            "inspectionMode": "PREVENTION",
+            "snortEngine": "SNORT2"
+          },
+          "usage": {
+            "asscoiatedAcPolicies": [
+              {
+                "domainUuid": "a1c73df0-8353-8db7-1097-000000000000",
+                "type": "PG.FIREWALL.NGFWAccessControlPolicy",
+                "name": "mcp-fw-base-acp",
+                "id": "00000000-0000-0ed3-0000-021474903666"
+              },
+              {
+                "domainUuid": "a1c73df0-8353-8db7-1097-000000000000",
+                "type": "PG.FIREWALL.NGFWAccessControlPolicy",
+                "name": "mcp-fw-threat-acp",
+                "id": "00000000-0000-0ed3-0000-021474901848"
+              },
+              {
+                "domainUuid": "a1c73df0-8353-8db7-1097-000000000000",
+                "type": "PG.FIREWALL.NGFWAccessControlPolicy",
+                "name": "mcp-sdwan-acp",
+                "id": "00000000-0000-0ed3-0000-021474856047"
+              },
+              {
+                "domainUuid": "e276abec-e0f2-11e3-8169-6d9ed49b625f",
+                "type": "PG.FIREWALL.NGFWAccessControlPolicy",
+                "name": "mcp-test-hygiene-acp",
+                "id": "00000000-0000-0ed3-0000-021474850577"
+              },
+              {
+                "domainUuid": "a1c73df0-8353-8db7-1097-000000000000",
+                "type": "PG.FIREWALL.NGFWAccessControlPolicy",
+                "name": "mcp-test-acp-import",
+                "id": "00000000-0000-0ed3-0000-021474849158"
+              },
+              {
+                "domainUuid": "e276abec-e0f2-11e3-8169-6d9ed49b625f",
+                "type": "PG.FIREWALL.NGFWAccessControlPolicy",
+                "name": "mcp-test-identity-acp",
+                "id": "00000000-0000-0ed3-0000-021474840461"
+              },
+              {
+                "domainUuid": "e276abec-e0f2-11e3-8169-6d9ed49b625f",
+                "type": "PG.FIREWALL.NGFWAccessControlPolicy",
+                "name": "mcp-test-ha-acp",
+                "id": "00000000-0000-0ed3-0000-021474837244"
+              },
+              {
+                "domainUuid": "e276abec-e0f2-11e3-8169-6d9ed49b625f",
+                "type": "PG.FIREWALL.NGFWAccessControlPolicy",
+                "name": "mcp-test-ftd-acp",
+                "id": "00000000-0000-0ed3-0000-021474837072"
+              },
+              {
+                "domainUuid": "e276abec-e0f2-11e3-8169-6d9ed49b625f",
+                "type": "PG.FIREWALL.NGFWAccessControlPolicy",
+                "name": "mcp-test-acp",
+                "id": "00000000-0000-0ed3-0000-021474836766"
+              }
+            ],
+            "templates": 0,
+            "accesspolicy": 9,
+            "zerotrustpolicy": 0,
+            "devices": 15
+          },
+          "domain": {
+            "name": "Global",
+            "id": "e276abec-e0f2-11e3-8169-6d9ed49b625f",
+            "type": "Domain"
+          },
+          "snortEngine": "SNORT3"
+        },
+        "inspectorConfig": {
+          "type": "InspectorConfig"
+        },
+        "inspectorOverrideConfig": {
+          "type": "InspectorOverrideConfig"
+        }
+      },
+      {
+        "name": "Connectivity Over Security",
+        "id": "ae21223c-eb33-5ff0-bbe0-80c702115d13",
+        "type": "NetworkAnalysisPolicy",
+        "description": "Connectivity Over Security",
+        "inspectionMode": "PREVENTION",
+        "isSystemDefined": true,
+        "metadata": {
+          "mappedPolicy": {
+            "name": "Connectivity Over Security",
+            "id": "abbad193-46bd-4535-ade6-73cc7e76fb7b",
+            "type": "NetworkAnalysisPolicy",
+            "inspectionMode": "PREVENTION",
+            "snortEngine": "SNORT2"
+          },
+          "usage": {
+            "accesspolicy": 0,
+            "zerotrustpolicy": 0,
+            "devices": 0
+          },
+          "domain": {
+            "name": "Global",
+            "id": "e276abec-e0f2-11e3-8169-6d9ed49b625f",
+            "type": "Domain"
+          },
+          "snortEngine": "SNORT3"
+        },
+        "inspectorConfig": {
+          "type": "InspectorConfig"
+        },
+        "inspectorOverrideConfig": {
+          "type": "InspectorOverrideConfig"
+        }
+      },
+      {
+        "name": "Maximum Detection",
+        "id": "8bda2bed-f951-5cca-9d2a-96b9660a4fb1",
+        "type": "NetworkAnalysisPolicy",
+        "description": "Maximum Detection",
+        "inspectionMode": "PREVENTION",
+        "isSystemDefined": true,
+        "metadata": {
+          "mappedPolicy": {
+            "name": "Maximum Detection",
+            "id": "d224e29c-6c27-11e0-ac9d-988fc3da9be6",
+            "type": "NetworkAnalysisPolicy",
+            "inspectionMode": "PREVENTION",
+            "snortEngine": "SNORT2"
+          },
+          "usage": {
+            "accesspolicy": 0,
+            "zerotrustpolicy": 0,
+            "devices": 0
+          },
+          "domain": {
+            "name": "Global",
+            "id": "e276abec-e0f2-11e3-8169-6d9ed49b625f",
+            "type": "Domain"
+          },
+          "snortEngine": "SNORT3"
+        },
+        "inspectorConfig": {
+          "type": "InspectorConfig"
+        },
+        "inspectorOverrideConfig": {
+          "type": "InspectorOverrideConfig"
+        }
+      },
+      {
+        "name": "Security Over Connectivity",
+        "id": "b0f1ca0e-1b9b-5bf2-b7a9-c88a9e0d31a9",
+        "type": "NetworkAnalysisPolicy",
+        "description": "Security Over Connectivity",
+        "inspectionMode": "PREVENTION",
+        "isSystemDefined": true,
+        "metadata": {
+          "mappedPolicy": {
+            "name": "Security Over Connectivity",
+            "id": "abba9b63-bb10-4729-b901-2e2aa0f4491c",
+            "type": "NetworkAnalysisPolicy",
+            "inspectionMode": "PREVENTION",
+            "snortEngine": "SNORT2"
+          },
+          "usage": {
+            "accesspolicy": 0,
+            "zerotrustpolicy": 0,
+            "devices": 0
+          },
+          "domain": {
+            "name": "Global",
+            "id": "e276abec-e0f2-11e3-8169-6d9ed49b625f",
+            "type": "Domain"
+          },
+          "snortEngine": "SNORT3"
+        },
+        "inspectorConfig": {
+          "type": "InspectorConfig"
+        },
+        "inspectorOverrideConfig": {
+          "type": "InspectorOverrideConfig"
+        }
+      }
+    ],
+    "paging": {
+      "offset": 0,
+      "limit": 25,
+      "count": 4,
+      "pages": 1
+    }
+  }
+}

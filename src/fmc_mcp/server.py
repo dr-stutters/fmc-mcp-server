@@ -51,6 +51,7 @@ from fmc_mcp.tools import (
     security_intel,
     system,
     templates,
+    threat_posture,
     tickets,
     troubleshoot,
     vpn,
@@ -126,7 +127,8 @@ Workflows:
   prefilter and NAT rules, static routes, VPN endpoints in one ranked call) -> fmc_where_used on an object.
 - Policy review: fmc_policy_audit ranks shadowed, permissive, unlogged, uninspected, unused and mergeable
   rules, expired time ranges and duplicate objects, each with a fix to preview; then fmc_pending_changes
-  -> fmc_deploy.
+  -> fmc_deploy. Threat-defense posture (intrusion and file policies, TRUST/fastpath bypasses, SI and DNS
+  coverage, decryption, licences): fmc_threat_posture; the fmc_threat_defense_review prompt combines both.
   Prompts: fmc_policy_cleanup (findings -> approved cleanup -> diff + re-audit) and fmc_rule_change_review
   (one rule change with before/after flows, shadowing check and a deploy plan with rollback).
 - Site-to-site VPN: fmc_create_s2s_vpn -> fmc_deploy both peers -> fmc_vpn_status (every topology's
@@ -210,6 +212,7 @@ def create_server(
             analysis.register,
             find_address.register,
             hygiene.register,
+            threat_posture.register,
             deploy.register,
             device_config.register,
             object_writes.register,
