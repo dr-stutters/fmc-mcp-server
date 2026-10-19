@@ -102,7 +102,8 @@ Workflows:
   and spokes -> fmc_get_vpn_topology / fmc_list_vpn_tunnels; add or remove branches and the backup hub
   with fmc_update_sdwan_topology; remove with fmc_delete_s2s_vpn. Health per branch (WAN path metrics,
   app route paths, tunnels, degraded links): fmc_sdwan_status; "app X is slow at branch Y":
-  fmc_sdwan_troubleshoot.
+  fmc_sdwan_troubleshoot. A new branch end to end (register, template or manual config, join,
+  deploy, verify, fmc_prove_policy hand-off): the fmc_onboard_branch prompt.
 - SD-WAN application-aware routing: fmc_configure_wan_interface (priority, path monitoring) on each
   WAN link -> fmc_create_app_route (applications/networks/users out of the link with the best
   jitter, loss, RTT or MOS, or by priority) -> fmc_deploy -> fmc_sdwan_status (app routes and the
