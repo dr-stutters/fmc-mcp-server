@@ -832,7 +832,11 @@ def register(reg: ToolRegistrar) -> None:
                 if str(x.get("id")) in detail_ids:
                     try:
                         data = await app.api.get(f"{tpath}/{x['id']}/tunneldetails", timeout=120)
-                        row["fmc_details"] = detail_view(data)
+                        row["fmc_details"] = detail_view(data) or (
+                            f"{NOT_AVAILABLE}: FMC answered tunneldetails with no data for either peer "
+                            "(seen on FMC 10.0.1 for an SD-WAN tunnel that was up); device_says has the "
+                            "devices' own view"
+                        )
                     except (InvalidRequest, NotFound, UpstreamError) as err:
                         row["fmc_details"] = f"{NOT_AVAILABLE}: {err}"
                 findings += tunnel_findings(x, row, views, names_of)
