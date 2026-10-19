@@ -6,8 +6,8 @@ names it. Built on the offline-analysis catalog (fmc_mcp.catalog: objects and ne
 to addresses once per call) and the policy helpers fmc_rule_lookup and fmc_list_nat_rules use; every
 collection is read once, paged, with caps so one call stays within FMC's rate limit.
 
-User-to-IP (identity) sessions come from F34: a module that can map an IP to users appends a lookup
-to IDENTITY_LOOKUPS and fmc_find_address reports its rows with the rest.
+User-to-IP (identity) rows come from the lookups in IDENTITY_LOOKUPS: FMC's identity sessions
+(identity_sources.users_on_ip, the reader behind fmc_user_ip_lookup and fmc_user_identity_sessions).
 """
 
 # No `from __future__ import annotations`: FastMCP inspects signatures at runtime.
@@ -37,6 +37,7 @@ from fmc_mcp.tools.common import Domain, is_system, ref_label
 from fmc_mcp.tools.device_config import resolve_device
 from fmc_mcp.tools.devices import DEVICES
 from fmc_mcp.tools.dynamic_objects import DYNAMIC, mappings_of
+from fmc_mcp.tools.identity_sources import users_on_ip
 from fmc_mcp.tools.policies import (
     ACCESS,
     NAT,
@@ -90,11 +91,11 @@ LIMITS = (
     "left out of the objects area, unless include_broad. Live state: fmc_packet_tracer / fmc_rule_lookup."
 )
 
-# F34 hook: async (app, address, domain) -> rows {where, via, value[, side]} for users on that IP.
+# async (app, address, domain) -> rows {where, via, value[, side]} for users on that IP.
 IdentityLookup = Callable[
     [FmcApp, ipaddress.IPv4Address | ipaddress.IPv6Address, str | None], Awaitable[list[dict[str, Any]]]
 ]
-IDENTITY_LOOKUPS: list[IdentityLookup] = []
+IDENTITY_LOOKUPS: list[IdentityLookup] = [users_on_ip]
 
 
 def relation(have: IpInterval, want: IpInterval) -> str | None:
@@ -439,12 +440,12 @@ async def _vpn(s: Search) -> None:
 
 
 async def _identity(s: Search) -> str | None:
-    """Rows from the user-to-IP sources registered in IDENTITY_LOOKUPS (F34); a note when none."""
+    """Rows from the user-to-IP sources in IDENTITY_LOOKUPS (FMC's identity sessions); a note when none."""
     want = s.tracer.want
     if want[1] != want[2]:
         return "identity: user sessions are looked up for a single address only"
     if not IDENTITY_LOOKUPS:
-        return "identity: no user-to-IP source on this server yet (ISE pxGrid sessions arrive with F34)"
+        return "identity: no user-to-IP lookup on this server"
     ip = ipaddress.IPv4Address(want[1]) if want[0] == 4 else ipaddress.IPv6Address(want[1])
     for lookup in IDENTITY_LOOKUPS:
         try:
@@ -519,7 +520,8 @@ def register(reg: ToolRegistrar) -> None:
         dynamic-object mappings, access and prefilter rules (source or destination; literal, via an
         object, a nested group or a dynamic object), NAT rules (original/translated source and
         destination), static routes (destination or gateway), VPN protected networks and extranet
-        peers, and user sessions once an identity source is wired in (F34). Ranked: exact matches
+        peers, and the users FMC has an identity session for on a single IP (as fmc_user_ip_lookup
+        reads them; a role without Analysis > Users gives a warning instead). Ranked: exact matches
         first, then the narrowest values that contain it; each row says where it lives (policy, rule
         index and action; NAT section; device route; VPN endpoint) and via which object chain. Use it
         before changing or retiring an address, in an incident ('what touches this host?'), or before
