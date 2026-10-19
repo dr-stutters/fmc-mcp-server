@@ -17,7 +17,7 @@ from fmc_mcp.tools.devices import DEVICES, HA_PAIRS
 from fmc_mcp.tools.dns import DNS
 from fmc_mcp.tools.hygiene import SEVERITY, _call, _finding, _ref
 from fmc_mcp.tools.intrusion import IPS
-from fmc_mcp.tools.policies import ACCESS, POLICY_KINDS, PREFILTER, all_rules
+from fmc_mcp.tools.policies import ACCESS, POLICY_KINDS, PREFILTER, all_rules, policy_assignments
 from fmc_mcp.tools.security_intel import _si_policy, _si_rows
 
 # Talos Security Intelligence categories (FMC 10.0.1 names; URL and DNS ones carry a "URL " / "DNS " prefix).
@@ -87,9 +87,9 @@ def _licences(caps: list[Any] | None) -> set[str]:
 
 async def _devices(app: FmcApp, acp_id: str, domain: str | None) -> tuple[list[dict[str, Any]], list[str]]:
     """The devices (HA members included) the access policy is assigned to, with their licences."""
-    page = await app.all(await app.config_path("assignment/policyassignments", domain), cap=5000)
+    assignments = await policy_assignments(app, domain)
     targets = next(
-        (a.get("targets") or [] for a in page.items if (a.get("policy") or {}).get("id") == acp_id), []
+        (a.get("targets") or [] for a in assignments if (a.get("policy") or {}).get("id") == acp_id), []
     )
     ids: list[tuple[str, str]] = []
     notes: list[str] = []

@@ -503,6 +503,74 @@ async def test_hit_counts_lists_rule_ids_and_default(ftd: respx.MockRouter) -> N
     assert [r["rule"] for r in zero["results"]] == ["Default Action"]
 
 
+def fmc_hitcounts(rows: list[dict[str, Any]]) -> Any:
+    """FMC 10.0.1's hit-count GET as recorded: `ids` picks rows (fetchZeroHitCount ignored), `name`
+    matches rule names, and without ids fetchZeroHitCount:true keeps only rows that were never hit."""
+
+    def answer(request: httpx.Request) -> httpx.Response:
+        flt = dict(p.split(":", 1) for p in request.url.params["filter"].split(";"))
+        if "ids" in flt:
+            out = [r for r in rows if r["rule"]["id"] in flt["ids"].split(",")]
+        elif "name" in flt:
+            out = [r for r in rows if flt["name"].lower() in r["rule"]["name"].lower()]
+        elif flt.get("fetchZeroHitCount") == "true":
+            out = [r for r in rows if not r["hitCount"]]
+        else:
+            out = rows
+        return items(out)
+
+    return answer
+
+
+async def test_hit_counts_show_a_default_action_that_was_hit(ftd: respx.MockRouter) -> None:
+    """Live finding (F62 proof): the default action had blocked one flow, so the no-ids
+    fetchZeroHitCount:true query left it out and the tool showed no default-action row."""
+    rows = fixture("ftd_hitcounts_default_hit")["items"]
+    default_id = rows[3]["rule"]["id"]
+    acp = {**ACP, "defaultAction": {"action": "BLOCK", "type": "AccessPolicyDefaultAction", "id": default_id}}
+    ftd.get(f"{CFG}/policy/accesspolicies").mock(return_value=items([acp]))
+    # a rule added at the top after the last deploy has no hit-count row yet (as live)
+    rules = [{"id": "00000000-0000-0ed3-0000-000268434499", "name": "mcp-fw-new", "type": "AccessRule"}]
+    rules += [r["rule"] for r in rows[:3]]
+    ftd.get(f"{CFG}/policy/accesspolicies/{ACP['id']}/accessrules").mock(return_value=items(rules))
+    get = ftd.get(f"{CFG}/policy/accesspolicies/{ACP['id']}/operational/hitcounts").mock(
+        side_effect=fmc_hitcounts(rows)
+    )
+    args = {"policy": "mcp-test-ftd-acp", "device": "mcp-ftd1", "refresh": False, "response_format": "json"}
+    async with Client(server()) as c:
+        out = await run(c, "fmc_get_hit_counts", args)
+        zero = await run(c, "fmc_get_hit_counts", {**args, "only_zero": True})
+    got = [(r["index"], r["rule"], r["hits"]) for r in out["results"]]
+    assert got == [
+        (2, "mcp-fw-baseline", 34),
+        (3, "mcp-fw-lab-extra", 8),
+        (4, "mcp-fw-find-client", 0),
+        ("default", "Default Action", 1),
+    ]
+    assert out["results"][3]["device_rule_id"] == "268434483"
+    assert all("ids:" in c.request.url.params["filter"] for c in get.calls)  # default id rides along
+    assert [r["rule"] for r in zero["results"]] == ["mcp-fw-find-client"]
+
+
+async def test_hit_counts_find_the_default_action_by_name(ftd: respx.MockRouter) -> None:
+    """Without the policy's defaultAction id (not in the record), the row is asked for by name."""
+    rows = fixture("ftd_hitcounts_default_hit")["items"]
+    ftd.get(f"{CFG}/policy/accesspolicies/{ACP['id']}/accessrules").mock(
+        return_value=items([r["rule"] for r in rows[:3]])
+    )
+    get = ftd.get(f"{CFG}/policy/accesspolicies/{ACP['id']}/operational/hitcounts").mock(
+        side_effect=fmc_hitcounts(rows)
+    )
+    async with Client(server()) as c:
+        out = await run(
+            c,
+            "fmc_get_hit_counts",
+            {"policy": "mcp-test-ftd-acp", "device": "mcp-ftd1", "refresh": False, "response_format": "json"},
+        )
+    assert out["results"][-1]["rule"] == "Default Action" and out["results"][-1]["hits"] == 1
+    assert any("name:Default Action" in c.request.url.params["filter"] for c in get.calls)
+
+
 async def test_device_health(ftd: respx.MockRouter) -> None:
     alerts = fixture("ftd_health_alerts")
     alerts["items"][0] = {**alerts["items"][0], "status": "YELLOW", "details": "disk 85%"}

@@ -124,3 +124,135 @@ async def test_listing_teaches_device_domains_without_lookups(fmc: respx.MockRou
         assert dev_id not in app.device_domains
     finally:
         await app.aclose()
+
+
+# --- policy assignments inherited from an ancestor domain -------------------------------------------
+# FMC lists in a domain only the assignments of policies that domain owns (FMC 10.0.1, read in the lab:
+# Global/mcp-test-leaf's list lacked mcp-ftd1's Global access policy and mcp-ftd-identity's Global NAT
+# policy, which only Global's list shows). fmc_assign_policy's preview then said from=None.
+
+LEAF_DEV = {
+    "id": "2c0f0000-0000-4000-8000-000000000001",
+    "name": "ftd-leaf",
+    "type": "Device",
+    "metadata": {"domain": CHILD_REF},
+}
+SIBLING = {"id": "2c0f0000-0000-4000-8000-000000000002", "name": "ftd-other-leaf", "type": "Device"}
+GLOBAL_ACP = {"id": "00000000-0000-0ed3-0000-000000000001", "name": "global-acp", "type": "AccessPolicy"}
+LEAF_ACP = {"id": "00000000-0000-0ed3-0000-000000000002", "name": "leaf-acp", "type": "AccessPolicy"}
+GLOBAL_NAT = {"id": "00000000-0000-0ed3-0000-000000000003", "name": "global-nat", "type": "FTDNatPolicy"}
+LEAF_NAT = {"id": "00000000-0000-0ed3-0000-000000000004", "name": "leaf-nat", "type": "FTDNatPolicy"}
+
+
+def assignment(policy: dict[str, Any], *targets: dict[str, Any]) -> dict[str, Any]:
+    return {"id": policy["id"], "type": "PolicyAssignment", "name": policy["name"], "policy": policy,
+            "targets": [{k: t[k] for k in ("id", "type", "name")} for t in targets]}  # fmt: skip
+
+
+def leaf_mocks(fmc: respx.MockRouter, device: dict[str, Any] = LEAF_DEV) -> None:
+    fmc.get(f"{CHILD_CFG}/devices/devicerecords").mock(return_value=items([device]))
+    fmc.get(f"{CHILD_CFG}/policy/accesspolicies").mock(return_value=items([GLOBAL_ACP, LEAF_ACP]))
+    fmc.get(f"{CHILD_CFG}/policy/ftdnatpolicies").mock(return_value=items([GLOBAL_NAT, LEAF_NAT]))
+    fmc.get(f"{CHILD_CFG}/assignment/policyassignments").mock(return_value=items([]))
+
+
+async def test_assign_policy_preview_names_a_policy_inherited_from_global(fmc: respx.MockRouter) -> None:
+    leaf_mocks(fmc)  # no accessPolicy on the device record: only the lists can say what it runs
+    fmc.get(f"{CFG}/assignment/policyassignments").mock(
+        return_value=items([assignment(GLOBAL_ACP, LEAF_DEV, SIBLING)])
+    )
+    post = fmc.post(f"{CHILD_CFG}/assignment/policyassignments").mock(
+        return_value=httpx.Response(201, json={})
+    )
+    args = {"kind": "access", "policy": "leaf-acp", "devices": ["ftd-leaf"], "domain": "Branch"}
+    async with Client(server()) as c:
+        preview = await run(c, "fmc_assign_policy", args)
+        assert preview["status"] == "preview", preview
+        assert preview["preview"]["changes"] == [
+            {"device": "ftd-leaf", "from": "global-acp", "to": "leaf-acp"}
+        ]
+        await run(c, "fmc_assign_policy", {**args, "confirm": preview["confirm"]})
+        listed = await run(
+            c,
+            "fmc_list_policy_assignments",
+            {"domain": "Branch", "device": "ftd-leaf", "response_format": "json"},
+        )
+    body = json.loads(post.calls.last.request.content)
+    assert body["policy"]["id"] == LEAF_ACP["id"] and body["targets"] == [
+        {"id": LEAF_DEV["id"], "type": "Device"}
+    ]
+    assert [(r["policy"], r.get("domain")) for r in listed["results"]] == [("global-acp", "Global")]
+
+
+async def test_assign_inherited_policy_keeps_its_other_targets(fmc: respx.MockRouter) -> None:
+    leaf_mocks(fmc)
+    fmc.get(f"{CHILD_CFG}/assignment/policyassignments").mock(
+        return_value=items([assignment(LEAF_NAT, LEAF_DEV)])
+    )
+    fmc.get(f"{CFG}/assignment/policyassignments").mock(return_value=items([assignment(GLOBAL_NAT, SIBLING)]))
+    put = fmc.put(f"{CHILD_CFG}/assignment/policyassignments/{GLOBAL_NAT['id']}").mock(
+        return_value=httpx.Response(200, json={})
+    )
+    args = {"kind": "nat", "policy": "global-nat", "devices": ["ftd-leaf"], "domain": "Branch"}
+    async with Client(server()) as c:
+        preview = await run(c, "fmc_assign_policy", args)
+        assert preview["preview"]["changes"] == [
+            {"device": "ftd-leaf", "from": "leaf-nat", "to": "global-nat"}
+        ]
+        assert preview["preview"]["policy_domain"] == "Global"
+        assert any("keeps its 1 other target" in s for s in preview["side_effects"]), preview
+        await run(c, "fmc_assign_policy", {**args, "confirm": preview["confirm"]})
+    body = json.loads(put.calls.last.request.content)
+    assert body["id"] == GLOBAL_NAT["id"]
+    assert [t["id"] for t in body["targets"]] == [SIBLING["id"], LEAF_DEV["id"]]
+
+
+async def test_unreadable_ancestor_falls_back_to_the_device_record(fmc: respx.MockRouter) -> None:
+    leaf_mocks(fmc, {**LEAF_DEV, "accessPolicy": GLOBAL_ACP})
+    fmc.get(f"{CFG}/assignment/policyassignments").mock(return_value=httpx.Response(403, json={}))
+    async with Client(server()) as c:
+        preview = await run(
+            c,
+            "fmc_assign_policy",
+            {"kind": "access", "policy": "leaf-acp", "devices": ["ftd-leaf"], "domain": "Branch"},
+        )
+    assert preview["preview"]["changes"] == [{"device": "ftd-leaf", "from": "global-acp", "to": "leaf-acp"}]
+    assert "policy_domain" not in preview["preview"]
+
+
+async def test_domain_ancestors_nearest_first(fmc: respx.MockRouter) -> None:
+    from fmc_mcp.client import FmcApp
+
+    app = FmcApp(make_settings())
+    mid, leaf = "a" * 8 + "-0000-0000-0000-000000000000", "b" * 8 + "-0000-0000-0000-000000000000"
+    try:
+        await app.ensure_login()
+        app.domains = [
+            {"name": "Global", "uuid": DOMAIN},
+            {"name": "Global/A", "uuid": mid},
+            {"name": "Global/A/B", "uuid": leaf},
+        ]
+        assert await app.domain_ancestors(leaf) == [mid, DOMAIN]
+        assert await app.domain_ancestors("Global/A") == [DOMAIN]
+        assert await app.domain_ancestors("Global") == []
+    finally:
+        await app.aclose()
+
+
+async def test_nat_policy_of_a_leaf_device_inherited_from_global(fmc: respx.MockRouter) -> None:
+    """live-1b R1: fmc_find_address(device=...) found no NAT policy on a leaf device running a Global one."""
+    from fmc_mcp.client import FmcApp
+    from fmc_mcp.tools.policies import nat_policy_of
+
+    fmc.get(f"{CHILD_CFG}/assignment/policyassignments").mock(
+        return_value=items([assignment(LEAF_ACP, LEAF_DEV)])
+    )
+    fmc.get(f"{CFG}/assignment/policyassignments").mock(
+        return_value=items([assignment(GLOBAL_NAT, LEAF_DEV)])
+    )
+    app = FmcApp(make_settings())
+    try:
+        assert await nat_policy_of(app, LEAF_DEV["id"], "Branch") == GLOBAL_NAT["id"]
+        assert await nat_policy_of(app, SIBLING["id"], "Branch") is None
+    finally:
+        await app.aclose()

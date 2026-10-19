@@ -309,9 +309,10 @@ MD5 password, because FMC returns it masked and a PUT would replace it, unless y
   offline with the user FMC has on the source IP and their groups (or `identities=[user, groups]`). FMC's REST API has no AD/LDAP realm test or download, so those two
   tools log in to FMC's web UI as `FMC_UI_USERNAME` (its own user, not the API user).
 - **ISE as the identity source (pxGrid):** FMC 10.0.1's REST API can't configure the ISE connection, so it is
-  set in the FMC UI (Integrations > Other Integrations > Identity Sources: pxGrid node, pxGrid and MNT server
-  CAs from `fmc_create_trusted_ca`, FMC's client certificate as an internal certificate), then FMC's pxGrid
-  client is approved in ISE. `fmc_get_identity_sources` shows whether it works end to end (FMC's ISE health
+  set in the FMC UI by an administrator, in the Global domain only (Integrations > Identity > Identity Sources:
+  pxGrid node, pxGrid and MNT server CAs from `fmc_create_trusted_ca`, FMC's client certificate as an internal
+  certificate, all in Global), then FMC's pxGrid client is approved in ISE. Why a connection fails shows only
+  in that page's Test result. `fmc_get_identity_sources` shows whether it works end to end (FMC's ISE health
   module, SGTs downloaded, sessions by source, user-IP bindings on each device, certificate expiry) and what
   to fix; `fmc_user_ip_lookup` answers "who is on 192.0.2.57?" and "where is alice?". Reading FMC's identity
   sessions needs Events & Logs > Analysis > Users in the account's role.
@@ -327,6 +328,9 @@ MD5 password, because FMC returns it masked and a PUT would replace it, unless y
   written.
 - **Send FTD logs to a SIEM:** `fmc_configure_syslog` -> `fmc_assign_policy(kind='platform_settings')`
   -> `fmc_deploy` -> `fmc_run_show_command('show running-config logging')`.
+- **Show it in a PoC:** [docs/demos.md](docs/demos.md) has three 15-minute stories as prompt sequences (a change
+  with proof and rollback; adding an SD-WAN branch and failing a WAN link; "why is it blocked?" to fixed) and a
+  threat-defense vignette, with what to point at and the `mcp-fw-demo-*` naming a reset relies on.
 
 Tools accept **names or UUIDs**. Rule conditions accept object names or literal values:
 
