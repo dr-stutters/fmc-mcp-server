@@ -182,7 +182,8 @@ def test_alternatives_point_at_the_new_tools() -> None:
 # --- fmc_user_identity_sessions ------------------------------------------------------------------------
 
 
-async def test_sessions_by_ip_with_history(ftd: respx.MockRouter) -> None:
+async def test_sessions_by_ip_with_history(ftd: respx.MockRouter, monkeypatch: pytest.MonkeyPatch) -> None:
+    monkeypatch.setattr(live, "clock", lambda: LIVE["useractivity"]["items"][0]["time"] + 600)
     sessions = ftd.get(SESSIONS).mock(return_value=httpx.Response(200, json=LIVE["activesessions"]))
     activity = ftd.get(ACTIVITY).mock(return_value=httpx.Response(200, json=LIVE["useractivity"]))
     data = await call("fmc_user_identity_sessions", {"ip": "10.99.1.12", "history": True, "hours": 2})
@@ -202,8 +203,46 @@ async def test_sessions_by_ip_with_history(ftd: respx.MockRouter) -> None:
     ]
     assert sessions.calls.last.request.url.params["currentIP"] == "10.99.1.12"
     p = activity.calls.last.request.url.params
-    assert p["ipAddress"] == "10.99.1.12" and p["sort"] == "time:desc" and p["time"].startswith("after:")
+    assert p["ipAddress"] == "10.99.1.12" and p["sort"] == "time:desc" and "time" not in p
     assert data["history"][0]["event"] == "User Login"
+
+
+INVALID_TIME = {"error": {"category": "VALIDATION", "messages": [{"description": "Invalid time field."}]}}
+
+
+def activity(at: int | None, event: str = "User Login") -> dict[str, Any]:
+    row = {**LIVE["useractivity"]["items"][0], "time": at, "event": event}
+    return row if at is not None else {k: v for k, v in row.items() if k != "time"}
+
+
+async def test_history_window_is_applied_here(ftd: respx.MockRouter, monkeypatch: pytest.MonkeyPatch) -> None:
+    """FMC 10.0.1 answers 422 'Invalid time field.' to the spec's time=after:<epoch> filter (live,
+    2026-10-19; also after:..,before:.., epoch ms and ISO 8601), so the window is cut from the newest
+    events here."""
+    now = 1792380000
+    monkeypatch.setattr(live, "clock", lambda: now)
+    ftd.get(SESSIONS).mock(return_value=items([]))
+
+    def answer(request: httpx.Request) -> httpx.Response:
+        if "time" in request.url.params:
+            return httpx.Response(422, json=INVALID_TIME)
+        rows = [
+            activity(now - 7200, "User Logoff"),
+            activity(now - 3 * 86400),
+            activity(now - 60),
+            activity(None),
+        ]
+        return items(rows)
+
+    route = ftd.get(ACTIVITY).mock(side_effect=answer)
+    data = await call("fmc_user_identity_sessions", {"ip": "10.99.1.12", "history": True, "hours": 24})
+    assert route.called and "time" not in route.calls.last.request.url.params
+    # newest first, the 3-day-old event dropped, the one without a time kept (last)
+    assert [(h.get("time"), h["event"]) for h in data["history"]] == [
+        ("2026-10-19T03:19:00Z", "User Login"),
+        ("2026-10-19T01:20:00Z", "User Logoff"),
+        (None, "User Login"),
+    ]
 
 
 async def test_sessions_by_device_name(ftd: respx.MockRouter) -> None:
