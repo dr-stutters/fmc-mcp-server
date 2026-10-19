@@ -1,0 +1,191 @@
+{
+ "items": [
+  {
+   "name": "Balanced Security and Connectivity",
+   "id": "db7dc865-16b5-5eab-8b5a-c85f3a61690b",
+   "type": "NetworkAnalysisPolicy",
+   "description": "Balanced Security and Connectivity",
+   "inspectionMode": "PREVENTION",
+   "isSystemDefined": true,
+   "metadata": {
+    "mappedPolicy": {
+     "name": "Balanced Security and Connectivity",
+     "id": "abba00a0-cf29-425c-9d75-49699aadc898",
+     "type": "NetworkAnalysisPolicy",
+     "inspectionMode": "PREVENTION",
+     "snortEngine": "SNORT2"
+    },
+    "usage": {
+     "asscoiatedAcPolicies": [
+      {
+       "domainUuid": "a1c73df0-8353-8db7-1097-000000000000",
+       "type": "PG.FIREWALL.NGFWAccessControlPolicy",
+       "name": "mcp-sdwan-acp",
+       "id": "00000000-0000-0ed3-0000-021474856047"
+      },
+      {
+       "domainUuid": "e276abec-e0f2-11e3-8169-6d9ed49b625f",
+       "type": "PG.FIREWALL.NGFWAccessControlPolicy",
+       "name": "mcp-test-hygiene-acp",
+       "id": "00000000-0000-0ed3-0000-021474850577"
+      },
+      {
+       "domainUuid": "a1c73df0-8353-8db7-1097-000000000000",
+       "type": "PG.FIREWALL.NGFWAccessControlPolicy",
+       "name": "mcp-test-acp-import",
+       "id": "00000000-0000-0ed3-0000-021474849158"
+      },
+      {
+       "domainUuid": "e276abec-e0f2-11e3-8169-6d9ed49b625f",
+       "type": "PG.FIREWALL.NGFWAccessControlPolicy",
+       "name": "mcp-test-identity-acp",
+       "id": "00000000-0000-0ed3-0000-021474840461"
+      },
+      {
+       "domainUuid": "e276abec-e0f2-11e3-8169-6d9ed49b625f",
+       "type": "PG.FIREWALL.NGFWAccessControlPolicy",
+       "name": "mcp-test-ha-acp",
+       "id": "00000000-0000-0ed3-0000-021474837244"
+      },
+      {
+       "domainUuid": "e276abec-e0f2-11e3-8169-6d9ed49b625f",
+       "type": "PG.FIREWALL.NGFWAccessControlPolicy",
+       "name": "mcp-test-ftd-acp",
+       "id": "00000000-0000-0ed3-0000-021474837072"
+      },
+      {
+       "domainUuid": "e276abec-e0f2-11e3-8169-6d9ed49b625f",
+       "type": "PG.FIREWALL.NGFWAccessControlPolicy",
+       "name": "mcp-test-acp",
+       "id": "00000000-0000-0ed3-0000-021474836766"
+      }
+     ],
+     "templates": 0,
+     "accesspolicy": 7,
+     "zerotrustpolicy": 0,
+     "devices": 14
+    },
+    "domain": {
+     "name": "Global",
+     "id": "e276abec-e0f2-11e3-8169-6d9ed49b625f",
+     "type": "Domain"
+    },
+    "snortEngine": "SNORT3"
+   },
+   "inspectorConfig": {
+    "type": "InspectorConfig"
+   },
+   "inspectorOverrideConfig": {
+    "type": "InspectorOverrideConfig"
+   }
+  },
+  {
+   "name": "Connectivity Over Security",
+   "id": "ae21223c-eb33-5ff0-bbe0-80c702115d13",
+   "type": "NetworkAnalysisPolicy",
+   "description": "Connectivity Over Security",
+   "inspectionMode": "PREVENTION",
+   "isSystemDefined": true,
+   "metadata": {
+    "mappedPolicy": {
+     "name": "Connectivity Over Security",
+     "id": "abbad193-46bd-4535-ade6-73cc7e76fb7b",
+     "type": "NetworkAnalysisPolicy",
+     "inspectionMode": "PREVENTION",
+     "snortEngine": "SNORT2"
+    },
+    "usage": {
+     "accesspolicy": 0,
+     "zerotrustpolicy": 0,
+     "devices": 0
+    },
+    "domain": {
+     "name": "Global",
+     "id": "e276abec-e0f2-11e3-8169-6d9ed49b625f",
+     "type": "Domain"
+    },
+    "snortEngine": "SNORT3"
+   },
+   "inspectorConfig": {
+    "type": "InspectorConfig"
+   },
+   "inspectorOverrideConfig": {
+    "type": "InspectorOverrideConfig"
+   }
+  },
+  {
+   "name": "Maximum Detection",
+   "id": "8bda2bed-f951-5cca-9d2a-96b9660a4fb1",
+   "type": "NetworkAnalysisPolicy",
+   "description": "Maximum Detection",
+   "inspectionMode": "PREVENTION",
+   "isSystemDefined": true,
+   "metadata": {
+    "mappedPolicy": {
+     "name": "Maximum Detection",
+     "id": "d224e29c-6c27-11e0-ac9d-988fc3da9be6",
+     "type": "NetworkAnalysisPolicy",
+     "inspectionMode": "PREVENTION",
+     "snortEngine": "SNORT2"
+    },
+    "usage": {
+     "accesspolicy": 0,
+     "zerotrustpolicy": 0,
+     "devices": 0
+    },
+    "domain": {
+     "name": "Global",
+     "id": "e276abec-e0f2-11e3-8169-6d9ed49b625f",
+     "type": "Domain"
+    },
+    "snortEngine": "SNORT3"
+   },
+   "inspectorConfig": {
+    "type": "InspectorConfig"
+   },
+   "inspectorOverrideConfig": {
+    "type": "InspectorOverrideConfig"
+   }
+  },
+  {
+   "name": "Security Over Connectivity",
+   "id": "b0f1ca0e-1b9b-5bf2-b7a9-c88a9e0d31a9",
+   "type": "NetworkAnalysisPolicy",
+   "description": "Security Over Connectivity",
+   "inspectionMode": "PREVENTION",
+   "isSystemDefined": true,
+   "metadata": {
+    "mappedPolicy": {
+     "name": "Security Over Connectivity",
+     "id": "abba9b63-bb10-4729-b901-2e2aa0f4491c",
+     "type": "NetworkAnalysisPolicy",
+     "inspectionMode": "PREVENTION",
+     "snortEngine": "SNORT2"
+    },
+    "usage": {
+     "accesspolicy": 0,
+     "zerotrustpolicy": 0,
+     "devices": 0
+    },
+    "domain": {
+     "name": "Global",
+     "id": "e276abec-e0f2-11e3-8169-6d9ed49b625f",
+     "type": "Domain"
+    },
+    "snortEngine": "SNORT3"
+   },
+   "inspectorConfig": {
+    "type": "InspectorConfig"
+   },
+   "inspectorOverrideConfig": {
+    "type": "InspectorOverrideConfig"
+   }
+  }
+ ],
+ "paging": {
+  "offset": 0,
+  "limit": 100,
+  "count": 4,
+  "pages": 1
+ }
+}
