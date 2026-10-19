@@ -1,0 +1,12 @@
+{
+  "_source": "FMC 10.0.1 audit/auditrecords?subsystem=Devices > Troubleshoot > Packet Tracer (F46 eval, #201), 2026-10-19: the record FMC writes for each packet-tracer run (fmc_packet_tracer, fmc_prove_policy). Addresses, user and domain scrubbed.",
+  "record": {
+    "time": 1792382144,
+    "domain": "11111111222233334444555555555555",
+    "auditId": "00000000-0000-0ed3-0000-000000016709",
+    "subSystem": "Devices > Troubleshoot > Packet Tracer",
+    "source": "192.0.2.200",
+    "username": "apiuser",
+    "message": "Trace: packet-tracer input inside TCP 10.99.1.10 40000 192.0.2.80 80 detailed xml (device: mcp-ftd1)"
+  }
+}
