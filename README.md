@@ -391,6 +391,7 @@ including nested groups, to ranges, then walk the rules in order. The results ar
 | `FMC_UI_USERNAME`, `FMC_UI_PASSWORD` | | Optional FMC web-UI user for `fmc_test_realm` / `fmc_download_realm` (role with Integrations > Realms modify). Must differ from `FMC_USERNAME`: a UI login ends the same user's REST session. |
 | `FMC_BUNDLE_DIR` | off | Directory `fmc_export_policy_bundle` also writes bundles to (and `fmc_diff_policy_bundle` reads bundle file names from). Off: bundles are only returned inline. |
 | `FMC_PKI_DIR` | off | Directory on the server host that `fmc_import_certificate_files` reads PEM certificate, key and passphrase files from (keys never pass through MCP). Off: file imports are refused; `fmc_create_internal_ca` still works (FMC generates the key). In Docker, bind-mount it read-only (see `docker-compose.yml`). |
+| `FMC_TOOLSETS` | every area | Load only some areas of the tool surface, e.g. `troubleshoot,objects,deploy` or `all,-sdwan,-tls` (see "Toolsets"). The tiers still apply on top. |
 | `FMC_ALLOW_IGNORE_WARNING` | `false` | Allow `fmc_deploy(ignore_warning=true)` (the preview must then list the FMC warnings being ignored) |
 | `MCP_TRANSPORT` | `stdio` | `stdio` or `http` |
 | `MCP_HOST`, `MCP_PORT`, `MCP_PATH` | `0.0.0.0`, `8000`, `/mcp` | HTTP listener |
@@ -419,6 +420,51 @@ Give the server its **own FMC user**.
 The client-side rate limiter keeps the server under FMC's per-source-IP limits. It is shared by every caller
 of the server, and FMC's 120 requests/minute are shared by every API user of that FMC: on a shared host see
 [docs/deploying.md](docs/deploying.md) (one FMC user per server instance, the request budget).
+
+### Toolsets (`FMC_TOOLSETS`, F46)
+
+With every tier on, the server registers about 180 tools, and a client sends all their descriptions to the
+model on every turn. Some clients also cap the number of tools. `FMC_TOOLSETS` loads only the areas you
+name:
+
+```bash
+FMC_TOOLSETS=troubleshoot,policy,objects     # "why is this blocked?" and rule changes
+FMC_TOOLSETS=vpn,sdwan,routing,deploy        # branch connectivity
+FMC_TOOLSETS=all,-sdwan,-tls                 # everything but two areas
+```
+
+- `core` is always loaded: `fmc_status`, `fmc_search_spec`, `fmc_get_definition`, `fmc_api_call` (reaches
+  any endpoint the loaded tools don't), `fmc_list_domains`, `fmc_list_devices`, `fmc_get_task`.
+- The tiers still apply on top. For example, `objects` without `MCP_ENABLE_WRITES` gives only the object
+  reads. `MCP_ALLOW_TOOLS` / `MCP_DENY_TOOLS` and roles also still apply.
+- A workflow prompt is registered when its home areas are loaded (last column below). Optional steps in a
+  prompt can name tools from other areas. When only some areas are loaded, the server instructions say
+  which ones, and `fmc_status` lists them under `fmc.toolsets`.
+- An unknown name stops the server at startup with the list of areas. Leave `FMC_TOOLSETS` unset to load
+  everything (the default).
+
+Every tool is in exactly one area. `fmc_mcp/toolsets.py` holds the table, and a contract test per toolset
+checks it against the registered tools.
+
+| Toolset | Tools (read/write/dangerous) | What it covers | Prompts (home area) |
+|---|---|---|---|
+| `core` | 7 (6/0/1) | always loaded: status, the API spec search and raw API call, domains, devices, tasks |  |
+| `admin` | 8 (6/1/1) | FMC itself: backups, upgrades, health policy, users, audit log, Smart Licensing |  |
+| `deploy` | 7 (4/1/2) | pending changes, deployments, rollback, change-management tickets | `fmc_onboard_branch`, `fmc_onboard_ftd`, `fmc_rule_change_review` |
+| `devices` | 15 (5/7/3) | device records, registration, licences, interfaces, clusters, device templates | `fmc_onboard_branch`, `fmc_onboard_ftd` |
+| `ha` | 5 (2/1/2) | FTD high-availability pairs: status, forming, switch/break, monitored interfaces | `fmc_ha_failover_check` |
+| `identity` | 13 (6/7/0) | users in rules: realms (AD/LDAP), identity policies, ISE identity source, user-IP sessions | `fmc_prove_user_policy` |
+| `intel` | 12 (2/10/0) | blocking by reputation: Security Intelligence feeds and lists, DNS policy, host containment |  |
+| `migrate` | 6 (4/1/1) | move policy between FMCs or files: policy bundles, access-rule CSV import/export |  |
+| `objects` | 19 (8/11/0) | network/port/URL objects and groups, zones, dynamic objects, overrides, where an address is used |  |
+| `platform` | 7 (1/6/0) | platform settings: syslog, connection logging, NTP, SNMP, SSH access |  |
+| `policy` | 24 (9/14/1) | access control, NAT and prefilter policies and rules, assignments, rule hygiene | `fmc_policy_cleanup`, `fmc_rule_change_review`, `fmc_why_blocked` |
+| `routing` | 8 (2/6/0) | static routes, BGP, OSPF, VRFs |  |
+| `sdwan` | 7 (1/6/0) | SD-WAN hub and spoke topologies, WAN interfaces, application-aware routing, branch health | `fmc_onboard_branch`, `fmc_sdwan_troubleshoot` |
+| `threat` | 13 (5/8/0) | intrusion (IPS), file/malware and network analysis policies, an ACP's threat posture | `fmc_threat_defense_review` |
+| `tls` | 12 (3/9/0) | TLS decryption policies and rules, internal CAs and certificates, readiness check |  |
+| `troubleshoot` | 10 (10/0/0) | why is traffic blocked: packet tracer, rule lookup, hit counts, show commands, live state | `fmc_firewall_health_review`, `fmc_prove_user_policy`, `fmc_why_blocked` |
+| `vpn` | 7 (5/2/0) | site-to-site VPN topologies, tunnel status and troubleshooting, remote access VPN (read) | `fmc_vpn_troubleshoot` |
 
 ### Deploy safety rails (F18)
 

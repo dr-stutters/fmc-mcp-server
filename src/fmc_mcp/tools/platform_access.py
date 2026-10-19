@@ -117,7 +117,8 @@ def register(reg: ToolRegistrar) -> None:
     ) -> dict[str, Any]:
         """Configure SNMP (v2c) in an FTD platform settings policy: on/off, community, location/contact and
         the manager hosts that may poll (and receive traps). The community is write-only: FMC masks it, so
-        give it again with every change. Takes effect after a deploy ('show running-config snmp-server')."""
+        give it again with every change. Current settings: fmc_get_platform_settings. Takes effect after a
+        deploy ('show running-config snmp-server')."""
         app: FmcApp = get_client(ctx)
         pol = await resolve_ps(app, policy, domain)
         path, cur = await _single(app, pol["id"], "snmpsettings", domain)
@@ -282,8 +283,8 @@ def register(reg: ToolRegistrar) -> None:
         confirm: Confirm = None,
     ) -> dict[str, Any]:
         """Allow (or remove) SSH to the FTD data interfaces from a network through given zones (platform
-        settings > SSH access). The management interface is not affected. Takes effect after a deploy
-        ('show running-config ssh')."""
+        settings > SSH access). The management interface is not affected. Current entries:
+        fmc_get_platform_settings. Takes effect after a deploy ('show running-config ssh')."""
         app: FmcApp = get_client(ctx)
         pol = await resolve_ps(app, policy, domain)
         base = await app.config_path(f"{PS}/{pol['id']}/sshaccesssettings", domain)

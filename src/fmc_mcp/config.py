@@ -60,11 +60,27 @@ class Settings(BaseServerSettings):
         "decrypt-known-key), so private keys never pass through MCP. Unset: file imports are off "
         "(fmc_create_internal_ca still works: FMC generates the key).",
     )
+    toolsets: str | None = Field(
+        default=None,
+        description="Load only these areas of the tool surface, comma-separated (e.g. "
+        "'troubleshoot,objects,deploy'; 'all,-sdwan' for all but one): admin, deploy, devices, ha, "
+        "identity, intel, migrate, objects, platform, policy, routing, sdwan, threat, tls, troubleshoot, "
+        "vpn. core (status, spec search, raw API call, domains, devices, tasks) is always loaded; the "
+        "read/write/dangerous tiers still apply on top. Unset: every area.",
+    )
     allow_ignore_warning: bool = Field(
         default=False,
         description="Allow fmc_deploy(ignore_warning=true). Even then the preview must list the FMC "
         "warnings being ignored, so a deploy without ignore_warning has to run (and fail) first.",
     )
+
+    @field_validator("toolsets")
+    @classmethod
+    def _check_toolsets(cls, v: str | None) -> str | None:
+        from fmc_mcp import toolsets
+
+        toolsets.parse(v)  # unknown names fail at startup, listing the areas
+        return v.strip() if v and v.strip() else None
 
     @field_validator("deploy_window")
     @classmethod

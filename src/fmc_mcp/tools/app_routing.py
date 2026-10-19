@@ -795,8 +795,8 @@ def register(reg: ToolRegistrar) -> None:
     ) -> dict[str, Any]:
         """Remove an application route: its forwarding action leaves the policy-based route (the
         policy-based route is deleted when nothing is left in it) and its extended access list is
-        deleted unless another route still uses it or keep_access_list is set. Deploy to apply; the
-        traffic then follows the routing table again."""
+        deleted unless another route still uses it or keep_access_list is set. fmc_sdwan_status lists a
+        device's app routes. Deploy to apply; the traffic then follows the routing table again."""
         app: FmcApp = get_client(ctx)
         dev = await resolve_device(app, device, domain)
         base, vr_name = await routing_base(app, dev, virtual_router, domain)

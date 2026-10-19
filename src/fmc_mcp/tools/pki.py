@@ -348,7 +348,9 @@ def register(reg: ToolRegistrar) -> None:
         """List the certificate objects TLS decryption uses (internal CAs, internal certificates, custom
         trusted CAs) with subject, issuer, expiry and fingerprint, or show one with its PEM certificate
         (public; private keys are never shown), a pending CSR, what references it, and what to do next
-        (e.g. the PEM to install as a trusted root on clients before a decrypt-resign rollout)."""
+        (e.g. the PEM to install as a trusted root on clients before a decrypt-resign rollout). Create
+        them with fmc_create_internal_ca, fmc_import_certificate_files or fmc_create_trusted_ca; what
+        decryption does to one flow: fmc_tls_decryption_check."""
         app: FmcApp = get_client(ctx)
         kinds = [KINDS[kind]] if kind else list(KINDS.values())
         if not certificate:
@@ -668,7 +670,8 @@ def register(reg: ToolRegistrar) -> None:
         confirm: Confirm = None,
     ) -> dict[str, Any]:
         """Delete an internal CA, internal certificate or custom trusted CA. Blocked while a decryption rule,
-        decryption policy or realm references it (the preview lists them) and for FMC's built-in CAs."""
+        decryption policy or realm references it (the preview lists them; so does fmc_get_certificate) and
+        for FMC's built-in CAs."""
         app: FmcApp = get_client(ctx)
         k, c = await resolve_cert(app, certificate, [KINDS[kind]] if kind else list(KINDS.values()), domain)
         blockers = []

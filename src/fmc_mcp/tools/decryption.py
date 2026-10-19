@@ -377,7 +377,8 @@ def register(reg: ToolRegistrar) -> None:
         """Change a decryption policy's settings: default action, trusted CAs (the issuers the FTD accepts
         for server certificates; a private or lab server's CA must be here for its re-signed certificate to
         look trusted), TLS 1.3 decryption and how untrusted server certificates are handled. Rules are
-        unchanged. Takes effect after a deploy of the devices whose access policy uses it."""
+        unchanged. Current settings: fmc_get_decryption_policy; the effect on one flow:
+        fmc_tls_decryption_check. Takes effect after a deploy of the devices whose access policy uses it."""
         app: FmcApp = get_client(ctx)
         p = await resolve_in(app, DECRYPTION, policy, "decryption policy", domain)
         path = await app.config_path(f"{DECRYPTION}/{p['id']}", domain)
