@@ -229,12 +229,27 @@ def _out_iface(rest: str) -> str | None:
     return last.split()[0]
 
 
+def route_lines(text: str) -> list[str]:
+    """`show route` lines with wrapped routes joined. FTD prints a route whose line is full on two lines:
+    'V        10.255.70.2 255.255.255.255 ' and then, indented, 'connected by VPN (advertised),
+    mcp-fw-dvti_va9' (a dynamic VTI hub's routes to its spokes' tunnel addresses)."""
+    out: list[str] = []
+    for line in text.splitlines():
+        prev = _ROUTE.match(out[-1]) if out else None
+        if prev and not prev.group(4).strip() and line[:1].isspace() and line.strip():
+            out[-1] = f"{out[-1].rstrip()} {line.strip()}"
+        else:
+            out.append(line)
+    return out
+
+
 def parse_routes(text: str) -> list[dict[str, Any]]:
     """IPv4 routes of `show route`: {code, protocol, prefix, via: [next hops], interfaces: [egress]};
-    an ECMP route's further next hops (indented '[ad/metric] via ...' lines) join their route."""
+    an ECMP route's further next hops (indented '[ad/metric] via ...' lines) join their route, and so does
+    the second line of a wrapped route (route_lines)."""
     rows: list[dict[str, Any]] = []
     cur: dict[str, Any] | None = None
-    for line in text.splitlines():
+    for line in route_lines(text):
         if m := _ROUTE.match(line):
             code = " ".join(m.group(1).split())
             try:
@@ -268,10 +283,17 @@ def _is_vti(iface: str, vtis: set[str]) -> bool:
     return any(low == v or low.startswith(f"{v}_va") for v in vtis)
 
 
+def _peer_address(r: dict[str, Any]) -> bool:
+    """A 'V' host route 'connected by VPN': the far end's tunnel address (a dynamic VTI hub has one per
+    spoke), the VPN's own connected route rather than routing to a network behind it."""
+    return r["protocol"] == "vpn" and not r["via"] and r["prefix"].endswith("/32")
+
+
 def overlay_routes(routes: list[dict[str, Any]], vtis: set[str]) -> list[dict[str, Any]]:
     """The routes that leave over a VTI: egress interface is a VTI (or a virtual-access of a dynamic VTI),
     or, for a recursive next hop (BGP prints none), the route to the next hop does. Connected and local
-    routes of the VTIs themselves are left out."""
+    routes of the VTIs themselves, and the 'V' host routes to the peers' tunnel addresses, are left out
+    (they still resolve BGP next hops)."""
     if not vtis:
         return []
     networks = [(ipaddress.ip_network(r["prefix"]), r["interfaces"]) for r in routes if r.get("interfaces")]
@@ -286,7 +308,7 @@ def overlay_routes(routes: list[dict[str, Any]], vtis: set[str]) -> list[dict[st
 
     out = []
     for r in routes:
-        if r["protocol"] == "connected":
+        if r["protocol"] == "connected" or _peer_address(r):
             continue
         if r["interfaces"]:
             hit = any(_is_vti(i, vtis) for i in r["interfaces"])
@@ -407,7 +429,7 @@ async def device_view(
         view["overlay_routes"] = overlay_routes(routes, vtis)
         evidence[ROUTES] = [
             ln.strip()
-            for ln in text.splitlines()
+            for ln in route_lines(text)
             if any(_is_vti(w.rstrip(","), vtis) for w in ln.split()) or re.match(r"^B\s", ln)
         ][: EVIDENCE_LINES * 2] or [f"{len(routes)} route(s), none over a VTI"]
     view["evidence"] = evidence
@@ -810,7 +832,11 @@ def register(reg: ToolRegistrar) -> None:
                 if str(x.get("id")) in detail_ids:
                     try:
                         data = await app.api.get(f"{tpath}/{x['id']}/tunneldetails", timeout=120)
-                        row["fmc_details"] = detail_view(data)
+                        row["fmc_details"] = detail_view(data) or (
+                            f"{NOT_AVAILABLE}: FMC answered tunneldetails with no data for either peer "
+                            "(seen on FMC 10.0.1 for an SD-WAN tunnel that was up); device_says has the "
+                            "devices' own view"
+                        )
                     except (InvalidRequest, NotFound, UpstreamError) as err:
                         row["fmc_details"] = f"{NOT_AVAILABLE}: {err}"
                 findings += tunnel_findings(x, row, views, names_of)

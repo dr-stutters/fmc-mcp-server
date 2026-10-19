@@ -74,7 +74,8 @@ def register(reg: ToolRegistrar) -> None:
         """List the network analysis policies (NAPs) or show one: base policy, inspection mode (PREVENTION
         lets the preprocessors drop malformed traffic, DETECTION only reports), which access policies use
         it and on how many devices, and for a custom policy the inspectors it overrides. Use it to check
-        which NAP an access policy runs before changing preprocessing, or before creating a custom one."""
+        which NAP an access policy runs before changing preprocessing, or before creating a custom one
+        (fmc_create_network_analysis_policy); fmc_threat_posture names one access policy's NAP."""
         app: FmcApp = get_client(ctx)
         if not policy:
             page = await app.all(await app.config_path(NAP, domain))

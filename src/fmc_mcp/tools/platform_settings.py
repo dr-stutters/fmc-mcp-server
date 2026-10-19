@@ -27,7 +27,7 @@ from fmc_mcp.preview import fmc_preview
 from fmc_mcp.refs import RefResolver
 from fmc_mcp.tools.common import Domain, ref_label, resolve_in
 from fmc_mcp.tools.object_writes import applied, editable
-from fmc_mcp.tools.policies import ACCESS
+from fmc_mcp.tools.policies import ACCESS, policy_assignments
 
 PS = "policy/ftdplatformsettingspolicies"
 Severity = Literal["EMERG", "ALERT", "CRIT", "ERR", "WARNING", "NOTICE", "INFO", "DEBUG"]
@@ -128,8 +128,7 @@ def syslog_summary(
 
 
 async def assigned_devices(app: FmcApp, pol_id: str, domain: str | None) -> list[str]:
-    page = await app.all(await app.config_path("assignment/policyassignments", domain), cap=5000)
-    for a in page.items:
+    for a in await policy_assignments(app, domain):
         if (a.get("policy") or {}).get("id") == pol_id:
             return [str(t.get("name") or t.get("id")) for t in a.get("targets") or []]
     return []
@@ -207,8 +206,10 @@ def register(reg: ToolRegistrar) -> None:
         domain: Domain = None,
         confirm: Confirm = None,
     ) -> dict[str, Any]:
-        """Create an FTD platform settings policy with FMC's defaults. Configure syslog with
-        fmc_configure_syslog, assign it with fmc_assign_policy(kind='platform_settings'), then deploy."""
+        """Create an FTD platform settings policy with FMC's defaults. Configure it with
+        fmc_configure_syslog, fmc_configure_ntp, fmc_configure_snmp and fmc_configure_ssh_access, assign it
+        with fmc_assign_policy(kind='platform_settings') (a device has one; the preview names the one it
+        replaces), then deploy. Check it with fmc_get_platform_settings."""
         app: FmcApp = get_client(ctx)
         body: dict[str, Any] = {"name": name, "type": "FTDPlatformSettingsPolicy"}
         if description:
@@ -487,8 +488,10 @@ def register(reg: ToolRegistrar) -> None:
     ) -> dict[str, Any]:
         """Access control policy logging defaults (Logging tab): send connection, intrusion and
         file/malware events as syslog to the servers configured in the device's platform settings
-        (fmc_configure_syslog). Rules still choose what to log (fmc_create_access_rule log=...).
-        Deploy afterwards."""
+        (fmc_configure_syslog; with use_platform_syslog FMC refuses the deploy while they have no server).
+        Rules still choose what to log (fmc_create_access_rule / fmc_update_access_rule log=...); a rule's
+        own syslog checkbox (enableSyslog) has no tool parameter (fmc_api_call PUT on the rule). Deploy
+        afterwards."""
         app: FmcApp = get_client(ctx)
         acp = await resolve_in(app, ACCESS, policy, "access policy", domain)
         page = await app.all(await app.config_path(f"{ACCESS}/{acp['id']}/loggingsettings", domain), cap=10)

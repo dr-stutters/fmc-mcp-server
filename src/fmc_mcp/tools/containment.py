@@ -38,7 +38,7 @@ from fmc_mcp.tools.dynamic_objects import (
     resolve_dynamic,
 )
 from fmc_mcp.tools.object_writes import applied
-from fmc_mcp.tools.policies import ACCESS, all_rules, resolve_policy
+from fmc_mcp.tools.policies import ACCESS, all_rules, policy_assignments, resolve_policy
 
 DEFAULT_OBJECT = "mcp-quarantine"
 EFFECTIVE_ACTIONS = {"BLOCK", "BLOCK_RESET"}  # interactive blocks can be bypassed by the user
@@ -143,9 +143,8 @@ async def scan_quarantine(app: FmcApp, obj_id: str | None, domain: str | None) -
 
 async def _assignments(app: FmcApp, domain: str | None) -> dict[str, dict[str, Any]]:
     """Access policy id -> {name, devices} for every assigned access policy."""
-    page = await app.all(await app.config_path("assignment/policyassignments", domain), cap=5000)
     out: dict[str, dict[str, Any]] = {}
-    for a in page.items:
+    for a in await policy_assignments(app, domain):
         pol = a.get("policy") or {}
         if pol.get("type") != "AccessPolicy":
             continue

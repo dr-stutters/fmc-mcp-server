@@ -15,9 +15,9 @@ from fmc_mcp._core import AuthError
 from fmc_mcp.client import FmcApp
 from fmc_mcp.server import create_server
 from fmc_mcp.tools.identity_sources import (
-    ROLE_HINT,
     cert_row,
     identity_memory,
+    ise_parts,
     ise_state,
     latest_alerts,
     split_identity,
@@ -25,7 +25,7 @@ from fmc_mcp.tools.identity_sources import (
     users_on_ip,
 )
 from fmc_mcp.tools.live import active_sessions as live_sessions
-from fmc_mcp.tools.live import session_items
+from fmc_mcp.tools.live import refused, session_items
 
 from .conftest import CFG, empty, fixture, items, make_settings
 
@@ -103,7 +103,7 @@ def mock_status(
     fmc: respx.MockRouter,
     *,
     ise: dict[str, Any] | None = None,
-    sgts: bool = False,
+    sgts: bool | dict[str, Any] = False,
     sessions: list[dict[str, Any]] | None = None,
     bindings: str = "0 / 64000",
     linked: bool = True,
@@ -116,7 +116,10 @@ def mock_status(
         if a["moduleID"] == "SNORT_IDENTITY_MEMORY_USAGE" and a["deviceUUID"] == IDENT and "params" in a:
             a["params"] = a["params"].replace("0 / 64000", bindings)
     fmc.get(f"{CFG}/health/alerts").mock(return_value=ok(alerts))
-    if sgts:
+    if isinstance(sgts, dict):
+        body = {k: v for k, v in sgts.items() if k != "_source"}
+        fmc.get(f"{CFG}/object/isesecuritygrouptags").mock(return_value=ok(body))
+    elif sgts:
         fmc.get(f"{CFG}/object/isesecuritygrouptags").mock(return_value=ok(FX["isesgts"]))
     else:
         fmc.get(f"{CFG}/object/isesecuritygrouptags").mock(
@@ -188,7 +191,13 @@ async def test_identity_sources_without_ise(fmc: respx.MockRouter) -> None:
     assert out["verdict"].startswith("No ISE identity source; sessions not readable")
     ise = out["ise"]
     assert ise["state"] == "not_configured" and ise["sgts_downloaded"] == 0
-    assert "Integrations > Other Integrations > Identity Sources" in ise["configure"]
+    # FMC 10.0.1's real page: Integrations > Identity > Identity Sources, Global domain only, admin role
+    assert "Integrations > Identity > Identity Sources" in ise["configure"]
+    assert "Other Integrations" not in ise["configure"] + ise["settings"]
+    assert "in Global only" in ise["configure"]
+    assert "child domain every option is disabled" in ise["configure"]
+    assert "only to an administrator" in ise["configure"] and "Global domain" in ise["settings"]
+    assert "parts" not in ise  # the not-configured alert has no params
     assert out["passive_identity_agent"]["details"] == "Passive identity agent not enabled"
     assert out["realms"] == [
         {"name": "corp", "type": "AD", "enabled": True, "ad_domain": "example.com", "users": 2, "groups": 4}
@@ -200,13 +209,30 @@ async def test_identity_sources_without_ise(fmc: respx.MockRouter) -> None:
         "realms": ["corp"],
         "used_by": ["acp"],
     }
-    assert out["sessions"]["error"] == ROLE_HINT
+    assert out["sessions"]["error"] == refused()
     devs = {d["device"]: d for d in out["devices"]}
     assert devs["ftd-identity"]["user_ip_bindings"] == "0 / 64000"
     assert devs["ftd-identity"]["identity_process"] == "Identity Process are disabled"
     assert devs["ftd-down"]["state"] == "Appliance unreachable"
     assert any("configure it in the FMC UI" in n for n in out["next"])
     assert not any("PASSIVE rule" in n for n in out["next"])  # the policy is linked
+
+
+async def test_identity_sources_saved_source_before_the_health_run(fmc: respx.MockRouter) -> None:
+    """Live-3 (FMC 10.0.1): right after the ISE source is saved, the SGT list answers (no more 422) while the
+    ISE health module still says 'ISE is not configured or not enabled' until its next run. The tool says
+    the source is saved and not checked yet, not 'No ISE identity source'."""
+    mock_status(fmc, sgts=FX["isesgts_enabled_empty"])
+    async with Client(server()) as c:
+        out = await run(c, "fmc_get_identity_sources", {})
+    ise = out["ise"]
+    assert ise["state"] == "awaiting_health_check"
+    assert ise["details"] == "ISE is not configured or not enabled" and ise["sgts_downloaded"] == 0
+    assert "sgt_note" not in ise and "configure" not in ise
+    assert out["verdict"].startswith("ISE identity source saved; FMC hasn't checked the connection yet")
+    step = next(n for n in out["next"] if "health monitor's next run" in n)
+    assert "'ISE is not configured or not enabled'" in step and ise["checked"] in step
+    assert not any("No ISE identity source" in n for n in out["next"])
 
 
 async def test_identity_sources_connected_with_sessions_and_bindings(fmc: respx.MockRouter) -> None:
@@ -249,6 +275,31 @@ async def test_identity_sources_failed_ise_and_unlinked_policy(fmc: respx.MockRo
     assert any("PASSIVE rule" in n for n in out["next"])
 
 
+async def test_identity_sources_failed_ise_names_the_ui_test_and_the_parts(fmc: respx.MockRouter) -> None:
+    """Live-3 (FMC 10.0.1): source saved in Global with a client certificate ISE doesn't trust. REST only
+    has the RED health module; the cause (the UI Test's TLS error) is UI-only, and the tool says so."""
+    mock_status(fmc, ise=FX["health_alert_ise_failed"]["items"][0])
+    async with Client(server()) as c:
+        out = await run(c, "fmc_get_identity_sources", {})
+    ise = out["ise"]
+    assert ise["state"] == "failed" and ise["health"] == "RED"
+    assert ise["details"] == "Check connectivity to ISE"
+    assert ise["parts"] == {"ISE Services": "UNKNOWN", "ISEConnection": "DOWN"}
+    assert out["verdict"].startswith("ISE/pxGrid connection FAILED")
+    assert "configure" not in ise
+    step = next(n for n in out["next"] if "unhealthy" in n)
+    assert "REST API doesn't say why" in step and "Test button" in step and "Global domain" in step
+    assert "sslv3 alert certificate unknown" in step and "ise_list_pxgrid_clients" in step
+
+
+def test_ise_parts_from_recorded_params() -> None:
+    assert ise_parts(FX["health_alert_ise_failed"]["items"][0]) == {
+        "ISE Services": "UNKNOWN",
+        "ISEConnection": "DOWN",
+    }
+    assert ise_parts(next(a for a in FX["health_alerts"]["items"] if a["moduleID"] == "ISE")) == {}
+
+
 # --- fmc_user_ip_lookup ---------------------------------------------------------------------------------
 
 
@@ -286,7 +337,7 @@ async def test_user_lookup_keeps_groups_when_sessions_are_refused(fmc: respx.Moc
     mock_realm_lookups(fmc)
     async with Client(server()) as c:
         out = await run(c, "fmc_user_ip_lookup", {"user": "bob"})
-    assert out["sessions_error"] == ROLE_HINT
+    assert out["sessions_error"] == refused()
     assert out["users"] == [{"user": "bob", "realm": "corp", "groups": ["contractors"]}]
 
 
@@ -455,7 +506,7 @@ async def test_rule_lookup_refused_sessions_keep_user_rules_conditional(fmc: res
     mock_sessions(fmc, None)
     async with Client(server()) as c:
         out = await run(c, "fmc_rule_lookup", FLOW)
-    assert out["identity"]["error"] == ROLE_HINT
+    assert out["identity"]["error"] == refused()
     assert out["may_match_first"][0]["name"] == "contractors-no-web"
     assert out["may_match_first"][0]["depends_on"] == ["users"]
 

@@ -42,8 +42,11 @@ ACTIVITY = "analysis/useractivity"
 SESSION_CAP = 1000
 ROLE_HINT = (
     "The FMC account's role needs the Events & Logs > Analysis > Users permissions (Active Sessions, User "
-    "Activity, Users) for FMC's identity view; until then ISE (active sessions by IP or user) is the source."
+    "Activity, Users) for FMC's identity view; until then ISE shows the same sessions (ise_find_session / "
+    "ise_list_active_sessions on the ISE MCP server)."
 )
+SESSIONS_WHAT = "its identity sessions (analysis/activesessions)"
+ACTIVITY_WHAT = "its user activity (analysis/useractivity)"
 BUFFER_HINT = (
     "Its syslog buffer is off, and FMC's command API refuses 'show conn' (FMC 10.0.1). To see live "
     "connections here, turn on logging to the internal buffer at level informational in the device's "
@@ -416,6 +419,29 @@ async def session_items(
     return sorted(page.items, key=_seen, reverse=True)
 
 
+async def activity_items(
+    app: FmcApp,
+    domain: str | None,
+    *,
+    ip: str | None = None,
+    user: str | None = None,
+    device: str | None = None,
+    hours: int = 24,
+) -> list[dict[str, Any]]:
+    """FMC's user activity (identity logins and logoffs) of the last `hours`, newest first, filtered
+    server-side. AuthError (403) when the role lacks the Analysis > Users permissions. Also the reader
+    behind fmc_user_ip_lookup's history (F34)."""
+    params: dict[str, Any] = {"time": f"after:{int(time.time()) - hours * 3600}", "sort": "time:desc"}
+    if ip:
+        params["ipAddress"] = ip
+    if user:
+        params["username"] = user
+    if device:
+        params["device"] = device
+    page = await app.all(await app.config_path(ACTIVITY, domain), params, cap=200)
+    return list(page.items)
+
+
 async def active_sessions(
     app: FmcApp,
     domain: str | None,
@@ -428,9 +454,15 @@ async def active_sessions(
     return [session_row(s) for s in await session_items(app, domain, ip=ip, user=user, device=device)]
 
 
-def _role_error(e: AuthError, what: str) -> AuthError:
+def refused(what: str = SESSIONS_WHAT) -> str:
+    """The message for a 403 on FMC's identity view, naming the permission that fixes it."""
+    return f"FMC refused {what} (403). {ROLE_HINT}"
+
+
+def role_error(e: AuthError, what: str = SESSIONS_WHAT) -> AuthError:
+    """A 403 on FMC's identity view becomes refused(what); other errors are returned unchanged."""
     if e.status_code == 403:
-        return AuthError(f"FMC refused {what} (403). {ROLE_HINT}", 403)
+        return AuthError(refused(what), 403)
     return e
 
 
@@ -486,8 +518,11 @@ def register(reg: ToolRegistrar) -> None:
         connection events); if the buffer is off the answer says how to turn it on. Where FMC's API
         lists 'show conn' (read from its spec at run time) the live connection table is used instead.
         From the buffer, the most recently active connections come first; filter by host, user, port,
-        protocol or state. Pair with fmc_packet_tracer (why a
-        flow is allowed or dropped) and fmc_user_identity_sessions (who is on an IP)."""
+        protocol or state. The buffer needs the device's platform settings to log to the internal buffer
+        at informational, with the connection messages 302013-302021 enabled (FTD ships them off) and a
+        buffer larger than the 4 KiB default; fmc_get_platform_settings shows the destinations. Pair with
+        fmc_packet_tracer (why a flow is allowed or dropped) and fmc_user_identity_sessions (who is on an
+        IP)."""
         app: FmcApp = get_client(ctx)
         net = _host_filter(host)
         dev = await resolve_device(app, device, domain)
@@ -613,7 +648,7 @@ def register(reg: ToolRegistrar) -> None:
         try:
             rows = await active_sessions(app, domain, ip=ip, user=user, device=dev_name)
         except AuthError as e:
-            raise _role_error(e, "the active identity sessions (analysis/activesessions)") from None
+            raise role_error(e) from None
         extra: dict[str, Any] = {"sessions": len(rows)}
         if dev_name:
             extra["device"] = dev_name
@@ -623,16 +658,9 @@ def register(reg: ToolRegistrar) -> None:
                 "(ISE/pxGrid, passive AD, captive portal, VPN) reports this IP to FMC."
             )
         if history:
-            params: dict[str, Any] = {"time": f"after:{int(time.time()) - hours * 3600}", "sort": "time:desc"}
-            if ip:
-                params["ipAddress"] = ip
-            if user:
-                params["username"] = user
-            if dev_name:
-                params["device"] = dev_name
             try:
-                page = await app.all(await app.config_path(ACTIVITY, domain), params, cap=200)
+                events = await activity_items(app, domain, ip=ip, user=user, device=dev_name, hours=hours)
             except AuthError as e:
-                raise _role_error(e, "the user activity (analysis/useractivity)") from None
-            extra["history"] = [activity_row(a) for a in page.items][:50]
+                raise role_error(e, ACTIVITY_WHAT) from None
+            extra["history"] = [activity_row(a) for a in events][:50]
         return list_result(page_of(rows, limit=limit, offset=offset), fmt=response_format, extra=extra)
