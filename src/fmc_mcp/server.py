@@ -20,6 +20,7 @@ from fmc_mcp.tools import (
     app_routing,
     bundle,
     bundle_import,
+    conditions,
     containment,
     dangerous,
     decryption,
@@ -129,6 +130,11 @@ Workflows:
   ALLOW rules -> fmc_deploy; fmc_get_file_policy shows the rules. Network analysis (preprocessing):
   fmc_get_network_analysis_policy, fmc_create_network_analysis_policy (linking it to an access policy is
   UI-only).
+- Application, VLAN, time and SGT rules: fmc_find_application (an app or filter by exact name or id, with
+  risk and business relevance) -> fmc_create_application_filter / fmc_create_time_range if needed ->
+  fmc_create_access_rule applications=[...], application_filters=[...], vlan_tags=[...], time_range=...,
+  source_sgts=[...] (ISE SGTs by name or tag) -> fmc_deploy -> fmc_get_hit_counts after real traffic
+  (packet tracer can't simulate app-id).
 - Users and groups in access rules (AD/LDAP): fmc_create_trusted_ca (LDAPS) -> fmc_create_realm ->
   fmc_test_realm -> fmc_download_realm -> fmc_create_identity_policy + fmc_create_identity_rule (PASSIVE
   needs ISE/pxGrid or an agent for user-IP mappings) -> select the identity policy in the access policy
@@ -230,6 +236,7 @@ REGISTER: list[Callable[[ToolRegistrar], None]] = [
     deploy.register,
     device_config.register,
     object_writes.register,
+    conditions.register,
     object_import.register,
     policy_writes.register,
     dangerous.register,
