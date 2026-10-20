@@ -298,9 +298,24 @@ async def test_bulk_refused_stop_on_failure_registers_nothing(fmc: respx.MockRou
     assert post.call_count == 1 and not single.called  # the bulk POST only: no one-by-one fallback
 
 
-async def test_bulk_unsupported_falls_back_to_concurrent_single_posts(fmc: respx.MockRouter) -> None:
+FEATURE_FLAG = {  # the W6 probe's 403 for bulkcommands on FMC 10.0.1, as a bulk registration might answer
+    "error": {
+        "messages": [
+            {
+                "description": "Feature Flag : bulk_device_registration is disabled for the request. "
+                "Request is forbidden."
+            }
+        ]
+    }
+}
+
+
+@pytest.mark.parametrize("refusal", [httpx.Response(405), httpx.Response(403, json=FEATURE_FLAG)])
+async def test_bulk_unsupported_falls_back_to_concurrent_single_posts(
+    fmc: respx.MockRouter, refusal: httpx.Response
+) -> None:
     mock_policies(fmc)
-    bulk = bulk_route(fmc, httpx.Response(405, json={"error": {"messages": [{"description": "Method"}]}}))
+    bulk = bulk_route(fmc, refusal)
 
     def single(request: httpx.Request) -> httpx.Response:
         body = json.loads(request.content)

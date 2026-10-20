@@ -58,7 +58,9 @@ TOOL = "fmc_register_devices"
 DEVICE_GROUPS = "devicegroups/devicegrouprecords"
 MAX_DEVICES = 32
 SINGLE_CONCURRENCY = 8  # one POST per device; the client's own FMC_MAX_CONCURRENCY applies as well
-BULK_UNSUPPORTED = {404, 405, 415}  # FMC doesn't take ?bulk=true for devicerecords here
+# FMC doesn't take ?bulk=true for devicerecords here. 403 too: FMC 10.0.1 ships other bulk endpoints behind
+# a feature flag ("Feature Flag : bulk_device_command_execution is disabled", 403, W6 probe); nothing ran.
+BULK_UNSUPPORTED = {403, 404, 405, 415}
 DEPLOYED = {"DEPLOYED", "SUCCEEDED", "SUCCESS"}
 FINAL = {"deployed", "registered", "failed", "refused", "skipped", "unknown"}
 POLL_FIRST, POLL_MAX = 10.0, 30.0  # seconds between polling rounds (backs off)
@@ -270,7 +272,7 @@ class _Run:
                 try:
                     resp = await self.app.api.post(path, r.body)
                 except UpstreamError as e:
-                    sure = e.status_code in (400, 404, 409, 422)  # refused before anything was done
+                    sure = e.status_code in (400, 403, 404, 409, 422)  # refused before anything was done
                     note = "" if sure else " FMC may still have accepted it: check fmc_list_devices."
                     r.end("refused" if sure else "unknown", self.began, self.clean(str(e)) + note)
                     if self.stop_on_failure:
