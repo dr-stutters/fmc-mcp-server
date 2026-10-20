@@ -26,7 +26,8 @@ from fmc_mcp._core import (
 )
 from fmc_mcp._core.http import page_of
 from fmc_mcp.client import FmcApp
-from fmc_mcp.preview import fmc_preview
+from fmc_mcp.preview import fmc_preview, owner_domain
+from fmc_mcp.tools import policies
 from fmc_mcp.tools.common import Domain, block_labels, resolve_in
 from fmc_mcp.tools.object_writes import applied, editable
 from fmc_mcp.tools.policies import ACCESS, all_rules
@@ -41,6 +42,8 @@ DOMAIN_RE = re.compile(
 )
 MARKER = ".fmc-mcp.txt"  # file name of the lists this tool uploads (FMC keeps no description for them)
 PolicyRef = Annotated[str, Field(description="DNS policy name or UUID (fmc_get_dns_policy)")]
+ACP_SCAN_CAP = 25  # access policies read for their DNS policy (only when the DNS policy is inherited)
+NEW_POLICY = "<new DNS policy>"
 
 
 def list_name(domain: str) -> str:
@@ -64,6 +67,95 @@ def rule_row(r: dict[str, Any]) -> dict[str, Any]:
         "id": r.get("id"),
     }
     return {k: v for k, v in row.items() if v is not None}
+
+
+async def dns_policy_name(app: FmcApp, ref: dict[str, Any], domain: str | None) -> str | None:
+    """The DNS policy's own name. An access policy's SI reference can carry another one: FMC 10.0.1 calls
+    FMC's 'Default DNS Policy' "DNS Block List Policy" there, a name fmc_dns_block doesn't find (#204)."""
+    try:
+        pol = await app.api.get(await app.config_path(f"{DNS}/{ref['id']}", domain))
+    except UpstreamError:
+        pol = None
+    name = (pol or {}).get("name") or ref.get("name")
+    return str(name) if name else None
+
+
+def _call(tool: str, **kw: Any) -> str:
+    return f"{tool}({', '.join(f'{k}={v!r}' for k, v in kw.items())})"
+
+
+async def dns_policy_users(app: FmcApp, dns_id: str, domain: str | None) -> tuple[list[dict[str, Any]], bool]:
+    """The access policies the domain sees (its own and its ancestors') whose Security Intelligence uses
+    the DNS policy, and whether every access policy was read (at most ACP_SCAN_CAP)."""
+    acps = await app.all(await app.config_path(ACCESS, domain))
+    users = []
+    for acp in acps.items[:ACP_SCAN_CAP]:
+        base = await app.config_path(f"{ACCESS}/{acp['id']}/securityintelligencepolicies", domain)
+        try:
+            sis = (await app.all(base)).items
+        except UpstreamError:
+            continue
+        if any(str((si.get("dnsPolicy") or {}).get("id") or "").lower() == dns_id.lower() for si in sis):
+            users.append(acp)
+    return users, acps.complete and len(acps.items) <= ACP_SCAN_CAP
+
+
+async def inherited_blockers(
+    app: FmcApp, pol: dict[str, Any], domain: str | None, wanted: list[str], action: str
+) -> list[str]:
+    """For a DNS policy an ancestor domain owns: the way to block in this domain alone first (a DNS
+    policy of its own, linked to its access policies), then what changing the ancestor's policy reaches
+    (#204). Empty when the domain owns the policy."""
+    here = await app.domain_uuid(domain)
+    owner = owner_domain(pol)
+    if not owner or str(owner["id"]).lower() == here.lower():
+        return []
+    owner_name, here_name = await app.domain_name(str(owner["id"])), await app.domain_name(here)
+    name = pol.get("name")
+    users, complete = await dns_policy_users(app, str(pol["id"]), domain)
+
+    def owned_here(a: dict[str, Any]) -> bool:
+        d = owner_domain(a)
+        return not d or str(d["id"]).lower() == here.lower()
+
+    mine = [str(a.get("name")) for a in users if owned_here(a)]
+    theirs = [str(a.get("name")) for a in users if not owned_here(a)]
+    steps = [_call("fmc_create_dns_policy", name=NEW_POLICY, domain=here_name)]
+    steps += [
+        _call("fmc_set_dns_policy", access_policy=a, dns_policy=NEW_POLICY, domain=here_name)
+        for a in mine or ["<access policy>"]
+    ]
+    again: dict[str, Any] = {"policy": NEW_POLICY, "domains": wanted}
+    if action != "block":
+        again["action"] = action
+    steps.append(_call("fmc_dns_block", **again, domain=here_name))
+    local = (
+        f"{name!r} is defined in domain {owner_name!r} and only inherited by {here_name!r}, where FMC "
+        f"won't change it. To {action} in {here_name!r} only, give it a DNS policy of its own: "
+        f"{' -> '.join(steps)}, then fmc_deploy."
+    )
+    if theirs:
+        verb = "belongs" if len(theirs) == 1 else "belong"
+        local += f" ({', '.join(theirs)} {verb} to an ancestor domain and can only be relinked there.)"
+    below = [d["name"] for d in app.domains if d["name"].startswith(f"{owner_name}/")]
+    reach = f"Or repeat with domain={owner_name!r} to change {name!r} itself, for every access policy using "
+    reach += f"it in {owner_name!r}" + (f" and the domains below it ({', '.join(below)})" if below else "")
+    if users:
+        ids = {str(a.get("id")) for a in users}
+        devices = sorted(
+            {
+                str(t.get("name"))
+                for a in await policies.policy_assignments(app, domain)
+                if str((a.get("policy") or {}).get("id")) in ids
+                for t in a.get("targets") or []
+            }
+        )
+        reach += f"; seen from {here_name!r} it is used by {', '.join(str(a.get('name')) for a in users)}"
+        if devices:
+            reach += f" (devices: {', '.join(devices)})"
+        if not complete:
+            reach += f", of the first {ACP_SCAN_CAP} access policies checked"
+    return [local, reach + "."]
 
 
 async def upload_file(
@@ -332,12 +424,13 @@ def register(reg: ToolRegistrar) -> None:
                 "next": "fmc_deploy to the devices whose access policy uses this DNS policy",
             }
 
+        inherited = await inherited_blockers(app, p, domain, wanted, action)
         return await fmc_preview(
             ctx,
             tool="fmc_dns_block",
             args={"policy": policy, "domains": domains, "action": action, "mode": mode, "domain": domain},
             confirm=confirm,
-            owned=[p],
+            owned=[] if inherited else [p],  # inherited_blockers explains it, the leaf way first
             plan=Plan(
                 f"DNS {action} {len(todo)} domain(s) in {p.get('name')!r}",
                 details={
@@ -352,7 +445,7 @@ def register(reg: ToolRegistrar) -> None:
                     "mode": mode if action == "block" else None,
                 },
                 fingerprint={"rule": (rule or {}).get("id"), "lists": sorted(in_rule)},
-                blockers=blockers,
+                blockers=inherited + blockers,
                 side_effects=["Takes effect on devices after the next deployment."],
             ),
             apply=apply,

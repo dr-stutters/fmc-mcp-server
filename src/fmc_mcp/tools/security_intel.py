@@ -32,7 +32,7 @@ from fmc_mcp._core import (
 from fmc_mcp.client import FmcApp, is_uuid
 from fmc_mcp.preview import fmc_preview
 from fmc_mcp.tools.common import Domain, is_system, resolve_in
-from fmc_mcp.tools.dns import DNS, DOMAIN_RE, upload_file
+from fmc_mcp.tools.dns import DNS, DOMAIN_RE, dns_policy_name, upload_file
 from fmc_mcp.tools.dns import MARKER as DNS_BLOCK_MARKER
 from fmc_mcp.tools.dns import rule_row as dns_rule_row
 from fmc_mcp.tools.object_writes import applied, editable
@@ -558,6 +558,7 @@ def register(reg: ToolRegistrar) -> None:
                         used.setdefault(rid, []).append(f"{LABEL[kind]} {which[:-4]} list")
         dns_ref = si.get("dnsPolicy") or {}
         if dns_ref.get("id"):
+            out["dns_policy"] = await dns_policy_name(app, dns_ref, domain)
             rules = await all_rules(app, await app.config_path(f"{DNS}/{dns_ref['id']}/dnsrules", domain))
             out["dns_rules"] = [dns_rule_row(r) for r in rules.items] or None
             for r in rules.items:

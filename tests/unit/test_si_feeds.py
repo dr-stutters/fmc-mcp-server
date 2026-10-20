@@ -189,11 +189,16 @@ async def test_policy_view_shows_feed_status_and_dns_rules(fmc: respx.MockRouter
     fmc.get(f"{CFG}/policy/dnspolicies/{DEFAULT_DNS['id']}/dnsrules").mock(
         return_value=httpx.Response(200, json=REC["dns_rules"])
     )
+    fmc.get(f"{CFG}/policy/dnspolicies/{DEFAULT_DNS['id']}").mock(
+        return_value=httpx.Response(200, json=DEFAULT_DNS)
+    )
     async with Client(server()) as c:
         out = await run(
             c, "fmc_get_security_intelligence", {"policy": ACP["name"], "response_format": "json"}
         )
-    assert out["network_block"][-1] == "mcp-fw-feed-ip" and out["dns_policy"] == "DNS Block List Policy"
+    # The SI reference calls it "DNS Block List Policy"; the policy's own name is what fmc_dns_block takes.
+    assert si["dnsPolicy"]["name"] == "DNS Block List Policy"
+    assert out["network_block"][-1] == "mcp-fw-feed-ip" and out["dns_policy"] == "Default DNS Policy"
     assert [r["name"] for r in out["dns_rules"]][2] == "Global Block List for DNS"
     rows = {r["name"]: r for r in out["feeds_and_lists"]}
     assert rows["mcp-fw-feed-ip"]["status"] == "ok" and rows["mcp-fw-feed-ip"]["used_as"] == [

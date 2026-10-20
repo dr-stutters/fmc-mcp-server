@@ -13,6 +13,7 @@ from pydantic import Field
 from fmc_mcp._core import InvalidRequest, ToolRegistrar, UpstreamError, get_client
 from fmc_mcp.client import FmcApp
 from fmc_mcp.licensing import licence_needs, licences
+from fmc_mcp.preview import owner_domain
 from fmc_mcp.tools.common import Domain, is_system, ref_label, resolve_in
 from fmc_mcp.tools.devices import DEVICES, HA_PAIRS
 from fmc_mcp.tools.dns import DNS
@@ -349,16 +350,25 @@ async def threat_posture(app: FmcApp, policy: str, domain: str | None) -> dict[s
                 for r in blocking
                 for o in ((r.get("dnsLists") or {}).get("objects") or [])
             )
+            if dpol.get("name"):  # its own name, not the one in the SI reference (#204)
+                si_rows["dns_policy"] = dpol["name"]
             si_rows["dns_policy_system"] = is_system(dpol) if dpol else None
             si_rows["dns_blocking_rules"] = len(blocking)
             if dpol and not talos_dns:
                 own = not is_system(dpol)
+                owner = owner_domain(dpol)
+                here = await app.domain_uuid(domain)
+                why = (
+                    f"it belongs to domain {await app.domain_name(str(owner['id']))!r}, read-only here"
+                    if owner and str(owner["id"]).lower() != here.lower()
+                    else "it is FMC's read-only default policy"
+                )
                 findings.append(
                     _finding(
                         "dns_no_talos",
                         "low",
                         f"DNS policy {dpol.get('name')!r} blocks no Talos DNS category"
-                        + ("" if own else " (it is FMC's read-only default policy)")
+                        + ("" if own else f" ({why})")
                         + ".",
                         (
                             ""
