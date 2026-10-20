@@ -100,8 +100,13 @@ SNORT_FIELD = re.compile(r"(?:^|, )([A-Za-z][\w ]*?): (.*?)(?=, [A-Za-z][\w ]*?:
 TEARDOWN_USER = re.compile(r"^(?P<reason>.*?)\s*(?:\((?P<user>[^()]*\\[^()]*)\))?\s*$")
 # FTD 10 ends 302013/302014 lines with two numbers (' -1 -1', ' 0 0'); not part of the teardown reason.
 NUM_TAIL = re.compile(r"(?:\s+-?\d+)+\s*$")
-# The teardown reason of the flow packet tracer (fmc_packet_tracer, fmc_prove_policy) injects: a simulation.
+TAIL_PAIR = re.compile(r"\s(-?\d+)\s+(-?\d+)\s*$")
+# The flow packet tracer (fmc_packet_tracer, fmc_prove_policy) injects is a simulation. Its teardown reads
+# 'Free the flow created as result of packet injection', or the reason the trace dropped it ('No valid
+# adjacency'). FTD 10 ends every line of such a flow with ' 0 0', and real traffic's with ' -1 -1' (seen on
+# FTD 10.0.0 via FMC 10.0.1, #202): a closed flow with that tail and no bytes is a simulation too.
 INJECTED = "packet injection"
+SIMULATED_TAIL = ("0", "0")
 
 
 @dataclass
@@ -129,7 +134,9 @@ class Conn:
     started: str | None = None
     ended: str | None = None
     seq: int = 0  # line of the buffer that last mentioned it (newest activity sorts first)
+    last_seen: str | None = None  # the time of that line
     simulated: bool = False  # a packet-tracer flow, not real traffic
+    zero_tail: bool = False  # FTD 10's ' 0 0' line ending (packet tracer's flows)
 
     def row(self) -> dict[str, Any]:
         out = {
@@ -148,6 +155,7 @@ class Conn:
             "reason": self.reason,
             "started": self.started,
             "ended": self.ended,
+            "last_seen": self.last_seen,
             "id": self.conn_id,
         }
         return {k: v for k, v in out.items() if v not in (None, "")}
@@ -162,6 +170,11 @@ class Conn:
 def _side(iface: str | None, ip: str, port: str | int | None) -> str:
     where = f"{iface} " if iface else ""
     return f"{where}{ip}:{port}" if port not in (None, "") else f"{where}{ip}"
+
+
+def _zero_tail(text: str | None) -> bool:
+    m = TAIL_PAIR.search(text or "")
+    return bool(m and (m.group(1), m.group(2)) == SIMULATED_TAIL)
 
 
 def _user(*values: str | None) -> str | None:
@@ -204,6 +217,7 @@ def parse_log_buffer(text: str) -> tuple[list[Conn], bool]:
                 conn_id=b["id"],
                 user=_user(b["auser"], b["buser"]),
                 started=when,
+                zero_tail=_zero_tail(body),
             )
             by_id[b["id"]] = c
             order.append(c)
@@ -227,11 +241,12 @@ def parse_log_buffer(text: str) -> tuple[list[Conn], bool]:
                 order.append(c)
             c.state, c.ended = "closed", when
             c.duration, c.bytes = t["duration"], int(t["bytes"])
+            c.zero_tail = c.zero_tail or _zero_tail(t["rest"])
             rest = TEARDOWN_USER.match(NUM_TAIL.sub("", t["rest"] or ""))
             if rest:
                 c.reason = rest["reason"] or None
-                c.simulated = INJECTED in (c.reason or "").lower()
                 c.user = c.user or _user(rest["user"], t["auser"], t["buser"])
+            c.simulated = INJECTED in (c.reason or "").lower() or (c.zero_tail and not c.bytes)
         elif msg in ("302020", "302021"):
             i = ICMP.match(body)
             if not i:
@@ -257,6 +272,7 @@ def parse_log_buffer(text: str) -> tuple[list[Conn], bool]:
             snort.append(fields)
         if c is not None:
             c.seq = seq
+            c.last_seen = when or c.last_seen
     for ev in snort:
         _merge_snort(ev, order)
     return order, enabled
@@ -292,7 +308,10 @@ def _merge_snort(ev: dict[str, str], conns: list[Conn]) -> None:
             started=ev.get("_time") or None,
         )
         conns.append(match)
-    match.seq = max(match.seq, _int(ev.get("_seq")) or 0)
+    ev_seq = _int(ev.get("_seq")) or 0
+    if ev_seq >= match.seq:
+        match.seq = ev_seq
+        match.last_seen = ev.get("_time") or match.last_seen
     match.rule = ev.get("AccessControlRuleName") or match.rule
     match.action = ev.get("AccessControlRuleAction") or match.action
     user = ev.get("User")
@@ -611,9 +630,10 @@ def register(reg: ToolRegistrar) -> None:
         device's syslog buffer ('show logging': connection built/teardown messages and Snort
         connection events); if the buffer is off the answer says how to turn it on. Where FMC's API
         lists 'show conn' (read from its spec at run time) the live connection table is used instead.
-        From the buffer, open connections come first, then the most recently active (with start and end
-        times when the device timestamps its logs); packet-tracer simulations are left out (counted in
-        `packet_tracer_flows`); filter by host, user, port, protocol or state. The buffer needs the
+        From the buffer, open connections come first, then the most recently active, with `started` and
+        `last_seen` (the newest log line about it; `ended` for a teardown) when the device timestamps
+        its logs; packet-tracer simulations are left out (counted in `packet_tracer_flows`); filter by
+        host, user, port, protocol or state. The buffer needs the
         device's platform settings to log to the internal buffer at informational, with the connection
         messages 302013-302021 enabled (FTD ships them off) and a buffer larger than the 4 KiB default;
         fmc_get_platform_settings shows the destinations. Pair with fmc_packet_tracer (why a flow is
@@ -691,7 +711,8 @@ def register(reg: ToolRegistrar) -> None:
             extra["packet_tracer_flows"] = simulated
             notes.append(
                 f"{simulated} packet-tracer simulation(s) left out: fmc_packet_tracer and fmc_prove_policy "
-                "inject a flow the device logs like a connection ('packet injection')."
+                "inject a flow the device logs like a connection (torn down with 'packet injection', or "
+                "with the reason the trace dropped it; FTD 10 ends those lines with ' 0 0')."
             )
         if source.startswith("syslog"):
             notes.append(
@@ -711,7 +732,7 @@ def register(reg: ToolRegistrar) -> None:
             "duration",
             "reason",
             "started",
-            "ended",
+            "last_seen",
         ]
         if source.startswith("show conn"):
             columns = ["protocol", "initiator", "responder", "flags", "idle", "duration", "bytes", "rule"]

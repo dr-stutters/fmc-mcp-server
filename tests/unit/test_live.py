@@ -287,4 +287,41 @@ async def test_packet_tracer_flows_are_left_out_and_counted(ftd: respx.MockRoute
         "fmc_live_connections",
         {"device": "mcp-ftd1", "response_format": "markdown"},
     )
-    assert "| started | ended |" in str(md)
+    assert "| started | last_seen |" in str(md)
+
+
+NO_ADJACENCY = fixture("ftd_logging_injection")["no_adjacency_text"]
+
+
+def test_failed_traces_are_simulations_too() -> None:
+    """#202 (recorded, FTD 10.0.0): a packet-tracer flow the trace dropped is torn down with 'No valid
+    adjacency', not 'packet injection'; FTD 10 ends its lines with ' 0 0' (real traffic: ' -1 -1')."""
+    conns, _ = parse_log_buffer(NO_ADJACENCY)
+    rows = {c.conn_id: c for c in conns}
+    assert rows["126"].reason == "No valid adjacency" and rows["126"].simulated
+    assert rows["130"].simulated
+    assert rows["128"].reason == "TCP FINs from inside" and not rows["128"].simulated
+    assert rows["132"].state == "open" and not rows["132"].simulated
+
+
+def test_last_seen_is_the_newest_line_about_the_connection() -> None:
+    conns, _ = parse_log_buffer(LIVE["show logging (buffer on)"]["items"][0]["commandOutput"])
+    web = next(c for c in conns if c.conn_id == "101")
+    # built 14:01:02, torn down 14:01:03, Snort's end-of-connection event 14:01:03
+    assert (web.started, web.ended, web.last_seen) == (
+        "Oct 18 2026 14:01:02",
+        "Oct 18 2026 14:01:03",
+        "Oct 18 2026 14:01:03",
+    )
+    telnet = next(c for c in conns if c.conn_id == "102")
+    assert telnet.state == "open" and telnet.last_seen == "Oct 18 2026 14:01:10"
+
+
+async def test_right_now_lists_open_connections_first_without_simulations(ftd: respx.MockRouter) -> None:
+    """The eval's ask: 'what is <client> talking to right now?' (11 of 20 rows were packet-tracer flows)."""
+    out = {"items": [{"commandInput": "show logging", "commandOutput": NO_ADJACENCY}]}
+    ftd.get(CMD).mock(return_value=httpx.Response(200, json=out))
+    data = await call("fmc_live_connections", {"device": "mcp-ftd1", "host": "10.99.1.10"})
+    assert [(r["id"], r["state"]) for r in data["results"]] == [("132", "open"), ("128", "closed")]
+    assert data["results"][0]["last_seen"] == "2026-10-19T04:56:20Z"
+    assert data["packet_tracer_flows"] == 2 and data["open"] == 1
