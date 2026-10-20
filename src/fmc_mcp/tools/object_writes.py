@@ -32,6 +32,7 @@ from fmc_mcp.tools.common import (
     resolve_object,
     slim,
 )
+from fmc_mcp.tools.fqdn_dns import fqdn_dns_check
 
 ValueType = Literal["host", "network", "range", "fqdn", "port", "icmpv4", "url", "vlan_tag"]
 GroupKind = Literal["network", "port", "url"]
@@ -153,6 +154,7 @@ def register(reg: ToolRegistrar) -> None:
         if await exists(app, name, [t.key], domain):
             blockers.append(f"A {t.key} object named {name!r} already exists.")
         path = await app.config_path(t.path, domain)
+        details = {"body": body, **await fqdn_dns_check(app, body, domain)}  # F69: FQDN without DNS
         return await fmc_preview(
             ctx,
             tool="fmc_create_object",
@@ -165,7 +167,7 @@ def register(reg: ToolRegistrar) -> None:
                 "domain": domain,
             },
             confirm=confirm,
-            plan=Plan(f"Create {t.key} object {name!r}", details={"body": body}, blockers=blockers),
+            plan=Plan(f"Create {t.key} object {name!r}", details=details, blockers=blockers),
             apply=lambda: applied(app, lambda: app.api.post(path, body)),
         )
 

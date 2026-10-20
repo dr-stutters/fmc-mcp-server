@@ -426,6 +426,10 @@
       "tier": "write",
       "title": "Configure BGP"
     },
+    "fmc_configure_dns": {
+      "tier": "write",
+      "title": "Configure DNS (platform settings)"
+    },
     "fmc_configure_ecmp_zone": {
       "tier": "write",
       "title": "Configure ECMP zone"
@@ -433,6 +437,14 @@
     "fmc_configure_ha_monitoring": {
       "tier": "write",
       "title": "Configure HA monitored interface"
+    },
+    "fmc_configure_mgmt_access": {
+      "tier": "write",
+      "title": "Configure ICMP / HTTPS management access"
+    },
+    "fmc_configure_netflow": {
+      "tier": "write",
+      "title": "Configure NetFlow export (platform settings)"
     },
     "fmc_configure_ntp": {
       "tier": "write",
@@ -1001,6 +1013,10 @@
     "fmc_set_access_logging": {
       "tier": "write",
       "title": "Set access policy logging (syslog)"
+    },
+    "fmc_set_banner": {
+      "tier": "write",
+      "title": "Set login banner (platform settings)"
     },
     "fmc_set_decryption_policy": {
       "tier": "write",

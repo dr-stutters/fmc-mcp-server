@@ -184,7 +184,7 @@ Notes on some read tools:
 | Device configuration | `fmc_update_interface`, `fmc_create_subinterface`, `fmc_create_interface` (loopback, VTI, EtherChannel, BVI), `fmc_delete_interface`, `fmc_create_static_route`, `fmc_delete_static_route`, `fmc_assign_policy` |
 | Routing | `fmc_configure_bgp`, `fmc_configure_ospf`, `fmc_create_vrf`, `fmc_delete_vrf` |
 | SD-WAN application-aware routing | `fmc_configure_wan_interface` (priority, ICMP path monitoring to the next hop or an IP, HTTP application monitoring), `fmc_configure_ecmp_zone`, `fmc_create_app_route` (applications, networks, ports or users out of the WAN link picked by order, priority, or lowest jitter / loss / RTT or highest MOS), `fmc_delete_app_route`; `fmc_get_routing` shows the routes and WAN settings |
-| Platform settings / logging | `fmc_create_platform_settings_policy`, `fmc_configure_syslog`, `fmc_set_access_logging`, `fmc_configure_ntp`, `fmc_configure_snmp` (v2c; community write-only), `fmc_configure_ssh_access` |
+| Platform settings / logging | `fmc_create_platform_settings_policy`, `fmc_configure_syslog`, `fmc_set_access_logging`, `fmc_configure_ntp`, `fmc_configure_snmp` (v2c; community write-only), `fmc_configure_ssh_access`, `fmc_configure_dns` (the DNS server group FQDN objects resolve with, created from server IPs; lookup interfaces, timers), `fmc_configure_netflow` (collectors, traffic classes, on/off), `fmc_configure_mgmt_access` (ICMP and HTTPS access to the data interfaces), `fmc_set_banner` |
 | Dynamic objects | `fmc_create_dynamic_object`, `fmc_delete_dynamic_object`, `fmc_map_dynamic_object` |
 | File / malware | `fmc_create_file_policy`, `fmc_create_file_rule` (DETECT, BLOCK, MALWARE_CLOUD_LOOKUP, BLOCK_MALWARE, with or without reset; by protocol, direction, file type and category), `fmc_delete_file_rule`; on ALLOW rules: `fmc_create_access_rule` / `fmc_update_access_rule(file_policy=...)` |
 | Network analysis | `fmc_create_network_analysis_policy` (on a base policy; an access policy selects it in the UI, FMC's REST API has no field for that) |
@@ -467,7 +467,7 @@ checks it against the registered tools.
 | `intel` | 12 (2/10/0) | blocking by reputation: Security Intelligence feeds and lists, DNS policy, host containment |  |
 | `migrate` | 6 (4/1/1) | move policy between FMCs or files: policy bundles, access-rule CSV import/export |  |
 | `objects` | 19 (8/11/0) | network/port/URL objects and groups, zones, dynamic objects, overrides, where an address is used |  |
-| `platform` | 7 (1/6/0) | platform settings: syslog, connection logging, NTP, SNMP, SSH access |  |
+| `platform` | 11 (1/10/0) | platform settings: syslog, connection logging, NTP, SNMP, DNS, NetFlow, SSH/HTTPS/ICMP, banner |  |
 | `policy` | 24 (9/14/1) | access control, NAT and prefilter policies and rules, assignments, rule hygiene | `fmc_policy_cleanup`, `fmc_rule_change_review`, `fmc_why_blocked` |
 | `routing` | 8 (2/6/0) | static routes, BGP, OSPF, VRFs |  |
 | `sdwan` | 7 (1/6/0) | SD-WAN hub and spoke topologies, WAN interfaces, application-aware routing, branch health | `fmc_onboard_branch`, `fmc_sdwan_troubleshoot` |
