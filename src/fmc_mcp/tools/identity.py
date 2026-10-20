@@ -30,7 +30,6 @@ from fmc_mcp._core import (
     ToolRegistrar,
     get_client,
     list_result,
-    object_result,
 )
 from fmc_mcp._core.http import page_of
 from fmc_mcp.client import FmcApp
@@ -40,6 +39,7 @@ from fmc_mcp.tools.common import Domain, block_labels, ref_label, resolve_in
 from fmc_mcp.tools.object_writes import applied
 from fmc_mcp.tools.policies import ACCESS, all_rules
 from fmc_mcp.tools.policy_writes import NetsParam, PortsParam, ZonesParam
+from fmc_mcp.tools.render import object_reply
 from fmc_mcp.ui import FmcUiSession, ui_credentials
 
 REALMS = "object/realms"
@@ -273,7 +273,7 @@ def register(reg: ToolRegistrar) -> None:
             out[key] = names[:MEMBER_CAP]
             if len(names) > MEMBER_CAP:
                 out[f"{key}_truncated"] = f"{len(names)} match; showing {MEMBER_CAP} (narrow with text)"
-        return object_result(out, fmt=response_format)
+        return object_reply(out, fmt=response_format)
 
     @reg.read(title="Test realm directory connection")
     async def fmc_test_realm(
@@ -366,7 +366,7 @@ def register(reg: ToolRegistrar) -> None:
                 "No access policy uses it. Select it in the access policy editor (Identity step); FMC's "
                 "REST API can't set the link."
             )
-        return object_result(out, fmt=response_format)
+        return object_reply(out, fmt=response_format)
 
     # --- realm writes ---------------------------------------------------------------------------------
 

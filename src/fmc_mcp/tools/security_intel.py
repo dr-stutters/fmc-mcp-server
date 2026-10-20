@@ -28,7 +28,6 @@ from fmc_mcp._core import (
     ToolRegistrar,
     UpstreamError,
     get_client,
-    object_result,
 )
 from fmc_mcp.client import FmcApp, is_uuid
 from fmc_mcp.preview import fmc_preview
@@ -38,6 +37,7 @@ from fmc_mcp.tools.dns import MARKER as DNS_BLOCK_MARKER
 from fmc_mcp.tools.dns import rule_row as dns_rule_row
 from fmc_mcp.tools.object_writes import applied, editable
 from fmc_mcp.tools.policies import ACCESS, all_rules
+from fmc_mcp.tools.render import object_reply
 
 PREFIX = "mcp-si-"
 PolicyRef = Annotated[str, Field(description="Access control policy name or UUID")]
@@ -535,7 +535,7 @@ def register(reg: ToolRegistrar) -> None:
         now = time.time()
         if not policy:
             rows = [source_row(k, src, o, now) for k, src, o in await _sources(app, list(KINDS), domain)]
-            return object_result(
+            return object_reply(
                 {
                     "feeds": [r for r in rows if r["source"] == "feed"] or None,
                     "lists": [r for r in rows if r["source"] != "feed"] or None,
@@ -581,7 +581,7 @@ def register(reg: ToolRegistrar) -> None:
                 out["other_feeds_and_lists"] = (
                     f"{others} not used here (fmc_get_security_intelligence without a policy)"
                 )
-        return object_result(out, fmt=response_format)
+        return object_reply(out, fmt=response_format)
 
     @reg.write(title="Security Intelligence block/unblock")
     async def fmc_si_block(

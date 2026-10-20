@@ -19,13 +19,14 @@ from fmc_mcp._core import (
     UpstreamError,
     get_client,
     list_result,
-    object_result,
 )
 from fmc_mcp._core.http import Page
 from fmc_mcp.client import FmcApp
 from fmc_mcp.preview import fmc_preview
 from fmc_mcp.tools.common import Domain, ref_label, resolve_in
+from fmc_mcp.tools.network_analysis import access_policies_using
 from fmc_mcp.tools.object_writes import applied, editable
+from fmc_mcp.tools.render import object_reply
 
 IPS = "policy/intrusionpolicies"
 RULES = "object/intrusionrules"
@@ -84,6 +85,23 @@ def rule_row(r: dict[str, Any], *, text: bool = False) -> dict[str, Any]:
     return {k: v for k, v in row.items() if v is not None}
 
 
+def usage_row(p: dict[str, Any]) -> dict[str, Any] | None:
+    """Who uses the policy, from FMC's metadata.usage: counts plus the access policies by name (FMC
+    10.0.1 names them only in the list answer, as `asscoiatedAcPolicies`; templates and zero-trust
+    policies are kept when FMC counts any)."""
+    usage = (p.get("metadata") or {}).get("usage")
+    if not isinstance(usage, dict):
+        return None
+    row = {
+        "access_policies": usage.get("accesspolicy"),
+        "devices": usage.get("devices"),
+        "access_policy_names": access_policies_using(p) or None,
+        "device_templates": usage.get("templates") or None,
+        "zero_trust_policies": usage.get("zerotrustpolicy") or None,
+    }
+    return {k: v for k, v in row.items() if v is not None} or None
+
+
 async def resolve_ips(app: FmcApp, ref: str, domain: str | None) -> dict[str, Any]:
     return await resolve_in(app, IPS, ref, "intrusion policy", domain)
 
@@ -120,14 +138,14 @@ def register(reg: ToolRegistrar) -> None:
             "base_policy": ref_label(p.get("basePolicy") or {}) or None,
             "inspection_mode": p.get("inspectionMode"),
             "system_defined": bool(p.get("isSystemDefined")),
-            "used_by": meta.get("usage"),
+            "used_by": usage_row(p),
             "domain": (meta.get("domain") or {}).get("name"),
             "overridden_rules": [rule_row(r) for r in over.items],
             "id": p.get("id"),
         }
         if not over.complete:
             out["note"] = f"Only the first {MAX_OVERRIDES} overrides are listed."
-        return object_result(out, fmt=response_format)
+        return object_reply(out, fmt=response_format)
 
     @reg.read(title="Find intrusion rules")
     async def fmc_find_intrusion_rules(
@@ -214,7 +232,6 @@ def register(reg: ToolRegistrar) -> None:
         if not todo:
             blockers.append("Nothing to change: every rule already has that state.")
         base = await app.config_path(f"{IPS}/{p['id']}/intrusionrules", domain)
-        usage = (p.get("metadata") or {}).get("usage") or {}
 
         async def apply() -> Any:
             done: list[dict[str, Any]] = []
@@ -252,7 +269,7 @@ def register(reg: ToolRegistrar) -> None:
             owned=[p],
             plan=Plan(
                 f"Set {len(found)} rule(s) to {state} in intrusion policy {p.get('name')!r}",
-                details={"rules": changes, "used_by": usage or None},
+                details={"rules": changes, "used_by": usage_row(p)},
                 fingerprint={
                     "policy": p["id"],
                     "rules": [(r.get("id"), r.get("defaultState"), r.get("overrideState")) for r in found],

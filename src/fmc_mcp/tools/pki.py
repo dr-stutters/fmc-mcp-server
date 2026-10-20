@@ -31,7 +31,6 @@ from fmc_mcp._core import (
     UpstreamError,
     get_client,
     list_result,
-    object_result,
 )
 from fmc_mcp._core.http import page_of
 from fmc_mcp.client import FmcApp, is_uuid
@@ -39,6 +38,7 @@ from fmc_mcp.preview import fmc_preview
 from fmc_mcp.tools.common import Domain, is_system, pick_by_name
 from fmc_mcp.tools.identity import PEM_RE, fmc_fingerprint, pem_body
 from fmc_mcp.tools.object_writes import applied
+from fmc_mcp.tools.render import object_reply
 
 INTERNAL_CAS = "object/internalcas"
 INTERNAL_CERTS = "object/internalcertificates"
@@ -387,7 +387,7 @@ def register(reg: ToolRegistrar) -> None:
             )
         if notes:
             out["notes"] = notes
-        return object_result(out, fmt=response_format)
+        return object_reply(out, fmt=response_format)
 
     @reg.write(title="Create internal CA (key generated on FMC)")
     async def fmc_create_internal_ca(

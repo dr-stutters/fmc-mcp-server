@@ -19,7 +19,6 @@ from fmc_mcp._core import (
     ValidationFailed,
     get_client,
     list_result,
-    object_result,
 )
 from fmc_mcp._core.http import page_of
 from fmc_mcp.client import FmcApp
@@ -28,6 +27,7 @@ from fmc_mcp.tools.common import Domain, ref_label, resolve_in, resolve_object, 
 from fmc_mcp.tools.dangerous import Wait, finish
 from fmc_mcp.tools.devices import DEVICES, DeviceRef
 from fmc_mcp.tools.object_writes import applied, editable, value_fields
+from fmc_mcp.tools.render import object_reply
 
 HEALTH = "policy/healthpolicies"
 LOWER_IS_WORSE = {"hm_chm"}  # modules whose critical threshold sits below the warning one (FMC 10.0.1)
@@ -231,14 +231,20 @@ def register(reg: ToolRegistrar) -> None:
         try:
             pkgs = await app.api.get(UPGRADE_PACKAGES, {"expanded": "true", "limit": 100}, timeout=30)
             out["upgrade_packages"] = [
-                {"name": p.get("name"), "version": p.get("upgradePackageVersion") or p.get("version")}
+                {
+                    "name": p.get("name"),
+                    # FMC 10.0.1 puts it in metadata.updateVersion ('10.0.1 Hotfix P (10.0.1.1-2)')
+                    "version": p.get("upgradePackageVersion")
+                    or p.get("version")
+                    or (p.get("metadata") or {}).get("updateVersion"),
+                }
                 for p in (pkgs or {}).get("items", [])
             ]
         except UpstreamError as e:
             notes.append(f"upgrade packages unavailable: {e}")
         if notes:
             out["notes"] = notes
-        return object_result(out, fmt=response_format)
+        return object_reply(out, fmt=response_format)
 
     # --- health policies ---------------------------------------------------------------------------
 
@@ -284,7 +290,7 @@ def register(reg: ToolRegistrar) -> None:
             "modules": [module_row(m) for m in p.get("healthModules") or []],
             "id": p.get("id"),
         }
-        return object_result(out, fmt=response_format)
+        return object_reply(out, fmt=response_format)
 
     @reg.write(title="Update health policy module")
     async def fmc_update_health_policy(

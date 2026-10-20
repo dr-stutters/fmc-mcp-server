@@ -23,7 +23,6 @@ from fmc_mcp._core import (
     UpstreamError,
     get_client,
     list_result,
-    object_result,
 )
 from fmc_mcp._core.http import page_of
 from fmc_mcp.client import FmcApp
@@ -42,6 +41,7 @@ from fmc_mcp.tools.pki import (
 )
 from fmc_mcp.tools.policies import ACCESS, acp_settings_body, all_rules
 from fmc_mcp.tools.policy_writes import NetsParam, PortsParam, UrlsParam, UsersParam, ZonesParam
+from fmc_mcp.tools.render import object_reply
 
 DECRYPTION = "policy/decryptionpolicies"
 PolicyRef = Annotated[str, Field(description="Decryption policy name or UUID")]
@@ -278,7 +278,7 @@ def register(reg: ToolRegistrar) -> None:
             "readiness": await readiness(app, p, rules.items, domain),
             "id": p.get("id"),
         }
-        return object_result({k: v for k, v in out.items() if v is not None}, fmt=response_format)
+        return object_reply({k: v for k, v in out.items() if v is not None}, fmt=response_format)
 
     @reg.write(title="Create decryption policy")
     async def fmc_create_decryption_policy(
