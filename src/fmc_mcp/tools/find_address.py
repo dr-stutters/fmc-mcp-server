@@ -11,6 +11,7 @@ User-to-IP (identity) rows come from the lookups in IDENTITY_LOOKUPS: FMC's iden
 """
 
 # No `from __future__ import annotations`: FastMCP inspects signatures at runtime.
+import contextlib
 import ipaddress
 from collections.abc import Awaitable, Callable
 from dataclasses import dataclass, field, replace
@@ -34,8 +35,8 @@ from fmc_mcp.client import FmcApp
 from fmc_mcp.flow import access_policy_of
 from fmc_mcp.rules import flatten_nat_rule
 from fmc_mcp.tools.common import Domain, is_system, ref_label
-from fmc_mcp.tools.device_config import resolve_device
-from fmc_mcp.tools.devices import DEVICES
+from fmc_mcp.tools.device_config import device_interfaces, resolve_device
+from fmc_mcp.tools.devices import CLUSTERS, DEVICES, HA_PAIRS
 from fmc_mcp.tools.dynamic_objects import DYNAMIC, mappings_of
 from fmc_mcp.tools.identity_sources import users_on_ip
 from fmc_mcp.tools.policies import (
@@ -55,6 +56,7 @@ Area = Literal[
     "access_rules",
     "prefilter_rules",
     "nat_rules",
+    "interfaces",
     "static_routes",
     "vpn",
     "identity",
@@ -63,7 +65,7 @@ AREAS: tuple[str, ...] = get_args(Area)
 
 # Bounds per call (each is one or two requests per item; FMC allows ~120 requests a minute).
 POLICY_CAP = 25  # access, prefilter and NAT policies scanned per kind
-DEVICE_CAP = 30  # devices whose static routes are read
+DEVICE_CAP = 30  # devices whose interfaces and static routes are read
 TOPOLOGY_CAP = 25  # VPN topologies whose endpoints are read
 DYNAMIC_CAP = 50  # dynamic objects whose mappings are read
 
@@ -73,6 +75,7 @@ AREA_ORDER = {
     for i, a in enumerate(
         (
             "identity",
+            "interfaces",
             "dynamic_objects",
             "objects",
             "access_rules",
@@ -86,10 +89,24 @@ AREA_ORDER = {
 COLUMNS = ["rank", "match", "area", "where", "side", "via", "value"]
 LIMITS = (
     "FMC's configuration, read offline: per-device object overrides, inherited parent-policy rules, "
-    "virtual-router (VRF) routes, FQDN objects and route-based VPN tunnels (no protected networks) are "
-    "not resolved. Matches only through 'any' (0.0.0.0/0, ::/0) are counted, and FMC's built-in objects "
-    "left out of the objects area, unless include_broad. Live state: fmc_packet_tracer / fmc_rule_lookup."
+    "virtual-router (VRF) routes, FQDN objects, route-based VPN tunnels (no protected networks), "
+    "DHCP/PPPoE-assigned interface addresses, cluster address pools, DHCP server pools and "
+    "platform-settings hosts are not resolved. Matches only through 'any' (0.0.0.0/0, ::/0) are "
+    "counted, and FMC's built-in objects left out of the objects area, unless include_broad. Live "
+    "state: fmc_packet_tracer / fmc_rule_lookup."
 )
+
+# FMC's interface `type` (ftdallinterfaces) -> the kind fmc_list_device_interfaces calls it.
+INTERFACE_TYPES = {
+    "physicalinterface": "physical",
+    "subinterface": "subinterface",
+    "etherchannelinterface": "etherchannel",
+    "vlaninterface": "vlan",
+    "vtiinterface": "vti",
+    "loopbackinterface": "loopback",
+    "bridgegroupinterface": "bridge_group",
+}
+IfAddress = ipaddress.IPv4Interface | ipaddress.IPv6Interface
 
 # async (app, address, domain) -> rows {where, via, value[, side]} for users on that IP.
 IdentityLookup = Callable[
@@ -211,6 +228,8 @@ class Search:
     warnings: list[str] = field(default_factory=list)
     dynamic: dict[str, Match | None] = field(default_factory=dict)
     dynamic_budget: int = DYNAMIC_CAP
+    # interface IP -> 'device interface', from the interfaces area (names a static route's next hop)
+    owners: dict[str, str] = field(default_factory=dict)
 
     def add(self, area: str, m: Match, where: str, side: str | None = None, via: str | None = None) -> None:
         if m.broad and not self.include_broad:
@@ -391,6 +410,9 @@ async def _static_routes(s: Search, devices: list[dict[str, Any]]) -> None:
             lit = gw.get("literal") if isinstance(gw.get("literal"), dict) else None
             gw_label = (lit or {}).get("value") or ref_label(gw.get("object") or {}) or "?"
             where = f"{d.get('name')}: route via {gw_label} on {r.get('interfaceName')}"
+            owner = s.owners.get(_gateway_ip(s, gw))
+            if owner:
+                where += f" (next hop: {owner})"
             best: Match | None = None
             for ref in r.get("selectedNetworks") or []:
                 best = better(best, s.tracer.ref(ref))
@@ -406,6 +428,160 @@ async def _static_routes(s: Search, devices: list[dict[str, Any]]) -> None:
                     s.add("static_routes", m, where, "gateway")
     s.searched["devices"] = len(devices)
     s.searched["static_routes"] = read
+
+
+def _gateway_ip(s: Search, gw: dict[str, Any]) -> str:
+    """A static route's next hop as an address string (literal, or a host object's value), else ''."""
+    lit = gw.get("literal") if isinstance(gw.get("literal"), dict) else None
+    value = (lit or {}).get("value")
+    if not value and isinstance(gw.get("object"), dict):
+        obj = s.tracer.cat.objects.get(str(gw["object"].get("id")), gw["object"])
+        value = obj.get("value")
+    try:
+        return str(ipaddress.ip_address(str(value or "").strip()))
+    except ValueError:
+        return ""
+
+
+def interface_addresses(i: dict[str, Any]) -> list[IfAddress]:
+    """An interface's static IPv4 address and its IPv6 addresses, with their prefixes."""
+    out: list[IfAddress] = []
+    static = (i.get("ipv4") or {}).get("static") or {}
+    if static.get("address"):
+        with contextlib.suppress(ValueError):
+            out.append(ipaddress.IPv4Interface(f"{static['address']}/{static.get('netmask') or 32}"))
+    for a in (i.get("ipv6") or {}).get("addresses") or []:
+        try:
+            out.append(ipaddress.IPv6Interface(f"{a.get('address')}/{a.get('prefix') or 128}"))
+        except ValueError:
+            continue
+    return out
+
+
+def interface_match(tracer: Tracer, iface: IfAddress, subnet: bool = True) -> tuple[Match, str] | None:
+    """How an interface address relates to the address asked about: the address itself, or (`subnet`) its
+    connected subnet (10.99.1.1/24 is 'exact' for 10.99.1.0/24 and 'contains' 10.99.1.50). (match,
+    side). A standby address is matched by itself only: its subnet is the active address's."""
+    addr = tracer.value(str(iface.ip))
+    net = tracer.value(str(iface.network)) if subnet and iface.network.num_addresses > 1 else None
+    best = better(addr, net)
+    if best is None:
+        return None
+    return replace(best, value=str(iface), path=()), "address" if best is addr else "connected subnet"
+
+
+async def _collection(s: Search, path: str, label: str) -> list[dict[str, Any]]:
+    try:
+        return (await s.app.all(await s.app.config_path(path, s.domain), cap=500)).items
+    except UpstreamError as e:
+        s.warnings.append(f"{label} could not be read ({e}); their members are searched one by one.")
+        return []
+
+
+async def _all_interfaces(s: Search, device_id: str) -> list[dict[str, Any]]:
+    """Every interface of a device in one request (FMC's ftdallinterfaces); one request per kind where FMC
+    has no such collection."""
+    try:
+        path = await s.app.config_path(f"{DEVICES}/{device_id}/ftdallinterfaces", s.domain)
+        return (await s.app.all(path, cap=2000)).items
+    except UpstreamError as e:
+        if e.status_code not in (404, 405):
+            raise
+    return [i for _, i in await device_interfaces(s.app, device_id, s.domain)]
+
+
+async def _interfaces(s: Search, devices: list[dict[str, Any]]) -> None:
+    """Interface addresses and their connected subnets, one request per device. An HA pair is read once,
+    on its primary (which holds the pair's interface configuration), plus the standby addresses of its
+    monitored interfaces and its failover/state link; a cluster once, on its control node. Every address
+    read also names the owner of a static route's next hop (s.owners)."""
+    pairs = await _collection(s, HA_PAIRS, "HA pairs") if devices else []
+    clusters = await _collection(s, CLUSTERS, "Clusters") if devices else []
+    lead: dict[str, tuple[str, str, dict[str, Any] | None]] = {}  # unit id -> (record to read, label, pair)
+    for p in pairs:
+        primary = str((p.get("primary") or {}).get("id") or "").lower()
+        for side in ("primary", "secondary"):
+            unit = str((p.get(side) or {}).get("id") or "").lower()
+            if unit and primary:
+                lead[unit] = (primary, str(p.get("name")), p)
+    for c in clusters:
+        control = c.get("controlDevice") or c.get("masterDevice") or {}
+        head = str((control.get("deviceDetails") or control).get("id") or "").lower()
+        for node in [control, *(c.get("dataDevices") or c.get("slaveDevices") or [])]:
+            unit = str(((node or {}).get("deviceDetails") or node or {}).get("id") or "").lower()
+            if unit and head:
+                lead[unit] = (head, str(c.get("name")), None)
+    targets: dict[str, tuple[str, dict[str, Any] | None]] = {}  # record id -> (label, HA pair)
+    for d in devices:
+        rec, label, pair = lead.get(str(d["id"]).lower(), (str(d["id"]), str(d.get("name")), None))
+        targets.setdefault(rec, (label, pair))
+    read = 0
+    for rec, (label, pair) in targets.items():
+        try:
+            items = await _all_interfaces(s, rec)
+        except UpstreamError as e:
+            s.warnings.append(f"Interfaces of {label} could not be read ({e}).")
+            continue
+        read += len(items)
+        for i in items:
+            ifname = i.get("ifname")
+            kind = INTERFACE_TYPES.get(str(i.get("type") or "").lower(), str(i.get("type") or "interface"))
+            where = f"{label}: interface {ifname or i.get('name')}"
+            if i.get("enabled") is False:
+                where += " [disabled]"
+            for iface in interface_addresses(i):
+                s.owners.setdefault(str(iface.ip), f"{label} {ifname or i.get('name')}")
+                hit = interface_match(s.tracer, iface)
+                if hit:
+                    s.add("interfaces", hit[0], where, hit[1], f"{i.get('name')} ({kind})")
+        if pair is not None:
+            await _ha_addresses(s, pair)
+    s.searched["interface_devices"] = len(targets)
+    s.searched["interfaces"] = read
+
+
+async def _ha_addresses(s: Search, pair: dict[str, Any]) -> None:
+    """An HA pair's standby addresses (monitored interfaces) and failover/state link addresses."""
+    name = str(pair.get("name"))
+    try:
+        path = await s.app.config_path(f"{HA_PAIRS}/{pair['id']}/monitoredinterfaces", s.domain)
+        monitored = (await s.app.all(path, cap=500)).items
+    except UpstreamError as e:
+        s.warnings.append(f"Standby addresses of HA pair {name} could not be read ({e}).")
+        monitored = []
+    for m in monitored:
+        v4 = m.get("ipv4Configuration") or {}
+        if not v4.get("standbyIPv4Address"):
+            continue
+        try:
+            standby = ipaddress.IPv4Interface(f"{v4['standbyIPv4Address']}/{v4.get('activeIPv4Mask') or 32}")
+        except ValueError:
+            continue
+        s.owners.setdefault(str(standby.ip), f"{name} {m.get('name')} (standby)")
+        hit = interface_match(s.tracer, standby, subnet=False)
+        if hit:
+            hw = (m.get("metadata") or {}).get("interfaceName")
+            via = f"{hw} (HA monitored interface)" if hw else "HA monitored interface"
+            s.add("interfaces", hit[0], f"{name}: interface {m.get('name')}", f"standby {hit[1]}", via)
+    boot = pair.get("ftdHABootstrap") or {}
+    done: set[tuple[Any, ...]] = set()
+    for key, what in (("lanFailover", "failover link"), ("statefulFailover", "state link")):
+        link = boot.get(key) or {}
+        hw = (link.get("interfaceObject") or {}).get("name")
+        for role in ("active", "standby"):
+            ip = link.get(f"{role}IP")
+            if not ip or (ip, link.get("logicalName")) in done:
+                continue
+            done.add((ip, link.get("logicalName")))
+            try:
+                iface = ipaddress.ip_interface(f"{ip}/{link.get('subnetMask') or 32}")
+            except ValueError:
+                continue
+            s.owners.setdefault(str(iface.ip), f"{name} {what} ({role})")
+            hit = interface_match(s.tracer, iface, subnet=role == "active")
+            if hit:
+                where = f"{name}: {what} {link.get('logicalName') or ''}".rstrip()
+                s.add("interfaces", hit[0], where, f"{role} {hit[1]}", f"{hw} ({what})" if hw else what)
 
 
 async def _vpn(s: Search) -> None:
@@ -487,14 +663,14 @@ def register(reg: ToolRegistrar) -> None:
             list[Area] | None,
             Field(
                 description="Where to look (default: everywhere): objects, dynamic_objects, access_rules, "
-                "prefilter_rules, nat_rules, static_routes, vpn, identity"
+                "prefilter_rules, nat_rules, interfaces, static_routes, vpn, identity"
             ),
         ] = None,
         device: Annotated[
             str | None,
             Field(
-                description="Only this FTD (name or UUID): its access, prefilter and NAT policies and its "
-                "static routes"
+                description="Only this FTD (name or UUID): its access, prefilter and NAT policies, its "
+                "interfaces and its static routes"
             ),
         ] = None,
         access_policy: Annotated[
@@ -519,8 +695,11 @@ def register(reg: ToolRegistrar) -> None:
         address, network or range: host/network/range objects and the groups holding them,
         dynamic-object mappings, access and prefilter rules (source or destination; literal, via an
         object, a nested group or a dynamic object), NAT rules (original/translated source and
-        destination), static routes (destination or gateway), VPN protected networks and extranet
-        peers, and the users FMC has an identity session for on a single IP (as fmc_user_ip_lookup
+        destination), device interface addresses and their connected subnets (physical, sub, VLAN,
+        EtherChannel, loopback, VTI and BVI interfaces; an HA pair's standby addresses and failover
+        link too: 'which FTD interface owns this gateway IP?'), static routes (destination or gateway,
+        naming the FTD interface that owns the next hop), VPN protected networks and extranet peers,
+        and the users FMC has an identity session for on a single IP (as fmc_user_ip_lookup
         reads them; a role without Analysis > Users gives a warning instead). Ranked: exact matches
         first, then the narrowest values that contain it; each row says where it lives (policy, rule
         index and action; NAT section; device route; VPN endpoint) and via which object chain. Use it
@@ -567,14 +746,21 @@ def register(reg: ToolRegistrar) -> None:
                     s.searched["nat_policies"] = 0
             if one is not None or dev is None:
                 await _nat_rules(s, await _policies(s, "nat", NAT, one, "NAT policies"))
-        if "static_routes" in wanted:
+        devices: list[dict[str, Any]] = []
+        if wanted & {"interfaces", "static_routes"}:
             if dev is not None:
                 devices = [dev]
             else:
                 page = await app.all(await app.config_path(DEVICES, domain), cap=DEVICE_CAP)
                 if not page.complete:
-                    s.warnings.append(f"Static routes of only the first {DEVICE_CAP} devices were searched.")
+                    what = " and ".join(
+                        a.replace("_", " ") for a in ("interfaces", "static_routes") if a in wanted
+                    )
+                    s.warnings.append(f"The {what} of only the first {DEVICE_CAP} devices were searched.")
                 devices = page.items
+        if "interfaces" in wanted:
+            await _interfaces(s, devices)
+        if "static_routes" in wanted:
             await _static_routes(s, devices)
         if "vpn" in wanted:
             await _vpn(s)

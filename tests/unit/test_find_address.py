@@ -302,3 +302,118 @@ async def test_markdown_table(world: respx.MockRouter) -> None:
     )
     text = out if isinstance(out, str) else str(out)
     assert "| rank | match | area | where | side | via | value |" in text
+
+
+# --- interfaces area (#205, F59 Wave 6 amendment) -------------------------------------------------------
+# Eval on FMC 10.0.1: 'where is <inside subnet>/24 used on mcp-ftd1?' listed the object, the access rule and
+# the NAT rule but not the device's own inside interface (the subnet's gateway).
+
+ALLIF = fixture("ftd_allinterfaces")["ftdallinterfaces"]
+HA = fixture("ha_failover")
+DEVPATH = f"{CFG}/devices/devicerecords"
+
+
+def with_devices(world: respx.MockRouter, devices: list[dict[str, Any]], pairs: list[Any] = ()) -> None:  # type: ignore[assignment]
+    world.get(DEVPATH).mock(return_value=items(devices))
+    world.get(f"{CFG}/devicehapairs/ftddevicehapairs").mock(return_value=items(list(pairs)))
+    world.get(f"{CFG}/deviceclusters/ftddevicecluster").mock(return_value=items([]))
+
+
+async def test_interface_address_and_connected_subnet(world: respx.MockRouter) -> None:
+    with_devices(world, [DEVICE])
+    reads = world.get(f"{DEVPATH}/{DEVICE['id']}/ftdallinterfaces").mock(
+        return_value=httpx.Response(200, json=ALLIF)
+    )
+    data = await call({"address": "10.99.1.0/24", "areas": ["interfaces"]})
+    assert data["results"] == [
+        {
+            "rank": 1,
+            "match": "exact",
+            "area": "interfaces",
+            "where": "mcp-ftd1: interface inside",
+            "side": "connected subnet",
+            "via": "Ethernet0/1 (physical)",
+            "value": "10.99.1.1/24",
+        }
+    ]
+    assert data["searched"] == {"interface_devices": 1, "interfaces": 4}
+    (row,) = (await call({"address": "10.99.1.1", "areas": ["interfaces"]}))["results"]
+    assert (row["match"], row["side"]) == ("exact", "address")
+    (row,) = (await call({"address": "10.99.100.50", "areas": ["interfaces"]}))["results"]
+    assert (row["match"], row["side"], row["where"], row["via"]) == (
+        "contains",
+        "connected subnet",
+        "mcp-ftd1: interface mcp-dmz",
+        "Ethernet0/1 (subinterface)",
+    )
+    assert reads.call_count == 3  # one request per device and call
+    # the eval's ask: with the device, the interface ranks with the object, rule and NAT rows
+    data = await call({"address": "10.99.1.0/24", "device": "mcp-ftd1", "areas": ["interfaces", "objects"]})
+    assert data["results"][0]["area"] == "interfaces" and data["results"][0]["match"] == "exact"
+
+
+async def test_ha_pair_read_once_with_standby_addresses_and_failover_link(world: respx.MockRouter) -> None:
+    pair = HA["pair"]
+    units = [
+        {**DEVICE, "id": pair["primary"]["id"], "name": "mcp-fw-ha-a"},
+        {**DEVICE, "id": pair["secondary"]["id"], "name": "mcp-fw-ha-b"},
+    ]
+    with_devices(world, units, [pair])
+    inside = {**ALLIF["items"][1], "ipv4": {"static": {"address": "192.0.2.1", "netmask": "24"}}}
+    world.get(f"{DEVPATH}/{pair['primary']['id']}/ftdallinterfaces").mock(return_value=items([inside]))
+    world.get(f"{CFG}/devicehapairs/ftddevicehapairs/{pair['id']}/monitoredinterfaces").mock(
+        return_value=items(HA["monitoredinterfaces"])
+    )
+    (row,) = (await call({"address": "192.0.2.1", "areas": ["interfaces"]}))["results"]
+    assert (row["where"], row["side"]) == ("mcp-fw-ha: interface inside", "address")
+    row, subnet = (await call({"address": "192.0.2.2", "areas": ["interfaces"]}))["results"]
+    assert (row["match"], row["where"], row["side"], row["via"], row["value"]) == (
+        "exact",
+        "mcp-fw-ha: interface inside",
+        "standby address",
+        "Ethernet0/1 (HA monitored interface)",
+        "192.0.2.2/24",
+    )
+    assert (subnet["match"], subnet["side"]) == ("contains", "connected subnet")
+    # one link for failover and state: listed once (the standby address, and the active one's subnet)
+    rows = (await call({"address": "203.0.113.2", "areas": ["interfaces"]}))["results"]
+    assert [(r["match"], r["where"], r["side"], r["via"]) for r in rows] == [
+        ("exact", "mcp-fw-ha: failover link FAILOVER-LINK", "standby address", "Ethernet0/2 (failover link)"),
+        (
+            "contains",
+            "mcp-fw-ha: failover link FAILOVER-LINK",
+            "active connected subnet",
+            "Ethernet0/2 (failover link)",
+        ),
+    ]
+    data = await call({"address": "192.0.2.0/24", "areas": ["interfaces"]})
+    assert data["searched"] == {"interface_devices": 1, "interfaces": 1}  # the pair, read on its primary
+    assert [(r["match"], r["side"], r["value"]) for r in data["results"]] == [
+        ("exact", "connected subnet", "192.0.2.1/24"),
+        ("inside", "standby address", "192.0.2.2/24"),
+    ]
+    paths = {c.request.url.path for c in world.calls}
+    assert f"{DEVPATH}/{pair['secondary']['id']}/ftdallinterfaces" not in paths
+
+
+async def test_static_route_names_the_ftd_that_owns_the_next_hop(world: respx.MockRouter) -> None:
+    branch = {**DEVICE, "id": "0f000000-0000-4000-8000-00000000000f", "name": "mcp-fw-branch1"}
+    with_devices(world, [DEVICE, branch])
+    world.get(f"{DEVPATH}/{DEVICE['id']}/ftdallinterfaces").mock(return_value=httpx.Response(200, json=ALLIF))
+    outside = {**ALLIF["items"][0], "ipv4": {"static": {"address": "198.51.100.7", "netmask": "24"}}}
+    world.get(f"{DEVPATH}/{branch['id']}/ftdallinterfaces").mock(return_value=items([outside]))
+    route = copy.deepcopy(fixture("ftd_ipv4staticroutes"))
+    route["items"][0]["gateway"] = {"literal": {"type": "Host", "value": "198.51.100.7"}}
+    world.get(f"{DEVPATH}/{DEVICE['id']}/routing/ipv4staticroutes").mock(
+        return_value=httpx.Response(200, json=route)
+    )
+    world.get(f"{DEVPATH}/{branch['id']}/routing/ipv4staticroutes").mock(return_value=empty())
+    data = await call({"address": "198.51.100.7", "areas": ["interfaces", "static_routes"]})
+    assert [(r["area"], r["where"], r["side"]) for r in data["results"]] == [
+        ("interfaces", "mcp-fw-branch1: interface outside", "address"),
+        (
+            "static_routes",
+            "mcp-ftd1: route via 198.51.100.7 on outside (next hop: mcp-fw-branch1 outside)",
+            "gateway",
+        ),
+    ]

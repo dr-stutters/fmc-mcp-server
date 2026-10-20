@@ -1,0 +1,138 @@
+{
+ "_source": "Recorded read-only 2026-10-20 from mcp-ftd1 (FTDv for KVM 10.0.0) in FMC 10.0.1, domain Global/mcp-test-leaf: fmc_api_call GET devices/devicerecords/<id>/ftdallinterfaces?expanded=true (links dropped, the outside address scrubbed to 192.0.2.10 as in ftd_physicalinterfaces.json). One request lists every interface kind; a SubInterface there carries no subIntfId/vlanId. The FMC 10.0.1 spec says its s2sVpnApplicableInterfaces filter 'does not include VTI interfaces', so the unfiltered list does; the lab had no VTI or loopback at recording time to confirm it live.",
+ "ftdallinterfaces": {
+  "items": [
+   {
+    "metadata": {
+     "virtualRouter": {
+      "name": "Global",
+      "id": "42e95fbf-fd5a-42bf-a95f-bffd5a42bfd6",
+      "type": "VirtualRouter"
+     }
+    },
+    "type": "PhysicalInterface",
+    "enableSGTPropagate": false,
+    "mode": "NONE",
+    "MTU": 1500,
+    "enabled": true,
+    "name": "Ethernet0/0",
+    "priority": 0,
+    "id": "00000000-0000-0ed3-0000-021474837527",
+    "pathMonitoring": {
+     "enable": false
+    },
+    "applicationMonitoring": {
+     "enable": true
+    },
+    "ifname": "outside",
+    "managementOnly": false,
+    "securityZone": {
+     "id": "d1686144-c9d6-11f1-a4e0-98786f180443",
+     "type": "SecurityZone"
+    },
+    "ipv4": {
+     "static": {
+      "address": "192.0.2.10",
+      "netmask": "18"
+     }
+    },
+    "ipv6": {
+     "enableIPV6": false
+    }
+   },
+   {
+    "metadata": {
+     "virtualRouter": {
+      "name": "Global",
+      "id": "42e95fbf-fd5a-42bf-a95f-bffd5a42bfd6",
+      "type": "VirtualRouter"
+     }
+    },
+    "type": "PhysicalInterface",
+    "enableSGTPropagate": false,
+    "mode": "NONE",
+    "MTU": 1500,
+    "enabled": true,
+    "name": "Ethernet0/1",
+    "priority": 0,
+    "id": "00000000-0000-0ed3-0000-021474837528",
+    "pathMonitoring": {
+     "enable": false
+    },
+    "applicationMonitoring": {
+     "enable": true
+    },
+    "ifname": "inside",
+    "managementOnly": false,
+    "securityZone": {
+     "id": "d06d930e-c9d6-11f1-a4e0-98786f180443",
+     "type": "SecurityZone"
+    },
+    "ipv4": {
+     "static": {
+      "address": "10.99.1.1",
+      "netmask": "24"
+     }
+    },
+    "ipv6": {
+     "enableIPV6": false
+    }
+   },
+   {
+    "metadata": {
+     "virtualRouter": {
+      "name": "Global",
+      "id": "42e95fbf-fd5a-42bf-a95f-bffd5a42bfd6",
+      "type": "VirtualRouter"
+     }
+    },
+    "type": "SubInterface",
+    "enableSGTPropagate": false,
+    "mode": "NONE",
+    "MTU": 1500,
+    "enabled": true,
+    "name": "Ethernet0/1",
+    "priority": 0,
+    "id": "00000000-0000-0ed3-0000-021474842317",
+    "ifname": "mcp-dmz",
+    "securityZone": {
+     "id": "30ea0d2a-c9d7-11f1-8ee6-9b786f180443",
+     "type": "SecurityZone"
+    },
+    "ipv4": {
+     "static": {
+      "address": "10.99.100.1",
+      "netmask": "24"
+     }
+    },
+    "ipv6": {}
+   },
+   {
+    "metadata": {
+     "virtualRouter": {
+      "name": "Global",
+      "id": "42e95fbf-fd5a-42bf-a95f-bffd5a42bfd6",
+      "type": "VirtualRouter"
+     }
+    },
+    "type": "PhysicalInterface",
+    "enableSGTPropagate": true,
+    "mode": "NONE",
+    "MTU": 1500,
+    "enabled": true,
+    "name": "Management0/0",
+    "priority": 0,
+    "id": "00000000-0000-0ed3-0000-021474837529",
+    "ifname": "management",
+    "managementOnly": true,
+    "ipv6": {}
+   }
+  ],
+  "paging": {
+   "offset": 0,
+   "limit": 100,
+   "count": 4,
+   "pages": 1
+  }
+ }
+}
