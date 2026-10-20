@@ -40,6 +40,7 @@ from fmc_mcp.tools import (
     metrics,
     network_analysis,
     object_import,
+    object_lifecycle,
     object_writes,
     objects,
     pki,
@@ -170,6 +171,10 @@ Workflows:
 - Day-2 admin: fmc_upgrade_status (versions), fmc_list_backups / fmc_backup_devices,
   fmc_get_health_policy / fmc_update_health_policy, fmc_list_users, fmc_list_object_overrides /
   fmc_set_object_override (per-device values).
+- Object cleanup and migrations at scale: fmc_delete_objects (by names, a name prefix or every unused
+  object; one preview lists each victim and refuses built-ins, inherited and in-use objects),
+  fmc_replace_object (A becomes B in every rule, group, NAT rule and static route, then optionally delete A),
+  fmc_import_objects(mode='sync') (an IPAM export or CSV as the desired state: create, update, group members).
 Before changing or deleting an object, check fmc_where_used.
 
 Gotchas: FMC allows about 120 API requests per minute, so prefer the aggregate tools over many small
@@ -231,6 +236,7 @@ REGISTER: list[Callable[[ToolRegistrar], None]] = [
     device_config.register,
     object_writes.register,
     object_import.register,
+    object_lifecycle.register,
     policy_writes.register,
     dangerous.register,
     troubleshoot.register,
