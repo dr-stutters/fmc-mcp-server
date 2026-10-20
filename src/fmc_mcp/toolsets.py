@@ -85,6 +85,7 @@ CATALOGUE: dict[str, tuple[str, tuple[str, ...]]] = {
             "fmc_list_device_interfaces",
             "fmc_list_device_templates",
             "fmc_register_device",
+            "fmc_register_devices",
             "fmc_set_device_licenses",
             "fmc_update_interface",
         ),
