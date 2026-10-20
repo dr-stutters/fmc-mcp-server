@@ -417,3 +417,51 @@ async def test_static_route_names_the_ftd_that_owns_the_next_hop(world: respx.Mo
             "gateway",
         ),
     ]
+
+
+async def test_a_next_hop_several_ftds_hold_is_ambiguous_and_vti_loopback_rows(
+    world: respx.MockRouter,
+) -> None:
+    """SD-WAN /30 tunnel addresses, loopbacks and branch LANs repeat across devices: a route's next hop is
+    named only when one searched interface holds it. Shapes: the FMC 10.0.1 spec's VTI and loopback
+    examples (ftd_interface_kinds.json), as ftdallinterfaces lists them."""
+    created = fixture("ftd_interface_kinds")["created"]
+    spokes = [
+        {**DEVICE, "id": f"0f000000-0000-4000-8000-00000000001{n}", "name": f"mcp-sdwan-spoke{n}"}
+        for n in (1, 2)
+    ]
+    with_devices(world, [DEVICE, *spokes])
+    world.get(f"{DEVPATH}/{DEVICE['id']}/ftdallinterfaces").mock(return_value=httpx.Response(200, json=ALLIF))
+    for n, spoke in enumerate(spokes, 1):
+        loop = {
+            **created["loopbackinterfaces"],
+            "ipv4": {"static": {"address": f"10.255.9.1{n}", "netmask": "32"}},
+        }
+        world.get(f"{DEVPATH}/{spoke['id']}/ftdallinterfaces").mock(
+            return_value=items([created["virtualtunnelinterfaces"], loop])
+        )
+        world.get(f"{DEVPATH}/{spoke['id']}/routing/ipv4staticroutes").mock(return_value=empty())
+    route = copy.deepcopy(fixture("ftd_ipv4staticroutes"))
+    route["items"][0]["gateway"] = {"literal": {"type": "Host", "value": "169.254.100.1"}}
+    world.get(f"{DEVPATH}/{DEVICE['id']}/routing/ipv4staticroutes").mock(
+        return_value=httpx.Response(200, json=route)
+    )
+    data = await call({"address": "169.254.100.1", "areas": ["interfaces", "static_routes"]})
+    assert [(r["area"], r["where"], r["side"], r["via"]) for r in data["results"]] == [
+        ("interfaces", "mcp-sdwan-spoke1: interface tunnel-5", "address", "Tunnel5 (vti)"),
+        ("interfaces", "mcp-sdwan-spoke2: interface tunnel-5", "address", "Tunnel5 (vti)"),
+        (
+            "static_routes",
+            "mcp-ftd1: route via 169.254.100.1 on outside "
+            "(next hop ambiguous: mcp-sdwan-spoke1 tunnel-5, mcp-sdwan-spoke2 tunnel-5)",
+            "gateway",
+            "literal",
+        ),
+    ]
+    (row,) = (await call({"address": "10.255.9.12", "areas": ["interfaces"]}))["results"]
+    assert (row["where"], row["side"], row["via"], row["value"]) == (
+        "mcp-sdwan-spoke2: interface loopback-5",
+        "address",
+        "Loopback5 (loopback)",
+        "10.255.9.12/32",
+    )

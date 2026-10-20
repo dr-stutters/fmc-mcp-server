@@ -32,10 +32,10 @@ from fmc_mcp._core import (
 from fmc_mcp._core.http import page_of
 from fmc_mcp.catalog import Catalog, IpInterval, parse_ip_value
 from fmc_mcp.client import FmcApp
-from fmc_mcp.flow import access_policy_of
+from fmc_mcp.flow import access_policy_of, all_interfaces
 from fmc_mcp.rules import flatten_nat_rule
 from fmc_mcp.tools.common import Domain, is_system, ref_label
-from fmc_mcp.tools.device_config import device_interfaces, resolve_device
+from fmc_mcp.tools.device_config import resolve_device
 from fmc_mcp.tools.devices import CLUSTERS, DEVICES, HA_PAIRS
 from fmc_mcp.tools.dynamic_objects import DYNAMIC, mappings_of
 from fmc_mcp.tools.identity_sources import users_on_ip
@@ -96,16 +96,6 @@ LIMITS = (
     "state: fmc_packet_tracer / fmc_rule_lookup."
 )
 
-# FMC's interface `type` (ftdallinterfaces) -> the kind fmc_list_device_interfaces calls it.
-INTERFACE_TYPES = {
-    "physicalinterface": "physical",
-    "subinterface": "subinterface",
-    "etherchannelinterface": "etherchannel",
-    "vlaninterface": "vlan",
-    "vtiinterface": "vti",
-    "loopbackinterface": "loopback",
-    "bridgegroupinterface": "bridge_group",
-}
 IfAddress = ipaddress.IPv4Interface | ipaddress.IPv6Interface
 
 # async (app, address, domain) -> rows {where, via, value[, side]} for users on that IP.
@@ -228,8 +218,22 @@ class Search:
     warnings: list[str] = field(default_factory=list)
     dynamic: dict[str, Match | None] = field(default_factory=dict)
     dynamic_budget: int = DYNAMIC_CAP
-    # interface IP -> 'device interface', from the interfaces area (names a static route's next hop)
-    owners: dict[str, str] = field(default_factory=dict)
+    # interface IP -> every 'device interface' holding it, from the interfaces area (a static route's
+    # next hop is named only when one interface holds it: /30 VTIs, loopbacks and branch LANs repeat)
+    owners: dict[str, list[str]] = field(default_factory=dict)
+
+    def own(self, ip: Any, owner: str) -> None:
+        held = self.owners.setdefault(str(ip), [])
+        if owner not in held:
+            held.append(owner)
+
+    def next_hop(self, ip: str) -> str | None:
+        """'next hop: <device> <nameif>' when one searched interface holds the address, 'next hop
+        ambiguous: A, B' when several do, else None."""
+        held = self.owners.get(ip) if ip else None
+        if not held:
+            return None
+        return f"next hop: {held[0]}" if len(held) == 1 else f"next hop ambiguous: {', '.join(held)}"
 
     def add(self, area: str, m: Match, where: str, side: str | None = None, via: str | None = None) -> None:
         if m.broad and not self.include_broad:
@@ -410,9 +414,9 @@ async def _static_routes(s: Search, devices: list[dict[str, Any]]) -> None:
             lit = gw.get("literal") if isinstance(gw.get("literal"), dict) else None
             gw_label = (lit or {}).get("value") or ref_label(gw.get("object") or {}) or "?"
             where = f"{d.get('name')}: route via {gw_label} on {r.get('interfaceName')}"
-            owner = s.owners.get(_gateway_ip(s, gw))
-            if owner:
-                where += f" (next hop: {owner})"
+            hop = s.next_hop(_gateway_ip(s, gw))
+            if hop:
+                where += f" ({hop})"
             best: Match | None = None
             for ref in r.get("selectedNetworks") or []:
                 best = better(best, s.tracer.ref(ref))
@@ -478,18 +482,6 @@ async def _collection(s: Search, path: str, label: str) -> list[dict[str, Any]]:
         return []
 
 
-async def _all_interfaces(s: Search, device_id: str) -> list[dict[str, Any]]:
-    """Every interface of a device in one request (FMC's ftdallinterfaces); one request per kind where FMC
-    has no such collection."""
-    try:
-        path = await s.app.config_path(f"{DEVICES}/{device_id}/ftdallinterfaces", s.domain)
-        return (await s.app.all(path, cap=2000)).items
-    except UpstreamError as e:
-        if e.status_code not in (404, 405):
-            raise
-    return [i for _, i in await device_interfaces(s.app, device_id, s.domain)]
-
-
 async def _interfaces(s: Search, devices: list[dict[str, Any]]) -> None:
     """Interface addresses and their connected subnets, one request per device. An HA pair is read once,
     on its primary (which holds the pair's interface configuration), plus the standby addresses of its
@@ -518,19 +510,18 @@ async def _interfaces(s: Search, devices: list[dict[str, Any]]) -> None:
     read = 0
     for rec, (label, pair) in targets.items():
         try:
-            items = await _all_interfaces(s, rec)
+            items = await all_interfaces(s.app, rec, s.domain)
         except UpstreamError as e:
             s.warnings.append(f"Interfaces of {label} could not be read ({e}).")
             continue
         read += len(items)
-        for i in items:
+        for kind, i in items:
             ifname = i.get("ifname")
-            kind = INTERFACE_TYPES.get(str(i.get("type") or "").lower(), str(i.get("type") or "interface"))
             where = f"{label}: interface {ifname or i.get('name')}"
             if i.get("enabled") is False:
                 where += " [disabled]"
             for iface in interface_addresses(i):
-                s.owners.setdefault(str(iface.ip), f"{label} {ifname or i.get('name')}")
+                s.own(iface.ip, f"{label} {ifname or i.get('name')}")
                 hit = interface_match(s.tracer, iface)
                 if hit:
                     s.add("interfaces", hit[0], where, hit[1], f"{i.get('name')} ({kind})")
@@ -557,7 +548,7 @@ async def _ha_addresses(s: Search, pair: dict[str, Any]) -> None:
             standby = ipaddress.IPv4Interface(f"{v4['standbyIPv4Address']}/{v4.get('activeIPv4Mask') or 32}")
         except ValueError:
             continue
-        s.owners.setdefault(str(standby.ip), f"{name} {m.get('name')} (standby)")
+        s.own(standby.ip, f"{name} {m.get('name')} (standby)")
         hit = interface_match(s.tracer, standby, subnet=False)
         if hit:
             hw = (m.get("metadata") or {}).get("interfaceName")
@@ -577,7 +568,7 @@ async def _ha_addresses(s: Search, pair: dict[str, Any]) -> None:
                 iface = ipaddress.ip_interface(f"{ip}/{link.get('subnetMask') or 32}")
             except ValueError:
                 continue
-            s.owners.setdefault(str(iface.ip), f"{name} {what} ({role})")
+            s.own(iface.ip, f"{name} {what} ({role})")
             hit = interface_match(s.tracer, iface, subnet=role == "active")
             if hit:
                 where = f"{name}: {what} {link.get('logicalName') or ''}".rstrip()
