@@ -37,7 +37,8 @@ from pydantic import Field
 from fmc_mcp._core import InvalidRequest, ToolRegistrar, get_client
 from fmc_mcp._core.formatting import max_chars
 from fmc_mcp.client import FmcApp
-from fmc_mcp.tools.common import Domain, type_for
+from fmc_mcp.tools.common import Domain, domain_path, type_for
+from fmc_mcp.tools.common import is_system as is_system_object
 from fmc_mcp.tools.intrusion import IPS
 from fmc_mcp.tools.policies import ACCESS, NAT, PREFILTER, all_rules, policy_assignments, resolve_policy
 from fmc_mcp.tools.rule_io import CONDITIONS, UNSUPPORTED, export_row
@@ -180,11 +181,13 @@ def is_system(policy: dict[str, Any]) -> bool:
 
 def object_entry(obj: dict[str, Any], domain_name: str) -> dict[str, Any]:
     """One object of the bundle, in full (built-in ones too: their values are what rules match). Objects
-    inherited from an ancestor domain name it."""
+    inherited from an ancestor domain name it (as fmc_list_domains does: FMC's metadata says 'Global \\ leaf'
+    for 'Global/leaf'); FMC's built-ins don't (every domain has them, so a leaf's export and Global's say the
+    same about HTTP)."""
     entry = clean({k: v for k, v in obj.items() if k not in ("name", "type")})
     meta = obj.get("metadata") or {}
-    owner = (meta.get("domain") or {}).get("name")
-    if owner and owner != domain_name:
+    owner = domain_path(str((meta.get("domain") or {}).get("name") or ""))
+    if owner and owner != domain_path(domain_name) and not is_system_object(obj):
         entry["domain"] = owner
     return dict(entry)
 
