@@ -19,7 +19,8 @@ approves a preview; deploying is a separate approval.
    the rollback point and the reference for the final diff.
 
 2. Findings: `fmc_policy_audit` with policy="mcp-test-acp", unused_days=90. Each finding
-   carries a proposed fix as a tool call.
+   carries a proposed fix as a tool call; `bulk_fixes` gives one bulk call per group of identical fixes
+   (unused rules, rules that log nothing, ALLOW rules without an intrusion policy).
 
 3. Group the findings into a cleanup plan and show it before changing anything:
    a. Redundant rules (same action as the rule covering them): delete.
@@ -39,11 +40,14 @@ approves a preview; deploying is a separate approval.
 4. Change management: `fmc_change_tickets`. If FMC requires tickets, open one with
    `fmc_ticket` (action="open") before the first change and say so.
 
-5. Apply the approved groups one change at a time with the finding's tool
-   (`fmc_delete_access_rule`, `fmc_update_access_rule`,
-   `fmc_delete_object`, ...): preview, show it, and confirm only what the user approved
-   (one approval may cover a whole group of identical changes; list them). Stop at the first
-   failure and report what was applied.
+5. Apply the approved groups. A group of identical rule edits (disable the unused rules, add logging, an
+   intrusion policy, a source zone or a comment) is one `fmc_bulk_update_access_rules`
+   preview: the `bulk_fixes` call, or select by names / zero_hits_days=90. Its preview lists
+   every rule with its diff, and the rules skipped and why; it stops at the first rule FMC refuses.
+   Everything else one change at a time with the finding's tool (`fmc_delete_access_rule`,
+   `fmc_update_access_rule`, `fmc_delete_object`, ...): preview, show it, and
+   confirm only what the user approved (one approval may cover a whole group of identical changes; list
+   them). Stop at the first failure and report what was applied.
 
 6. Verify: `fmc_diff_policy_bundle` with a=<baseline bundle> and the live policy must
    show exactly the approved changes and nothing else. Then `fmc_policy_audit` again:
@@ -54,7 +58,8 @@ approves a preview; deploying is a separate approval.
    previewed. Afterwards `fmc_get_hit_counts` on the remaining rules confirms traffic
    still matches where expected. Rollback: `fmc_import_policy_bundle` with the baseline
    bundle re-creates deleted rules and restores changed ones (preview first), or
-   `fmc_rollback_deployment` on a device.
+   `fmc_rollback_deployment` on a device. To measure the cleaned policy from a fresh start,
+   `fmc_clear_hit_counts` on each device (its preview shows the counts that are lost).
 
 8. Report: per group what was applied, skipped (and why) or left for the owner, the audit before and
    after (counts per severity), the diff summary, and the ticket, deploy and rollback steps.
