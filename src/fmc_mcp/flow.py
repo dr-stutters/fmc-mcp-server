@@ -15,6 +15,18 @@ from fmc_mcp.client import FmcApp
 from fmc_mcp.tools.device_config import device_interfaces
 from fmc_mcp.tools.devices import DEVICES, interface_row, zone_names
 
+# FMC's interface `type` in ftdallinterfaces -> the kind names of fmc_list_device_interfaces.
+INTERFACE_TYPES = {
+    "physicalinterface": "physical",
+    "subinterface": "subinterface",
+    "etherchannelinterface": "etherchannel",
+    "vlaninterface": "vlan",
+    "vtiinterface": "vti",
+    "virtualtunnelinterface": "vti",
+    "loopbackinterface": "loopback",
+    "bridgegroupinterface": "bridge_group",
+}
+
 Address = ipaddress.IPv4Address | ipaddress.IPv6Address
 Net = ipaddress.IPv4Network | ipaddress.IPv6Network
 
@@ -80,11 +92,51 @@ def _interface_nets(row: dict[str, Any], raw: dict[str, Any]) -> list[Net]:
     return nets
 
 
-async def device_context(app: FmcApp, dev: dict[str, Any], cat: Catalog, domain: str | None) -> DeviceContext:
-    """Named interfaces (with zone names) and static routes of a device."""
+def connected_net(interfaces: list[tuple[str, dict[str, Any]]], ip: Address) -> Net | None:
+    """The connected subnet of a named, enabled interface that holds `ip` (longest match), or None."""
+    best: Net | None = None
+    for kind, i in interfaces:
+        row = interface_row(kind, i)
+        if not row.get("logical_name") or row.get("enabled") is False:
+            continue
+        for net in _interface_nets(row, i):
+            if ip.version == net.version and ip in net and (best is None or net.prefixlen > best.prefixlen):
+                best = net
+    return best
+
+
+async def all_interfaces(app: FmcApp, device_id: str, domain: str | None) -> list[tuple[str, dict[str, Any]]]:
+    """(kind, interface) for every interface of a device in one request: FMC's ftdallinterfaces (all
+    kinds; FMC 10.0.1 leaves a subinterface's subIntfId and VLAN out there). Falls back to one request
+    per kind (device_interfaces) when FMC has no such collection."""
+    try:
+        path = await app.config_path(f"{DEVICES}/{device_id}/ftdallinterfaces", domain)
+        page = await app.all(path, cap=2000)
+    except UpstreamError as e:
+        if e.status_code not in (404, 405):
+            raise
+        return await device_interfaces(app, device_id, domain)
+    out = []
+    for i in page.items:
+        kind = INTERFACE_TYPES.get(str(i.get("type") or "").lower(), str(i.get("type") or "interface"))
+        out.append((kind, i))
+    return out
+
+
+async def device_context(
+    app: FmcApp,
+    dev: dict[str, Any],
+    cat: Catalog,
+    domain: str | None,
+    interfaces: list[tuple[str, dict[str, Any]]] | None = None,
+) -> DeviceContext:
+    """Named interfaces (with zone names) and static routes of a device (`interfaces`: ones already read,
+    e.g. by all_interfaces)."""
     zones = await zone_names(app, domain)
     rows = []
-    for kind, i in await device_interfaces(app, dev["id"], domain):
+    if interfaces is None:
+        interfaces = await device_interfaces(app, dev["id"], domain)
+    for kind, i in interfaces:
         row = interface_row(kind, i)
         if not row.get("logical_name"):
             continue

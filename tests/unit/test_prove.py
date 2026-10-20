@@ -18,9 +18,10 @@ from fmc_mcp.tools.prompts import _prove_user_policy_text
 from fmc_mcp.tools.prove import policy_verdict, user_seen
 
 from .conftest import CFG, DOMAIN, TOP_CFG, as_leaf, fixture, items, make_settings
-from .test_tools_ftd import ACP, _catalog, ftd  # noqa: F401  (ftd is a fixture)
+from .test_tools_ftd import ACP, DEV, DEVPATH, _catalog, ftd  # noqa: F401  (ftd is a fixture)
 
 ALLOW = fixture("ftd_packettracer_allow")
+RECORDED = fixture("ha_cluster_records")  # FMC 10.0.1 device records with containerDetails, a cluster
 DROP = fixture("ftd_packettracer_drop")
 TRACES = f"/api/fmc_troubleshoot/v1/domain/{DOMAIN}/packettracer/traces"
 RULES = [
@@ -58,6 +59,8 @@ def lab(ftd: respx.MockRouter) -> respx.MockRouter:  # noqa: F811
     _catalog(ftd)
     ftd.get(f"{CFG}/policy/accesspolicies/{ACP['id']}/accessrules").mock(return_value=items(RULES))
     ftd.get(f"{CFG}/devicehapairs/ftddevicehapairs").mock(return_value=items([]))
+    ftd.get(f"{CFG}/deviceclusters/ftddevicecluster").mock(return_value=items([]))
+    ftd.get(f"{DEVPATH}/ftdallinterfaces").mock(return_value=items(RECORDED["ftdallinterfaces"]))
     return ftd
 
 
@@ -146,7 +149,8 @@ async def test_table_pass_fail_mismatch(lab: respx.MockRouter) -> None:
     assert (body["protocol"], body["destinationPort"], body["interface"]["name"]) == ("TCP", "23", "inside")
     # one device: its interfaces and routes are read once for all four flows
     phys = [c for c in lab.calls if c.request.url.path.endswith("/physicalinterfaces")]
-    assert len(phys) == 2  # flow context + packet tracer's interface pick, both cached
+    every = [c for c in lab.calls if c.request.url.path.endswith("/ftdallinterfaces")]
+    assert (len(every), len(phys)) == (1, 1)  # flow context (one read) + packet tracer's interface pick
 
 
 async def test_device_found_from_interfaces_and_routes(lab: respx.MockRouter) -> None:
@@ -387,8 +391,6 @@ async def test_prompt_listed_and_rendered(lab: respx.MockRouter) -> None:
 def ha_lab(lab: respx.MockRouter) -> tuple[dict[str, Any], dict[str, Any]]:
     """mcp-ftd1 (DEV, interfaces mocked) is the ACTIVE unit of the recorded pair; the standby unit and a
     disconnected device come first in the device list and have nothing mocked (touching them fails)."""
-    from .test_tools_ftd import DEV
-
     pair = copy.deepcopy(fixture("ha_failover")["pair"])
     standby = {
         **DEV,
@@ -434,8 +436,6 @@ async def test_ha_pair_name_means_the_active_unit(lab: respx.MockRouter) -> None
     )
     (row,) = data["results"]
     assert row["result"] == "pass" and row["device"] == "mcp-fw-ha (mcp-ftd1, active)", row
-    from .test_tools_ftd import DEV
-
     assert json.loads(post.calls.last.request.content)["device"]["id"] == DEV["id"]
 
 
@@ -465,3 +465,144 @@ async def test_no_device_error_names_what_was_left_out(lab: respx.MockRouter) ->
     assert (
         "mcp-ftd9 (disconnected)" in row["note"] and "mcp-fw-ha-b (standby unit of mcp-fw-ha)" in row["note"]
     )
+
+
+# --- FMC 10.0.1 device records (metadata.containerDetails), clusters, all devices searched (#198) ---------
+
+ICMP = {"source": "10.99.1.10", "destination": "192.0.2.10", "protocol": "icmp", "expect": "allow"}
+
+
+def recorded(name: str, **kw: Any) -> dict[str, Any]:
+    rec = copy.deepcopy(next(d for d in RECORDED["devicerecords"] if d["name"] == name))
+    return {**rec, **kw}
+
+
+def as_unit(name: str, **kw: Any) -> dict[str, Any]:
+    """DEV (interfaces and routes mocked) in the place of a recorded HA unit or cluster node."""
+    rec = recorded(name)
+    meta = {
+        **DEV["metadata"],
+        "containerDetails": rec["metadata"]["containerDetails"],
+        "isPartOfContainer": True,
+    }
+    return {**DEV, "metadata": meta, "isConnected": True, **kw}
+
+
+def container_lab(lab: respx.MockRouter) -> respx.MockRouter:
+    """The recorded layout: HA pair mcp-fw-ha (DEV as its active unit mcp-fw-ha-a, the standby connected),
+    cluster mcp-sdwan-t3-cluster (control node disconnected, data node connected) and a disconnected
+    standalone device; nothing but DEV has interfaces mocked."""
+    records = [
+        recorded("mcp-fw-ha-b"),  # connected standby: never a candidate
+        recorded("mcp-sdwan-t3-hub2", isConnected=True),
+        recorded("mcp-sdwan-t3-hub"),
+        recorded("mcp-fw-branch1"),
+        as_unit("mcp-fw-ha-a"),
+    ]
+    lab.get(f"{CFG}/devices/devicerecords").mock(return_value=items(records))
+    lab.get(f"{CFG}/devicehapairs/ftddevicehapairs", name="pairs").mock(return_value=items([]))
+    lab.get(f"{CFG}/deviceclusters/ftddevicecluster", name="clusters").mock(
+        return_value=items(RECORDED["clusters"])
+    )
+    return lab
+
+
+async def test_recorded_containers_place_on_the_active_unit_and_say_what_was_left_out(
+    lab: respx.MockRouter,
+) -> None:
+    container_lab(lab)
+    post = tracer(lab, lambda b: ALLOW)
+    data = await call({"flows": [ICMP]})
+    (row,) = data["results"]
+    assert row["result"] == "pass" and row["device"] == "mcp-fw-ha (mcp-ftd1, active)", row
+    assert json.loads(post.calls.last.request.content)["device"]["id"] == DEV["id"]
+    assert data["not_checked"] == [
+        "mcp-fw-ha-b (standby unit of mcp-fw-ha)",
+        "mcp-sdwan-t3-hub2 (data node of mcp-sdwan-t3-cluster)",
+        "mcp-sdwan-t3-hub (control node of mcp-sdwan-t3-cluster, disconnected)",
+        "mcp-fw-branch1 (disconnected)",
+    ]
+    # FMC named the containers in the records: the HA pair and cluster collections were not read
+    assert not lab.routes["pairs"].called and not lab.routes["clusters"].called
+
+
+async def test_cluster_name_means_the_control_node(lab: respx.MockRouter) -> None:
+    records = [recorded("mcp-sdwan-t3-hub2", isConnected=True), as_unit("mcp-sdwan-t3-hub")]
+    lab.get(f"{CFG}/devices/devicerecords").mock(return_value=items(records))
+    post = tracer(lab, lambda b: ALLOW)
+    (row,) = (await call({"device": "mcp-sdwan-t3-cluster", "flows": [ICMP]}))["results"]
+    assert row["result"] == "pass" and row["device"] == "mcp-sdwan-t3-cluster (mcp-ftd1, control)", row
+    assert json.loads(post.calls.last.request.content)["device"]["id"] == DEV["id"]
+    # and by the cluster's UUID (a devicerecords GET of that id is FMC's 404)
+    cid = RECORDED["clusters"][0]["id"]
+    lab.get(f"{CFG}/devices/devicerecords/{cid}").mock(return_value=httpx.Response(404, json={}))
+    (row,) = (await call({"device": cid, "flows": [ICMP]}))["results"]
+    assert row["result"] == "pass" and row["device"] == "mcp-sdwan-t3-cluster (mcp-ftd1, control)", row
+
+
+async def test_candidates_naming_a_standby_unit_trace_on_the_active_one(lab: respx.MockRouter) -> None:
+    container_lab(lab)
+    tracer(lab, lambda b: ALLOW)
+    (row,) = (await call({"candidates": ["mcp-fw-ha-b"], "flows": [ICMP]}))["results"]
+    assert row["result"] == "pass" and row["device"] == "mcp-fw-ha (mcp-ftd1, active)", row
+
+
+async def test_every_device_is_searched_with_one_interface_read_each(
+    lab: respx.MockRouter, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    """The eval's branch was the 19th of 19 devices: past the old first-10 pool. Devices without the source
+    on a connected subnet cost one ftdallinterfaces read and no route reads."""
+    others = [
+        {
+            **DEV,
+            "id": f"0e000000-0000-4000-8000-0000000000{n:02d}",
+            "name": f"mcp-ftd-x{n}",
+            "isConnected": True,
+        }
+        for n in range(18)
+    ]
+    lab.get(f"{CFG}/devices/devicerecords").mock(return_value=items([*others, {**DEV, "isConnected": True}]))
+    lab.get(path__regex=r".*/devicerecords/0e000000-[^/]+/ftdallinterfaces$").mock(
+        return_value=items(
+            [
+                {
+                    "type": "PhysicalInterface",
+                    "name": "Ethernet0/1",
+                    "ifname": "inside",
+                    "id": "x",
+                    "enabled": True,
+                    "ipv4": {"static": {"address": "10.50.1.1", "netmask": "24"}},
+                }
+            ]
+        )
+    )
+    tracer(lab, lambda b: ALLOW)
+    data = await call({"flows": [ICMP]})
+    (row,) = data["results"]
+    assert row["result"] == "pass" and row["device"] == "mcp-ftd1", row
+    routes = [c.request.url.path for c in lab.calls if "/routing/" in c.request.url.path]
+    assert routes and all(DEV["id"] in p for p in routes)
+    assert "not_checked" not in data
+    # past the cap: named as not checked
+    monkeypatch.setattr(prove, "AUTO_DEVICE_CAP", 18)
+    lab.get(path__regex=r".*/devicerecords/0e000000-[^/]+/routing/ipv[46]staticroutes$").mock(
+        return_value=items([])
+    )
+    (row,) = (await call({"flows": [ICMP]}))["results"]
+    assert (
+        row["result"] == "error" and "mcp-ftd1 (over the first 18 devices; pass `candidates`)" in row["note"]
+    )
+
+
+async def test_packet_tracer_accepts_an_ha_pair_and_flags_a_standby_trace(lab: respx.MockRouter) -> None:
+    ha_lab(lab)
+    post = tracer(lab, lambda b: ALLOW)
+    args = {"protocol": "icmp", "source_ip": "10.99.1.10", "destination_ip": "192.0.2.10"}
+    out = await call_tool(
+        create_server(make_settings()), "fmc_packet_tracer", {"device": "mcp-fw-ha", **args}
+    )
+    assert out["device"] == "mcp-fw-ha (mcp-ftd1, active)" and "note" not in out, out
+    assert json.loads(post.calls.last.request.content)["device"]["id"] == DEV["id"]
+    tracer(lab, lambda b: dropped("(fo-standby) Dropped by standby unit", "ROUTE-LOOKUP", True))
+    out = await call_tool(create_server(make_settings()), "fmc_packet_tracer", {"device": "mcp-ftd1", **args})
+    assert "standby unit" in out["note"] and "says nothing about the policy" in out["note"], out

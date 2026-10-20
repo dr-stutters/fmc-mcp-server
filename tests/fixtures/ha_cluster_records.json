@@ -1,0 +1,579 @@
+{
+ "_source": "Recorded read-only 2026-10-20 from FMC 10.0.1, domain Global/mcp-test-leaf, with fmc_api_call GET ...?expanded=true (links dropped, management addresses scrubbed to 192.0.2.x, serials redacted). `devicerecords`: six of the lab's 19 records: the HA pair mcp-fw-ha (metadata.containerDetails: DeviceHAPair, role PRIMARY/SECONDARY, status Active/Standby; the active unit was disconnected at the time), the cluster mcp-sdwan-t3-cluster (DeviceCluster, role Control/Data; no status) and two standalone devices (no containerDetails, no isPartOfContainer). `clusters`: deviceclusters/ftddevicecluster. `ftdallinterfaces`: mcp-ftd1's every-kind interface listing in one request (a SubInterface there has no subIntfId/vlanId; the spec's s2sVpnApplicableInterfaces filter 'does not include VTI interfaces', so the unfiltered list does; the lab had no VTI or loopback to confirm it live).",
+ "devicerecords": [
+  {
+   "deploymentStatus": "DEPLOYED",
+   "id": "1010c922-caf9-11f1-96b6-d3ea1594a29a",
+   "type": "Device",
+   "name": "mcp-fw-ha-b",
+   "description": "NOT SUPPORTED",
+   "model": "Cisco Secure Firewall Threat Defense for KVM",
+   "modelId": "B",
+   "modelNumber": "75",
+   "modelType": "Sensor",
+   "healthStatus": "green",
+   "healthMessage": "High availability status: Normal",
+   "sw_version": "10.0.0",
+   "healthPolicy": {
+    "id": "1114175a-2eca-11f1-bc1d-b8e359adb5f3",
+    "name": "Initial_Health_Policy 2026-04-02 19:28:02",
+    "type": "HealthPolicy"
+   },
+   "accessPolicy": {
+    "name": "mcp-fw-base-acp",
+    "id": "00000000-0000-0ed3-0000-021474903666",
+    "type": "AccessPolicy"
+   },
+   "advanced": {
+    "enableOGS": true
+   },
+   "hostName": "192.0.2.217",
+   "license_caps": [
+    "ESSENTIALS"
+   ],
+   "performanceTier": "FTDv5",
+   "keepLocalEvents": false,
+   "prohibitPacketTransfer": false,
+   "isConnected": true,
+   "ftdMode": "ROUTED",
+   "analyticsOnly": false,
+   "metadata": {
+    "readOnly": {
+     "state": false
+    },
+    "inventoryData": {
+     "cpuCores": "1 CPU (4 cores)",
+     "cpuType": "CPU Xeon 4100/6100/8100 series 2700 MHz",
+     "memoryInMB": "8192 MB RAM"
+    },
+    "deviceSerialNumber": "REDACTED",
+    "domain": {
+     "name": "mcp-test-leaf",
+     "id": "a1c73df0-8353-8db7-1097-000000000000",
+     "type": "Domain"
+    },
+    "containerDetails": {
+     "id": "03e0cc6c-cb56-11f1-85ee-4ce46f180443",
+     "type": "DeviceHAPair",
+     "name": "mcp-fw-ha",
+     "role": "SECONDARY",
+     "status": "Standby"
+    },
+    "isPartOfContainer": true,
+    "isMultiInstance": false,
+    "snortVersion": "3.9.3.1-61",
+    "vdbVersion": "Build 426 - 2026-03-24 09:29:08.0",
+    "lspVersion": "lsp-rel-20261016-1401",
+    "clusterBootstrapSupported": true,
+    "universalZeroTrustSupported": false,
+    "coreProfile": "Default"
+   },
+   "snortEngine": "SNORT3",
+   "isMCDManaged": false,
+   "managementState": "MANAGED"
+  },
+  {
+   "deploymentStatus": "DEPLOYMENT_PENDING",
+   "id": "2d9af100-ca83-11f1-a882-d9fd30b1d53c",
+   "type": "Device",
+   "name": "mcp-sdwan-t3-hub2",
+   "description": "NOT SUPPORTED",
+   "model": "Cisco Secure Firewall Threat Defense for KVM",
+   "modelId": "B",
+   "modelNumber": "75",
+   "modelType": "Sensor",
+   "healthStatus": "disabled",
+   "healthMessage": "Appliance unreachable",
+   "sw_version": "10.0.0",
+   "healthPolicy": {
+    "id": "dcd1c26c-cabe-11f1-a5c2-b58d6f180443",
+    "name": "mcp-sdwan-health",
+    "type": "HealthPolicy"
+   },
+   "accessPolicy": {
+    "name": "mcp-sdwan-acp",
+    "id": "00000000-0000-0ed3-0000-021474856047",
+    "type": "AccessPolicy"
+   },
+   "advanced": {
+    "enableOGS": true
+   },
+   "hostName": "192.0.2.209",
+   "license_caps": [
+    "ESSENTIALS"
+   ],
+   "performanceTier": "FTDv5",
+   "keepLocalEvents": false,
+   "prohibitPacketTransfer": false,
+   "isConnected": false,
+   "ftdMode": "ROUTED",
+   "analyticsOnly": false,
+   "metadata": {
+    "readOnly": {
+     "state": false
+    },
+    "inventoryData": {
+     "cpuCores": "1 CPU (4 cores)",
+     "cpuType": "CPU Xeon 4100/6100/8100 series 2700 MHz",
+     "memoryInMB": "8192 MB RAM"
+    },
+    "deviceSerialNumber": "REDACTED",
+    "domain": {
+     "name": "mcp-test-leaf",
+     "id": "a1c73df0-8353-8db7-1097-000000000000",
+     "type": "Domain"
+    },
+    "containerDetails": {
+     "id": "8d3840c2-caa1-11f1-a4e0-98786f180443",
+     "type": "DeviceCluster",
+     "name": "mcp-sdwan-t3-cluster",
+     "role": "Data"
+    },
+    "isPartOfContainer": true,
+    "isMultiInstance": false,
+    "snortVersion": "3.9.3.1-61",
+    "vdbVersion": "Build 426 - 2026-03-24 09:29:08.0",
+    "lspVersion": "lsp-rel-20261016-1401",
+    "clusterBootstrapSupported": true,
+    "universalZeroTrustSupported": false,
+    "coreProfile": "Default"
+   },
+   "snortEngine": "SNORT3",
+   "isMCDManaged": false,
+   "managementState": "MANAGED"
+  },
+  {
+   "deploymentStatus": "DEPLOYED",
+   "id": "0c7a00e4-caf9-11f1-a329-a5594ad4d7df",
+   "type": "Device",
+   "name": "mcp-fw-ha-a",
+   "description": "NOT SUPPORTED",
+   "model": "Cisco Secure Firewall Threat Defense for KVM",
+   "modelId": "B",
+   "modelNumber": "75",
+   "modelType": "Sensor",
+   "healthStatus": "disabled",
+   "healthMessage": "Appliance unreachable",
+   "sw_version": "10.0.0",
+   "healthPolicy": {
+    "id": "1114175a-2eca-11f1-bc1d-b8e359adb5f3",
+    "name": "Initial_Health_Policy 2026-04-02 19:28:02",
+    "type": "HealthPolicy"
+   },
+   "accessPolicy": {
+    "name": "mcp-fw-base-acp",
+    "id": "00000000-0000-0ed3-0000-021474903666",
+    "type": "AccessPolicy"
+   },
+   "advanced": {
+    "enableOGS": true
+   },
+   "hostName": "192.0.2.216",
+   "license_caps": [
+    "ESSENTIALS"
+   ],
+   "performanceTier": "FTDv5",
+   "keepLocalEvents": false,
+   "prohibitPacketTransfer": false,
+   "isConnected": false,
+   "ftdMode": "ROUTED",
+   "analyticsOnly": false,
+   "metadata": {
+    "readOnly": {
+     "state": false
+    },
+    "inventoryData": {
+     "cpuCores": "1 CPU (4 cores)",
+     "cpuType": "CPU Xeon 4100/6100/8100 series 2700 MHz",
+     "memoryInMB": "8192 MB RAM"
+    },
+    "deviceSerialNumber": "REDACTED",
+    "domain": {
+     "name": "mcp-test-leaf",
+     "id": "a1c73df0-8353-8db7-1097-000000000000",
+     "type": "Domain"
+    },
+    "containerDetails": {
+     "id": "03e0cc6c-cb56-11f1-85ee-4ce46f180443",
+     "type": "DeviceHAPair",
+     "name": "mcp-fw-ha",
+     "role": "PRIMARY",
+     "status": "Active"
+    },
+    "isPartOfContainer": true,
+    "isMultiInstance": false,
+    "snortVersion": "3.9.3.1-61",
+    "vdbVersion": "Build 426 - 2026-03-24 09:29:08.0",
+    "lspVersion": "lsp-rel-20261016-1401",
+    "clusterBootstrapSupported": true,
+    "universalZeroTrustSupported": false,
+    "coreProfile": "Default"
+   },
+   "snortEngine": "SNORT3",
+   "isMCDManaged": false,
+   "managementState": "MANAGED"
+  },
+  {
+   "deploymentStatus": "DEPLOYMENT_IN_PROGRESS",
+   "id": "dc0d1aac-ca82-11f1-82bc-ca1afe70919b",
+   "type": "Device",
+   "name": "mcp-sdwan-t3-hub",
+   "description": "NOT SUPPORTED",
+   "model": "Cisco Secure Firewall Threat Defense for KVM",
+   "modelId": "B",
+   "modelNumber": "75",
+   "modelType": "Sensor",
+   "healthStatus": "disabled",
+   "healthMessage": "Appliance unreachable",
+   "sw_version": "10.0.0",
+   "healthPolicy": {
+    "id": "dcd1c26c-cabe-11f1-a5c2-b58d6f180443",
+    "name": "mcp-sdwan-health",
+    "type": "HealthPolicy"
+   },
+   "accessPolicy": {
+    "name": "mcp-sdwan-acp",
+    "id": "00000000-0000-0ed3-0000-021474856047",
+    "type": "AccessPolicy"
+   },
+   "advanced": {
+    "enableOGS": true
+   },
+   "hostName": "192.0.2.208",
+   "license_caps": [
+    "ESSENTIALS"
+   ],
+   "performanceTier": "FTDv5",
+   "keepLocalEvents": false,
+   "prohibitPacketTransfer": false,
+   "isConnected": false,
+   "ftdMode": "ROUTED",
+   "analyticsOnly": false,
+   "metadata": {
+    "readOnly": {
+     "state": false
+    },
+    "inventoryData": {
+     "cpuCores": "1 CPU (4 cores)",
+     "cpuType": "CPU Xeon 4100/6100/8100 series 2700 MHz",
+     "memoryInMB": "8192 MB RAM"
+    },
+    "deviceSerialNumber": "REDACTED",
+    "domain": {
+     "name": "mcp-test-leaf",
+     "id": "a1c73df0-8353-8db7-1097-000000000000",
+     "type": "Domain"
+    },
+    "containerDetails": {
+     "id": "8d3840c2-caa1-11f1-a4e0-98786f180443",
+     "type": "DeviceCluster",
+     "name": "mcp-sdwan-t3-cluster",
+     "role": "Control"
+    },
+    "isPartOfContainer": true,
+    "isMultiInstance": false,
+    "snortVersion": "3.9.3.1-61",
+    "vdbVersion": "Build 426 - 2026-03-24 09:29:08.0",
+    "lspVersion": "lsp-rel-20261016-1401",
+    "clusterBootstrapSupported": true,
+    "universalZeroTrustSupported": false,
+    "coreProfile": "Default"
+   },
+   "snortEngine": "SNORT3",
+   "isMCDManaged": false,
+   "managementState": "MANAGED"
+  },
+  {
+   "deploymentStatus": "DEPLOYED",
+   "id": "43d57cc8-c9c6-11f1-858d-a03accd83568",
+   "type": "Device",
+   "name": "mcp-ftd1",
+   "description": "NOT SUPPORTED",
+   "model": "Cisco Secure Firewall Threat Defense for KVM",
+   "modelId": "B",
+   "modelNumber": "75",
+   "modelType": "Sensor",
+   "healthStatus": "disabled",
+   "healthMessage": "Appliance unreachable",
+   "sw_version": "10.0.0",
+   "healthPolicy": {
+    "id": "1114175a-2eca-11f1-bc1d-b8e359adb5f3",
+    "name": "Initial_Health_Policy 2026-04-02 19:28:02",
+    "type": "HealthPolicy"
+   },
+   "accessPolicy": {
+    "name": "mcp-test-ftd-acp",
+    "id": "00000000-0000-0ed3-0000-021474837072",
+    "type": "AccessPolicy"
+   },
+   "advanced": {
+    "enableOGS": true
+   },
+   "hostName": "192.0.2.151",
+   "license_caps": [
+    "ESSENTIALS",
+    "MALWARE_DEFENSE",
+    "IPS",
+    "URL"
+   ],
+   "performanceTier": "FTDv5",
+   "keepLocalEvents": false,
+   "prohibitPacketTransfer": false,
+   "isConnected": false,
+   "ftdMode": "ROUTED",
+   "analyticsOnly": false,
+   "metadata": {
+    "readOnly": {
+     "state": false
+    },
+    "inventoryData": {
+     "cpuCores": "1 CPU (4 cores)",
+     "cpuType": "CPU Xeon 4100/6100/8100 series 2700 MHz",
+     "memoryInMB": "8192 MB RAM"
+    },
+    "deviceSerialNumber": "REDACTED",
+    "domain": {
+     "name": "mcp-test-leaf",
+     "id": "a1c73df0-8353-8db7-1097-000000000000",
+     "type": "Domain"
+    },
+    "isMultiInstance": false,
+    "snortVersion": "3.9.3.1-61",
+    "vdbVersion": "Build 426 - 2026-03-24 09:29:08.0",
+    "lspVersion": "lsp-rel-20261016-1401",
+    "clusterBootstrapSupported": true,
+    "universalZeroTrustSupported": false,
+    "coreProfile": "Default"
+   },
+   "snortEngine": "SNORT3",
+   "isMCDManaged": false,
+   "managementState": "MANAGED"
+  },
+  {
+   "deploymentStatus": "DEPLOYED",
+   "id": "f706b55e-cb4d-11f1-a68f-c97bc7530305",
+   "type": "Device",
+   "name": "mcp-fw-branch1",
+   "description": "NOT SUPPORTED",
+   "model": "Cisco Secure Firewall Threat Defense for KVM",
+   "modelId": "B",
+   "modelNumber": "75",
+   "modelType": "Sensor",
+   "healthStatus": "disabled",
+   "healthMessage": "Appliance unreachable",
+   "sw_version": "10.0.0",
+   "healthPolicy": {
+    "id": "1114175a-2eca-11f1-bc1d-b8e359adb5f3",
+    "name": "Initial_Health_Policy 2026-04-02 19:28:02",
+    "type": "HealthPolicy"
+   },
+   "accessPolicy": {
+    "name": "mcp-fw-base-acp",
+    "id": "00000000-0000-0ed3-0000-021474903666",
+    "type": "AccessPolicy"
+   },
+   "advanced": {
+    "enableOGS": true
+   },
+   "hostName": "192.0.2.213",
+   "license_caps": [
+    "ESSENTIALS"
+   ],
+   "performanceTier": "FTDv5",
+   "keepLocalEvents": false,
+   "prohibitPacketTransfer": false,
+   "isConnected": false,
+   "ftdMode": "ROUTED",
+   "analyticsOnly": false,
+   "metadata": {
+    "readOnly": {
+     "state": false
+    },
+    "inventoryData": {
+     "cpuCores": "1 CPU (4 cores)",
+     "cpuType": "CPU Xeon 4100/6100/8100 series 2700 MHz",
+     "memoryInMB": "8192 MB RAM"
+    },
+    "deviceSerialNumber": "REDACTED",
+    "domain": {
+     "name": "mcp-test-leaf",
+     "id": "a1c73df0-8353-8db7-1097-000000000000",
+     "type": "Domain"
+    },
+    "isMultiInstance": false,
+    "snortVersion": "3.9.3.1-61",
+    "vdbVersion": "Build 426 - 2026-03-24 09:29:08.0",
+    "lspVersion": "lsp-rel-20261016-1401",
+    "clusterBootstrapSupported": true,
+    "universalZeroTrustSupported": false,
+    "coreProfile": "Default"
+   },
+   "snortEngine": "SNORT3",
+   "isMCDManaged": false,
+   "managementState": "MANAGED"
+  }
+ ],
+ "clusters": [
+  {
+   "id": "8d3840c2-caa1-11f1-a4e0-98786f180443",
+   "type": "DeviceCluster",
+   "name": "mcp-sdwan-t3-cluster",
+   "controlDevice": {
+    "clusterNodeBootstrap": {},
+    "deviceDetails": {
+     "id": "dc0d1aac-ca82-11f1-82bc-ca1afe70919b",
+     "name": "mcp-sdwan-t3-hub",
+     "type": "Device"
+    }
+   },
+   "dataDevices": [
+    {
+     "clusterNodeBootstrap": {},
+     "deviceDetails": {
+      "id": "2d9af100-ca83-11f1-a882-d9fd30b1d53c",
+      "name": "mcp-sdwan-t3-hub2",
+      "type": "Device"
+     }
+    }
+   ],
+   "metadata": {
+    "analyticsOnly": false,
+    "clusterhealthmonitorsettings": {
+     "description": "Cluster health monitor settings",
+     "id": "8d3840c2-caa1-11f1-a4e0-98786f180443",
+     "type": "ClusterHealthMonitorSetting"
+    }
+   },
+   "commonBootstrap": {
+    "cclInterface": {}
+   }
+  }
+ ],
+ "ftdallinterfaces": [
+  {
+   "metadata": {
+    "virtualRouter": {
+     "name": "Global",
+     "id": "42e95fbf-fd5a-42bf-a95f-bffd5a42bfd6",
+     "type": "VirtualRouter"
+    }
+   },
+   "type": "PhysicalInterface",
+   "enableSGTPropagate": false,
+   "mode": "NONE",
+   "MTU": 1500,
+   "enabled": true,
+   "name": "Ethernet0/0",
+   "priority": 0,
+   "id": "00000000-0000-0ed3-0000-021474837527",
+   "pathMonitoring": {
+    "enable": false
+   },
+   "applicationMonitoring": {
+    "enable": true
+   },
+   "ifname": "outside",
+   "managementOnly": false,
+   "securityZone": {
+    "id": "d1686144-c9d6-11f1-a4e0-98786f180443",
+    "type": "SecurityZone"
+   },
+   "ipv4": {
+    "static": {
+     "address": "192.0.2.10",
+     "netmask": "18"
+    }
+   },
+   "ipv6": {
+    "enableIPV6": false
+   }
+  },
+  {
+   "metadata": {
+    "virtualRouter": {
+     "name": "Global",
+     "id": "42e95fbf-fd5a-42bf-a95f-bffd5a42bfd6",
+     "type": "VirtualRouter"
+    }
+   },
+   "type": "PhysicalInterface",
+   "enableSGTPropagate": false,
+   "mode": "NONE",
+   "MTU": 1500,
+   "enabled": true,
+   "name": "Ethernet0/1",
+   "priority": 0,
+   "id": "00000000-0000-0ed3-0000-021474837528",
+   "pathMonitoring": {
+    "enable": false
+   },
+   "applicationMonitoring": {
+    "enable": true
+   },
+   "ifname": "inside",
+   "managementOnly": false,
+   "securityZone": {
+    "id": "d06d930e-c9d6-11f1-a4e0-98786f180443",
+    "type": "SecurityZone"
+   },
+   "ipv4": {
+    "static": {
+     "address": "10.99.1.1",
+     "netmask": "24"
+    }
+   },
+   "ipv6": {
+    "enableIPV6": false
+   }
+  },
+  {
+   "metadata": {
+    "virtualRouter": {
+     "name": "Global",
+     "id": "42e95fbf-fd5a-42bf-a95f-bffd5a42bfd6",
+     "type": "VirtualRouter"
+    }
+   },
+   "type": "SubInterface",
+   "enableSGTPropagate": false,
+   "mode": "NONE",
+   "MTU": 1500,
+   "enabled": true,
+   "name": "Ethernet0/1",
+   "priority": 0,
+   "id": "00000000-0000-0ed3-0000-021474842317",
+   "ifname": "mcp-dmz",
+   "securityZone": {
+    "id": "30ea0d2a-c9d7-11f1-8ee6-9b786f180443",
+    "type": "SecurityZone"
+   },
+   "ipv4": {
+    "static": {
+     "address": "10.99.100.1",
+     "netmask": "24"
+    }
+   },
+   "ipv6": {}
+  },
+  {
+   "metadata": {
+    "virtualRouter": {
+     "name": "Global",
+     "id": "42e95fbf-fd5a-42bf-a95f-bffd5a42bfd6",
+     "type": "VirtualRouter"
+    }
+   },
+   "type": "PhysicalInterface",
+   "enableSGTPropagate": true,
+   "mode": "NONE",
+   "MTU": 1500,
+   "enabled": true,
+   "name": "Management0/0",
+   "priority": 0,
+   "id": "00000000-0000-0ed3-0000-021474837529",
+   "ifname": "management",
+   "managementOnly": true,
+   "ipv6": {}
+  }
+ ]
+}

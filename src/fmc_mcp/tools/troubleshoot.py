@@ -33,7 +33,7 @@ from fmc_mcp.flow import device_context
 from fmc_mcp.tools.common import Domain
 from fmc_mcp.tools.dangerous import task_id_of, wait_task
 from fmc_mcp.tools.device_config import device_interfaces, pick_interface, resolve_device
-from fmc_mcp.tools.devices import DeviceRef
+from fmc_mcp.tools.devices import DeviceRef, resolve_unit
 from fmc_mcp.tools.policies import ACCESS, PREFILTER, all_rules, resolve_policy
 from fmc_mcp.tools.show_commands import Supported, check_command, supported_commands
 from fmc_mcp.tools.system import iso
@@ -516,7 +516,13 @@ def register(reg: ToolRegistrar) -> None:
     @reg.read(title="Packet tracer")
     async def fmc_packet_tracer(
         ctx: Context,
-        device: DeviceRef,
+        device: Annotated[
+            str,
+            Field(
+                description="FTD name or UUID (from fmc_list_devices); an HA pair's or cluster's name or "
+                "UUID means its active unit / control node"
+            ),
+        ],
         protocol: Annotated[Literal["tcp", "udp", "icmp"], Field(description="IP protocol")],
         source_ip: Annotated[str, Field(description="Source IPv4/IPv6 address")],
         destination_ip: Annotated[str, Field(description="Destination IPv4/IPv6 address")],
@@ -545,10 +551,11 @@ def register(reg: ToolRegistrar) -> None:
         prefilter rule that matched (name, policy and device rule id), plus route lookup and NAT
         phases. The live answer to "why is this traffic blocked?"; combine with fmc_rule_lookup
         (offline policy walk) and fmc_get_hit_counts. The ingress interface (it must have a logical
-        name) is picked from the source IP unless given."""
+        name) is picked from the source IP unless given. An HA pair or cluster is traced on its active
+        unit (FMC's failover state) / control node; `device` names pair and unit."""
         app: FmcApp = get_client(ctx)
-        dev = await resolve_device(app, device, domain)
-        return await packet_trace(
+        dev, member = await resolve_unit(app, device, domain)
+        out = await packet_trace(
             app,
             dev,
             protocol,
@@ -562,6 +569,14 @@ def register(reg: ToolRegistrar) -> None:
             verbose=verbose,
             domain=domain,
         )
+        name = str(dev.get("name"))
+        out = {"device": member.label(name) if member else name, **out}
+        if any("fo-standby" in str(t.get("drop_reason") or "") for t in out.get("results") or []):
+            out["note"] = (
+                f"{name} answered as an HA standby unit, which drops everything: this says nothing about the "
+                "policy. Trace on the active unit or give the HA pair's name."
+            )
+        return out
 
     @reg.read(title="Rule hit counts")
     async def fmc_get_hit_counts(
