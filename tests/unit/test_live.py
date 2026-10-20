@@ -245,6 +245,47 @@ async def test_history_window_is_applied_here(ftd: respx.MockRouter, monkeypatch
     ]
 
 
+@pytest.mark.parametrize(
+    ("answer", "expect"),
+    [
+        (httpx.Response(422, json=INVALID_TIME), "Invalid time field"),
+        (httpx.Response(500, json={"error": {"messages": [{"description": "boom"}]}}), "boom"),
+        (denied(), "Events & Logs > Analysis > Users"),
+    ],
+)
+async def test_history_failure_keeps_the_sessions(
+    ftd: respx.MockRouter, answer: httpx.Response, expect: str
+) -> None:
+    """#199: FMC refusing the user activity (FMC 10.0.1's 422 'Invalid time field.', a 5xx, a role without
+    Analysis > Users) no longer fails the call: the sessions come back with `history_error`."""
+    ftd.get(SESSIONS).mock(return_value=httpx.Response(200, json=LIVE["activesessions"]))
+    ftd.get(ACTIVITY).mock(return_value=answer)
+    data = await call("fmc_user_identity_sessions", {"ip": "10.99.1.12", "history": True})
+    assert [r["user"] for r in data["results"]] == ["alice"] and data["sessions"] == 1
+    assert expect in data["history_error"] and "history" not in data
+
+
+async def test_history_reads_fmc10_rows(ftd: respx.MockRouter, monkeypatch: pytest.MonkeyPatch) -> None:
+    """Real FMC 10.0.1 user activity (epoch seconds, null ports, the FMC as `device`), newest first."""
+    rows = fixture("useractivity_fmc10")
+    monkeypatch.setattr(live, "clock", lambda: rows["items"][0]["time"] + 60)
+    ftd.get(SESSIONS).mock(return_value=items([]))
+    route = ftd.get(ACTIVITY).mock(return_value=httpx.Response(200, json=rows))
+    data = await call("fmc_user_identity_sessions", {"user": "mcp-bob", "history": True, "hours": 1})
+    assert route.calls.last.request.url.params["username"] == "mcp-bob"
+    assert data["history"][1] == {
+        "time": "2026-10-20T22:42:24Z",
+        "event": "User Logoff",
+        "user": "mcp-bob",
+        "realm": "lab",
+        "ip": "10.10.34.100",
+        "device": "fmc.example",
+        "authentication": "Passive Authentication",
+        "sgt": "Contractors",
+    }
+    assert "history_error" not in data
+
+
 async def test_sessions_by_device_name(ftd: respx.MockRouter) -> None:
     sessions = ftd.get(SESSIONS).mock(return_value=items([]))
     data = await call("fmc_user_identity_sessions", {"device": DEV["id"]})

@@ -52,10 +52,10 @@ from fmc_mcp.tools.device_config import resolve_device
 from fmc_mcp.tools.devices import DEVICES
 from fmc_mcp.tools.identity import IDENTITY, REALMS, identity_rule_row, policies_using
 from fmc_mcp.tools.live import (
-    ACTIVITY_WHAT,
     activity_items,
     activity_row,
     fallback_note,
+    history_error,
     refused,
     role_error,
     session_items,
@@ -696,7 +696,10 @@ def register(reg: ToolRegistrar) -> None:
         ] = None,
         history: Annotated[
             bool,
-            Field(description="Also the recent logins/logoffs for the IP or user (with SGT and profile)"),
+            Field(
+                description="Also the recent logins/logoffs for the IP or user (with SGT and profile); "
+                "if FMC refuses them, the rest still comes back with `history_error`"
+            ),
         ] = False,
         hours: Annotated[int, Field(ge=1, le=720, description="History window in hours")] = 24,
         domain: Domain = None,
@@ -808,6 +811,6 @@ def register(reg: ToolRegistrar) -> None:
                 out["history"] = [activity_row(a) for a in events][:50]
                 if owner := sessions_domain(events):
                     out["history_domain"] = owner
-            except AuthError as e:
-                out["history_error"] = refused(ACTIVITY_WHAT) if e.status_code == 403 else str(e)
+            except UpstreamError as e:
+                out["history_error"] = history_error(e)
         return out
