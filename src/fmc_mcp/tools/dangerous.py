@@ -110,7 +110,7 @@ def job_epoch(v: Any) -> int:
 
 # FMC refuses anything else: "Registration key contains invalid characters. Only alphanumerics and
 # hyphen (-) are allowed." (FMC 10.0.1, seen in the SD-WAN run with a key carrying a stray character).
-REG_KEY_OK = re.compile(r"^[A-Za-z0-9-]+$")
+REG_KEY_OK = re.compile(r"[A-Za-z0-9-]+")
 SERVER_KEY = "server config (FMC_FTD_REG_KEY)"
 
 
@@ -130,8 +130,10 @@ def registration_key(settings: Settings, reg_key: str | None, what: str = "argum
 
 def registration_key_problem(key: str, source: str) -> str | None:
     """A blocker when FMC would refuse the key (never shows the key itself)."""
-    if REG_KEY_OK.match(key):
+    if REG_KEY_OK.fullmatch(key):
         return None
+    if not key:
+        return f"The registration key from {source} is empty: set it on the server and preview again."
     return (
         f"The registration key from {source} has characters FMC refuses (only letters, digits and '-' are "
         "allowed): fix it on the server (and in the FTDs' `configure manager add`) and preview again."
