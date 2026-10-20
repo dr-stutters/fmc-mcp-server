@@ -20,7 +20,11 @@ from fmc_mcp._core import (
 from fmc_mcp._core.http import page_of
 from fmc_mcp.audit import NOISE_SUBSYSTEMS, compact_message, coverage_note, fetch_audit, is_read
 from fmc_mcp.client import FmcApp
-from fmc_mcp.tools.common import Domain, slim, smart_license_row
+from fmc_mcp.tools.common import Domain, ref_label, slim, smart_license_row
+from fmc_mcp.tools.devices import DEVICES
+from fmc_mcp.tools.policies import ACCESS, all_rules
+
+LICENCE_POLICY_CAP = 10  # access policies whose rules are read for the licences they need
 
 
 def iso(ts: Any) -> str | None:
@@ -159,17 +163,55 @@ def register(reg: ToolRegistrar) -> None:
         return object_result(slim(data))
 
     @reg.read(title="FMC licensing status")
-    async def fmc_license_status(ctx: Context) -> dict[str, Any]:
+    async def fmc_license_status(
+        ctx: Context,
+        check_policies: Annotated[
+            bool,
+            Field(
+                description="Also read each assigned access policy's rules (up to "
+                f"{LICENCE_POLICY_CAP} policies) for the licences it needs and list what each device lacks"
+            ),
+        ] = True,
+        domain: Domain = None,
+    ) -> dict[str, Any]:
         """Smart Licensing status of the FMC (regStatus registered/unregistered/evaluation, authStatus
         such as AUTHORIZED or OUT_OF_COMPLIANCE, virtual account, export control, evaluation used and
-        days left, last sync/renewal) and the per-device license entitlements FMC knows about."""
+        days left, last sync/renewal) and the licences of every device: name, HA pair or cluster and
+        role, licences (FMC's *_HA entitlements of HA units shown as the plain licence), performance
+        tier and access policy; with check_policies, what that policy needs (IPS for intrusion
+        inspection, MALWARE_DEFENSE for file policies, URL for URL categories/reputation, as
+        fmc_threat_posture checks it) and what the device is missing. 'Are we licensed properly?' in
+        one call; fix with fmc_set_device_licenses."""
         app: FmcApp = get_client(ctx)
         smart = await app.api.get("/api/fmc_platform/v1/license/smartlicenses")
-        devices = await app.all("/api/fmc_platform/v1/license/devicelicenses", expanded=False, cap=1000)
-        return {
-            "smart_license": [smart_license_row(i) for i in (smart or {}).get("items") or []],
-            "device_licenses": [slim(i) for i in devices.items],
+        licences = await app.all("/api/fmc_platform/v1/license/devicelicenses", expanded=False, cap=1000)
+        out: dict[str, Any] = {
+            "smart_license": [smart_license_row(i) for i in (smart or {}).get("items") or []]
         }
+        notes: list[str] = []
+        try:
+            records = (await app.all(await app.config_path(DEVICES, domain), cap=1000)).items
+        except UpstreamError as e:
+            records = []
+            notes.append(f"Device records not readable ({e}): licences are listed by device id only.")
+        by_id = {str(d.get("id")).lower(): d for d in records}
+        needs: dict[str, dict[str, str]] = {}  # access policy id -> licence -> why
+        if check_policies:
+            needs, more = await _policy_needs(app, records, domain)
+            notes += more
+        rows = [_licence_row(i, by_id.get(str(i.get("id")).lower()), needs) for i in licences.items]
+        unnamed = sum(1 for r in rows if r.get("name") is None)
+        if unnamed and records:
+            notes.append(f"{unnamed} licensed device(s) are not in this domain's device list: pass `domain`.")
+        out["device_licenses"] = rows
+        lacking = [
+            f"{r.get('name') or r['id']} ({', '.join(r['missing'])})" for r in rows if r.get("missing")
+        ]
+        if check_policies:
+            out["missing"] = lacking or "none: every device holds the licences its access policy needs"
+        if notes:
+            out["notes"] = notes
+        return out
 
 
 def _audit_row(r: dict[str, Any]) -> dict[str, Any]:
@@ -180,3 +222,88 @@ def _audit_row(r: dict[str, Any]) -> dict[str, Any]:
         "source": r.get("source"),
         "message": compact_message(r.get("message")),
     }
+
+
+def licence_needs(acp: dict[str, Any], rules: list[dict[str, Any]]) -> dict[str, str]:
+    """The feature licences an access policy needs, with why (fmc_threat_posture's check): IPS for an
+    intrusion policy on the default action or an enabled ALLOW rule, MALWARE_DEFENSE for a file policy on
+    an enabled ALLOW rule, URL for URL categories/reputation on an enabled rule."""
+    enabled = [r for r in rules if r.get("enabled", True)]
+    allow = [r for r in enabled if str(r.get("action", "")).upper() == "ALLOW"]
+    out: dict[str, str] = {}
+    ips = next((r for r in allow if (r.get("ipsPolicy") or {}).get("id")), None)
+    if ((acp.get("defaultAction") or {}).get("intrusionPolicy") or {}).get("id"):
+        out["IPS"] = "intrusion policy on the default action"
+    elif ips:
+        out["IPS"] = f"intrusion policy on rule {ips.get('name')!r}"
+    files = next((r for r in allow if r.get("filePolicy")), None)
+    if files:
+        out["MALWARE_DEFENSE"] = f"file policy on rule {files.get('name')!r}"
+    urls = next((r for r in enabled if (r.get("urls") or {}).get("urlCategoriesWithReputation")), None)
+    if urls:
+        out["URL"] = f"URL categories on rule {urls.get('name')!r}"
+    return out
+
+
+async def _policy_needs(
+    app: FmcApp, records: list[dict[str, Any]], domain: str | None
+) -> tuple[dict[str, dict[str, str]], list[str]]:
+    """licence_needs() of each access policy the devices use (up to LICENCE_POLICY_CAP), and notes."""
+    policies: dict[str, str] = {}
+    for d in records:
+        acp = d.get("accessPolicy") or {}
+        if acp.get("id"):
+            policies.setdefault(str(acp["id"]), str(acp.get("name") or acp["id"]))
+    out: dict[str, dict[str, str]] = {}
+    notes: list[str] = []
+    for pid, name in list(policies.items())[:LICENCE_POLICY_CAP]:
+        try:
+            acp = await app.api.get(await app.config_path(f"{ACCESS}/{pid}", domain))
+            rules = (await all_rules(app, await app.config_path(f"{ACCESS}/{pid}/accessrules", domain))).items
+        except UpstreamError as e:
+            notes.append(f"Access policy {name!r} not readable ({e}): its devices' needs are unknown.")
+            continue
+        out[pid] = licence_needs(acp or {}, rules)
+    if len(policies) > LICENCE_POLICY_CAP:
+        rest = ", ".join(list(policies.values())[LICENCE_POLICY_CAP:])
+        notes.append(f"Needs not checked for access policies past the first {LICENCE_POLICY_CAP}: {rest}.")
+    return out, notes
+
+
+def container_role(d: dict[str, Any] | None) -> str | None:
+    """'mcp-fw-ha (primary, active)' / 'mcp-sdwan-t3-cluster (control)' from FMC's
+    metadata.containerDetails of an expanded device record; None for a standalone device."""
+    c = ((d or {}).get("metadata") or {}).get("containerDetails") or {}
+    if not isinstance(c, dict) or not c.get("name"):
+        return None
+    parts = [str(v).lower() for v in (c.get("role"), c.get("status")) if v]
+    return f"{c['name']} ({', '.join(parts)})" if parts else str(c["name"])
+
+
+def _licence_row(
+    lic: dict[str, Any], dev: dict[str, Any] | None, needs: dict[str, dict[str, str]]
+) -> dict[str, Any]:
+    """One device's licences, named, with what its access policy needs and what it lacks."""
+    # fmc_threat_posture's licence names; imported here: threat_posture's imports lead back to this module.
+    from fmc_mcp.tools.threat_posture import _licences
+
+    # HA units hold IPS_HA, URL_HA, MALWARE_DEFENSE_HA in /license/devicelicenses (FMC 10.0.1).
+    held = sorted(_licences([str(t).upper().removesuffix("_HA") for t in lic.get("licenseTypes") or []]))
+    acp = (dev or {}).get("accessPolicy") or {}
+    row: dict[str, Any] = {
+        "name": (dev or {}).get("name"),
+        "ha_or_cluster": container_role(dev),
+        "licences": held,
+        "performance_tier": lic.get("performanceTier"),
+        "access_policy": ref_label(acp) if acp else None,
+    }
+    need = needs.get(str(acp.get("id"))) if acp.get("id") else None
+    if need is not None:
+        row["needs"] = sorted(need)
+        row["missing"] = [n for n in sorted(need) if n not in held]
+        if row["missing"]:
+            row["why"] = "; ".join(f"{n}: {need[n]}" for n in row["missing"])
+    if dev is not None and dev.get("isConnected") is False:
+        row["connected"] = False
+    row["id"] = lic.get("id")
+    return {k: v for k, v in row.items() if v is not None}

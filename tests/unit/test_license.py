@@ -1,7 +1,9 @@
 """fmc_license_status and the VPN strong-crypto check read FMC 10's smart-licence metadata."""
 
+import copy
 from typing import Any
 
+import httpx
 import respx
 
 from fmc_mcp._core.testing import call_tool
@@ -9,7 +11,7 @@ from fmc_mcp.server import create_server
 from fmc_mcp.tools.common import smart_license_row
 from fmc_mcp.tools.vpn import strong_crypto_allowed
 
-from .conftest import items, make_settings
+from .conftest import CFG, fixture, items, make_settings
 
 SMART = "/api/fmc_platform/v1/license/smartlicenses"
 DEVICE_LICENSES = "/api/fmc_platform/v1/license/devicelicenses"
@@ -71,3 +73,86 @@ async def test_strong_crypto_reads_export_control_from_metadata() -> None:
     assert await strong_crypto_allowed(_App({"items": [OUT_OF_COMPLIANCE]})) is False  # type: ignore[arg-type]
     allowed = {**OUT_OF_COMPLIANCE, "metadata": {**OUT_OF_COMPLIANCE["metadata"], "exportControl": True}}
     assert await strong_crypto_allowed(_App({"items": [allowed]})) is True  # type: ignore[arg-type]
+
+
+# --- device licences by name, with what the access policy needs (#206) --------------------------------
+# Eval on FMC 10.0.1: device_licenses listed 19 rows by UUID only.
+
+LAB = fixture("license_devices")
+POLICIES = {
+    "mcp-fw-base-acp": "00000000-0000-0ed3-0000-021474903666",
+    "mcp-test-ha-acp": "00000000-0000-0ed3-0000-021474837244",
+    "mcp-fw-threat-acp": "00000000-0000-0ed3-0000-021474901848",
+    "mcp-test-ftd-acp": "00000000-0000-0ed3-0000-021474837072",
+    "mcp-sdwan-acp": "00000000-0000-0ed3-0000-021474856047",
+}
+IPS_REF = {"id": "ips-1", "name": "mcp-ips", "type": "IntrusionPolicy"}
+
+
+def _rule(name: str, **kw: Any) -> dict[str, Any]:
+    return {"id": f"r-{name}", "name": name, "action": "ALLOW", "enabled": True, "type": "AccessRule", **kw}
+
+
+def licence_lab(fmc: respx.MockRouter) -> dict[str, respx.Route]:
+    fmc.get(SMART).mock(return_value=items([OUT_OF_COMPLIANCE]))
+    fmc.get(DEVICE_LICENSES).mock(return_value=httpx.Response(200, json=LAB["devicelicenses"]))
+    fmc.get(f"{CFG}/devices/devicerecords").mock(return_value=httpx.Response(200, json=LAB["devicerecords"]))
+    default = {"action": "BLOCK", "type": "AccessPolicyDefaultAction"}
+    settings = {
+        # the base policy inspects with an intrusion policy on its default action
+        "mcp-fw-base-acp": ({**default, "action": "PERMIT", "intrusionPolicy": IPS_REF}, []),
+        "mcp-test-ha-acp": (default, [_rule("web", ipsPolicy=IPS_REF)]),
+        "mcp-fw-threat-acp": (default, [_rule("files", filePolicy={"id": "f-1", "name": "mcp-files"})]),
+        "mcp-test-ftd-acp": (
+            default,
+            [
+                _rule("cats", urls={"urlCategoriesWithReputation": [{"category": {"name": "Gambling"}}]}),
+                _rule("off", enabled=False, ipsPolicy=IPS_REF),
+            ],
+        ),
+        "mcp-sdwan-acp": (default, [_rule("any"), _rule("block", action="BLOCK", ipsPolicy=IPS_REF)]),
+    }
+    routes = {}
+    for name, pid in POLICIES.items():
+        da, rules = settings[name]
+        routes[name] = fmc.get(f"{CFG}/policy/accesspolicies/{pid}").mock(
+            return_value=httpx.Response(200, json={"id": pid, "name": name, "defaultAction": da})
+        )
+        fmc.get(f"{CFG}/policy/accesspolicies/{pid}/accessrules").mock(return_value=items(rules))
+    return routes
+
+
+async def test_device_licences_are_named_with_role_needs_and_missing(fmc: respx.MockRouter) -> None:
+    licence_lab(fmc)
+    data = await call_tool(create_server(make_settings()), "fmc_license_status", {})
+    rows = {r["name"]: r for r in data["device_licenses"]}
+    assert len(rows) == 19 and all(r.get("id") for r in rows.values())
+    ha_a = rows["mcp-fw-ha-a"]
+    assert ha_a["ha_or_cluster"] == "mcp-fw-ha (primary, active)"
+    assert (ha_a["licences"], ha_a["needs"], ha_a["missing"]) == (["ESSENTIALS"], ["IPS"], ["IPS"])
+    assert ha_a["why"] == "IPS: intrusion policy on the default action" and ha_a["connected"] is False
+    assert rows["mcp-fw-ha-b"]["ha_or_cluster"] == "mcp-fw-ha (secondary, standby)"
+    # FMC's *_HA entitlements of an HA unit are the plain licences
+    assert rows["mcp-ftd2"]["licences"] == ["ESSENTIALS", "IPS", "MALWARE_DEFENSE", "URL"]
+    assert (rows["mcp-ftd2"]["needs"], rows["mcp-ftd2"]["missing"]) == (["IPS"], [])
+    assert (
+        rows["mcp-ftd-identity"]["needs"] == ["MALWARE_DEFENSE"] and rows["mcp-ftd-identity"]["missing"] == []
+    )
+    assert rows["mcp-ftd1"]["needs"] == ["URL"]  # the disabled rule's intrusion policy doesn't count
+    assert rows["mcp-sdwan-t3-hub"]["ha_or_cluster"] == "mcp-sdwan-t3-cluster (control)"
+    assert rows["mcp-sdwan-t1-hub"]["needs"] == []  # a BLOCK rule's intrusion policy doesn't count
+    assert rows["mcp-fw-ha-a"]["access_policy"] == "mcp-fw-base-acp"
+    assert sorted(data["missing"]) == ["mcp-fw-branch1 (IPS)", "mcp-fw-ha-a (IPS)", "mcp-fw-ha-b (IPS)"]
+    assert data["smart_license"][0]["authStatus"] == "OUT_OF_COMPLIANCE" and "notes" not in data
+
+
+async def test_licences_without_the_policy_check_and_unknown_devices(fmc: respx.MockRouter) -> None:
+    routes = licence_lab(fmc)
+    lic = copy.deepcopy(LAB["devicelicenses"])
+    lic["items"].append({"licenseTypes": ["ESSENTIALS"], "id": "0f000000-0000-4000-8000-00000000000f"})
+    fmc.get(DEVICE_LICENSES).mock(return_value=httpx.Response(200, json=lic))
+    data = await call_tool(create_server(make_settings()), "fmc_license_status", {"check_policies": False})
+    assert not any(r.called for r in routes.values())
+    assert "missing" not in data and all("needs" not in r for r in data["device_licenses"])
+    other = next(r for r in data["device_licenses"] if r["id"].startswith("0f000000"))
+    assert "name" not in other and "1 licensed device(s) are not in this domain" in data["notes"][0]
