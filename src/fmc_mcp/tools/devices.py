@@ -1,6 +1,7 @@
 """Device tools: managed FTDs, interfaces, HA pairs and clusters."""
 
 # No `from __future__ import annotations`: FastMCP inspects signatures at runtime.
+from dataclasses import dataclass
 from typing import Annotated, Any, Literal
 
 from fastmcp import Context
@@ -8,6 +9,8 @@ from fastmcp.tools import ToolResult
 from pydantic import Field
 
 from fmc_mcp._core import (
+    InvalidRequest,
+    NotFound,
     ResponseFormat,
     ToolRegistrar,
     UpstreamError,
@@ -34,6 +37,134 @@ INTERFACE_KINDS = {
 }
 
 DeviceRef = Annotated[str, Field(description="Device name or UUID (from fmc_list_devices)")]
+
+
+@dataclass(frozen=True)
+class Membership:
+    """A device's place in an HA pair or cluster."""
+
+    container: str  # the pair's or cluster's name
+    container_id: str  # lower-case UUID
+    kind: Literal["ha", "cluster"]
+    role: str | None  # HA: 'active' | 'standby' (FMC's failover state); cluster: 'control' | 'data'
+    primary: bool = False  # HA: the primary unit
+
+    @property
+    def carries_traffic(self) -> bool:
+        """The unit a pair's or cluster's traffic is traced on: the active unit, the control node."""
+        return self.role in ("active", "control")
+
+    def label(self, unit: str) -> str:
+        """'mcp-fw-ha (mcp-fw-ha-a, active)'."""
+        return f"{self.container} ({unit}, {self.role})" if self.role else f"{self.container} ({unit})"
+
+    def left_out(self, unit: str, why: str | None = None) -> str:
+        """Why a unit is skipped: 'mcp-fw-ha-b (standby unit of mcp-fw-ha)', or with `why`
+        'mcp-fw-ha-a (active unit of mcp-fw-ha, disconnected)'."""
+        what = "unit" if self.kind == "ha" else "node"
+        return f"{unit} ({self.role or 'member'} {what} of {self.container}{f', {why}' if why else ''})"
+
+
+def failover_role(state: Any) -> str | None:
+    """'active', 'standby' or FMC's own word ('failed', ...) for an HA unit's failover state."""
+    s = str(state or "").strip().lower()
+    if not s:
+        return None
+    return "standby" if "standby" in s else "active" if "active" in s else s
+
+
+def membership_of(d: dict[str, Any]) -> Membership | None:
+    """The HA pair or cluster a device record belongs to, from FMC's metadata.containerDetails (expanded
+    records, FMC 7.x+: {id, name, type DeviceHAPair|DeviceCluster, role PRIMARY|SECONDARY|Control|Data,
+    status Active|Standby for an HA unit}); None for a standalone device."""
+    c = (d.get("metadata") or {}).get("containerDetails") or {}
+    if not isinstance(c, dict) or not c.get("id"):
+        return None
+    role = str(c.get("role") or "").lower()
+    if "cluster" in str(c.get("type") or "").lower():
+        return Membership(str(c.get("name")), str(c["id"]).lower(), "cluster", role or None)
+    return Membership(
+        str(c.get("name")), str(c["id"]).lower(), "ha", failover_role(c.get("status")), role == "primary"
+    )
+
+
+async def memberships(
+    app: FmcApp, devices: list[dict[str, Any]], domain: str | None
+) -> dict[str, Membership]:
+    """Unit id (lower case) -> Membership for the HA-pair and cluster members among `devices` (expanded
+    records). FMC names the container in each record; records without containerDetails at all (older
+    FMC, or no member among them) are matched against the HA pair and cluster collections instead."""
+    out = {str(d.get("id")).lower(): m for d in devices if (m := membership_of(d))}
+    if out:
+        return out
+    try:
+        pairs = (await app.all(await app.config_path(HA_PAIRS, domain), cap=500)).items
+    except UpstreamError:
+        pairs = []
+    for p in pairs:
+        meta = p.get("metadata") or {}
+        for side in ("primary", "secondary"):
+            unit = p.get(side) or {}
+            if unit.get("id"):
+                state = (meta.get(f"{side}Status") or {}).get("currentStatus")
+                out[str(unit["id"]).lower()] = Membership(
+                    str(p.get("name")),
+                    str(p.get("id")).lower(),
+                    "ha",
+                    failover_role(state),
+                    side == "primary",
+                )
+    try:
+        clusters = (await app.all(await app.config_path(CLUSTERS, domain), cap=500)).items
+    except UpstreamError:
+        clusters = []
+    for c in clusters:
+        control = c.get("controlDevice") or c.get("masterDevice") or {}
+        data = c.get("dataDevices") or c.get("slaveDevices") or []
+        for node, role in [(control, "control"), *((n, "data") for n in data)]:
+            unit = (node or {}).get("deviceDetails") or node or {}
+            if unit.get("id"):
+                out[str(unit["id"]).lower()] = Membership(
+                    str(c.get("name")), str(c.get("id")).lower(), "cluster", role
+                )
+    return out
+
+
+def traffic_unit(units: list[tuple[dict[str, Any], Membership]]) -> dict[str, Any]:
+    """The unit of one HA pair or cluster that carries its traffic: the active unit (FMC's failover
+    state) or the control node; else the primary, else the first."""
+    for pick in (
+        lambda m: m.carries_traffic,
+        lambda m: m.primary,
+        lambda m: True,
+    ):
+        hit = next((d for d, m in units if pick(m)), None)
+        if hit is not None:
+            return hit
+    raise NotFound("The HA pair or cluster has no units.", 404)
+
+
+async def resolve_unit(app: FmcApp, ref: str, domain: str | None) -> tuple[dict[str, Any], Membership | None]:
+    """A device to run something on the device itself (packet tracer), by name or UUID; an HA pair's or
+    cluster's name or UUID means its active unit / control node (traffic_unit). (device record, its
+    membership or None)."""
+    try:
+        dev = await resolve_in(app, DEVICES, ref, "device", domain)
+        return dev, membership_of(dev)
+    except (InvalidRequest, NotFound) as e:
+        miss = e
+    page = await app.all(await app.config_path(DEVICES, domain), cap=1000)
+    members = await memberships(app, page.items, domain)
+    want = ref.strip().lower()
+    units = [
+        (d, m)
+        for d in page.items
+        if (m := members.get(str(d.get("id")).lower())) and want in (m.container.lower(), m.container_id)
+    ]
+    if not units:
+        raise miss
+    dev = traffic_unit(units)
+    return dev, members[str(dev.get("id")).lower()]
 
 
 def device_row(d: dict[str, Any]) -> dict[str, Any]:
