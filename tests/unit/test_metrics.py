@@ -43,7 +43,7 @@ def server() -> Any:
 
 
 async def run(c: Client[Any], args: dict[str, Any]) -> Any:
-    r = await c.call_tool("fmc_device_metrics", args)
+    r = await c.call_tool("fmc_device_metrics", {"response_format": "json", **args})
     return r.structured_content if r.structured_content is not None else json.loads(r.content[0].text)  # type: ignore[union-attr]
 
 
@@ -155,9 +155,9 @@ async def test_overview_recorded_idle_device(fmc: respx.MockRouter) -> None:
     assert "startTime:1792330800;endTime:1792332000;step:60" in asked[0]
     assert r["window"] == {"from": "2026-10-18T13:40:00Z", "to": "2026-10-18T14:00:00Z", "sample_step_s": 60}
     cpu = r["cpu"]
-    assert list(cpu) == ["unit", "data_plane", "control_plane", "snort", "system", "lina"]
+    # data plane and Snort CPU were 0 at every sample: left out, named in a note (#208)
+    assert list(cpu) == ["unit", "control_plane", "system", "lina"]
     assert cpu["system"]["max"] == 16.0 and cpu["system"]["max_at"] == "2026-10-18T13:56:00Z"
-    assert cpu["data_plane"]["max"] == 0.0
     assert r["memory"]["system"]["min"] == 35.34 and r["memory"]["system"]["last"] == 36.03
     assert r["memory"]["data_plane"]["avg"] == 40.26
     # throughput from the counters (bytes -> bit/s): outside is the only data interface recorded
@@ -166,13 +166,14 @@ async def test_overview_recorded_idle_device(fmc: respx.MockRouter) -> None:
     assert tp["interfaces"][0]["interface"] == "outside (Ethernet0/0)"
     assert "series" not in tp["interfaces"][0]["in_bps"]
     conn = r["connections"]
-    assert conn["in_use"]["max"] == 3.0 and conn["per_second"]["max"] == 0.0
+    assert conn["in_use"]["max"] == 3.0 and "per_second" not in conn
     assert conn["most_used"] == {"last": 5.0}
     drops = r["drops"]
     assert drops["asp_drops"][0] == {
         "reason": "acl-drop",
         "description": "flow is denied by configured rule",
         "count": 341,
+        "meaning": metrics.ASP_MEANINGS["acl-drop"],
         "per_second": drops["asp_drops"][0]["per_second"],
     }
     assert [d["reason"] for d in drops["asp_drops"]] == ["acl-drop", "sp-security-failed"]
@@ -187,6 +188,16 @@ async def test_overview_recorded_idle_device(fmc: respx.MockRouter) -> None:
     ]
     assert "findings" not in r
     assert any("spike shorter than sample_step_s" in n for n in r["notes"])
+    assert list(r)[:3] == ["device", "window", "summary"]
+    assert r["summary"] == {
+        "busy": False,
+        "verdict": "Not busy: no threshold crossed; CPU at most 16 % (system), memory at most 40.26 % "
+        "(data_plane), throughput at most 1.0 kbit/s in / 212.8 bit/s out. No peaks: a steady window.",
+    }
+    assert (
+        "6 series were 0 for the whole window and are left out: CPU data_plane, CPU snort, connections "
+        "per_second, connections tcp_per_second, connections udp_per_second, connections xlates_in_use."
+    ) in r["notes"]
 
 
 async def test_interface_all_row_is_the_total(fmc: respx.MockRouter) -> None:
@@ -313,5 +324,132 @@ async def test_single_sample_counters_and_sdwan_pointer(fmc: respx.MockRouter) -
         r = await run(c, {"device": "mcp-ftd1", "since": "20m", "metric": "drops"})
         tools = {t.name: t for t in await c.list_tools()}
     assert r["drops"]["interfaces"] == [{"interface": "outside (Ethernet0/0)", "drop_packets": 5}]
-    assert r["drops"]["asp_drops"] == [{"reason": "acl-drop", "description": None, "count": 3}]
+    assert r["drops"]["asp_drops"] == [
+        {"reason": "acl-drop", "description": None, "count": 3, "meaning": metrics.ASP_MEANINGS["acl-drop"]}
+    ]
     assert "fmc_device_metrics" in str(tools["fmc_sdwan_status"].description)
+
+
+# --- #208: summary, flat-zero series, markdown, drop meanings (recorded burst) ---------------------------
+BURST = fixture("ftd_device_metrics_burst")
+WINDOW = {"since": "2026-10-18T22:55:00Z", "until": "2026-10-18T23:12:00Z"}
+
+
+def burst_interfaces() -> dict[str, Any]:
+    """The recorded 'all' row, plus an inside port carrying its counters and an unused port at zero."""
+    body = copy.deepcopy(BURST["interface_all"])
+    prom_body = json.loads(body["items"][0]["response"])
+    rows = prom_body["data"]["result"]
+    ports = []
+    for r in rows:
+        port = {**r["metric"], "interface_type": "PhysicalInterface"}
+        ports.append(
+            {
+                "metric": {**port, "interface": "GigabitEthernet0/1", "interface_name": "inside"},
+                "values": r["values"],
+            }
+        )
+        ports.append(
+            {
+                "metric": {**port, "interface": "GigabitEthernet0/3", "interface_name": ""},
+                "values": [[t, "0"] for t, _ in r["values"]],
+            }
+        )
+    prom_body["data"]["result"] = rows + ports
+    body["items"][0]["response"] = json.dumps(prom_body)
+    return body
+
+
+def mount_burst(fmc: respx.MockRouter) -> None:
+    fmc.get(f"{CFG}/devices/devicerecords").mock(return_value=items([BURST["device"]]))
+    data = {**BURST, "interface": burst_interfaces()}
+
+    def answer(req: httpx.Request) -> httpx.Response:
+        parts = dict(p.split(":", 1) for p in (req.url.params.get("filter") or "").split(";") if ":" in p)
+        return httpx.Response(200, json=data[parts["metric"]])
+
+    fmc.get(f"{CFG}/health/metrics").mock(side_effect=answer)
+
+
+async def test_burst_summary_names_the_tier_limit(
+    fmc: respx.MockRouter, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    """The eval's ask: 'was mcp-fw-ha-a busy around 23:05?' (FTDv5, iperf at ~150 Mbit/s)."""
+    monkeypatch.setattr(metrics, "_now", lambda: float(BURST["now"]))
+    mount_burst(fmc)
+    async with Client(server()) as c:
+        r = await run(c, {"device": "mcp-fw-ha-a", **WINDOW})
+    s = r["summary"]
+    assert s["busy"] is True and s["verdict"].startswith("Busy: throughput in reached 155.5 Mbit/s")
+    assert "155 % of the FTDv5 performance tier's 100 Mbit/s limit" in s["verdict"]
+    assert s["peak_window"] == {"from": "2026-10-18T23:05:00Z", "to": "2026-10-18T23:06:00Z"}
+    assert s["top_movements"] == [
+        "throughput in: 155.5 Mbit/s at 2026-10-18T23:05:00Z (average 27.0 Mbit/s)",
+        "ASP drops rate-exceeded: 219.62 /s at 2026-10-18T23:05:00Z (average 39.09 /s; 39873 in the window)",
+        "CPU data_plane: 10.3 % at 2026-10-18T23:06:00Z (average 1.88 %)",
+    ]
+    assert s["flagged"][-1] == (
+        "39873 packets dropped as rate-exceeded (output qos rate exceeded): traffic over the FTDv5 "
+        "performance tier's 100 Mbit/s throughput limit"
+    )
+    assert s["performance_tier"] == "FTDv5 (100 Mbit/s)"
+    assert [f["what"] for f in r["findings"]] == ["throughput in", "throughput out", "drops rate-exceeded"]
+    rate = r["drops"]["asp_drops"][0]
+    assert rate["reason"] == "rate-exceeded" and rate["count"] == 39873
+    assert rate["meaning"].startswith("traffic over a rate limit: on an FTDv the performance tier")
+    # the unused port is left out and named; the series that moved keep their full summaries
+    assert [i["interface"] for i in r["throughput"]["interfaces"]] == ["inside (GigabitEthernet0/1)"]
+    assert any(
+        n.startswith("4 series were 0 for the whole window") and "interface GigabitEthernet0/3" in n
+        for n in r["notes"]
+    )
+    assert r["cpu"]["data_plane"]["max"] == 10.3 and "series" in r["cpu"]["data_plane"]
+    assert r["throughput"]["total"]["in_bps"]["max"] == 155493653
+
+
+async def test_burst_markdown_one_row_per_metric(
+    fmc: respx.MockRouter, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    monkeypatch.setattr(metrics, "_now", lambda: float(BURST["now"]))
+    mount_burst(fmc)
+    async with Client(server()) as c:
+        r = await c.call_tool("fmc_device_metrics", {"device": "mcp-fw-ha-a", **WINDOW})  # markdown default
+        js = await run(c, {"device": "mcp-fw-ha-a", **WINDOW})
+    md = r.content[0].text  # type: ignore[union-attr]
+    assert md.startswith("**mcp-fw-ha-a**, 2026-10-18T22:55:00Z to 23:12:00Z, a sample every 60 s\n\n**Busy:")
+    assert "- peak window: 23:05:00Z to 23:06:00Z" in md and "- performance tier: FTDv5 (100 Mbit/s)" in md
+    assert "| metric | min | avg | max | max at | last | peaks |" in md
+    assert "| CPU data_plane | 0 % | 1.88 % | 10.3 % | 23:06:00Z | 0 % | 23:05:00Z-23:06:00Z |" in md
+    assert (
+        "| throughput in | 0 bit/s | 27.0 Mbit/s | 155.5 Mbit/s | 23:05:00Z | 0 bit/s | 23:05:00Z-23:06:00Z |"
+        in md
+    )
+    assert "| connections most_used |  |  |  |  | 9 |  |" in md
+    assert "| rate-exceeded | 39873 | traffic over a rate limit" in md
+    assert "| inside (GigabitEthernet0/1) | 44 |" in md  # underruns
+    # one table row per summarised series, and the markdown is a fraction of the JSON
+    lines = md.splitlines()
+    first = lines.index("| metric | min | avg | max | max at | last | peaks |") + 2
+    table = lines[first : lines.index("", first)]
+    assert [row.split(" | ")[0][2:] for row in table] == [m.metric for m in metrics.metric_rows(js)]
+    assert len(md) < len(json.dumps(js)) / 2
+
+
+def test_human_units_and_movements() -> None:
+    assert (
+        metrics.human(155493653, "bit/s") == "155.5 Mbit/s" and metrics.human(212.8, "bit/s") == "212.8 bit/s"
+    )
+    assert metrics.human(15261, "packets/s") == "15,261 packets/s" and metrics.human(10.3, "%") == "10.3 %"
+    flat = {
+        "min": 0.0,
+        "avg": 0.0,
+        "max": 1.0,
+        "max_at": "t",
+        "last": 0.0,
+        "peaks": [{"from": "a", "to": "b"}],
+    }
+    assert not metrics.moved(metrics.Row("connections xlates_in_use", "", flat, "connections"))
+    assert not metrics.moved(metrics.Row("throughput in", "bit/s", {**flat, "max": 5e5}, "throughput"))
+    assert metrics.moved(metrics.Row("throughput in", "bit/s", {**flat, "max": 2e6}, "throughput"))
+    assert not metrics.moved(metrics.Row("ASP drops sp-security-failed", "/s", flat, "drops", drops=2))
+    assert metrics.flat_zero([(1.0, 0.0), (2.0, 0.0)]) and not metrics.flat_zero([])
