@@ -20,6 +20,7 @@ from fmc_mcp._core import (
 from fmc_mcp._core.http import page_of
 from fmc_mcp.audit import NOISE_SUBSYSTEMS, compact_message, coverage_note, fetch_audit, is_read
 from fmc_mcp.client import FmcApp
+from fmc_mcp.licensing import licence_needs, licences
 from fmc_mcp.tools.common import Domain, ref_label, slim, smart_license_row
 from fmc_mcp.tools.devices import DEVICES
 from fmc_mcp.tools.policies import ACCESS, all_rules
@@ -180,35 +181,54 @@ def register(reg: ToolRegistrar) -> None:
         role, licences (FMC's *_HA entitlements of HA units shown as the plain licence), performance
         tier and access policy; with check_policies, what that policy needs (IPS for intrusion
         inspection, MALWARE_DEFENSE for file policies, URL for URL categories/reputation, as
-        fmc_threat_posture checks it) and what the device is missing. 'Are we licensed properly?' in
-        one call; fix with fmc_set_device_licenses."""
+        fmc_threat_posture checks it) and what the device is missing, or `not_checked` and why (not in
+        the domain's device list, no access policy, policy unreadable or past the first 10 policies).
+        `summary` gives the all-clear only when every device was checked. 'Are we licensed
+        properly?' in one call; fix with fmc_set_device_licenses."""
         app: FmcApp = get_client(ctx)
         smart = await app.api.get("/api/fmc_platform/v1/license/smartlicenses")
-        licences = await app.all("/api/fmc_platform/v1/license/devicelicenses", expanded=False, cap=1000)
+        held = await app.all("/api/fmc_platform/v1/license/devicelicenses", expanded=False, cap=1000)
         out: dict[str, Any] = {
             "smart_license": [smart_license_row(i) for i in (smart or {}).get("items") or []]
         }
         notes: list[str] = []
+        absent = "not in this domain's device list (pass `domain`)"
         try:
             records = (await app.all(await app.config_path(DEVICES, domain), cap=1000)).items
         except UpstreamError as e:
             records = []
+            absent = "device records not readable"
             notes.append(f"Device records not readable ({e}): licences are listed by device id only.")
         by_id = {str(d.get("id")).lower(): d for d in records}
         needs: dict[str, dict[str, str]] = {}  # access policy id -> licence -> why
+        unread: dict[str, str] = {}  # access policy id -> why its needs are unknown
         if check_policies:
-            needs, more = await _policy_needs(app, records, domain)
+            needs, unread, more = await _policy_needs(app, records, domain)
             notes += more
-        rows = [_licence_row(i, by_id.get(str(i.get("id")).lower()), needs) for i in licences.items]
+        rows = []
+        for i in held.items:
+            dev = by_id.get(str(i.get("id")).lower())
+            row = _licence_row(i, dev, needs)
+            if check_policies and "needs" not in row:
+                acp = str(((dev or {}).get("accessPolicy") or {}).get("id") or "")
+                if dev is None:
+                    row["not_checked"] = absent
+                else:
+                    row["not_checked"] = (
+                        unread.get(acp, "no access policy assigned") if acp else "no access policy assigned"
+                    )
+            rows.append(row)
+        out["device_licenses"] = rows
         unnamed = sum(1 for r in rows if r.get("name") is None)
         if unnamed and records:
             notes.append(f"{unnamed} licensed device(s) are not in this domain's device list: pass `domain`.")
-        out["device_licenses"] = rows
-        lacking = [
-            f"{r.get('name') or r['id']} ({', '.join(r['missing'])})" for r in rows if r.get("missing")
-        ]
         if check_policies:
-            out["missing"] = lacking or "none: every device holds the licences its access policy needs"
+            lacking = [f"{_name(r)} ({', '.join(r['missing'])})" for r in rows if r.get("missing")]
+            unchecked = [f"{_name(r)} ({r['not_checked']})" for r in rows if r.get("not_checked")]
+            out["summary"] = _licence_summary(len(rows), len(lacking), len(unchecked))
+            out["missing"] = lacking
+            if unchecked:
+                out["not_checked"] = unchecked
         if notes:
             out["notes"] = notes
         return out
@@ -224,50 +244,49 @@ def _audit_row(r: dict[str, Any]) -> dict[str, Any]:
     }
 
 
-def licence_needs(acp: dict[str, Any], rules: list[dict[str, Any]]) -> dict[str, str]:
-    """The feature licences an access policy needs, with why (fmc_threat_posture's check): IPS for an
-    intrusion policy on the default action or an enabled ALLOW rule, MALWARE_DEFENSE for a file policy on
-    an enabled ALLOW rule, URL for URL categories/reputation on an enabled rule."""
-    enabled = [r for r in rules if r.get("enabled", True)]
-    allow = [r for r in enabled if str(r.get("action", "")).upper() == "ALLOW"]
-    out: dict[str, str] = {}
-    ips = next((r for r in allow if (r.get("ipsPolicy") or {}).get("id")), None)
-    if ((acp.get("defaultAction") or {}).get("intrusionPolicy") or {}).get("id"):
-        out["IPS"] = "intrusion policy on the default action"
-    elif ips:
-        out["IPS"] = f"intrusion policy on rule {ips.get('name')!r}"
-    files = next((r for r in allow if r.get("filePolicy")), None)
-    if files:
-        out["MALWARE_DEFENSE"] = f"file policy on rule {files.get('name')!r}"
-    urls = next((r for r in enabled if (r.get("urls") or {}).get("urlCategoriesWithReputation")), None)
-    if urls:
-        out["URL"] = f"URL categories on rule {urls.get('name')!r}"
-    return out
+def _name(row: dict[str, Any]) -> str:
+    return str(row.get("name") or row.get("id"))
+
+
+def _licence_summary(total: int, lacking: int, unchecked: int) -> str:
+    """The headline: the all-clear only when every device's needs were checked."""
+    if lacking:
+        out = f"{lacking} of {total} device(s) lack a licence their access policy needs (see missing)"
+        return out + (f"; {unchecked} not checked (see not_checked)" if unchecked else "")
+    if unchecked:
+        return (
+            f"No checked device lacks a licence, but {unchecked} of {total} were not checked "
+            "(see not_checked)"
+        )
+    return f"Every device ({total}) holds the licences its access policy needs"
 
 
 async def _policy_needs(
     app: FmcApp, records: list[dict[str, Any]], domain: str | None
-) -> tuple[dict[str, dict[str, str]], list[str]]:
-    """licence_needs() of each access policy the devices use (up to LICENCE_POLICY_CAP), and notes."""
+) -> tuple[dict[str, dict[str, str]], dict[str, str], list[str]]:
+    """licence_needs() of each access policy the devices use (up to LICENCE_POLICY_CAP); why the others
+    were not read (policy id -> reason); notes."""
     policies: dict[str, str] = {}
     for d in records:
         acp = d.get("accessPolicy") or {}
         if acp.get("id"):
             policies.setdefault(str(acp["id"]), str(acp.get("name") or acp["id"]))
     out: dict[str, dict[str, str]] = {}
+    unread: dict[str, str] = {}
     notes: list[str] = []
-    for pid, name in list(policies.items())[:LICENCE_POLICY_CAP]:
+    for n, (pid, name) in enumerate(policies.items()):
+        if n >= LICENCE_POLICY_CAP:
+            unread[pid] = f"access policy {name!r} past the first {LICENCE_POLICY_CAP} read"
+            continue
         try:
             acp = await app.api.get(await app.config_path(f"{ACCESS}/{pid}", domain))
             rules = (await all_rules(app, await app.config_path(f"{ACCESS}/{pid}/accessrules", domain))).items
         except UpstreamError as e:
-            notes.append(f"Access policy {name!r} not readable ({e}): its devices' needs are unknown.")
+            unread[pid] = f"access policy {name!r} not readable"
+            notes.append(f"Access policy {name!r} not readable ({e}).")
             continue
         out[pid] = licence_needs(acp or {}, rules)
-    if len(policies) > LICENCE_POLICY_CAP:
-        rest = ", ".join(list(policies.values())[LICENCE_POLICY_CAP:])
-        notes.append(f"Needs not checked for access policies past the first {LICENCE_POLICY_CAP}: {rest}.")
-    return out, notes
+    return out, unread, notes
 
 
 def container_role(d: dict[str, Any] | None) -> str | None:
@@ -284,11 +303,7 @@ def _licence_row(
     lic: dict[str, Any], dev: dict[str, Any] | None, needs: dict[str, dict[str, str]]
 ) -> dict[str, Any]:
     """One device's licences, named, with what its access policy needs and what it lacks."""
-    # fmc_threat_posture's licence names; imported here: threat_posture's imports lead back to this module.
-    from fmc_mcp.tools.threat_posture import _licences
-
-    # HA units hold IPS_HA, URL_HA, MALWARE_DEFENSE_HA in /license/devicelicenses (FMC 10.0.1).
-    held = sorted(_licences([str(t).upper().removesuffix("_HA") for t in lic.get("licenseTypes") or []]))
+    held = sorted(licences(lic.get("licenseTypes")))
     acp = (dev or {}).get("accessPolicy") or {}
     row: dict[str, Any] = {
         "name": (dev or {}).get("name"),

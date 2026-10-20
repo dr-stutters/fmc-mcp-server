@@ -4,6 +4,7 @@ import copy
 from typing import Any
 
 import httpx
+import pytest
 import respx
 
 from fmc_mcp._core.testing import call_tool
@@ -143,6 +144,8 @@ async def test_device_licences_are_named_with_role_needs_and_missing(fmc: respx.
     assert rows["mcp-sdwan-t1-hub"]["needs"] == []  # a BLOCK rule's intrusion policy doesn't count
     assert rows["mcp-fw-ha-a"]["access_policy"] == "mcp-fw-base-acp"
     assert sorted(data["missing"]) == ["mcp-fw-branch1 (IPS)", "mcp-fw-ha-a (IPS)", "mcp-fw-ha-b (IPS)"]
+    assert data["summary"] == "3 of 19 device(s) lack a licence their access policy needs (see missing)"
+    assert "not_checked" not in data
     assert data["smart_license"][0]["authStatus"] == "OUT_OF_COMPLIANCE" and "notes" not in data
 
 
@@ -156,3 +159,44 @@ async def test_licences_without_the_policy_check_and_unknown_devices(fmc: respx.
     assert "missing" not in data and all("needs" not in r for r in data["device_licenses"])
     other = next(r for r in data["device_licenses"] if r["id"].startswith("0f000000"))
     assert "name" not in other and "1 licensed device(s) are not in this domain" in data["notes"][0]
+
+
+async def test_the_all_clear_only_when_every_device_was_checked(
+    fmc: respx.MockRouter, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    """Review of #232: a device outside the domain's list, one without an access policy, an unreadable
+    policy and one past the cap are 'not checked', never part of an all-clear."""
+    routes = licence_lab(fmc)
+    # nobody lacks anything: the base policy no longer needs IPS
+    routes["mcp-fw-base-acp"].mock(
+        return_value=httpx.Response(200, json={"id": POLICIES["mcp-fw-base-acp"], "name": "mcp-fw-base-acp"})
+    )
+    data = await call_tool(create_server(make_settings()), "fmc_license_status", {})
+    assert data["summary"] == "Every device (19) holds the licences its access policy needs"
+    assert data["missing"] == [] and "not_checked" not in data
+    # now: one licence row outside the domain, one device without a policy, one policy unreadable
+    lic = copy.deepcopy(LAB["devicelicenses"])
+    lic["items"].append({"licenseTypes": ["ESSENTIALS"], "id": "0f000000-0000-4000-8000-00000000000f"})
+    fmc.get(DEVICE_LICENSES).mock(return_value=httpx.Response(200, json=lic))
+    records = copy.deepcopy(LAB["devicerecords"])
+    nopolicy = next(r for r in records["items"] if r["name"] == "mcp-ftd1")
+    del nopolicy["accessPolicy"]
+    fmc.get(f"{CFG}/devices/devicerecords").mock(return_value=httpx.Response(200, json=records))
+    routes["mcp-fw-threat-acp"].mock(return_value=httpx.Response(403, json={}))
+    data = await call_tool(create_server(make_settings()), "fmc_license_status", {})
+    assert (
+        data["summary"] == "No checked device lacks a licence, but 3 of 20 were not checked (see not_checked)"
+    )
+    assert sorted(data["not_checked"]) == [
+        "0f000000-0000-4000-8000-00000000000f (not in this domain's device list (pass `domain`))",
+        "mcp-ftd-identity (access policy 'mcp-fw-threat-acp' not readable)",
+        "mcp-ftd1 (no access policy assigned)",
+    ]
+    assert any("not readable" in n for n in data["notes"])
+    # past the cap of policies read: those devices are not checked either
+    from fmc_mcp.tools import system
+
+    monkeypatch.setattr(system, "LICENCE_POLICY_CAP", 1)
+    data = await call_tool(create_server(make_settings()), "fmc_license_status", {})
+    assert "were not checked" in data["summary"]
+    assert any("past the first 1 read" in n for n in data["not_checked"])
