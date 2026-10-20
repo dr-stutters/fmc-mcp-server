@@ -16,7 +16,7 @@ from fmc_mcp.licensing import licence_needs, licences
 from fmc_mcp.tools.common import Domain, is_system, ref_label, resolve_in
 from fmc_mcp.tools.devices import DEVICES, HA_PAIRS
 from fmc_mcp.tools.dns import DNS
-from fmc_mcp.tools.hygiene import SEVERITY, _call, _finding, _ref
+from fmc_mcp.tools.hygiene import SEVERITY, _call, _finding, _ref, no_intrusion
 from fmc_mcp.tools.intrusion import IPS
 from fmc_mcp.tools.policies import ACCESS, POLICY_KINDS, PREFILTER, all_rules, policy_assignments
 from fmc_mcp.tools.security_intel import _si_policy, _si_rows
@@ -252,6 +252,12 @@ async def threat_posture(app: FmcApp, policy: str, domain: str | None) -> dict[s
                     rule=_ref(r),
                 )
             )
+    # An ALLOW rule without an intrusion policy: the same check as fmc_policy_audit's no_intrusion (#207).
+    for f in no_intrusion(name, allow):
+        rule = f.get("rule") or {}
+        findings.append(
+            {**f, "check": "allow_no_intrusion", "detail": f"Rule {rule.get('name')!r}: {f['detail']}"}
+        )
     no_file = [r for r in allow if not r.get("filePolicy")]
     if no_file:
         findings.append(
