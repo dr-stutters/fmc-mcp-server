@@ -212,13 +212,30 @@ def _zone_ids(block: Any) -> set[str]:
     return {str(o.get("id") or o.get("name")) for o in objs or [] if isinstance(o, dict)}
 
 
+def _port_ranges(block: Any) -> list[tuple[str, int, int]] | None:
+    """A destinationPorts block as (protocol, low, high) ranges; None when it is empty or holds objects
+    (or a literal without a port), which this check doesn't resolve."""
+    if not isinstance(block, dict) or block.get("objects") or not block.get("literals"):
+        return None
+    out = []
+    for lit in block["literals"]:
+        lo, _, hi = str(lit.get("port") or "").partition("-")
+        if not lo.isdigit() or not (hi or lo).isdigit():
+            return None
+        out.append((str(lit.get("protocol")), int(lo), int(hi or lo)))
+    return out
+
+
 def disjoint(a: dict[str, Any], b: dict[str, Any]) -> bool:
     """True when no session can match both rules: both name source (or destination) zones and none is
-    shared. Anything else may overlap."""
+    shared, or both list destination ports as literals and none overlaps. Anything else may overlap."""
     for field in ("sourceZones", "destinationZones"):
         za, zb = _zone_ids(a.get(field)), _zone_ids(b.get(field))
         if za and zb and not za & zb:
             return True
+    pa, pb = _port_ranges(a.get("destinationPorts")), _port_ranges(b.get("destinationPorts"))
+    if pa is not None and pb is not None:
+        return not any(x[0] == y[0] and x[1] <= y[2] and y[1] <= x[2] for x in pa for y in pb)
     return False
 
 
@@ -587,7 +604,11 @@ def register(reg: ToolRegistrar) -> None:
                 **(desired.get("defaultAction") or {}),
                 "eventLogAction": "LOG_FLOW_END" if default_log else "LOG_NONE",
             }
-            desired["logging"] = {"logEnd": default_log, "sendEvents": default_log}
+            desired["logging"] = {
+                **(cur.get("logging") or {}),
+                "logEnd": default_log,
+                "sendEvents": default_log,
+            }
             changes["default_log"] = {"from": default_logged(cur), "to": default_log}
         if not changes and not blockers:
             blockers.append("Nothing to change.")
@@ -708,11 +729,12 @@ def register(reg: ToolRegistrar) -> None:
         make FMC refuse the deploy. Takes effect after a deploy of the devices whose access policy uses the
         decryption policy (fmc_set_decryption_policy)."""
         app: FmcApp = get_client(ctx)
-        if (tls_versions or cipher_suite_lists) and action not in TLS_CONDITION_ACTIONS:
+        versions = [v for v in ALL_TLS_VERSIONS if v in (tls_versions or [])]
+        if len(versions) == len(ALL_TLS_VERSIONS):
+            versions = []  # all five = every version, no condition
+        if (versions or cipher_suite_lists) and action not in TLS_CONDITION_ACTIONS:
             given = " and ".join(
-                n
-                for n, v in (("tls_versions", tls_versions), ("cipher_suite_lists", cipher_suite_lists))
-                if v
+                n for n, v in (("tls_versions", versions), ("cipher_suite_lists", cipher_suite_lists)) if v
             )
             raise InvalidRequest(
                 f"{given} only go on BLOCK, BLOCK_WITH_RESET or MONITOR rules, not {action}: FMC 10 refuses "
@@ -734,9 +756,6 @@ def register(reg: ToolRegistrar) -> None:
             )
         p = await resolve_in(app, DECRYPTION, policy, "decryption policy", domain)
         resolver = RefResolver(app, domain)
-        versions = [v for v in ALL_TLS_VERSIONS if v in (tls_versions or [])]
-        if len(versions) == len(ALL_TLS_VERSIONS):
-            versions = []  # all five = every version, no condition
         body: dict[str, Any] = {
             "name": name,
             "type": "DecryptionPolicyRule",
@@ -942,7 +961,7 @@ def register(reg: ToolRegistrar) -> None:
                     "policy": p["id"],
                     "rules": [r.get("id") for r in existing.items],
                     "certs": cert_fp,
-                    "cipher_suite_lists": [c["id"] for c in lists],
+                    "cipher_suite_lists": [(c["id"], c.get("literals")) for c in lists],
                 },
                 blockers=blockers,
                 side_effects=[*warnings, "Takes effect on devices after the next deployment."],

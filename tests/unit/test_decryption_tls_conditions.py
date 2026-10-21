@@ -138,6 +138,12 @@ async def test_conditions_refused_on_decrypt_rules(fmc: respx.MockRouter) -> Non
         )
         assert any("match all TLS traffic" in b for b in every["blockers"])
         assert any("every version" in s for s in every["side_effects"])
+        # all five versions on a decrypt rule is no condition either, so it isn't refused
+        every5 = ["sslv3", "tls10", "tls11", "tls12", "tls13"]
+        dnd = await run(
+            c, "fmc_create_decryption_rule", {**block_args(action="DO_NOT_DECRYPT"), "tls_versions": every5}
+        )
+        assert dnd["status"] == "preview" and dnd["preview"]["tls_versions"] == "all"
         # MONITOR takes them
         mon = await run(c, "fmc_create_decryption_rule", block_args(action="MONITOR", tls_versions=["tls10"]))
         assert mon["status"] == "preview"
@@ -222,6 +228,12 @@ def test_order_problems() -> None:
     assert order_problems([*moved[:2], {**moved[2], "enabled": False}])[0].endswith(
         "Put the Block rules first."
     )
+    # literal destination ports that can't overlap: no session matches both
+    port = {"type": "PortLiteral", "protocol": "6"}
+    on_443 = {**moved[1], "destinationPorts": {"literals": [{**port, "port": "443"}]}}
+    assert "'block-old-tls'" not in order_problems([moved[0], on_443, moved[2]])[0]
+    on_range = {**moved[1], "destinationPorts": {"literals": [{**port, "port": "11000-11500"}]}}
+    assert "'block-old-tls'" in order_problems([moved[0], on_range, moved[2]])[0]  # 11443 is in it
 
 
 # --- F82: cipher suite lists ---------------------------------------------------------------------------
@@ -244,6 +256,8 @@ def test_find_suite() -> None:
     assert find_suite("0x00,0x2F") == find_suite("SSL_RSA_WITH_AES_128_CBC_SHA")
     assert find_suite("TLS_RSA_WITH_AES_128_CBC_SHA").code == 47  # type: ignore[union-attr]
     assert find_suite("AES128-SHA") is None and find_suite("") is None and find_suite("99999") is None
+    assert find_suite("0xC0,0x9") == find_suite("0xc0, 0x09") == find_suite("49161")
+    assert find_suite("4_7") is None and find_suite("+47") is None and find_suite("0x12345") is None
 
 
 async def test_create_list_from_preset_and_names(fmc: respx.MockRouter) -> None:
