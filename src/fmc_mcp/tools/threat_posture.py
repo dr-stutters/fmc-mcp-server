@@ -12,6 +12,7 @@ from pydantic import Field
 
 from fmc_mcp._core import InvalidRequest, ToolRegistrar, UpstreamError, get_client
 from fmc_mcp.client import FmcApp
+from fmc_mcp.licensing import licence_needs, licences
 from fmc_mcp.tools.common import Domain, is_system, ref_label, resolve_in
 from fmc_mcp.tools.devices import DEVICES, HA_PAIRS
 from fmc_mcp.tools.dns import DNS
@@ -55,7 +56,6 @@ BALANCED = "Balanced Security and Connectivity"
 NO_RULES = "No Rules Active"
 # DNS rule actions that stop a lookup (the 10.0.1 spec says BLOCK, FMC also answers DROP).
 DNS_BLOCKING = ("NXDOMAIN", "BLOCK", "DROP", "SINKHOLE")
-LICENCE_ALIASES = {"THREAT": "IPS", "MALWARE": "MALWARE_DEFENSE", "URLFILTER": "URL"}
 DEVICE_CAP = 10
 RULE_ROWS_CAP = 100
 
@@ -75,14 +75,6 @@ EARLY_IPS_NOTE = (
 def talos_name(name: str | None) -> bool:
     n = re.sub(r"^(url|dns)\s+", "", str(name or "").strip().lower())
     return n.replace(" ", "_") in TALOS
-
-
-def _licences(caps: list[Any] | None) -> set[str]:
-    out = set()
-    for c in caps or []:
-        up = str(c).upper()
-        out.add(LICENCE_ALIASES.get(up, up))
-    return out
 
 
 async def _devices(app: FmcApp, acp_id: str, domain: str | None) -> tuple[list[dict[str, Any]], list[str]]:
@@ -119,7 +111,7 @@ async def _devices(app: FmcApp, acp_id: str, domain: str | None) -> tuple[list[d
         rows.append(
             {
                 "name": label,
-                "licences": sorted(_licences(d.get("license_caps"))),
+                "licences": sorted(licences(d.get("license_caps"))),
                 "snort": d.get("snortEngine"),
                 "connected": d.get("isConnected"),
             }
@@ -430,11 +422,7 @@ async def threat_posture(app: FmcApp, policy: str, domain: str | None) -> dict[s
     # Licences on the assigned devices.
     devices, dev_notes = await _devices(app, str(acp["id"]), domain)
     notes += dev_notes
-    needs = {
-        "IPS": bool(used),
-        "MALWARE_DEFENSE": any(r.get("filePolicy") for r in allow),
-        "URL": any((r.get("urls") or {}).get("urlCategoriesWithReputation") for r in enabled),
-    }
+    needs = licence_needs(acp, rules)  # IPS / MALWARE_DEFENSE / URL -> why
     for d in devices:
         missing = [lic for lic, need in needs.items() if need and lic not in d["licences"]]
         if missing:
