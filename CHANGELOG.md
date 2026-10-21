@@ -27,6 +27,12 @@
   though the spec lists only the collection). FMC's usage API refuses the type, so the delete reads the decryption rules
   of the domain and every domain below the list's own, and is refused while one uses the list (naming it).
   `fmc_update_object` refuses cipher suite lists (no PUT in FMC's API).
+- **`fmc_where_used` reports cipher suite lists** (`type='cipher_suite_list'`): FMC 10.0.1's usage API answers 400 "API
+  not supported for specified type" for them, so the tool reads the decryption rules as `fmc_delete_object` does (every
+  decryption policy in the domain and the domains below the list's own) and lists each rule that uses the list
+  (`used_by` as 'policy / rule', `rules` with index, action and conditions, the policy's domain on a multi-domain FMC).
+  Without `type` a cipher suite list name gets "pass type='cipher_suite_list'". `cipher_suite_list` is now an object type
+  for `fmc_list_objects` and `fmc_get_object` too (the suites are the members).
 
 ### Fixed
 - **`fmc_find_object` read hyphenated names as ports**: `value='sdwan-single'` searched port objects for protocol

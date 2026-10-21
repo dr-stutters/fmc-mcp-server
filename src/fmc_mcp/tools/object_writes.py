@@ -498,7 +498,7 @@ async def _usage(app: FmcApp, obj: dict[str, Any], t: ObjType, domain: str | Non
     then this returns [] and FMC itself refuses a delete of an object that is still in use. Cipher suite
     lists: the decryption rules that use them."""
     if t.key == "cipher_suite_list":
-        return await _cipher_list_usage(app, obj, domain)
+        return [cipher_rule_usage(pol, r) for pol, r in await cipher_list_rules(app, obj, domain)]
     try:
         page = await app.all(
             await app.config_path("object/operational/usage", domain),
@@ -513,11 +513,13 @@ async def _usage(app: FmcApp, obj: dict[str, Any], t: ObjType, domain: str | Non
 DECRYPTION = "policy/decryptionpolicies"
 
 
-async def _cipher_list_usage(app: FmcApp, obj: dict[str, Any], domain: str | None) -> list[dict[str, Any]]:
-    """The decryption rules that use a cipher suite list. FMC 10.0.1's usage API answers 400 "API not
-    supported for specified type" for CipherSuiteList, so the rules are read: those of every decryption
-    policy in the requested domain and in each domain below the list's own (a child domain's policies are
-    invisible from its parent)."""
+async def cipher_list_rules(
+    app: FmcApp, obj: dict[str, Any], domain: str | None
+) -> list[tuple[dict[str, Any], dict[str, Any]]]:
+    """The decryption rules that use a cipher suite list, each with its policy. FMC 10.0.1's usage API
+    answers 400 "API not supported for specified type" for CipherSuiteList, so the rules are read: those of
+    every decryption policy in the requested domain and in each domain below the list's own (a child domain's
+    policies are invisible from its parent)."""
     here = await app.domain_uuid(domain)
     owner = str((owner_domain(obj) or {}).get("id") or here).lower()
     top = next((d["name"] for d in app.domains if d["uuid"].lower() == owner), None)
@@ -527,7 +529,7 @@ async def _cipher_list_usage(app: FmcApp, obj: dict[str, Any], domain: str | Non
         if top and d["name"].startswith(top + "/") and d["uuid"].lower() != here.lower()
     ]
     seen: set[str] = set()
-    out: list[dict[str, Any]] = []
+    out: list[tuple[dict[str, Any], dict[str, Any]]] = []
     for dom in domains:
         for p in (await app.all(await app.config_path(DECRYPTION, dom))).items:
             if not p.get("id") or p["id"] in seen:
@@ -538,11 +540,14 @@ async def _cipher_list_usage(app: FmcApp, obj: dict[str, Any], domain: str | Non
             )
             for r in rules.items:
                 if obj["id"] in {o.get("id") for o in (r.get("cipherSuiteLists") or {}).get("objects") or []}:
-                    out.append(
-                        {
-                            "type": "DecryptionPolicyRule",
-                            "name": f"{p.get('name')} / {r.get('name')}",
-                            "id": r.get("id"),
-                        }
-                    )
+                    out.append((p, r))
     return out
+
+
+def cipher_rule_usage(policy: dict[str, Any], rule: dict[str, Any]) -> dict[str, Any]:
+    """A decryption rule that uses a cipher suite list, as a usage entry ('policy / rule')."""
+    return {
+        "type": "DecryptionPolicyRule",
+        "name": f"{policy.get('name')} / {rule.get('name')}",
+        "id": rule.get("id"),
+    }
