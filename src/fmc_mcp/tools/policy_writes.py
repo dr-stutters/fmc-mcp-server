@@ -19,7 +19,7 @@ from fmc_mcp._core import (
 from fmc_mcp.client import FmcApp, is_uuid
 from fmc_mcp.preview import fmc_preview
 from fmc_mcp.refs import NETWORK_TYPES, PORT_TYPES, RefResolver, network_literal
-from fmc_mcp.rule_conditions import VLAN_NOTE, ExtraConditions, relabel_changes
+from fmc_mcp.rule_conditions import VLAN_NOTE, ExtraConditions, filter_refs_in_rules, relabel_changes
 from fmc_mcp.rules import flatten_access_rule, flatten_nat_rule, url_labels
 from fmc_mcp.tools.common import Domain, block_labels, ref_label, resolve_in, rule_changes
 from fmc_mcp.tools.fqdn_dns import fqdn_dns_check
@@ -100,9 +100,11 @@ ApplicationsParam = Annotated[
 AppFiltersParam = Annotated[
     list[str] | None,
     Field(
-        description="Application filter names (fmc_find_application kind=filter; new ones with "
-        "fmc_create_application_filter). On update a given list replaces the rule's filters and keeps its "
-        "applications"
+        description="Application filter names or UUIDs (fmc_find_application kind=filter; new ones with "
+        "fmc_create_application_filter). FMC 10.0.1 doesn't list filters created over its API, so a name "
+        "resolves only for filters this server created since it started or that a rule of the policy "
+        "already uses; otherwise pass the UUID. On update a given list replaces the rule's filters and "
+        "keeps its applications"
     ),
 ]
 VlanParam = Annotated[
@@ -351,6 +353,8 @@ def register(reg: ToolRegistrar) -> None:
         cats = await category_conditions(ctx, app, url_categories or [], domain)
         if cats:
             body["urls"] = merge_url_block(None, body.get("urls") or {}, cats)
+        rules_path = await app.config_path(f"{ACCESS}/{p['id']}/accessrules", domain)
+        existing = await all_rules(app, rules_path)
         extra = await ExtraConditions(app, domain).resolve(
             None,
             applications=applications,
@@ -358,6 +362,7 @@ def register(reg: ToolRegistrar) -> None:
             time_range=time_range or None,
             source_sgts=source_sgts,
             destination_sgts=destination_sgts,
+            known_filters=filter_refs_in_rules(existing.items) if application_filters else None,
         )
         body.update(extra.fields)
         body = {k: v for k, v in body.items() if v not in ({}, [])}
@@ -385,8 +390,6 @@ def register(reg: ToolRegistrar) -> None:
             params["insertBefore"] = insert_before
         elif insert_after:
             params["insertAfter"] = insert_after
-        rules_path = await app.config_path(f"{ACCESS}/{p['id']}/accessrules", domain)
-        existing = await all_rules(app, rules_path)
         blockers = await identity_blockers(app, p, body.get("users"), domain)
         if any(str(r.get("name", "")).lower() == name.lower() for r in existing.items):
             blockers.append(f"Policy {p.get('name')!r} already has a rule named {name!r}.")

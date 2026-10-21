@@ -16,6 +16,14 @@ FMC 10.0.1 quirks (recorded live 2026-10-20):
 - `object/securitygrouptags` (custom SGTs) answers 422 "Identity Service Engine is enabled" while an ISE
   source is on, and `object/isesecuritygrouptags` 422 "... is disabled" while none is: SGT names are
   looked up in both lists and a 422 means "none of that kind".
+
+FMC 10.0.1 quirk (recorded live 2026-10-21): an application filter created over the API (POST 201) is not
+returned by any later REST read: `GET object/applicationfilters` answers `{"paging": {"count": 0}}` (no
+`items`), and GET and DELETE by id answer 404, in the creating domain and in Global. FMC still takes it by
+id in an access rule (POST accessrules with `applications.applicationFilters: [{id, type, name}]` -> 201),
+and rule GETs carry it as {name, id, type}. So a filter name also resolves against the filters this server
+created (remembered from the POST answer, per server process) and the filters rules already use, and a UUID
+FMC answers 404 for is sent as given: FMC checks it when it saves the rule.
 """
 
 from __future__ import annotations
@@ -58,6 +66,8 @@ _LOCKS: weakref.WeakKeyDictionary[FmcApp, asyncio.Lock] = weakref.WeakKeyDiction
 _FACETS: weakref.WeakKeyDictionary[FmcApp, dict[str, tuple[float, list[dict[str, Any]]]]] = (
     weakref.WeakKeyDictionary()
 )
+# Application filters this server created ({id, name, path, row}), newest last: FMC 10.0.1 doesn't list them.
+_CREATED: weakref.WeakKeyDictionary[FmcApp, list[dict[str, Any]]] = weakref.WeakKeyDictionary()
 
 
 # --- applications ---------------------------------------------------------------------------------
@@ -152,28 +162,107 @@ async def app_filter_catalog(
     return [f for f in page.items if f.get("id")]
 
 
-async def resolve_app_filters(app: FmcApp, names: list[str], domain: str | None) -> list[dict[str, Any]]:
-    """ApplicationFilter refs by name or UUID."""
+UNLISTED_FILTERS = (
+    "FMC 10.0.1 doesn't return application filters created over its API: its list is empty and GET or "
+    "DELETE by id answers 404, though access rules take them by id."
+)
+FILTER_BY_ID = (
+    "pass the filter's UUID instead (the id in fmc_create_application_filter's result, or in "
+    "fmc_get_access_rule of a rule that uses it); FMC checks the id when it saves the rule"
+)
+
+
+def filter_ref(f: dict[str, Any]) -> dict[str, Any]:
+    ref = {"id": str(f["id"]), "type": "ApplicationFilter", "name": f.get("name")}
+    return {k: v for k, v in ref.items() if v is not None}
+
+
+def remember_filter(app: FmcApp, path: str, answer: Any) -> dict[str, Any] | None:
+    """Keep a filter FMC just created (its POST answer) so later rule writes find it by name."""
+    if not isinstance(answer, dict) or not answer.get("id") or not answer.get("name"):
+        return None
+    ref = filter_ref(answer)
+    rows = _CREATED.setdefault(app, [])
+    rows[:] = [
+        r
+        for r in rows
+        if r["path"] != path
+        or (r["id"].lower() != ref["id"].lower() and r["name"].lower() != ref["name"].lower())
+    ]
+    rows.append({**ref, "path": path, "row": {**filter_row(answer), "listed_by_fmc": False}})
+    return ref
+
+
+def remembered_filters(app: FmcApp, path: str) -> list[dict[str, Any]]:
+    """Filters this server created in the collection at `path` (newest first)."""
+    return [r for r in reversed(_CREATED.get(app) or []) if r["path"] == path]
+
+
+def filter_refs_in_rules(rules: list[dict[str, Any]]) -> list[dict[str, Any]]:
+    """The application filters rules use ({id, type, name} as rule GETs carry them), first use first."""
+    out: list[dict[str, Any]] = []
+    for r in rules:
+        for f in (r.get("applications") or {}).get("applicationFilters") or []:
+            if (
+                isinstance(f, dict)
+                and f.get("id")
+                and all(o["id"].lower() != str(f["id"]).lower() for o in out)
+            ):
+                out.append(filter_ref(f))
+    return out
+
+
+async def resolve_app_filters(
+    app: FmcApp,
+    names: list[str],
+    domain: str | None,
+    *,
+    known: list[dict[str, Any]] | None = None,
+    notes: list[str] | None = None,
+) -> list[dict[str, Any]]:
+    """ApplicationFilter refs by name or UUID: from FMC's list, else from the filters this server created
+    or `known` (refs rules already use), since FMC 10.0.1 lists none it created over the API; a UUID FMC
+    answers 404 for is sent as given. `notes` gets a line for each filter FMC itself didn't return."""
+    path = await app.config_path(APP_FILTERS, domain)
+    extra = [filter_ref(r) for r in remembered_filters(app, path)] + list(known or [])
     out: list[dict[str, Any]] = []
     catalog: list[dict[str, Any]] | None = None
     for raw in names:
         t = str(raw).strip()
         if not t:
             continue
+        unlisted: str | None = None
         if is_uuid(t):
-            f = await resolve_in(app, APP_FILTERS, t, "application filter", domain)
+            try:
+                f = await resolve_in(app, APP_FILTERS, t, "application filter", domain)
+            except NotFound:
+                hit = next((k for k in extra if k["id"].lower() == t.lower()), None)
+                f = hit or {"id": t}
+                unlisted = f"FMC answers 404 for application filter {t}; it is sent by id."
         else:
             catalog = catalog if catalog is not None else await app_filter_catalog(app, domain)
-            if not catalog:
-                raise NotFound(
-                    f"No application filter named {t!r}: FMC has none in this domain "
-                    "(create one with fmc_create_application_filter).",
-                    404,
-                )
-            f = pick_by_name(catalog, t, "application filter")
-        ref = {"id": str(f["id"]), "type": "ApplicationFilter", "name": f.get("name")}
-        if all(r["id"] != ref["id"] for r in out):
+            try:
+                f = pick_by_name(catalog, t, "application filter")
+            except NotFound as e:
+                hits = [k for k in extra if str(k.get("name", "")).lower() == t.lower()]
+                if not hits:
+                    head = (
+                        f"No application filter named {t!r}: FMC lists none in this domain"
+                        if not catalog
+                        else str(e).rstrip(".")
+                    )
+                    raise NotFound(
+                        f"{head}. {UNLISTED_FILTERS} So {FILTER_BY_ID}. New ones: "
+                        "fmc_create_application_filter.",
+                        404,
+                    ) from None
+                f = hits[0]
+                unlisted = f"Application filter {t!r} ({f['id']}) isn't listed by FMC; it is sent by id."
+        ref = filter_ref(f)
+        if all(r["id"].lower() != ref["id"].lower() for r in out):
             out.append(ref)
+            if unlisted and notes is not None:
+                notes.append(f"{unlisted} {UNLISTED_FILTERS} FMC checks the id when it saves the rule.")
     return out
 
 
@@ -475,7 +564,10 @@ class ExtraConditions:
         time_range: str | None = None,
         source_sgts: list[str] | None = None,
         destination_sgts: list[str] | None = None,
+        known_filters: list[dict[str, Any]] | None = None,
     ) -> ExtraConditions:
+        """`known_filters`: application filter refs the policy's rules already use (filter_refs_in_rules),
+        so a name FMC doesn't list still resolves."""
         if applications is not None or application_filters is not None:
             apps = (
                 None
@@ -485,7 +577,13 @@ class ExtraConditions:
             flts = (
                 None
                 if application_filters is None
-                else await resolve_app_filters(self.app, application_filters, self.domain)
+                else await resolve_app_filters(
+                    self.app,
+                    application_filters,
+                    self.domain,
+                    known=filter_refs_in_rules([current or {}]) + list(known_filters or []),
+                    notes=self.warnings,
+                )
             )
             block = merge_app_block((current or {}).get("applications"), apps, flts)
             self.fields["applications"] = block

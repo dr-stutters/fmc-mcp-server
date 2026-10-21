@@ -21,6 +21,7 @@ from fmc_mcp.rule_conditions import (
     LEVELS,
     TIME_NOTE,
     TIME_RANGES,
+    UNLISTED_FILTERS,
     app_filter_catalog,
     app_index,
     app_row,
@@ -31,6 +32,8 @@ from fmc_mcp.rule_conditions import (
     name_matches,
     pick_facet,
     pick_level,
+    remember_filter,
+    remembered_filters,
     resolve_applications,
     time_range_row,
 )
@@ -46,6 +49,18 @@ USE = (
 INDEX_NOTE = (
     "FMC 10.0.1 can't filter its application list, so names are matched against an id+name index read "
     "once (about 9 requests of 1000) and reused for an hour; only matches are returned."
+)
+FILTER_LIST_NOTE = (
+    f"FMC lists no application filters in this domain. {UNLISTED_FILTERS} The ones this server created "
+    "since it started are listed with listed_by_fmc false; for others use the id from "
+    "fmc_create_application_filter's result or from fmc_get_access_rule of a rule using one "
+    "(application_filters=[id]). Remove them in the FMC UI (Objects > Object Management > Application "
+    "Filters)."
+)
+CREATED_FILTER_NOTE = (
+    f"{UNLISTED_FILTERS} Keep this filter's id: rules take application_filters=[id] (this server also "
+    "finds it by name until it restarts). Delete it in the FMC UI (Objects > Object Management > "
+    "Application Filters), after the rules that use it."
 )
 
 
@@ -213,8 +228,17 @@ def register(reg: ToolRegistrar) -> None:
         if kind in ("any", "filter"):
             filters = await app_filter_catalog(app, domain, expanded=True)
             hits = [f for f in filters if t.lower() in str(f.get("name", "")).lower()]
-            out["application_filters"] = [filter_row(f) for f in hits[:limit]]
-            found += len(hits)
+            listed = {str(f["id"]).lower() for f in filters}
+            mine = [
+                r["row"]
+                for r in remembered_filters(app, await app.config_path(APP_FILTERS, domain))
+                if r["id"].lower() not in listed
+                and (t.lower() in r["name"].lower() or t.lower() == r["id"].lower())
+            ]
+            out["application_filters"] = ([filter_row(f) for f in hits] + mine)[:limit]
+            found += len(hits) + len(mine)
+            if not filters:
+                out["filter_note"] = FILTER_LIST_NOTE
         if kind in ("any", "attribute"):
             attrs = {
                 "risks": _contains(LEVELS, t),
@@ -301,9 +325,10 @@ def register(reg: ToolRegistrar) -> None:
         if cond:
             body["appConditions"] = [cond]
         blockers: list[str] = []
+        path = await app.config_path(APP_FILTERS, domain)
         existing = await app_filter_catalog(app, domain)
         try:
-            pick_by_name(existing, name, "application filter")
+            pick_by_name(existing + remembered_filters(app, path), name, "application filter")
             blockers.append(f"An application filter named {name!r} already exists.")
         except NotFound:
             pass
@@ -311,7 +336,19 @@ def register(reg: ToolRegistrar) -> None:
             ([f"applications {', '.join(str(a['name']) for a in apps)}"] if apps else [])
             + ([f"every application with {condition_text(cond)}"] if cond else [])
         )
-        path = await app.config_path(APP_FILTERS, domain)
+
+        async def create() -> Any:
+            answer = await applied(app, lambda: app.api.post(path, body))
+            ref = remember_filter(app, path, answer)
+            if ref is None:
+                return answer
+            return {
+                **answer,
+                "use": f"fmc_create_access_rule(application_filters=[{ref['id']!r}]) or by name "
+                f"{ref['name']!r} while this server runs",
+                "note": CREATED_FILTER_NOTE,
+            }
+
         return await fmc_preview(
             ctx,
             tool="fmc_create_application_filter",
@@ -333,10 +370,12 @@ def register(reg: ToolRegistrar) -> None:
                 blockers=blockers,
                 side_effects=[
                     "Changes nothing on devices until an access rule uses it (application_filters=[...]) "
-                    "and is deployed."
+                    "and is deployed.",
+                    "FMC 10.0.1 doesn't return such a filter on later REST reads, nor delete it over REST "
+                    "(404): keep the id from the result for rules; it can only be removed in the FMC UI.",
                 ],
             ),
-            apply=lambda: applied(app, lambda: app.api.post(path, body)),
+            apply=create,
         )
 
     @reg.write(title="Create time range")
