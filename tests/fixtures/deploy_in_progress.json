@@ -1,0 +1,257 @@
+{
+ "_source": "Recorded read-only 2026-10-20 from FMC 10.0.1, domain Global/mcp-test-leaf, with fmc_api_call GET (links dropped). The lab's real stuck deployment: Deploy_Job_68 'Cluster create' (user System) on mcp-sdwan-t3-hub, DEPLOYING since 2026-10-18T03:11:39Z with endTime equal to startTime and the device's deploymentStatus NONE. `deployabledevices` (expanded): two of the entries, the cluster's (listed by its control node's id with isDeploying true, canBeDeployed false and FMC's message) and the mcp-test-ha pair's, policyStatusList trimmed. `jobhistories`: the newest three of deviceUUID:<t3 hub> over 8 days (newest first). `devicerecords`: trimmed to name, deploymentStatus, isConnected and containerDetails; mcp-ftd-identity is DEPLOYED though fmc_pending_changes listed a PKI certificate entry for it in the F46 eval.",
+ "deployabledevices": {
+  "items": [
+   {
+    "isDeploying": true,
+    "version": "1792386785831",
+    "id": "dc0d1aac-ca82-11f1-82bc-ca1afe70919b",
+    "name": "mcp-sdwan-t3-cluster",
+    "device": {
+     "id": "dc0d1aac-ca82-11f1-82bc-ca1afe70919b",
+     "type": "NGFW_CLUSTER",
+     "name": "mcp-sdwan-t3-cluster",
+     "keepLocalEvents": false
+    },
+    "deviceMembers": [
+     {
+      "id": "2d9af100-ca83-11f1-a882-d9fd30b1d53c",
+      "type": "SENSOR",
+      "name": "mcp-sdwan-t3-hub2",
+      "keepLocalEvents": false
+     },
+     {
+      "id": "dc0d1aac-ca82-11f1-82bc-ca1afe70919b",
+      "type": "SENSOR",
+      "name": "mcp-sdwan-t3-hub",
+      "keepLocalEvents": false
+     }
+    ],
+    "domain": {
+     "uuid": "a1c73df0-8353-8db7-1097-000000000000",
+     "name": "Global>mcp-test-leaf",
+     "id": "a1c73df0-8353-8db7-1097-000000000000",
+     "type": "Domain"
+    },
+    "message": "Cannot perform deployment to the device, as another deployment is in progress for the device.",
+    "policyStatusList": [
+     {
+      "upToDate": true,
+      "policy": {
+       "name": "mcp-sdwan-acp",
+       "id": "00000000-0000-0ed3-0000-021474856047",
+       "type": "PG.FIREWALL.NGFWAccessControlPolicy"
+      },
+      "trafficInterrupting": false,
+      "versionTimeStamp": 1792289497974
+     },
+     {
+      "upToDate": false,
+      "policy": {
+       "name": " lsp-rel-20261016-1401",
+       "type": "RuleUpdate"
+      },
+      "trafficInterrupting": false
+     }
+    ],
+    "canBeDeployed": false,
+    "upToDate": false,
+    "trafficInterruption": "NO",
+    "type": "DeployableDevice"
+   },
+   {
+    "isDeploying": false,
+    "version": "1792386785831",
+    "id": "503133d6-c9c6-11f1-b434-883d23e0134a",
+    "name": "mcp-test-ha",
+    "device": {
+     "id": "503133d6-c9c6-11f1-b434-883d23e0134a",
+     "type": "NGFW_HA",
+     "name": "mcp-test-ha",
+     "keepLocalEvents": false
+    },
+    "deviceMembers": [
+     {
+      "id": "532a591e-c9c6-11f1-adb7-e0cf54ff7bd5",
+      "type": "SENSOR",
+      "name": "mcp-ftd3",
+      "keepLocalEvents": false
+     },
+     {
+      "id": "503133d6-c9c6-11f1-b434-883d23e0134a",
+      "type": "SENSOR",
+      "name": "mcp-ftd2",
+      "keepLocalEvents": false
+     }
+    ],
+    "domain": {
+     "uuid": "a1c73df0-8353-8db7-1097-000000000000",
+     "name": "Global>mcp-test-leaf",
+     "id": "a1c73df0-8353-8db7-1097-000000000000",
+     "type": "Domain"
+    },
+    "policyStatusList": [
+     {
+      "upToDate": false,
+      "policy": {
+       "name": "mcp-test-ha-acp",
+       "id": "00000000-0000-0ed3-0000-021474837244",
+       "type": "PG.FIREWALL.NGFWAccessControlPolicy"
+      },
+      "trafficInterrupting": false,
+      "versionTimeStamp": 1792231088232
+     }
+    ],
+    "canBeDeployed": true,
+    "upToDate": false,
+    "trafficInterruption": "NO",
+    "type": "DeployableDevice"
+   }
+  ],
+  "paging": {
+   "count": 2
+  }
+ },
+ "jobhistories": {
+  "items": [
+   {
+    "id": "00000000-0000-0ed3-0000-021474885529",
+    "jobName": "Deploy_Job_68",
+    "jobStatus": "DEPLOYING",
+    "jobType": "DEPLOYMENT",
+    "startTime": "2026-10-18T03:11:39Z",
+    "endTime": "2026-10-18T03:11:39Z",
+    "user": "System",
+    "deploymentNote": "Cluster create",
+    "deviceList": [
+     {
+      "deviceName": "mcp-sdwan-t3-hub",
+      "deviceUUID": "dc0d1aac-ca82-11f1-82bc-ca1afe70919b",
+      "deploymentStatus": "NONE",
+      "deployedVersion": -1
+     }
+    ],
+    "type": "JobHistory"
+   },
+   {
+    "id": "00000000-0000-0ed3-0000-021474885408",
+    "jobName": "Deploy_Job_67",
+    "jobStatus": "DEPLOYED",
+    "jobType": "DEPLOYMENT",
+    "startTime": "2026-10-18T03:10:06Z",
+    "endTime": "2026-10-18T03:10:43Z",
+    "user": "mcp-api-svc",
+    "deploymentNote": "F53 T3 cluster attempt: clear hub data IPs",
+    "deviceList": [
+     {
+      "deviceName": "mcp-sdwan-t3-hub",
+      "deviceUUID": "dc0d1aac-ca82-11f1-82bc-ca1afe70919b",
+      "deploymentStatus": "SUCCEEDED",
+      "deployedVersion": 3
+     }
+    ],
+    "type": "JobHistory"
+   },
+   {
+    "id": "00000000-0000-0ed3-0000-021474884299",
+    "jobName": "Deploy_Job_65",
+    "jobStatus": "DEPLOYED",
+    "jobType": "DEPLOYMENT",
+    "startTime": "2026-10-18T03:05:06Z",
+    "endTime": "2026-10-18T03:06:02Z",
+    "user": "System",
+    "deploymentNote": "High availability break",
+    "deviceList": [
+     {
+      "deviceName": "mcp-sdwan-t3-hub",
+      "deviceUUID": "dc0d1aac-ca82-11f1-82bc-ca1afe70919b",
+      "deploymentStatus": "SUCCEEDED",
+      "deployedVersion": 8,
+      "containerName": "mcp-sdwan-t3-hub-ha"
+     }
+    ],
+    "type": "JobHistory"
+   }
+  ],
+  "paging": {
+   "count": 3
+  }
+ },
+ "devicerecords": {
+  "items": [
+   {
+    "id": "dc0d1aac-ca82-11f1-82bc-ca1afe70919b",
+    "type": "Device",
+    "name": "mcp-sdwan-t3-hub",
+    "deploymentStatus": "DEPLOYMENT_IN_PROGRESS",
+    "isConnected": false,
+    "metadata": {
+     "domain": {
+      "name": "mcp-test-leaf",
+      "id": "a1c73df0-8353-8db7-1097-000000000000",
+      "type": "Domain"
+     },
+     "containerDetails": {
+      "id": "8d3840c2-caa1-11f1-a4e0-98786f180443",
+      "type": "DeviceCluster",
+      "name": "mcp-sdwan-t3-cluster",
+      "role": "Control"
+     },
+     "isPartOfContainer": true
+    }
+   },
+   {
+    "id": "2d9af100-ca83-11f1-a882-d9fd30b1d53c",
+    "type": "Device",
+    "name": "mcp-sdwan-t3-hub2",
+    "deploymentStatus": "DEPLOYMENT_PENDING",
+    "isConnected": false,
+    "metadata": {
+     "domain": {
+      "name": "mcp-test-leaf",
+      "id": "a1c73df0-8353-8db7-1097-000000000000",
+      "type": "Domain"
+     },
+     "containerDetails": {
+      "id": "8d3840c2-caa1-11f1-a4e0-98786f180443",
+      "type": "DeviceCluster",
+      "name": "mcp-sdwan-t3-cluster",
+      "role": "Data"
+     },
+     "isPartOfContainer": true
+    }
+   },
+   {
+    "id": "503133d6-c9c6-11f1-b434-883d23e0134a",
+    "type": "Device",
+    "name": "mcp-ftd2",
+    "deploymentStatus": "DEPLOYMENT_PENDING",
+    "isConnected": false,
+    "metadata": {
+     "domain": {
+      "name": "mcp-test-leaf",
+      "id": "a1c73df0-8353-8db7-1097-000000000000",
+      "type": "Domain"
+     }
+    }
+   },
+   {
+    "id": "71f24ba4-c9c6-11f1-b39a-f8b1a0356797",
+    "type": "Device",
+    "name": "mcp-ftd-identity",
+    "deploymentStatus": "DEPLOYED",
+    "isConnected": true,
+    "metadata": {
+     "domain": {
+      "name": "mcp-test-leaf",
+      "id": "a1c73df0-8353-8db7-1097-000000000000",
+      "type": "Domain"
+     }
+    }
+   }
+  ],
+  "paging": {
+   "count": 4
+  }
+ }
+}
