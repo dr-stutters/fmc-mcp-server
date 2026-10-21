@@ -29,6 +29,7 @@ from datetime import UTC, datetime
 from typing import Annotated, Any, Literal
 
 from cryptography import x509
+from cryptography.exceptions import UnsupportedAlgorithm
 from cryptography.hazmat.primitives.asymmetric import dsa, ec, ed448, ed25519, rsa
 from cryptography.hazmat.primitives.serialization import Encoding, pkcs12
 from fastmcp import Context
@@ -374,6 +375,12 @@ def load_pkcs12(settings: Any, pkcs12_file: str, passphrase_file: str | None) ->
     facts["unlocked_with"] = source
     try:
         key, cert, extra = pkcs12.load_key_and_certificates(der, phrase.encode())
+    except UnsupportedAlgorithm:
+        m.blockers.append(
+            f"{pkcs12_file} uses an encryption this server can't open; export it again with OpenSSL's "
+            "defaults (AES-256) or with -legacy."
+        )
+        return m
     except (ValueError, TypeError):
         m.blockers.append(
             f"Could not open {pkcs12_file} with the passphrase from {source}: wrong passphrase, or not a "
@@ -524,20 +531,23 @@ def ref_paths(node: Any, ids: set[str], path: str = "") -> list[str]:
 
 async def enrollment_users(
     app: FmcApp, enrollment_id: str, domain: str | None
-) -> tuple[list[str], list[str]]:
-    """(references, notes): the RA VPN policies, S2S topologies and decryption policies that reference the
-    enrollment, each with where (FMC 10.0.1: RA VPN access interface identity certificates, S2S IKE
-    certificate authentication; decryption rules reference internal CAs and certificates, but are
-    walked by id all the same), and what could not be checked."""
+) -> tuple[list[str], list[str], list[str]]:
+    """(references, notes, unread): the RA VPN policies, S2S topologies and decryption policies that
+    reference the enrollment, each with where (FMC 10.0.1: RA VPN access interface identity certificates,
+    S2S IKE certificate authentication; decryption rules reference internal CAs and certificates, but are
+    walked by id all the same), what could not be checked (notes), and which of those FMC refused to
+    read (unread: then nobody can say the enrollment is unused)."""
     ids = {enrollment_id.lower()}
     found: list[str] = []
     notes: list[str] = []
+    unread: list[str] = []
 
     async def scan(what: str, path: str, children: str | None, full_item: str | None) -> None:
         try:
             page = await app.all(path, cap=POLICY_CAP)
         except UpstreamError as e:
             notes.append(f"{what}: not checked ({e})")
+            unread.append(f"the {what} list")
             return
         if not page.complete:
             notes.append(f"{what}: only the first {len(page.items)} checked")
@@ -554,13 +564,14 @@ async def enrollment_users(
                         hits += [f"{rule}{w}" for w in where]
             except UpstreamError as e:
                 notes.append(f"{what} {p.get('name')}: not checked ({e})")
+                unread.append(f"{what} {p.get('name')}")
                 continue
             found.extend(f"{what} {p.get('name')} ({h})" for h in hits)
 
     await scan("RA VPN", await app.config_path(RAVPN, domain), None, "accessInterfaceSettings")
     await scan("S2S VPN", await app.config_path(S2S, domain), "ikesettings", None)
     await scan("decryption policy", await app.config_path(DECRYPTION, domain), "decryptionpolicyrules", None)
-    return sorted(set(found)), notes
+    return sorted(set(found)), notes, unread
 
 
 async def device_enrolments(
@@ -905,8 +916,9 @@ def register(reg: ToolRegistrar) -> None:
         others = sorted({str(r.get("device")) for r in rows if _same(r.get("id"), enr_id)} - {dev_name})
         users: list[str] = []
         notes: list[str] = []
+        unread: list[str] = []
         if action != "refresh":  # a refresh changes nothing on the device: no need to know who uses it
-            users, notes = await enrollment_users(app, enr_id, domain)
+            users, notes, unread = await enrollment_users(app, enr_id, domain)
 
         blockers: list[str] = []
         member = membership_of(dev)
@@ -947,6 +959,13 @@ def register(reg: ToolRegistrar) -> None:
         if action == "delete" and users:
             blockers.append(
                 f"Still referenced by: {', '.join(users)}. Point those at another certificate first."
+            )
+        if action == "delete" and unread:
+            # Fail closed: a delete is only offered once every policy that may use the certificate was read.
+            blockers.append(
+                f"FMC didn't let this server read {', '.join(unread)} (see warnings), so it can't show that "
+                f"nothing references {enr_name}; fix that read (the account's role, FMC) and preview again, "
+                "or delete it in the FMC UI (Devices > Certificates)."
             )
         window, window_blockers = deploy_window_blockers(get_settings(ctx), TOOL_ENROLL)
         blockers += window_blockers
@@ -1069,6 +1088,8 @@ def register(reg: ToolRegistrar) -> None:
                     **({"used_by": users} if action != "refresh" else {}),
                     **({"warnings": warnings} if warnings else {}),
                     **({"deploy_window": window} if window else {}),
+                    # what is POSTed to devices/operational/managecertificates (ids only, nothing secret)
+                    "body": body,
                 },
                 fingerprint={
                     "device": dev_id,

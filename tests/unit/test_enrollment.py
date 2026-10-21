@@ -418,7 +418,8 @@ async def test_enroll_self_signed_waits_for_the_task(fmc: respx.MockRouter) -> N
         )
         assert p["blast_radius"] == 1 and not post.called
         out = await run(c, "fmc_enroll_certificate", {**ENROL, "confirm": p["confirm"]})
-    assert json.loads(post.calls.last.request.content) == {
+    sent = json.loads(post.calls.last.request.content)
+    assert sent == {
         "action": "ENROLL",
         "deviceCertificates": [
             {
@@ -427,6 +428,7 @@ async def test_enroll_self_signed_waits_for_the_task(fmc: respx.MockRouter) -> N
             }
         ],
     }
+    assert p["preview"]["body"] == sent  # the preview shows exactly what is POSTed
     result = out["result"]
     assert task.called and result["task_id"] == TASK and result["task"]["status"] == "SUCCESS"
     assert result["outcome"] == "enrolled" and result["on_device"]["identity_status"] == "AVAILABLE"
@@ -490,6 +492,70 @@ async def test_delete_blocked_while_ra_vpn_uses_it_and_refresh_skips_the_scan(fm
         calls = rav.call_count
         fresh = await run(c, "fmc_enroll_certificate", {**ENROL, "action": "refresh"})
         assert fresh["status"] == "preview" and "used_by" not in fresh["preview"] and rav.call_count == calls
+
+
+async def test_delete_fails_closed_when_a_policy_read_is_refused(fmc: respx.MockRouter) -> None:
+    """A delete is offered only when every policy that may reference the enrollment could be read."""
+    device_and_enrollment(fmc)
+    fmc.get(DEV_CERTS).mock(return_value=httpx.Response(200, json=FX["device_enrolled"]))
+    denied = {"error": {"messages": [{"description": "The user is not authorized."}]}}
+    fmc.get(RAVPN).mock(return_value=httpx.Response(403, json=denied))
+    fmc.get(S2S).mock(return_value=items([{"id": "s2s1", "name": "mcp-w6-s2s"}]))
+    fmc.get(f"{S2S}/s2s1/ikesettings").mock(return_value=httpx.Response(403, json=denied))
+    fmc.get(DEC).mock(return_value=items([]))
+    post = fmc.post(MANAGE).mock(return_value=httpx.Response(202, json=FX["manage_response"]))
+    async with Client(server()) as c:
+        gone = await run(c, "fmc_enroll_certificate", {**ENROL, "action": "delete"})
+        assert gone["status"] == "blocked" and gone["preview"]["used_by"] == []
+        blocker = gone["blockers"][-1]
+        assert "the RA VPN list" in blocker and "S2S VPN mcp-w6-s2s" in blocker
+        assert any("RA VPN: not checked" in w for w in gone["preview"]["warnings"])
+        # re-enrolling keeps the certificate's references working: a warning, not a blocker
+        redo = await run(c, "fmc_enroll_certificate", {**ENROL, "action": "re_enroll"})
+        assert redo["status"] == "preview" and any("not checked" in w for w in redo["preview"]["warnings"])
+    assert not post.called
+
+
+async def test_secrets_read_from_files_are_registered_and_masked_in_errors(
+    fmc: respx.MockRouter, tmp_path: Path, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    """The passphrase and the bundle are registered with core's scrubber (as the CLI installs it), so an
+    FMC error that echoes them reaches the client masked."""
+    from fmc_mcp._core import secrets
+
+    scrubber = secrets.SecretScrubber()
+    monkeypatch.setattr(secrets, "_installed", scrubber)
+    blob = make_pki()[0]
+    d = pki_dir(tmp_path, blob)
+    fmc.get(ENR).mock(return_value=items([]))
+    echo = {"error": {"messages": [{"description": f"Invalid passPhrase {PHRASE} for the PKCS12 file"}]}}
+    fmc.post(ENR).mock(return_value=httpx.Response(400, json=echo))
+    args = {"name": "p", "kind": "pkcs12", "pkcs12_file": "ftd1.p12", "passphrase_file": "ftd1.pass"}
+    async with Client(server(pki_dir=d)) as c:
+        p = await run(c, "fmc_create_cert_enrollment", args)
+        with pytest.raises(ToolError) as e:
+            await run(c, "fmc_create_cert_enrollment", {**args, "confirm": p["confirm"]})
+    assert PHRASE in scrubber.values and base64.b64encode(blob).decode() in scrubber.values
+    assert PHRASE not in str(e.value) and "Invalid passPhrase ******** for" in str(e.value)
+
+
+async def test_pkcs12_with_an_unsupported_cipher_is_a_blocker(
+    fmc: respx.MockRouter, tmp_path: Path, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    from cryptography.exceptions import UnsupportedAlgorithm
+
+    from fmc_mcp.tools import enrollment
+
+    def refuse(*_: Any) -> Any:
+        raise UnsupportedAlgorithm("RC2-40 is not supported")
+
+    monkeypatch.setattr(enrollment.pkcs12, "load_key_and_certificates", refuse)
+    d = pki_dir(tmp_path)
+    fmc.get(ENR).mock(return_value=items([]))
+    args = {"name": "p", "kind": "pkcs12", "pkcs12_file": "ftd1.p12", "passphrase_file": "ftd1.pass"}
+    async with Client(server(pki_dir=d)) as c:
+        out = await run(c, "fmc_create_cert_enrollment", args)
+    assert out["status"] == "blocked" and "encryption this server can't open" in out["blockers"][0]
 
 
 async def test_failed_task_names_the_device_error(fmc: respx.MockRouter) -> None:

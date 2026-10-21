@@ -273,8 +273,8 @@ CATALOGUE: dict[str, tuple[str, tuple[str, ...]]] = {
         ),
     ),
     "tls": (
-        "TLS decryption policies and rules, cipher suite lists, certificates (days left, device "
-        "enrolment), readiness check",
+        "TLS decryption policies and rules, cipher suite lists, certificates (days left, enrolment), "
+        "readiness check",
         (
             "fmc_create_cert_enrollment",
             "fmc_create_cipher_suite_list",

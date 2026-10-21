@@ -529,7 +529,7 @@ checks it against the registered tools.
 | `routing` | 8 (2/6/0) | static routes, BGP, OSPF, VRFs |  |
 | `sdwan` | 7 (1/6/0) | SD-WAN hub and spoke topologies, WAN interfaces, application-aware routing, branch health | `fmc_onboard_branch`, `fmc_sdwan_troubleshoot` |
 | `threat` | 13 (5/8/0) | intrusion (IPS), file/malware and network analysis policies, an ACP's threat posture | `fmc_threat_defense_review` |
-| `tls` | 17 (5/11/1) | TLS decryption policies and rules, cipher suite lists, certificates (days left, device enrolment), readiness check |  |
+| `tls` | 17 (5/11/1) | TLS decryption policies and rules, cipher suite lists, certificates (days left, enrolment), readiness check |  |
 | `troubleshoot` | 10 (10/0/0) | why is traffic blocked: packet tracer, rule lookup, hit counts, show commands, live state | `fmc_firewall_health_review`, `fmc_prove_user_policy`, `fmc_why_blocked` |
 | `vpn` | 7 (5/2/0) | site-to-site VPN topologies, tunnel status and troubleshooting, remote access VPN (read) | `fmc_vpn_troubleshoot` |
 
