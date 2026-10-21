@@ -9,8 +9,7 @@
         "device",
         "lookback_hours",
         "compare_with",
-        "group",
-        "baseline"
+        "group"
       ],
       "references": [
         "fmc_run_show_command",
@@ -27,11 +26,12 @@
         "fmc_license_status",
         "fmc_upgrade_status",
         "fmc_list_backups",
+        "fmc_list_certificates",
+        "fmc_get_certificate",
         "fmc_list_vpn_tunnels",
         "fmc_list_health_alerts",
         "fmc_recent_activity",
         "fmc_diff_device_config",
-        "fmc_device_snapshot",
         "fmc_deploy",
         "fmc_backup_devices"
       ],
@@ -147,7 +147,8 @@
         "nat_policy",
         "platform_settings",
         "test_destination",
-        "template"
+        "template",
+        "devices"
       ],
       "references": [
         "fmc_status",
@@ -158,10 +159,10 @@
         "cml_build_recipe",
         "cml_wait_for_converged",
         "cml_verify_recipe",
-        "fmc_register_device",
+        "fmc_register_devices",
         "fmc_get_device",
-        "fmc_get_device_template",
         "fmc_apply_device_template",
+        "fmc_get_device_template",
         "fmc_pending_changes",
         "fmc_get_vpn_topology",
         "fmc_list_device_interfaces",
@@ -192,10 +193,14 @@
       "references": [
         "fmc_export_policy_bundle",
         "fmc_policy_audit",
+        "fmc_replace_object",
         "fmc_where_used",
+        "fmc_unused_objects",
+        "fmc_delete_objects",
         "fmc_delete_object",
         "fmc_change_tickets",
         "fmc_ticket",
+        "fmc_bulk_update_access_rules",
         "fmc_delete_access_rule",
         "fmc_update_access_rule",
         "fmc_diff_policy_bundle",
@@ -204,7 +209,8 @@
         "fmc_deploy",
         "fmc_get_hit_counts",
         "fmc_import_policy_bundle",
-        "fmc_rollback_deployment"
+        "fmc_rollback_deployment",
+        "fmc_clear_hit_counts"
       ],
       "rendered": true,
       "tier": "write",
@@ -264,11 +270,9 @@
         "fmc_create_access_rule",
         "fmc_list_policy_assignments",
         "fmc_pending_changes",
-        "fmc_device_snapshot",
         "fmc_deploy",
         "fmc_packet_tracer",
         "fmc_get_hit_counts",
-        "fmc_diff_device_config",
         "fmc_rollback_deployment",
         "fmc_diff_policy_bundle",
         "fmc_import_policy_bundle"
@@ -426,13 +430,25 @@
       "tier": "dangerous",
       "title": "Back up devices"
     },
+    "fmc_bulk_update_access_rules": {
+      "tier": "write",
+      "title": "Bulk-edit access rules"
+    },
     "fmc_change_tickets": {
       "tier": "read",
       "title": "Change-management tickets"
     },
+    "fmc_clear_hit_counts": {
+      "tier": "write",
+      "title": "Clear rule hit counts"
+    },
     "fmc_configure_bgp": {
       "tier": "write",
       "title": "Configure BGP"
+    },
+    "fmc_configure_dns": {
+      "tier": "write",
+      "title": "Configure DNS (platform settings)"
     },
     "fmc_configure_ecmp_zone": {
       "tier": "write",
@@ -441,6 +457,14 @@
     "fmc_configure_ha_monitoring": {
       "tier": "write",
       "title": "Configure HA monitored interface"
+    },
+    "fmc_configure_mgmt_access": {
+      "tier": "write",
+      "title": "Configure ICMP / HTTPS management access"
+    },
+    "fmc_configure_netflow": {
+      "tier": "write",
+      "title": "Configure NetFlow export (platform settings)"
     },
     "fmc_configure_ntp": {
       "tier": "write",
@@ -481,6 +505,10 @@
     "fmc_create_app_route": {
       "tier": "write",
       "title": "Create application route"
+    },
+    "fmc_create_application_filter": {
+      "tier": "write",
+      "title": "Create application filter"
     },
     "fmc_create_decryption_policy": {
       "tier": "write",
@@ -602,6 +630,10 @@
       "tier": "write",
       "title": "Create subinterface"
     },
+    "fmc_create_time_range": {
+      "tier": "write",
+      "title": "Create time range"
+    },
     "fmc_create_trusted_ca": {
       "tier": "write",
       "title": "Create trusted CA certificate"
@@ -666,6 +698,10 @@
       "tier": "write",
       "title": "Delete object"
     },
+    "fmc_delete_objects": {
+      "tier": "dangerous",
+      "title": "Delete objects in bulk"
+    },
     "fmc_delete_policy": {
       "tier": "dangerous",
       "title": "Delete policy"
@@ -706,10 +742,6 @@
       "tier": "read",
       "title": "Device metrics over time"
     },
-    "fmc_device_snapshot": {
-      "tier": "read",
-      "title": "Snapshot device state"
-    },
     "fmc_diff_device_config": {
       "tier": "read",
       "title": "Compare device configurations"
@@ -741,6 +773,10 @@
     "fmc_find_address": {
       "tier": "read",
       "title": "Find where an address appears"
+    },
+    "fmc_find_application": {
+      "tier": "read",
+      "title": "Find applications and application filters"
     },
     "fmc_find_intrusion_rules": {
       "tier": "read",
@@ -886,6 +922,10 @@
       "tier": "read",
       "title": "List backups"
     },
+    "fmc_list_certificates": {
+      "tier": "read",
+      "title": "List certificates with days left"
+    },
     "fmc_list_clusters": {
       "tier": "read",
       "title": "List clusters"
@@ -1006,9 +1046,17 @@
       "tier": "dangerous",
       "title": "Register device"
     },
+    "fmc_register_devices": {
+      "tier": "dangerous",
+      "title": "Register several devices"
+    },
     "fmc_release_host": {
       "tier": "write",
       "title": "Release a contained host"
+    },
+    "fmc_replace_object": {
+      "tier": "write",
+      "title": "Replace an object everywhere"
     },
     "fmc_rollback_deployment": {
       "tier": "dangerous",
@@ -1033,6 +1081,10 @@
     "fmc_set_access_logging": {
       "tier": "write",
       "title": "Set access policy logging (syslog)"
+    },
+    "fmc_set_banner": {
+      "tier": "write",
+      "title": "Set login banner (platform settings)"
     },
     "fmc_set_decryption_policy": {
       "tier": "write",

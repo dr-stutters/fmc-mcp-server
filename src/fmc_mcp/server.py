@@ -18,8 +18,11 @@ from fmc_mcp.tools import (
     admin,
     analysis,
     app_routing,
+    bulk_rules,
     bundle,
     bundle_import,
+    certificates,
+    conditions,
     containment,
     dangerous,
     decryption,
@@ -44,16 +47,19 @@ from fmc_mcp.tools import (
     metrics,
     network_analysis,
     object_import,
+    object_lifecycle,
     object_writes,
     objects,
     pki,
     platform_access,
+    platform_services,
     platform_settings,
     policies,
     policy_writes,
     prefilter,
     prompts,
     prove,
+    registration,
     routing,
     rule_io,
     sdwan,
@@ -83,7 +89,8 @@ Workflows:
   (logical name, zone, IP) -> fmc_create_static_route -> fmc_assign_policy (NAT, platform settings)
   -> fmc_deploy -> verify with fmc_run_show_command ('show route', 'show interface ip brief').
   Loopbacks, VTIs, EtherChannels and BVIs: fmc_create_interface (then fmc_update_interface /
-  fmc_delete_interface like any interface).
+  fmc_delete_interface like any interface). Several FTDs at once (a lab or PoC rebuild):
+  fmc_register_devices (one preview, one bulk request, one wait for all, a result per device).
 - Roll out a branch from a device template (FMC 7.6+): fmc_create_device_template (from a working
   branch with source_device) -> fmc_get_device_template (variables, interfaces, VPN/SD-WAN settings)
   -> fmc_register_device (the new FTD) -> fmc_apply_device_template(template, device, variables)
@@ -106,7 +113,10 @@ Workflows:
   the fmc_prove_user_policy prompt.
 - Send FTD logs to the customer's syslog/SIEM: fmc_get_platform_settings -> fmc_configure_syslog
   (servers, level, facility, RFC 5424) -> fmc_assign_policy(kind='platform_settings') -> fmc_deploy;
-  fmc_set_access_logging sends connection/intrusion events there too.
+  fmc_set_access_logging sends connection/intrusion events there too. NetFlow to a collector:
+  fmc_configure_netflow; DNS (FQDN objects in rules only match once the device has a DNS server group;
+  rule and FQDN object previews warn): fmc_configure_dns; ICMP/HTTPS access and the login banner:
+  fmc_configure_mgmt_access, fmc_set_banner.
 - Dynamic routing: fmc_get_routing (BGP, OSPF, ECMP, PBR, VRFs) -> fmc_configure_bgp /
   fmc_configure_ospf / fmc_create_vrf -> fmc_deploy -> fmc_run_show_command('show route').
 - SD-WAN (hub and spoke over VTIs): zone the WAN and inside interfaces (fmc_update_interface) ->
@@ -138,6 +148,11 @@ Workflows:
   ALLOW rules -> fmc_deploy; fmc_get_file_policy shows the rules. Network analysis (preprocessing):
   fmc_get_network_analysis_policy, fmc_create_network_analysis_policy (linking it to an access policy is
   UI-only).
+- Application, VLAN, time and SGT rules: fmc_find_application (an app or filter by exact name or id, with
+  risk and business relevance) -> fmc_create_application_filter / fmc_create_time_range if needed ->
+  fmc_create_access_rule applications=[...], application_filters=[...], vlan_tags=[...], time_range=...,
+  source_sgts=[...] (ISE SGTs by name or tag) -> fmc_deploy -> fmc_get_hit_counts after real traffic
+  (packet tracer can't simulate app-id).
 - Users and groups in access rules (AD/LDAP): fmc_create_trusted_ca (LDAPS) -> fmc_create_realm ->
   fmc_test_realm -> fmc_download_realm -> fmc_create_identity_policy + fmc_create_identity_rule (PASSIVE
   needs ISE/pxGrid or an agent for user-IP mappings) -> select the identity policy in the access policy
@@ -159,9 +174,12 @@ Workflows:
 - "Where does 10.1.2.3 appear?": fmc_find_address (objects and groups, dynamic-object mappings, access,
   prefilter and NAT rules, static routes, VPN endpoints in one ranked call) -> fmc_where_used on an object.
 - Policy review: fmc_policy_audit ranks shadowed, permissive, unlogged, uninspected, unused and mergeable
-  rules, expired time ranges and duplicate objects, each with a fix to preview; then fmc_pending_changes
-  -> fmc_deploy. Threat-defense posture (intrusion and file policies, TRUST/fastpath bypasses, SI and DNS
-  coverage, decryption, licences): fmc_threat_posture; the fmc_threat_defense_review prompt combines both.
+  rules, expired time ranges and duplicate objects, each with a fix to preview; groups of identical fixes
+  go through fmc_bulk_update_access_rules (one preview, every rule's diff; select by names or
+  zero_hits_days); then fmc_pending_changes -> fmc_deploy. Fresh counters after a cleanup:
+  fmc_clear_hit_counts. Threat-defense posture (intrusion and file policies, TRUST/fastpath bypasses, SI
+  and DNS coverage, decryption, licences): fmc_threat_posture; the fmc_threat_defense_review prompt
+  combines both.
   Prompts: fmc_policy_cleanup (findings -> approved cleanup -> diff + re-audit) and fmc_rule_change_review
   (one rule change with before/after flows, shadowing check and a deploy plan with rollback).
 - Site-to-site VPN: fmc_create_s2s_vpn -> fmc_deploy both peers -> fmc_vpn_status (every topology's
@@ -188,6 +206,10 @@ Workflows:
 - Day-2 admin: fmc_upgrade_status (versions), fmc_list_backups / fmc_backup_devices,
   fmc_get_health_policy / fmc_update_health_policy, fmc_list_users, fmc_list_object_overrides /
   fmc_set_object_override (per-device values).
+- Object cleanup and migrations at scale: fmc_delete_objects (by names, a name prefix or every unused
+  object; one preview lists each victim and refuses built-ins, inherited and in-use objects),
+  fmc_replace_object (A becomes B in every rule, group, NAT rule and static route, then optionally delete A),
+  fmc_import_objects(mode='sync') (an IPAM export or CSV as the desired state: create, update, group members).
 Before changing or deleting an object, check fmc_where_used.
 
 Gotchas: FMC allows about 120 API requests per minute, so prefer the aggregate tools over many small
@@ -248,9 +270,13 @@ REGISTER: list[Callable[[ToolRegistrar], None]] = [
     deploy.register,
     device_config.register,
     object_writes.register,
+    conditions.register,
     object_import.register,
+    object_lifecycle.register,
     policy_writes.register,
+    bulk_rules.register,
     dangerous.register,
+    registration.register,
     troubleshoot.register,
     fleet.register,
     device_groups.register,
@@ -270,6 +296,7 @@ REGISTER: list[Callable[[ToolRegistrar], None]] = [
     activity.register,
     platform_settings.register,
     platform_access.register,
+    platform_services.register,
     routing.register,
     app_routing.register,
     intrusion.register,
@@ -283,6 +310,7 @@ REGISTER: list[Callable[[ToolRegistrar], None]] = [
     bundle_import.register,
     tickets.register,
     pki.register,
+    certificates.register,
     decryption.register,
     decryption_check.register,
     dns.register,
