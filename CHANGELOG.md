@@ -1,5 +1,59 @@
 # Changelog
 
+## 0.14.2 (2026-10-21)
+
+Fixes for the 14 findings of the Wave 5 operator eval (#197-#210, F46), each reviewed and re-tested on recorded FMC 10.0.1
+responses. Multi-domain FMCs (shared objects in Global, policies in a leaf) get correct built-in, where-used and DNS-policy
+answers; "what changed" and live connections lose their packet-tracer noise; show-one tools render nested rows in markdown.
+180 tools (79 read, 90 write, 11 dangerous) and eleven prompts, unchanged.
+
+### Fixed
+- FMC's built-in objects are recognised in a child domain too: `fmc_find_address`, `fmc_list_objects(include_system=false)`,
+  the policy audit's duplicate check, `fmc_delete_object` and policy bundles no longer treat HTTP, SSH or the RFC1918 networks as
+  user objects there; a leaf's bundle no longer marks the leaf's own objects as foreign, and a bundle no longer depends on the
+  exporting user's role (#197, #224).
+- `fmc_prove_policy` and `fmc_packet_tracer` take an HA pair or cluster name (traced on the active unit / control node; the device
+  column names pair and unit). Prove's auto placement searches every device (up to 30, one interface read each), leaves out standby
+  units, cluster data nodes and disconnected devices and lists them in `not_checked`; a standby-unit drop is an error, never a
+  policy mismatch (#198, #228, #244).
+- `fmc_user_ip_lookup` / `fmc_user_identity_sessions` with `history=true` return the sessions with `history_error` when FMC refuses
+  the user activity (403, 422, 5xx) instead of failing the call (#199, #226).
+- `fmc_list_audit_records` covers its 24-hour default on a busy FMC in a few requests: the `subsystem` filter is sent to FMC
+  (FMC 10.0.1: SQL LIKE); for changes the newest 500 records are read in full and the rest of the window through FMC's change
+  subsystems, with `reads_skipped` and a note on what the older part can't include. Page views and hit-count/CLI records are no
+  longer changes. Health alerts collapse on (device, module, status) with `details_changed`; `changed_from` only on a real status
+  change; `fmc_recent_activity` lists health only when a status changes in the window and names problems already active before it
+  in `health_ongoing` (#201, #203, #233).
+- `fmc_live_connections` hides packet-tracer flows (injected, or dropped by the trace: no bytes and a teardown ending FTD 10's
+  ` 0 0`); `include_simulated=true` lists them marked `simulated: true`; `last_seen` is shown next to `started` (#202, #237).
+- DNS policies keep their own name across `fmc_get_security_intelligence`, `fmc_threat_posture`, `fmc_set_dns_policy`, the SI
+  write tools and `fmc_dns_block`. `fmc_dns_block` on a DNS policy inherited from Global first offers a leaf DNS policy (same mode;
+  says which inherited rules stop applying), says what changing Global's would reach, and for unblock points to Global only
+  (#204, #235).
+- `fmc_where_used` works for an object inherited from Global: usage comes from the owner domain when the login sees it, each
+  policy's rules are read (bounded) in the domain that holds the policy, and rows name that domain (#210, #229).
+
+### Changed
+- Markdown output of the show-one tools (file, intrusion, decryption, DNS, identity, NAP, health policies, certificates, SI,
+  realms, tickets, upgrade status) shows nested rows as tables with all their fields instead of a list of names; tables over the
+  output limit say "showing N of M"; `fmc_get_intrusion_policy`'s `used_by` is `{access_policies, devices, access_policy_names}`
+  (#200, #225).
+- `fmc_device_metrics` answers with a `summary` (busy or not and why, peak window, top movements, flagged thresholds including an
+  FTDv's tier limit and rate-exceeded drops), leaves out series that stayed at zero, explains common ASP drop reasons, and has
+  `response_format` (markdown by default) (#208, #230).
+- `fmc_find_address` searches device interface addresses and their connected subnets (new `interfaces` area, HA standby addresses
+  and failover link), and a static-route row names the FTD interface that owns its next hop ("ambiguous" when several do)
+  (#205, #231).
+- `fmc_license_status` names each device licence row (device, HA pair or cluster and role, access policy) and lists what each
+  device's access policy needs, what it is missing and which devices it could not check (#206, #232).
+- `fmc_list_deployable_devices` lists deployments in progress with their job and age and flags ones running over 30 minutes as
+  `probably_stuck` (null when unknown); `fmc_pending_changes` says when FMC does not count the device as deployable (#209, #239).
+- `fmc_threat_posture` reports ALLOW rules without an intrusion policy (`allow_no_intrusion`, medium, one finding listing the
+  rules) (#207, #236).
+
+### Security
+- certifi 2026.10.19 (PYSEC-2026-4320, revoked emSign intermediates) (#227).
+
 ## 0.14.1 (2026-10-19)
 
 User identity in a leaf domain, and the last two Wave 5 proofs. With FMC's ISE (pxGrid) source connected, F34 and F56 are proven
