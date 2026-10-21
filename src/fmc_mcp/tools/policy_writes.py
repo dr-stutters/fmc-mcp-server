@@ -19,7 +19,7 @@ from fmc_mcp._core import (
 from fmc_mcp.client import FmcApp, is_uuid
 from fmc_mcp.preview import fmc_preview
 from fmc_mcp.refs import NETWORK_TYPES, PORT_TYPES, RefResolver, network_literal
-from fmc_mcp.rule_conditions import ExtraConditions, relabel_changes
+from fmc_mcp.rule_conditions import VLAN_NOTE, ExtraConditions, relabel_changes
 from fmc_mcp.rules import flatten_access_rule, flatten_nat_rule, url_labels
 from fmc_mcp.tools.common import Domain, block_labels, ref_label, resolve_in, rule_changes
 from fmc_mcp.tools.object_writes import applied, editable
@@ -106,7 +106,10 @@ AppFiltersParam = Annotated[
 ]
 VlanParam = Annotated[
     list[str] | None,
-    Field(description="802.1Q VLAN tags: VLAN tag objects/groups, or literals '10' and '100-110'"),
+    Field(
+        description="802.1Q VLAN tags: VLAN tag objects/groups, or literals '10' and '100-110'. They match "
+        "only traffic on inline sets, never on routed or transparent interfaces"
+    ),
 ]
 TimeRangeParam = Annotated[
     str | None,
@@ -413,7 +416,8 @@ def register(reg: ToolRegistrar) -> None:
             side_effects=extra.warnings
             + ["Takes effect on devices after the next deployment."]
             + ([URL_LICENCE] if cats else [])
-            + extra.notes,
+            + extra.notes
+            + ([VLAN_NOTE] if body.get("vlanTags") else []),
         )
         return await fmc_preview(
             ctx,
@@ -678,7 +682,8 @@ def register(reg: ToolRegistrar) -> None:
                 side_effects=extra.warnings
                 + ["Takes effect on devices after the next deployment."]
                 + ([URL_LICENCE] if cats else [])
-                + extra.notes,
+                + extra.notes
+                + ([VLAN_NOTE] if new_conditions.get("vlanTags") else []),
             ),
             apply=lambda: applied_rule(app, apply),
         )

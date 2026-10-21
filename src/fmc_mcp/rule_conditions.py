@@ -268,12 +268,19 @@ def condition_text(c: dict[str, Any]) -> str:
     return " and ".join(parts) or str(c.get("search") or c.get("filter") or "any")
 
 
+FILTER_APPS_SHOWN = 10
+
+
 def filter_row(f: dict[str, Any]) -> dict[str, Any]:
+    """An application filter in words. The spec's GET example lists the applications the conditions
+    match in `applications` (metadata.count of them), so only the first few names are shown."""
+    apps = [ref_label(a) for a in f.get("applications") or []]
     row = {
         "name": f.get("name"),
         "id": f.get("id"),
         "conditions": [condition_text(c) for c in f.get("appConditions") or []] or None,
-        "applications": [ref_label(a) for a in f.get("applications") or []] or None,
+        "applications": apps[:FILTER_APPS_SHOWN] or None,
+        "applications_total": len(apps) if len(apps) > FILTER_APPS_SHOWN else None,
         "matches_apps": (f.get("metadata") or {}).get("count"),
     }
     return {k: v for k, v in row.items() if v is not None}
@@ -439,6 +446,11 @@ TIME_NOTE = "Time ranges are evaluated in each device's own time zone (platform 
 SGT_NOTE = (
     "SGT conditions match the tag on the connection: ISE SGTs from the session ISE publishes over pxGrid "
     "(or SXP), custom SGTs from inline tags."
+)
+VLAN_NOTE = (
+    "VLAN tag conditions apply only to traffic on inline sets: on routed or transparent (firewall) "
+    "interfaces, subinterfaces included, a rule with VLAN tags never matches (FMC configuration guide, "
+    "VLAN tag conditions)."
 )
 
 

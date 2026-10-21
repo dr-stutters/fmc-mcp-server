@@ -19,6 +19,7 @@ from fmc_mcp.refs import vlan_literal
 from fmc_mcp.rule_conditions import (
     app_labels,
     condition_text,
+    filter_row,
     merge_app_block,
     relabel_changes,
     sgt_label,
@@ -260,6 +261,7 @@ async def test_create_rule_with_every_new_condition(conds: respx.MockRouter) -> 
     assert "Snort has identified the application" in effects
     assert "own time zone" in effects
     assert "pxGrid" in effects
+    assert "only to traffic on inline sets" in effects  # VLAN rules never match on routed interfaces
     # the catalogue index was read once for two names; the numeric id with one GET
     assert conds.routes["apps"].call_count == 1
     assert conds.routes["customsgts"].call_count >= 1  # 422 while ISE is on: treated as "no custom SGTs"
@@ -274,6 +276,7 @@ async def test_create_rule_with_expired_time_range_warns(conds: respx.MockRouter
         )
     assert out["status"] == "preview" and not out.get("blockers")
     assert "ended 2024-12-26T23:59: the rule will never match" in out["side_effects"][0]
+    assert not any("inline sets" in e for e in out["side_effects"])  # no VLAN tags, no VLAN note
     assert out["preview"]["time_range"]["ended"] is True
 
 
@@ -360,6 +363,7 @@ async def test_update_replaces_only_the_given_parts(conds: respx.MockRouter) -> 
     assert changes["sourceSecurityGroupTags"] == {"from": ["Employees (SGT 4)"], "to": "any"}
     assert changes["destinationSecurityGroupTags"] == {"from": "any", "to": ["PCI_Servers (SGT 14)"]}
     assert changes["vlanTags"] == {"from": ["VLAN 10"], "to": ["VLAN 100-110"]}
+    assert any("only to traffic on inline sets" in e for e in preview["side_effects"])
     assert not any(k.startswith("applications.") for k in changes)
     sent = json.loads(put.calls.last.request.content)
     assert sent["applications"] == {"applications": [SSH], "applicationFilters": [filt]}
@@ -443,6 +447,15 @@ async def test_find_application_filters_and_attributes(conds: respx.MockRouter) 
     async with Client(server()) as c:
         out = await run(c, "fmc_find_application", {"text": "sharing", "kind": "attribute"})
     assert out["attributes"] == {"categories": ["file sharing"]}
+
+
+def test_filter_row_caps_the_matched_applications() -> None:
+    """The spec's GET example lists the applications a filter's conditions match: show a few."""
+    apps = [{"id": str(i), "type": "Application", "name": f"app{i}"} for i in range(25)]
+    row = filter_row({**FILTER, "applications": apps})
+    assert row["applications"] == [f"app{i}" for i in range(10)]
+    assert row["applications_total"] == 25 and row["matches_apps"] == 1946
+    assert "applications_total" not in filter_row({**FILTER, "applications": apps[:3]})
 
 
 # --- fmc_create_application_filter -----------------------------------------------------------------
