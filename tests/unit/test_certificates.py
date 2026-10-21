@@ -207,6 +207,34 @@ async def test_include_bundled_and_kind(fmc: respx.MockRouter) -> None:
     assert not any("internalcertificates" in str(call.request.url) for call in fmc.calls)
 
 
+async def test_bundled_root_quirks_recorded_live(fmc: respx.MockRouter) -> None:
+    """live-B2's raw reads of two bundled roots (trusted_cas_quirks): the double-space OpenSSL date parses,
+    FMC's damaged subject fields pass through as FMC has them (mojibake, cut at a comma), an empty CN
+    falls back to the organisation, and a metadata.domain without an id still names the domain."""
+    netlock, secom = FX["trusted_cas_quirks"]["items"]
+    assert (
+        netlock["validityEndDate"] == "Dec  6 15:08:21 2028 GMT" and "id" not in secom["metadata"]["domain"]
+    )
+    trusted = copy.deepcopy(FX["trusted_cas"])
+    trusted["items"] += [netlock, secom]
+    mock_all(fmc, trusted=trusted)
+    async with Client(server()) as c:
+        hidden = await run(c, {"kind": "trusted_ca"})
+        out = await run(c, {"kind": "trusted_ca", "include_bundled": True})
+    assert [r["name"] for r in hidden["results"]] == ["mcp-test-lab-CA"] and hidden[
+        "bundled_roots_hidden"
+    ] == 4
+    rows = {r["name"]: r for r in out["results"]}
+    nl = rows[netlock["name"]]
+    assert nl["expires"] == "2028-12-06T15:08:21Z" and nl["severity"] != "unknown"
+    assert (
+        nl["subject"] == netlock["subjectCommonName"] and nl["bundled"] is True and nl["domain"] == "Global"
+    )
+    sc = rows[secom["name"]]
+    assert sc["subject"] == "SECOM Trust Systems CO." and sc["issuer"] == "SECOM Trust Systems CO."
+    assert sc["expires"] == "2029-05-29T05:00:39Z" and sc["bundled"] is True and sc["domain"] == "Global"
+
+
 async def test_expiring_within_days_and_severity(fmc: respx.MockRouter) -> None:
     internal = copy.deepcopy(FX["internal_certificates"])
     soon = internal["items"][0]
