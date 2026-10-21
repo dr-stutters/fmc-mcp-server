@@ -1,13 +1,14 @@
 # fmc_firewall_health_review
 
 title: Firewall health review
-arguments: {"compare_with": "example", "device": "mcp-ftd", "domain": "Global", "group": "example", "lookback_hours": "24"}
+arguments: {"baseline": "snapshot-mcp-ftd1-before-20261021T023000Z.yaml", "compare_with": "example", "device": "mcp-ftd", "domain": "Global", "group": "example", "lookback_hours": "24"}
 
 Is the firewall estate healthy? Reviews device health and connectivity (with CPU, memory,
 throughput and drops over the review window for the devices that need it), HA pairs and
 clusters, the deployment backlog and failed deployments, licences, software and VDB/SRU/LSP
 content age, backups, VPN tunnels and recent health alerts with the aggregate tools, optionally
-configuration drift against a reference device, template or stored export (compare_with), and
+configuration drift against a reference device, template or stored export (compare_with), the
+device state against snapshots taken before a change (baseline; else how to take one), and
 writes one ranked report (critical, warning, info), each finding with its evidence and a
 concrete next step. Read-only.
 
@@ -91,7 +92,17 @@ else info): note it and carry on.
    site are info. Give each difference with its section, key and from/to values; `identical: true`
    is an info finding of its own. Sections under `not_compared` weren't checked: say which.
 
-10. Report: one list, critical first, then warning, then info; within a level, what affects
+10. State since the baseline snapshot (b omitted: the same device now,
+   its snapshot's sections re-read, about ten requests per device):
+   - `fmc_diff_device_config` with a="snapshot-mcp-ftd1-before-20261021T023000Z.yaml", domain="Global"
+   `findings` words each change. A route lost, a tunnel or IKEv2 SA down, an interface down or a
+   failover state change is critical on a link or tunnel that should carry traffic (else a warning);
+   a new health alert counts at its level; a cleared alert, a new deployment (deployed_version,
+   last_job) and the hit-count `deltas` are info. Sections under `not_compared`, and the snapshot's
+   meta.errors, weren't checked: say which. Then `fmc_device_snapshot` with devices=[the same devices],
+   label='after', domain="Global", so the change record has both sides.
+
+11. Report: one list, critical first, then warning, then info; within a level, what affects
    traffic (devices, HA, VPN) comes before what affects management (licences, content, backups).
    Merge findings with one cause (a red device and its INTERFACE alerts). Each finding gives:
    - its level and a one-line title naming the device or the FMC;

@@ -5,7 +5,8 @@ arguments: {"destination": "10.10.10.80", "policy": "mcp-test-acp", "port": "443
 
 Review an access rule change before it is made and deployed: baseline bundle, sample flows
 through fmc_rule_lookup before and after, a shadowing and overlap check, the change as a preview,
-what a deploy would push, and a deploy plan with rollback. Changes only what the user approves.
+what a deploy would push, a device snapshot before and a snapshot + state diff after the deploy,
+and a deploy plan with rollback. Changes only what the user approves.
 
 ## user
 
@@ -37,13 +38,23 @@ separate approval.
 
 5. What a deploy would push: `fmc_list_policy_assignments` with policy="mcp-test-acp" for the devices, and
    `fmc_pending_changes` for each (at most three). Pending changes that aren't this one
-   are a finding: someone else's work would go out too.
+   are a finding: someone else's work would go out too. Snapshot before (read-only, before any
+   deploy): `fmc_device_snapshot` with devices=[those devices, at most 10],
+   label="before mcp-test-allow-web" (routing table, interfaces, tunnels and SAs, hit counts, health alerts, the
+   deployed version; about ten requests per device). Keep each device's file or YAML: it is the
+   state to compare with after the deploy.
 
 6. Deploy plan (don't deploy unless the user asks): `fmc_deploy` previewed for those
    devices, then verification with `fmc_packet_tracer` for the in-rule flow and
-   `fmc_get_hit_counts` on the rule. Rollback: `fmc_rollback_deployment` for
-   the device, or `fmc_diff_policy_bundle` with a=<baseline bundle> to see exactly what
-   to undo, and `fmc_import_policy_bundle` with the baseline to restore it.
+   `fmc_get_hit_counts` on the rule. After the deploy, snapshot and diff:
+   `fmc_device_snapshot` with the same devices, label="after mcp-test-allow-web", then
+   `fmc_diff_device_config` with a=<before>, b=<after> per device. Expect the
+   deployment's deployed_version to move and the rule's hit count to rise (`deltas`); a route lost,
+   a tunnel or SA down, an interface change or a new health alert in `findings` is a regression:
+   say so and propose the rollback. Rollback: `fmc_rollback_deployment` for the device,
+   or `fmc_diff_policy_bundle` with a=<baseline bundle> to see exactly what to undo, and
+   `fmc_import_policy_bundle` with the baseline to restore it.
 
 7. Report: the change as applied (or still only previewed), the flows before and after, audit
-   findings added or removed, pending changes per device, and the deploy and rollback steps.
+   findings added or removed, pending changes per device, the state diff after the deploy (or the
+   snapshot files to compare with), and the deploy and rollback steps.
