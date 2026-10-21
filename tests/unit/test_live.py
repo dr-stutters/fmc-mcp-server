@@ -425,3 +425,66 @@ def test_only_a_zero_byte_teardown_ending_0_0_counts_as_simulated() -> None:
     assert rows["4"].state == "open"  # open flows are never marked
     assert rows["5"].reason == "SYN Timeout"  # no tail at all (older FTD)
     assert rows["6"].simulated_by == "tail"
+
+
+# --- FTD 10.0.0 buffer as recorded live (W6, 2026-10-21) --------------------------------------------
+
+FTD10_ON = LIVE["show logging (FTD 10.0.0 live, buffer on)"]
+FTD10_NO_CONN = LIVE["show logging (FTD 10.0.0 live, no connection messages)"]
+SNORT_AT_SERVER = LIVE["snort 430003 at the syslog server (FTD 10.0.0 live)"]
+
+
+async def test_live_ftd10_buffer_rows_and_why_they_are_bare(ftd: respx.MockRouter) -> None:
+    """No timestamps by default and no Snort events in the buffer: rows have no times, rule or app, and
+    the note says why instead of pointing at fmc_set_access_logging."""
+    ftd.get(CMD).mock(return_value=httpx.Response(200, json=FTD10_ON))
+    data = await call("fmc_live_connections", {"device": "mcp-ftd1"})
+    rows = data["results"]
+    assert [(r["protocol"], r["state"], r.get("id")) for r in rows] == [
+        ("ICMP", "open", None),
+        ("TCP", "open", "89"),
+        ("TCP", "open", "80"),
+        ("TCP", "closed", "103"),
+    ]
+    assert (
+        rows[1]["initiator"] == "inside 10.99.1.10:56764" and rows[1]["responder"] == "outside 192.0.2.35:80"
+    )
+    closed = rows[3]
+    assert (closed["reason"], closed["duration"]) == ("SYN Timeout", "0:00:30")  # FTD 10's ' -1 -1' dropped
+    assert not any(k in r for r in rows for k in ("rule", "application", "started", "last_seen", "simulated"))
+    note = data["note"]
+    assert "'Timestamp logging: disabled'" in note
+    assert "only to syslog servers, never to the internal buffer" in note
+    assert "fmc_set_access_logging + fmc_configure_syslog" in note
+    assert "holds no connection messages" not in note
+
+
+async def test_buffer_without_connection_messages_names_them(ftd: respx.MockRouter) -> None:
+    """Before 302013-302021 were enabled the buffer held only NAT messages and the answer was just empty."""
+    ftd.get(CMD).mock(return_value=httpx.Response(200, json=FTD10_NO_CONN))
+    data = await call("fmc_live_connections", {"device": "mcp-ftd1", "host": "10.99.1.10"})
+    assert data["results"] == [] and data["connections_seen"] == 0
+    assert "holds no connection messages (302013-302021)" in data["note"]
+    assert "syslogids" in data["note"] and "Timestamp" not in data["note"]
+
+
+async def test_buffer_off_hint_says_where_rule_and_app_come_from(ftd: respx.MockRouter) -> None:
+    ftd.get(CMD).mock(return_value=httpx.Response(200, json=LIVE["show logging (buffer off)"]))
+    note = (await call("fmc_live_connections", {"device": "mcp-ftd1"}))["note"]
+    assert "302013-302021" in note and "timestamps" in note
+    assert "only to syslog servers, never to the internal buffer" in note
+    assert "also send the rules' connection events to syslog" not in note  # the old, wrong advice
+
+
+def test_real_snort_430003_fields_join_the_connection() -> None:
+    """The field set of a real FTD 10.0.0 430003 (as a syslog server got it): rule, action, app, bytes."""
+    built = (
+        "%FTD-6-302015: Built outbound UDP connection 32 for outside:192.0.2.53/53 (192.0.2.53/53) to "
+        "inside:10.99.1.10/43656 (192.0.2.1/43656) -1 -1"
+    )
+    snort = SNORT_AT_SERVER.removeprefix("SFIMS ")
+    conns, enabled = parse_log_buffer(f"Buffer logging: level informational\n{built}\n{snort}\n")
+    (c,) = conns
+    assert enabled and (c.rule, c.action, c.application) == ("mcp-w6-allow-out", "Allow", "DNS")
+    assert c.bytes == 138 + 182 and c.duration == "0s" and c.state == "open"
+    assert (c.initiator, c.responder) == ("inside 10.99.1.10:43656", "outside 192.0.2.53:53")

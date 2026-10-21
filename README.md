@@ -160,9 +160,11 @@ Notes on some read tools:
   keeps it behind a feature flag (403), so the tool then asks each device, eight at a time, and `path` says so.
 - `fmc_get_hit_counts` refreshes the counters from the device first (packet-tracer packets count too).
 - `fmc_live_connections` answers "what is this host talking to right now?". FMC 10.0.1 refuses `show conn`
-  over its API, so it reads the device's syslog buffer (`show logging`: connection built/teardown messages and
-  Snort connection events with the rule, user and application); the device's platform settings must log to the
-  internal buffer at level informational (the tool says so when they don't). Where FMC's spec lists `show conn`,
+  over its API, so it reads the device's syslog buffer (`show logging`: connection built/teardown messages
+  302013-302021, which FTD ships disabled); the device's platform settings must log to the internal buffer at
+  level informational (the tool says so when they don't). The buffer has no access rule or application: FTD 10
+  sends Snort's connection events (430002/430003) only to syslog servers, and the note says so; timestamps on
+  syslog messages are off by default too. Where FMC's spec lists `show conn`,
   the live connection table is used instead. `fmc_user_identity_sessions` reads FMC's identity view
   (`analysis/activesessions`, `analysis/useractivity`; the FTD has no `show user-identity`): the account's role
   needs Events & Logs > Analysis > Users. In a child domain these lookups fall back to the ancestor domains
