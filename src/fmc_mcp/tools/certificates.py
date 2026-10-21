@@ -115,8 +115,8 @@ def object_row(c: dict[str, Any], col: Collection, now: datetime) -> dict[str, A
     row: dict[str, Any] = {
         "kind": col.kind,
         "name": c.get("name"),
-        "subject": names.subject_cn or names.subject_o,
-        "issuer": names.issuer_cn or names.issuer_o,
+        "subject": names.subject,  # CN, else OU (CN-less roots), else O
+        "issuer": names.issuer,
         "expires": iso(end),
         "days_left": left,
         "severity": severity(left),
