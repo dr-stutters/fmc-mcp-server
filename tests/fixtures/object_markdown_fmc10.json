@@ -1,5 +1,5 @@
 {
-  "_source": "FMC 10.0.1, domain Global/mcp-test-leaf, read-only GETs through fmc-mcp (2026-10-20) for #200: policy/intrusionpolicies?expanded=true (Balanced and mcp-fw-ips kept; the list answer, unlike GET of one policy, fills metadata.usage.asscoiatedAcPolicies, FMC's spelling), mcp-fw-ips's overridden rules (intrusionrules?filter=overrides:true;ipspolicy:<id>), updates/deviceupgradeinfo (two of 19 devices; addresses replaced, mcp-ftd1's id set to tests/fixtures/ftd_device.json's) and updates/upgradepackages?expanded=true (the version is in metadata.updateVersion).",
+  "_source": "FMC 10.0.1, domain Global/mcp-test-leaf, read-only GETs through fmc-mcp (2026-10-20) for #200: policy/intrusionpolicies?expanded=true (Balanced and mcp-fw-ips kept; the list answer, unlike GET of one policy, fills metadata.usage.asscoiatedAcPolicies, FMC's spelling; intrusion_policy_get is GET of mcp-fw-ips by id, whose usage says 0 access policies / 0 devices), mcp-fw-ips's overridden rules (intrusionrules?filter=overrides:true;ipspolicy:<id>), updates/deviceupgradeinfo (two of 19 devices; addresses replaced, mcp-ftd1's id set to tests/fixtures/ftd_device.json's) and updates/upgradepackages?expanded=true (the version is in metadata.updateVersion).",
   "intrusion_policies": {
     "items": [
       {
@@ -80,6 +80,40 @@
       "limit": 25,
       "count": 2,
       "pages": 1
+    }
+  },
+  "intrusion_policy_get": {
+    "name": "mcp-fw-ips",
+    "id": "00000000-0000-0ed3-0000-021474910982",
+    "type": "intrusionpolicy",
+    "basePolicy": {
+      "name": "Balanced Security and Connectivity",
+      "id": "6c66b83c-bc23-55b6-879d-c4d847443503",
+      "type": "intrusionpolicy"
+    },
+    "description": "FW run F62: custom IPS on Balanced; 1:498 set to BLOCK for the uid.txt trigger",
+    "inlineDrop": 1,
+    "inspectionMode": "PREVENTION",
+    "isSystemDefined": false,
+    "metadata": {
+      "mappedPolicy": {
+        "name": "mcp-fw-ips",
+        "id": "2b730564-cb48-11f1-89ff-9ae26f180443",
+        "type": "intrusionpolicy",
+        "inspectionMode": "PREVENTION",
+        "snortEngine": "SNORT2"
+      },
+      "usage": {
+        "accesspolicy": 0,
+        "zerotrustpolicy": 0,
+        "devices": 0
+      },
+      "domain": {
+        "name": "Global \\ mcp-test-leaf",
+        "id": "a1c73df0-8353-8db7-1097-000000000000",
+        "type": "Domain"
+      },
+      "snortEngine": "SNORT3"
     }
   },
   "intrusion_overrides": {

@@ -21,7 +21,7 @@ from fmc_mcp._core import (
     list_result,
 )
 from fmc_mcp._core.http import Page
-from fmc_mcp.client import FmcApp
+from fmc_mcp.client import FmcApp, is_uuid
 from fmc_mcp.preview import fmc_preview
 from fmc_mcp.tools.common import Domain, ref_label, resolve_in
 from fmc_mcp.tools.network_analysis import access_policies_using
@@ -106,6 +106,15 @@ async def resolve_ips(app: FmcApp, ref: str, domain: str | None) -> dict[str, An
     return await resolve_in(app, IPS, ref, "intrusion policy", domain)
 
 
+async def with_usage(app: FmcApp, p: dict[str, Any], ref: str, domain: str | None) -> dict[str, Any]:
+    """The policy as FMC's list answers it when it was given by UUID: FMC 10.0.1's GET of one intrusion
+    policy says accesspolicy 0 / devices 0 and names no access policy, its list has the real usage."""
+    if not is_uuid(ref.strip()):
+        return p
+    page = await app.all(await app.config_path(IPS, domain))
+    return next((x for x in page.items if x.get("id") == p.get("id")), p)
+
+
 async def find_rules(
     app: FmcApp, ref: str, domain: str | None, policy_id: str | None = None, limit: int = 25
 ) -> tuple[list[dict[str, Any]], int]:
@@ -129,7 +138,7 @@ def register(reg: ToolRegistrar) -> None:
         overridden in it (gid:sid, message, default vs. override). Find rules with
         fmc_find_intrusion_rules; tune them with fmc_set_intrusion_rule_state."""
         app: FmcApp = get_client(ctx)
-        p = await resolve_ips(app, policy, domain)
+        p = await with_usage(app, await resolve_ips(app, policy, domain), policy, domain)
         meta = p.get("metadata") or {}
         path = await app.config_path(f"{IPS}/{p['id']}/intrusionrules", domain)
         over = await app.all(path, {"filter": f"overrides:true;ipspolicy:{p['id']}"}, cap=MAX_OVERRIDES)
@@ -201,7 +210,7 @@ def register(reg: ToolRegistrar) -> None:
         current override. System policies (Balanced, Security over Connectivity, ...) can't be edited:
         create a custom one on top with fmc_create_intrusion_policy. Takes effect after a deploy."""
         app: FmcApp = get_client(ctx)
-        p = await resolve_ips(app, policy, domain)
+        p = await with_usage(app, await resolve_ips(app, policy, domain), policy, domain)
         blockers: list[str] = []
         if p.get("isSystemDefined"):
             blockers.append(

@@ -16,8 +16,9 @@ import pytest
 import respx
 from fastmcp import Client
 
+from fmc_mcp._core.formatting import MASK, max_chars
 from fmc_mcp.server import create_server
-from fmc_mcp.tools.render import is_ref, is_rows, object_markdown
+from fmc_mcp.tools.render import is_ref, is_rows, object_markdown, object_reply
 
 from . import test_admin, test_file_policy, test_identity, test_si_feeds, test_tickets
 from .conftest import CFG, fixture, items, make_settings
@@ -71,6 +72,42 @@ def test_notes_one_per_line_and_multiline_text_fenced() -> None:
     assert "- **notes**:\n  - Install it first, then deploy.\n  - Two" in md
     assert f"### certificate_pem\n\n```\n{pem}\n```" in md
     assert object_markdown({}) == "_Empty._"
+
+
+def reply_text(obj: dict[str, Any], **kw: Any) -> str:
+    return str(object_reply(obj, fmt="markdown", **kw).content[0].text)  # type: ignore[union-attr]
+
+
+def test_a_long_table_is_capped_and_later_sections_survive() -> None:
+    rows = [{"index": i, "name": f"rule-{i:04d}", "action": "ALLOW", "comment": "x" * 60} for i in range(600)]
+    md = reply_text(
+        {"name": "p", "rules": rows, "zones": [{"zone": "inside", "kind": "routed"}], "note": "end"}
+    )
+    assert len(md) <= max_chars() and "[truncated]" not in md
+    assert "### rules (600)" in md and "| 199 | rule-0199 |" in md and "| 200 | rule-0200 |" not in md
+    assert "_Showing 200 of 600 rows; use response_format='json' or narrow the query._" in md
+    assert (
+        "### zones (1)\n\n| zone | kind |\n|---|---|\n| inside | routed |" in md and "- **note**: end" in md
+    )
+    small = reply_text({"rules": rows[:5]})
+    assert "Showing" not in small and "| 4 | rule-0004 |" in small
+
+
+def test_cells_and_fences_survive_odd_text() -> None:
+    md = object_markdown(
+        {"rows": [{"a": "one\rtwo", "b": "x\r\ny | z"}], "csv": "name,note\nr1,```code```\nr2,ok"}
+    )
+    assert "| one two | x y \\| z |" in md
+    assert "### csv\n\n````\nname,note\nr1,```code```\nr2,ok\n````" in md
+
+
+@pytest.mark.parametrize("shape", [True, False])
+def test_secrets_are_masked_in_markdown(shape: bool) -> None:
+    md = reply_text(
+        {"name": "realm", "password": "hunter2", "peers": [{"host": "h1", "psk": "s3cret", "port": 500}]},
+        shape=shape,
+    )
+    assert "hunter2" not in md and "s3cret" not in md and MASK in md and "| h1 | ******** | 500 |" in md
 
 
 def test_no_tool_renders_markdown_through_core_object_result() -> None:
@@ -302,3 +339,18 @@ async def test_upgrade_status_markdown_lists_each_device(fmc: respx.MockRouter) 
         "| mcp-ftd1 | 10.0.0 | Cisco Secure Firewall Threat Defense for KVM | SNORT3 | False | 10.0.0-140 |"
         in md
     )
+
+
+async def test_intrusion_policy_by_uuid_keeps_its_usage(fmc: respx.MockRouter) -> None:
+    """FMC's GET of one intrusion policy says 0 access policies / 0 devices and names none (recorded):
+    by UUID the usage comes from the list answer, as by name."""
+    setup_intrusion(fmc)
+    ips = REC["intrusion_policy_get"]
+    fmc.get(f"{CFG}/policy/intrusionpolicies/{ips['id']}").mock(return_value=httpx.Response(200, json=ips))
+    async with Client(create_server(make_settings())) as c:
+        out = json.loads(await answer(c, "fmc_get_intrusion_policy", {"policy": ips["id"]}, "json"))
+    assert out["used_by"] == {
+        "access_policies": 1,
+        "devices": 1,
+        "access_policy_names": ["mcp-fw-threat-acp"],
+    }
