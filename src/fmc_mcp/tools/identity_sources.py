@@ -706,17 +706,18 @@ def register(reg: ToolRegistrar) -> None:
     ) -> dict[str, Any]:
         """Resolve an IP to its user, or a user to their IPs, the way the firewall does: from FMC's identity
         sessions (fed by ISE/pxGrid, the passive identity agent, captive portal or RA VPN) plus the user's
-        AD/LDAP groups from the realm download. Returns the sessions (user, realm, IP, source, login and
-        last seen) and, for one IP, `identities`: the user and groups ready for
-        fmc_rule_lookup(identities=...). Use it for "who is 192.0.2.57?", "which IP is alice on?", or before
-        explaining a user-based block (fmc_rule_lookup already does this lookup itself when you omit
-        `identities`). The FMC account's role needs Events & Logs > Analysis > Users; without it the user's
-        realm groups still come back. If no source reports users, see fmc_get_identity_sources; to page
-        through every session a device reports, fmc_user_identity_sessions. In a child domain with no
-        session the ancestor domains are read up to Global, where FMC keeps the ISE source's sessions
-        (FMC 10.0.1 configures it in Global only); `sessions_domain` names the domain that answered.
-        fmc_find_address (users on an IP), fmc_rule_lookup and fmc_prove_policy (a user flow without a
-        source IP) read the same sessions."""
+        AD/LDAP groups from the realm download. Returns the sessions (user, realm, IP, source, login and last
+        seen) and, for one IP, `identities`: the user and groups ready for fmc_rule_lookup(identities=...).
+        With history, also the recent logins and logoffs; if FMC refuses those (403, 422, 5xx), everything
+        else still comes back, with `history_error` saying why. Use it for "who is 192.0.2.57?", "which IP is
+        alice on?", or before explaining a user-based block (fmc_rule_lookup already does this lookup itself
+        when you omit `identities`). The FMC account's role needs Events & Logs > Analysis > Users; without it
+        the user's realm groups still come back. If no source reports users, see fmc_get_identity_sources; to
+        page through every session a device reports, fmc_user_identity_sessions. In a child domain with no
+        session the ancestor domains are read up to Global, where FMC keeps the ISE source's sessions (FMC
+        10.0.1 configures it in Global only); `sessions_domain` names the domain that answered.
+        fmc_find_address (users on an IP), fmc_rule_lookup and fmc_prove_policy (a user flow without a source
+        IP) read the same sessions."""
         app: FmcApp = get_client(ctx)
         if not ip and not user:
             raise InvalidRequest("Give an ip or a user.")
