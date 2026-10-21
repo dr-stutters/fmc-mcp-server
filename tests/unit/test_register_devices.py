@@ -1,7 +1,8 @@
 """F74: fmc_register_devices (several FTDs in one call; an MCP background task with MCP_TASKS=true).
 
-The bulk answer is the FMC 10.0.1 spec's example (one TaskStatus for the batch) until Stage 2 records
-the live one; the task and job-history shapes are live FMC 10.0.1 captures (tests/fixtures)."""
+The bulk answer, the batch task with its subTasks and the four initial deployments are FMC 10.0.1's live
+answers to a four-FTDv call (Wave 6 Stage 2); the single-registration task and job are live captures
+too (tests/fixtures/register_devices.json)."""
 
 import copy
 import json
@@ -37,6 +38,7 @@ ROWS = [
     {"name": "bulk-3", "host": "192.0.2.13"},
 ]
 FIX = fixture("register_devices")
+TASK = FIX["bulk_response"]["items"][0]["id"]  # the live batch task (one TaskStatus for every row)
 
 
 def dev_id(n: int) -> str:
@@ -113,8 +115,8 @@ def bulk_route(fmc: respx.MockRouter, response: httpx.Response) -> respx.Route:
 # --- shapes ---------------------------------------------------------------------------------------
 
 
-def test_bulk_task_ids_spec_example_and_variants() -> None:
-    assert bulk_task_ids(FIX["bulk_response"]) == ["30064772170"]
+def test_bulk_task_ids_live_answer_and_variants() -> None:
+    assert bulk_task_ids(FIX["bulk_response"]) == ["21474969953"]
     assert bulk_task_ids({"metadata": {"task": {"id": "t9"}}}) == ["t9"]
     per_device = [{"metadata": {"task": {"id": "a"}}}, {"metadata": {"task": {"id": "b"}}}]
     assert bulk_task_ids(per_device) == ["a", "b"]
@@ -218,7 +220,7 @@ async def test_bulk_registers_and_waits_for_every_initial_deployment(fmc: respx.
     mock_policies(fmc)
     post = bulk_route(fmc, httpx.Response(202, json=FIX["bulk_response"]))
     devices_after(fmc, post, [1, 2, 3])
-    tasks = fmc.get(f"{CFG}/job/taskstatuses/30064772170").mock(
+    tasks = fmc.get(f"{CFG}/job/taskstatuses/{TASK}").mock(
         side_effect=[task("RUNNING", "DEVICE_REGISTRATION_IN_PROGRESS"), task()]
     )
     old = job([(1, "SUCCEEDED")], start="2026-10-19T00:04:08Z")  # before this run: ignored
@@ -246,11 +248,11 @@ async def test_bulk_registers_and_waits_for_every_initial_deployment(fmc: respx.
         "deviceGroup": {"id": GROUP["id"], "type": "DeviceGroup"},
     }
     result = done["result"]
-    assert result["method"] == "bulk" and result["bulk_tasks"] == ["30064772170"]
+    assert result["method"] == "bulk" and result["bulk_tasks"] == [TASK]
     assert result["bulk_answer"] == FIX["bulk_response"]
     assert result["summary"] == {"deployed": 3}
     first = result["devices"][0]
-    assert first["device_id"] == dev_id(1) and first["task_id"] == "30064772170"
+    assert first["device_id"] == dev_id(1) and first["task_id"] == TASK
     assert first["registration"] == "SUCCESS: DEVICE_SUCCESSFULLY_REGISTERED"
     assert first["initial_deployment"] == {
         "job": "Deploy_Job_107",
@@ -266,7 +268,7 @@ async def test_bulk_task_failure_fails_only_the_rows_fmc_does_not_list(fmc: resp
     mock_policies(fmc)
     post = bulk_route(fmc, httpx.Response(202, json=FIX["bulk_response"]))
     devices_after(fmc, post, [1, 2])
-    fmc.get(f"{CFG}/job/taskstatuses/30064772170").mock(return_value=task("FAILED", "Registration timed out"))
+    fmc.get(f"{CFG}/job/taskstatuses/{TASK}").mock(return_value=task("FAILED", "Registration timed out"))
     fmc.get(f"{CFG}/deployment/jobhistories").mock(
         return_value=items([job([(1, "SUCCEEDED"), (2, "SUCCEEDED")])])
     )
@@ -298,7 +300,7 @@ async def test_bulk_success_waits_for_a_device_fmc_lists_late(fmc: respx.MockRou
     mock_policies(fmc)
     post = bulk_route(fmc, httpx.Response(202, json=FIX["bulk_response"]))
     devices_listed_late(fmc, post, [[1, 2], [1, 2, 3]])
-    fmc.get(f"{CFG}/job/taskstatuses/30064772170").mock(return_value=task())
+    fmc.get(f"{CFG}/job/taskstatuses/{TASK}").mock(return_value=task())
     fmc.get(f"{CFG}/deployment/jobhistories").mock(
         return_value=items([job([(1, "SUCCEEDED"), (2, "SUCCEEDED"), (3, "SUCCEEDED")])])
     )
@@ -325,7 +327,7 @@ async def test_bulk_success_but_never_listed_is_reported_running(
     mock_policies(fmc)
     post = bulk_route(fmc, httpx.Response(202, json=FIX["bulk_response"]))
     devices_after(fmc, post, [1])
-    fmc.get(f"{CFG}/job/taskstatuses/30064772170").mock(return_value=task())
+    fmc.get(f"{CFG}/job/taskstatuses/{TASK}").mock(return_value=task())
     fmc.get(f"{CFG}/deployment/jobhistories").mock(return_value=items([job([(1, "SUCCEEDED")])]))
     _, done = await confirm({"devices": ROWS[:2], "access_policy": "mcp-w6-bulk-acp", "timeout_minutes": 1})
     result = done["result"]
@@ -367,7 +369,7 @@ async def test_bulk_subtasks_give_each_row_its_own_outcome(fmc: respx.MockRouter
             subtask(3, "SUCCESS", ok),
         ],
     }
-    fmc.get(f"{CFG}/job/taskstatuses/30064772170").mock(
+    fmc.get(f"{CFG}/job/taskstatuses/{TASK}").mock(
         side_effect=[httpx.Response(200, json=running), httpx.Response(200, json=final)]
     )
     jobs = fmc.get(f"{CFG}/deployment/jobhistories").mock(
@@ -382,6 +384,47 @@ async def test_bulk_subtasks_give_each_row_its_own_outcome(fmc: respx.MockRouter
     assert two["status"] == "failed" and two["error"].startswith("FAILED: Registration timed out")
     assert "show managers" in two["error"] and "BULK_REGISTRATION_PARTIAL" not in two["error"]
     assert jobs.call_count == 2  # row 1 was followed into its deployment before the batch ended
+
+
+async def test_live_four_ftd_batch_replayed(fmc: respx.MockRouter) -> None:
+    """The Stage 2 run as FMC 10.0.1 answered it: one TaskStatus for four rows; while the wait runs each
+    sub-task already reads SUCCESS (DISCOVERY_SUCCESS_DEPLOYMENT_IN_PROGRESS); FMC starts one 'Deployment
+    after registration' job per device, staggered; every row ends deployed with its own job."""
+    rows = [{"name": f"bulk-{n}", "host": f"192.0.2.1{n}"} for n in range(1, 5)]
+    mock_policies(fmc)
+    post = bulk_route(fmc, httpx.Response(202, json=FIX["bulk_response"]))
+    devices_after(fmc, post, [1, 2, 3, 4])
+    final = FIX["bulk_task"]
+    early = {
+        **final,
+        "status": "RUNNING",
+        "message": "Total:4, FAILED:0, PENDING:0, SUCCESS:0, RUNNING:4, Remaining:4",
+        "subTasks": [{**s, "message": "DISCOVERY_SUCCESS_DEPLOYMENT_IN_PROGRESS"} for s in final["subTasks"]],
+    }
+    tasks = fmc.get(f"{CFG}/job/taskstatuses/{TASK}").mock(
+        side_effect=[httpx.Response(200, json=early), httpx.Response(200, json=final)]
+    )
+    jobs = copy.deepcopy(FIX["bulk_jobs"]["items"])  # newest first, as FMC lists them
+    for i, j in enumerate(jobs):
+        j["startTime"] = iso_now(5 - i)  # inside this run's window, still staggered
+    hub_first = [j for j in jobs if j["deviceList"][0]["deviceName"] in ("bulk-1", "bulk-2")]
+    fmc.get(f"{CFG}/deployment/jobhistories").mock(side_effect=[items(hub_first), items(jobs), items(jobs)])
+    _, done = await confirm(
+        {"devices": rows, "access_policy": "mcp-w6-bulk-acp", "performance_tier": "FTDv5"}
+    )
+    result = done["result"]
+    assert post.call_count == 1 and result["method"] == "bulk" and result["bulk_tasks"] == [TASK]
+    assert result["bulk_answer"] == FIX["bulk_response"]
+    assert result["summary"] == {"deployed": 4}, result
+    by_name = {r["name"]: r for r in result["devices"]}
+    assert {n: r["initial_deployment"]["job"] for n, r in by_name.items()} == {
+        "bulk-1": "Deploy_Job_137",
+        "bulk-2": "Deploy_Job_138",
+        "bulk-3": "Deploy_Job_139",
+        "bulk-4": "Deploy_Job_140",
+    }
+    assert all(r["task_id"] == TASK and r["registration"].startswith("SUCCESS") for r in by_name.values())
+    assert tasks.call_count >= 1
 
 
 def test_registration_keys_are_registered_as_secrets(monkeypatch: pytest.MonkeyPatch) -> None:
@@ -500,7 +543,7 @@ async def test_skip_deployment_sends_the_flag_and_reads_no_jobs(fmc: respx.MockR
     mock_policies(fmc)
     post = bulk_route(fmc, httpx.Response(202, json=FIX["bulk_response"]))
     devices_after(fmc, post, [1, 2])
-    fmc.get(f"{CFG}/job/taskstatuses/30064772170").mock(return_value=task())
+    fmc.get(f"{CFG}/job/taskstatuses/{TASK}").mock(return_value=task())
     jobs = fmc.get(f"{CFG}/deployment/jobhistories").mock(return_value=items([]))
     preview, done = await confirm(
         {"devices": ROWS[:2], "access_policy": "mcp-w6-bulk-acp", "skip_deployment": True}
@@ -530,10 +573,10 @@ async def test_wait_false_returns_the_task_ids(fmc: respx.MockRouter) -> None:
     mock_policies(fmc)
     post = bulk_route(fmc, httpx.Response(202, json=FIX["bulk_response"]))
     devices_after(fmc, post, [])
-    tasks = fmc.get(f"{CFG}/job/taskstatuses/30064772170").mock(return_value=task())
+    tasks = fmc.get(f"{CFG}/job/taskstatuses/{TASK}").mock(return_value=task())
     _, done = await confirm({"devices": ROWS[:2], "access_policy": "mcp-w6-bulk-acp", "wait": False})
     result = done["result"]
-    assert result["summary"] == {"submitted": 2} and result["bulk_tasks"] == ["30064772170"]
+    assert result["summary"] == {"submitted": 2} and result["bulk_tasks"] == [TASK]
     assert "fmc_get_task" in result["note"] and not tasks.called
 
 
@@ -554,7 +597,7 @@ async def test_one_deadline_for_the_batch(fmc: respx.MockRouter, monkeypatch: py
     mock_policies(fmc)
     post = bulk_route(fmc, httpx.Response(202, json=FIX["bulk_response"]))
     devices_after(fmc, post, [1, 2])
-    fmc.get(f"{CFG}/job/taskstatuses/30064772170").mock(return_value=task())
+    fmc.get(f"{CFG}/job/taskstatuses/{TASK}").mock(return_value=task())
     fmc.get(f"{CFG}/deployment/jobhistories").mock(
         return_value=items([job([(1, "SUCCEEDED")]), job([(2, "DEPLOYING")], "DEPLOYING")])
     )
