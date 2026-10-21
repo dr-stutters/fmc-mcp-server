@@ -95,7 +95,6 @@ async def test_recorded_lab_policy(fmc: respx.MockRouter) -> None:
     checks = [f["check"] for f in out["findings"]]
     assert checks == [
         "allow_no_intrusion",  # both recorded ALLOW rules had no intrusion policy yet (#207)
-        "allow_no_intrusion",
         "si_no_talos_network",
         "default_action_no_logging",
         "allow_no_file_policy",
@@ -104,10 +103,7 @@ async def test_recorded_lab_policy(fmc: respx.MockRouter) -> None:
         "no_decryption",
     ]
     by = {f["check"]: f for f in out["findings"]}
-    assert [f["rule"]["name"] for f in out["findings"] if f["check"] == "allow_no_intrusion"] == [
-        "mcp-fw-baseline",
-        "mcp-fw-lab-extra",
-    ]
+    assert by["allow_no_intrusion"]["rules"] == ["mcp-fw-baseline", "mcp-fw-lab-extra"]
     assert by["allow_no_file_policy"]["rules"] == ["mcp-fw-baseline", "mcp-fw-lab-extra"]
     assert (
         "fmc_set_si_lists(" in by["si_no_talos_network"]["fix"]
@@ -197,16 +193,29 @@ async def test_allow_rule_without_intrusion_policy_is_a_finding(fmc: respx.MockR
         {
             "check": "allow_no_intrusion",
             "severity": "medium",
-            "rule": {"index": 4, "name": "mcp-fw-find-client", "action": "ALLOW"},
-            "detail": "Rule 'mcp-fw-find-client': Allowed traffic is not inspected by an intrusion policy.",
-            "fix": "fmc_update_access_rule(policy='mcp-fw-threat-acp', rule='mcp-fw-find-client', "
-            "intrusion_policy='Balanced Security and Connectivity')",
+            "rules": ["mcp-fw-find-client"],
+            "detail": "1 ALLOW rule(s) carry no intrusion policy, so the traffic they allow is not inspected "
+            "for exploits.",
+            "fix": "Add one per rule: fmc_update_access_rule(policy='mcp-fw-threat-acp', "
+            "rule='mcp-fw-find-client', intrusion_policy='Balanced Security and Connectivity')",
         }
     ]
     by = {f["check"]: f for f in out["findings"]}
     assert "mcp-fw-find-client" in by["allow_no_file_policy"]["rules"]  # both gaps are reported
     severities = [f["severity"] for f in out["findings"]]
     assert severities == sorted(severities, key=["high", "medium", "low", "info"].index)
+
+
+async def test_many_allow_rules_without_intrusion_are_one_finding(fmc: respx.MockRouter) -> None:
+    bare = copy.deepcopy(REC["access_rules"]["items"][-1])
+    bare.pop("ipsPolicy", None)
+    rules = [{**copy.deepcopy(bare), "name": f"allow-{i:03d}", "id": f"r{i}"} for i in range(300)]
+    mock_lab(fmc, rules=rules)
+    out = await posture(fmc)
+    found = [f for f in out["findings"] if f["check"] == "allow_no_intrusion"]
+    assert len(found) == 1 and found[0]["detail"].startswith("300 ALLOW rule(s)")
+    assert found[0]["rules"] == [f"allow-{i:03d}" for i in range(20)]
+    assert "the same for the others" in found[0]["fix"]
 
 
 async def test_network_analysis_policy_and_dns_block_action(fmc: respx.MockRouter) -> None:

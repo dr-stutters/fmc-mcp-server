@@ -54,6 +54,7 @@ SUGGESTED = {
 }
 BALANCED = "Balanced Security and Connectivity"
 NO_RULES = "No Rules Active"
+RULES_LISTED = 20  # rule names in an aggregated finding
 # DNS rule actions that stop a lookup (the 10.0.1 spec says BLOCK, FMC also answers DROP).
 DNS_BLOCKING = ("NXDOMAIN", "BLOCK", "DROP", "SINKHOLE")
 DEVICE_CAP = 10
@@ -252,11 +253,21 @@ async def threat_posture(app: FmcApp, policy: str, domain: str | None) -> dict[s
                     rule=_ref(r),
                 )
             )
-    # An ALLOW rule without an intrusion policy: the same check as fmc_policy_audit's no_intrusion (#207).
-    for f in no_intrusion(name, allow):
-        rule = f.get("rule") or {}
+    # ALLOW rules without an intrusion policy: the same check as fmc_policy_audit's no_intrusion (#207),
+    # as one finding (a policy can hold hundreds of such rules).
+    no_ips = [f["rule"]["name"] for f in no_intrusion(name, allow)]
+    if no_ips:
         findings.append(
-            {**f, "check": "allow_no_intrusion", "detail": f"Rule {rule.get('name')!r}: {f['detail']}"}
+            _finding(
+                "allow_no_intrusion",
+                "medium",
+                f"{len(no_ips)} ALLOW rule(s) carry no intrusion policy, so the traffic they allow is not "
+                "inspected for exploits.",
+                "Add one per rule: "
+                + _call("fmc_update_access_rule", policy=name, rule=no_ips[0], intrusion_policy=BALANCED)
+                + (", and the same for the others" if len(no_ips) > 1 else ""),
+                rules=no_ips[:RULES_LISTED],
+            )
         )
     no_file = [r for r in allow if not r.get("filePolicy")]
     if no_file:
@@ -268,7 +279,7 @@ async def threat_posture(app: FmcApp, policy: str, domain: str | None) -> dict[s
                 "or blocked by type.",
                 "Pick a file policy (fmc_list_policies(kind='file')) and add it per rule with "
                 "fmc_update_access_rule (file_policy argument), starting with web and mail traffic.",
-                rules=[r.get("name") for r in no_file][:20],
+                rules=[r.get("name") for r in no_file][:RULES_LISTED],
             )
         )
     prefilter = acp.get("prefilterPolicySetting") or {}
