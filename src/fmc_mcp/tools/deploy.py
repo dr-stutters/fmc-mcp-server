@@ -94,6 +94,13 @@ def deployable_row(d: dict[str, Any]) -> dict[str, Any]:
 
 
 SECRET_FIELD = re.compile(r"password|secret|key|community|psk", re.I)
+# Fields the pattern names only for the word 'community' whose value is a setting, not a community string:
+# FMC 10.0.1 lists a BGP neighbour's "Send Community attribute to this neighbor: false" (live 2026-10-21,
+# W6N live-B). Only these labels (an allow-list, compared without case and extra spaces) show a true/false
+# value; every other secret-named field is masked whatever its value, "SNMP Community: false" included.
+COMMUNITY_FLAG_FIELDS = frozenset({"send community attribute to this neighbor"})
+NEVER_FLAG_FIELD = re.compile(r"password|secret|key|psk|snmp|string", re.I)
+FLAG_VALUES = frozenset({"true", "false"})
 # One pending change can be huge: FMC 10.0.1 listed a Snort 3 network analysis policy UPDATE whose
 # inspectorData value was 115 KB (seen live 2026-10-21), over the response budget on its own; the list
 # result only drops whole rows, so each row's change lines are capped here.
@@ -110,14 +117,29 @@ def _cut(value: Any, cap: int) -> str:
     return f"{text[:cap]}... [{len(text) - cap:,}{CUT_MARK}"
 
 
+def _flag_field(field: str) -> bool:
+    """A secret-named field that holds a true/false setting: an allow-listed label the pattern names only
+    for 'community' (never one with snmp, string, password, key, secret or psk in it)."""
+    return " ".join(field.lower().split()) in COMMUNITY_FLAG_FIELDS and not NEVER_FLAG_FIELD.search(field)
+
+
+def _masked(value: Any, field: str) -> Any:
+    """A secret-named field's value as shown: masked, unless it is empty or the true/false of a flag field."""
+    if value in (None, ""):
+        return value
+    if _flag_field(field) and (isinstance(value, bool) or str(value).strip().lower() in FLAG_VALUES):
+        return value
+    return "********"
+
+
 def _change_text(v: dict[str, Any], verb: str) -> str:
     """'Field: old -> new' with each side cut at VALUE_CAP (a long old value no longer hides the new one),
     or 'Field: value' / '-Field: value' cut at CHANGE_TEXT_CAP."""
     field = v.get("fieldName") or "?"
     old, new = v.get("oldValue"), v.get("newValue")
     if SECRET_FIELD.search(str(field)):  # FMC shows encrypted secrets here (e.g. BGP neighbor passwords)
-        old = "********" if old not in (None, "") else old
-        new = "********" if new not in (None, "") else new
+        old = _masked(old, str(field))
+        new = _masked(new, str(field))
     if verb == "deleted":
         return f"-{field}: {_cut(old if old is not None else new, CHANGE_TEXT_CAP)}"
     if old is not None and new is not None:
