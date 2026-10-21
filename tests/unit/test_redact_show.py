@@ -84,3 +84,48 @@ async def test_show_crypto_ca_certificates_through_the_tool(fmc: respx.MockRoute
     out = r.structured_content
     assert out is not None
     assert "Public Key Type: RSA (2048 bits)" in out["output"] and "redacted" not in out
+
+
+# Review of #302: the label exceptions belong to the bare keyword 'key' in its label shape only, and a
+# key or password after the word 'public' is still a secret. Each line's value must stay masked.
+STILL_MASKED = [
+    ("radius-server host public key s3cr3t", "radius-server host public key ********"),
+    ("username public password S3cretPw privilege 15", "username public password ******** privilege 15"),
+    ("snmp-server community name RO", "snmp-server community ******** RO"),
+    ("failover key data", "failover key ********"),
+    (" key type", " key ********"),
+    (" key name", " key ********"),
+    (" key usage", " key ********"),
+    (" key pair", " key ********"),
+    (" ikev1 pre-shared-key usage", " ikev1 pre-shared-key ********"),
+    ("password data", "password ********"),
+    ("snmp-server community type", "snmp-server community ********"),
+]
+
+
+def test_review_302_secrets_that_look_like_labels_stay_masked() -> None:
+    for line, expected in STILL_MASKED:
+        out, n = redact(line)
+        assert out == expected and n == 1, (line, out)
+
+
+def test_review_302_aaa_server_key_type_is_masked() -> None:
+    text = "aaa-server mcp-w6-ise (inside) host 192.0.2.5\n key type\n authentication-port 1812\n"
+    out, n = redact(text)
+    assert n == 1 and " key ********\n" in out and "key type" not in out
+
+
+def test_review_302_key_labels_stay_unmasked_in_their_label_shape() -> None:
+    for line in (
+        "Public Key Type: RSA (2048 bits)",
+        "  Public Key Type : EC (256 bits)",
+        "Key name: mcp-w6-enr-self",
+        "Key Name:mcp-w6-enr-self",
+        "Key pair was generated at: 17:32:25 UTC Oct 21 2026",
+        " Key Data:",
+        " Key Usage: General Purpose",
+        "Key version : A",
+        " Usage: General Purpose Key",
+    ):
+        out, n = redact(line)
+        assert n == 0 and out == line, (line, out)

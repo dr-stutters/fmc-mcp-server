@@ -72,14 +72,17 @@ def split_command(command: str, supported: Supported | None = None) -> tuple[str
 # 'Key version : A' in show version is no secret (F68: it masked a line on every device of a fleet run),
 # nor are the key labels of 'show crypto ca certificates' / 'show crypto key mypubkey rsa' ('Public Key
 # Type: RSA (2048 bits)', 'Key name: <trustpoint>', 'Key pair was generated at', 'Key Data:'; W6N live-A
-# saw 'Public Key ******** RSA (2048 bits)'). A public key is never a secret. The value is the word after
-# the qualifiers that may sit between keyword and secret: key ids and encryption types, hashes and
-# formats, EIGRP's AS ('message-digest-key 1 md5 x', 'authentication-key 1 md5 x', 'failover key hex x',
-# 'authentication key eigrp 100 x'), on the same line ('... General Purpose Key' ends a line).
+# saw 'Public Key ******** RSA (2048 bits)'). Only the bare keyword 'key' skips those labels, and only in
+# their label shape (a colon after type/name/data/usage, 'pair was'): 'key type x', 'failover key data x',
+# 'community name x', 'password data x' and 'pre-shared-key usage x' are still masked, and so is a key
+# after the word 'public' ('radius-server host public key x'). The value is the word after the qualifiers
+# that may sit between keyword and secret: key ids and encryption types, hashes and formats, EIGRP's AS
+# ('message-digest-key 1 md5 x', 'authentication-key 1 md5 x', 'failover key hex x', 'authentication key
+# eigrp 100 x'), on the same line ('... General Purpose Key' ends a line).
 SECRET = re.compile(
-    r"(?i)(?<!public )\b(password|passwd|secret|key|pre-shared-key|community|key-string|authentication-key|"
-    r"auth-key|priv(?:\s+(?:aes\s+\d+|3des|des))?|auth\s+(?:md5|sha\S*))"
-    r"(?![ \t]+(?:version|type|name|data|pair|usage)\b)"
+    r"(?i)\b(password|passwd|secret|key(?![ \t]+(?:(?:type|name|data|usage)[ \t]*:|pair[ \t]+was\b))|"
+    r"pre-shared-key|community|key-string|authentication-key|"
+    r"auth-key|priv(?:\s+(?:aes\s+\d+|3des|des))?|auth\s+(?:md5|sha\S*))(?![ \t]+version\b)"
     r"([ \t]+(?:(?:\d+|encrypted|ascii|hex|md5|sha\d*|eigrp[ \t]+\d+)[ \t]+)*)(\S+)"
 )
 
