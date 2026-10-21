@@ -620,9 +620,17 @@
       "tier": "write",
       "title": "Create prefilter rule"
     },
+    "fmc_create_prefix_list": {
+      "tier": "write",
+      "title": "Create prefix list"
+    },
     "fmc_create_realm": {
       "tier": "write",
       "title": "Create AD/LDAP realm"
+    },
+    "fmc_create_route_map": {
+      "tier": "write",
+      "title": "Create route map"
     },
     "fmc_create_s2s_vpn": {
       "tier": "write",

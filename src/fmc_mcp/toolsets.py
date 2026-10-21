@@ -236,10 +236,12 @@ CATALOGUE: dict[str, tuple[str, tuple[str, ...]]] = {
         ),
     ),
     "routing": (
-        "static routes, BGP, OSPF, VRFs",
+        "static routes, BGP, OSPF, VRFs, prefix lists and route maps",
         (
             "fmc_configure_bgp",
             "fmc_configure_ospf",
+            "fmc_create_prefix_list",
+            "fmc_create_route_map",
             "fmc_create_static_route",
             "fmc_create_vrf",
             "fmc_delete_static_route",
