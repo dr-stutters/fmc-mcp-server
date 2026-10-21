@@ -19,7 +19,13 @@ from fmc_mcp._core import (
 from fmc_mcp.client import FmcApp, is_uuid
 from fmc_mcp.preview import fmc_preview
 from fmc_mcp.refs import NETWORK_TYPES, PORT_TYPES, RefResolver, network_literal
-from fmc_mcp.rule_conditions import VLAN_NOTE, ExtraConditions, filter_refs_in_rules, relabel_changes
+from fmc_mcp.rule_conditions import (
+    VLAN_NOTE,
+    ExtraConditions,
+    InlineAppFilter,
+    filter_refs_in_rules,
+    relabel_changes,
+)
 from fmc_mcp.rules import flatten_access_rule, flatten_nat_rule, url_labels
 from fmc_mcp.tools.common import Domain, block_labels, ref_label, resolve_in, rule_changes
 from fmc_mcp.tools.fqdn_dns import fqdn_dns_check
@@ -105,6 +111,16 @@ AppFiltersParam = Annotated[
         "resolves only for filters this server created since it started or that a rule of the policy "
         "already uses; otherwise pass the UUID. On update a given list replaces the rule's filters and "
         "keeps its applications"
+    ),
+]
+InlineAppFilterParam = Annotated[
+    InlineAppFilter | None,
+    Field(
+        description="Applications matched by their attributes inside this rule (FMC's inline application "
+        "filter; no filter object): {risks, business_relevance, categories, tags, types} with the values "
+        "fmc_find_application kind=attribute lists, e.g. {'risks': ['High', 'Very High']}: every application "
+        "with all the given attributes, any value within one. On update it replaces the rule's inline "
+        "filters ({} removes them) and keeps its applications and named filters"
     ),
 ]
 VlanParam = Annotated[
@@ -291,6 +307,7 @@ def register(reg: ToolRegistrar) -> None:
         users: UsersParam = None,
         applications: ApplicationsParam = None,
         application_filters: AppFiltersParam = None,
+        inline_app_filter: InlineAppFilterParam = None,
         vlan_tags: VlanParam = None,
         time_range: TimeRangeParam = None,
         source_sgts: SgtsParam = None,
@@ -334,9 +351,10 @@ def register(reg: ToolRegistrar) -> None:
     ) -> dict[str, Any]:
         """Add a rule to an access control policy at a chosen position. Conditions accept object
         names or literal values; omitted conditions mean 'any'. Layer-7 and identity conditions:
-        applications and application filters, URL categories, users, VLAN tags, a time range, source and
-        destination SGTs. Preview shows the rule as FMC will store it, where it lands, and
-        fmc_rule_lookup-style context (rule count). Deploy to take effect."""
+        applications, application filters (named, or inline by attributes: inline_app_filter), URL
+        categories, users, VLAN tags, a time range, source and destination SGTs. Preview shows the rule as
+        FMC will store it, where it lands, and fmc_rule_lookup-style context (rule count). Deploy to take
+        effect."""
         app: FmcApp = get_client(ctx)
         if section and category:
             raise InvalidRequest("Give either section or category, not both.")
@@ -376,6 +394,7 @@ def register(reg: ToolRegistrar) -> None:
             source_sgts=source_sgts,
             destination_sgts=destination_sgts,
             known_filters=filter_refs_in_rules(existing.items) if application_filters else None,
+            inline_app_filter=inline_app_filter,
         )
         body.update(extra.fields)
         body = {k: v for k, v in body.items() if v not in ({}, [])}
@@ -459,6 +478,7 @@ def register(reg: ToolRegistrar) -> None:
                 "users": users,
                 "applications": applications,
                 "application_filters": application_filters,
+                "inline_app_filter": None if inline_app_filter is None else inline_app_filter.model_dump(),
                 "vlan_tags": vlan_tags,
                 "time_range": time_range,
                 "source_sgts": source_sgts,
@@ -500,6 +520,7 @@ def register(reg: ToolRegistrar) -> None:
         users: UsersParam = None,
         applications: ApplicationsParam = None,
         application_filters: AppFiltersParam = None,
+        inline_app_filter: InlineAppFilterParam = None,
         vlan_tags: VlanParam = None,
         time_range: TimeRangeParam = None,
         source_sgts: SgtsParam = None,
@@ -531,9 +552,10 @@ def register(reg: ToolRegistrar) -> None:
         confirm: Confirm = None,
     ) -> dict[str, Any]:
         """Change an access rule: rename, action, enable/disable, logging, replace any condition (a
-        given list replaces the old one; [] means any) including applications, application filters, URL
-        categories, users, VLAN tags, the time range ('' removes it) and SGTs, add a comment, or move it to
-        another position. Preview shows the field changes and the old/new index."""
+        given list replaces the old one; [] means any) including applications, application filters (named,
+        or inline_app_filter by attributes), URL categories, users, VLAN tags, the time range ('' removes it)
+        and SGTs, add a comment, or move it to another position. Preview shows the field changes and the
+        old/new index."""
         app: FmcApp = get_client(ctx)
         p = await resolve_policy(app, "access", policy, domain)
         current = await find_access_rule(app, p, rule, domain)
@@ -592,6 +614,7 @@ def register(reg: ToolRegistrar) -> None:
             destination_sgts=destination_sgts,
             # application filter names FMC 10.0.1 doesn't list resolve from the policy's other rules too
             known_filters=filter_refs_in_rules(order.items) if application_filters else None,
+            inline_app_filter=inline_app_filter,
         )
         for field, value in extra.fields.items():
             if value:
@@ -681,6 +704,7 @@ def register(reg: ToolRegistrar) -> None:
                 "users": users,
                 "applications": applications,
                 "application_filters": application_filters,
+                "inline_app_filter": None if inline_app_filter is None else inline_app_filter.model_dump(),
                 "vlan_tags": vlan_tags,
                 "time_range": time_range,
                 "source_sgts": source_sgts,

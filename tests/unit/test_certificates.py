@@ -209,8 +209,9 @@ async def test_include_bundled_and_kind(fmc: respx.MockRouter) -> None:
 
 async def test_bundled_root_quirks_recorded_live(fmc: respx.MockRouter) -> None:
     """live-B2's raw reads of two bundled roots (trusted_cas_quirks): the double-space OpenSSL date parses,
-    FMC's damaged subject fields pass through as FMC has them (mojibake, cut at a comma), an empty CN
-    falls back to the organisation, and a metadata.domain without an id still names the domain."""
+    FMC's damaged subject fields pass through as FMC has them (mojibake, cut at a comma) because these rows
+    carry no PEM (with one the names come from it: test_cert_names), an empty CN falls back to the
+    organisation, and a metadata.domain without an id still names the domain."""
     netlock, secom = FX["trusted_cas_quirks"]["items"]
     assert (
         netlock["validityEndDate"] == "Dec  6 15:08:21 2028 GMT" and "id" not in secom["metadata"]["domain"]

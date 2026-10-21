@@ -150,8 +150,9 @@ Workflows:
   UI-only).
 - Application, VLAN, time and SGT rules: fmc_find_application (an app or filter by exact name or id, with
   risk and business relevance) -> fmc_create_application_filter / fmc_create_time_range if needed ->
-  fmc_create_access_rule applications=[...], application_filters=[...], vlan_tags=[...], time_range=...,
-  source_sgts=[...] (ISE SGTs by name or tag) -> fmc_deploy -> fmc_get_hit_counts after real traffic
+  fmc_create_access_rule applications=[...], application_filters=[...] or inline_app_filter={risks: [...]}
+  (no filter object), vlan_tags=[...], time_range=..., source_sgts=[...] (ISE SGTs by name or tag) ->
+  fmc_deploy -> fmc_get_hit_counts after real traffic
   (packet tracer can't simulate app-id).
 - Users and groups in access rules (AD/LDAP): fmc_create_trusted_ca (LDAPS) -> fmc_create_realm ->
   fmc_test_realm -> fmc_download_realm -> fmc_create_identity_policy + fmc_create_identity_rule (PASSIVE
@@ -169,6 +170,11 @@ Workflows:
   DECRYPT_RESIGN with internal_ca) -> fmc_set_decryption_policy -> fmc_deploy; fmc_tls_decryption_check
   says what a flow gets and what is missing. Existing CA or server keys: fmc_import_certificate_files
   (read from FMC_PKI_DIR on the server host; keys never pass through MCP).
+- Block old TLS and weak ciphers (no decryption needed; FTD logs the version and suite once a decryption
+  policy is linked): fmc_create_cipher_suite_list (preset='weak') -> fmc_create_decryption_rule
+  (BLOCK_WITH_RESET with tls_versions=['sslv3','tls10','tls11'], another with cipher_suite_lists; above any
+  DECRYPT_RESIGN rule) -> fmc_update_decryption_policy undecryptable={'unsupported_cipher_suite':
+  'BLOCK_WITH_RESET'} (else RC4 passes a resign rule undecrypted) -> fmc_deploy.
 - PoC to production / domain to domain: fmc_export_policy_bundle -> fmc_plan_policy_bundle_import (target
   domain) -> fmc_import_policy_bundle -> fmc_diff_policy_bundle against live -> assign + fmc_deploy.
 - "Where does 10.1.2.3 appear?": fmc_find_address (objects and groups, dynamic-object mappings, access,
