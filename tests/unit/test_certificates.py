@@ -200,7 +200,7 @@ async def test_include_bundled_and_kind(fmc: respx.MockRouter) -> None:
         "C_ES-O_FNMT-RCM-OU_AC-RAIZ-FNMT-RCM",
     }
     fnmt = rows["C_ES-O_FNMT-RCM-OU_AC-RAIZ-FNMT-RCM"]
-    assert fnmt["bundled"] is True and fnmt["subject"] == "FNMT-RCM"  # no CN: the organisation
+    assert fnmt["bundled"] is True and fnmt["subject"] == "AC RAIZ FNMT-RCM"  # no CN: the OU (then O)
     assert fnmt["expires"] == "2030-01-01T00:00:00Z"
     assert out["results"][0]["name"] == "C_ES-O_FNMT-RCM-OU_AC-RAIZ-FNMT-RCM"  # 2030 before 2036 and 2038
     assert "bundled_roots_hidden" not in out
@@ -211,7 +211,7 @@ async def test_bundled_root_quirks_recorded_live(fmc: respx.MockRouter) -> None:
     """live-B2's raw reads of two bundled roots (trusted_cas_quirks): the double-space OpenSSL date parses,
     FMC's damaged subject fields pass through as FMC has them (mojibake, cut at a comma) because these rows
     carry no PEM (with one the names come from it: test_cert_names), an empty CN falls back to the
-    organisation, and a metadata.domain without an id still names the domain."""
+    organisational unit, and a metadata.domain without an id still names the domain."""
     netlock, secom = FX["trusted_cas_quirks"]["items"]
     assert (
         netlock["validityEndDate"] == "Dec  6 15:08:21 2028 GMT" and "id" not in secom["metadata"]["domain"]
@@ -232,7 +232,9 @@ async def test_bundled_root_quirks_recorded_live(fmc: respx.MockRouter) -> None:
         nl["subject"] == netlock["subjectCommonName"] and nl["bundled"] is True and nl["domain"] == "Global"
     )
     sc = rows[secom["name"]]
-    assert sc["subject"] == "SECOM Trust Systems CO." and sc["issuer"] == "SECOM Trust Systems CO."
+    assert (
+        sc["subject"] == "Security Communication RootCA2" and sc["issuer"] == "Security Communication RootCA2"
+    )
     assert sc["expires"] == "2029-05-29T05:00:39Z" and sc["bundled"] is True and sc["domain"] == "Global"
 
 

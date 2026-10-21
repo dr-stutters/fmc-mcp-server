@@ -127,16 +127,20 @@ def cert_row(c: dict[str, Any], kind: CertKind, now: datetime | None = None) -> 
     end = parse_date(c.get("validityEndDate"))
     owner = ((c.get("metadata") or {}).get("domain") or {}).get("name")
     names = cert_names(c)  # from the PEM: FMC's own name fields are garbled for some bundled roots
-    subject, issuer = names.subject_cn, names.issuer_cn
+    subject, issuer = names.subject, names.issuer  # CN, else OU (CN-less roots such as SECOM's), else O
+    if names.self_signed is not None:
+        self_signed: bool | None = names.self_signed  # the PEM's DNs and signature
+    elif subject and issuer:
+        self_signed = subject == issuer and names.subject_o == names.issuer_o  # FMC's name fields only
+    else:
+        self_signed = None
     row: dict[str, Any] = {
         "name": c.get("name"),
         "kind": kind.key,
         "subject": subject,
         "organization": names.subject_o,
         "issuer": issuer,
-        "self_signed": (subject == issuer and names.subject_o == names.issuer_o)
-        if subject and issuer
-        else None,
+        "self_signed": self_signed,
         "valid_until": c.get("validityEndDate") or None,
         "days_left": (end - now).days if end else None,
         "expired": (end < now) if end else None,
