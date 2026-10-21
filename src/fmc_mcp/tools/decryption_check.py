@@ -1,5 +1,6 @@
-"""fmc_tls_decryption_check (F64): what the decryption policy does to one TLS flow, and whether a
-decrypt-resign rollout is ready for it (CA, TLS 1.3, trusted issuers, the access policy link, deploys).
+"""fmc_tls_decryption_check (F64, F82, F83): what the decryption policy does to one TLS flow, and whether a
+decrypt-resign rollout is ready for it (CA, TLS 1.3, trusted issuers, undecryptable actions, rule order,
+the access policy link, deploys).
 
 Offline and best-effort like fmc_rule_lookup: the rule walk uses zones, networks, ports, users and, with
 `server_name`, URL objects; URL categories, applications and certificate conditions (issuer, status,
@@ -15,19 +16,26 @@ from pydantic import Field
 
 from fmc_mcp._core import InvalidRequest, NotFound, ToolRegistrar, UpstreamError, get_client
 from fmc_mcp.catalog import Catalog
+from fmc_mcp.cipher_suites import suite_of_literal
 from fmc_mcp.client import FmcApp
 from fmc_mcp.flow import access_policy_of, device_context
 from fmc_mcp.rules import has_value
 from fmc_mcp.tools.analysis import _ip, _net_match, _port_match, _user_match, _zone_match
 from fmc_mcp.tools.common import PROTO_NUMBERS, Domain, block_labels, ref_label, resolve_in
 from fmc_mcp.tools.decryption import (
+    BLOCKING,
+    CIPHER_LISTS,
     DECRYPTION,
+    UNDECRYPTABLE,
     _index,
     advanced_row,
     cert_conditions,
+    effective_undecryptable,
+    order_problems,
     rule_row,
     trusted_labels,
     version_problem,
+    versions_on,
 )
 from fmc_mcp.tools.deploy import deployable, deployable_row
 from fmc_mcp.tools.device_config import resolve_device
@@ -110,6 +118,76 @@ def _has_categories(block: Any) -> bool:
     return isinstance(block, dict) and bool(block.get("urlCategoriesWithReputation"))
 
 
+def matches_if(r: dict[str, Any]) -> list[str]:
+    """What a rule's TLS version and cipher suite conditions would match, in words (F82)."""
+    out = []
+    versions = versions_on(r)
+    if versions:
+        out.append(f"the session negotiates {', '.join(versions)}")
+    lists = block_labels(r.get("cipherSuiteLists"))
+    if lists:
+        out.append(f"the server picks a suite in {', '.join(lists)} (in its ServerHello)")
+    return out
+
+
+async def rc4_blockers(app: FmcApp, rules: list[dict[str, Any]], domain: str | None) -> list[str]:
+    """Block rules among `rules` (those above the decrypt rule) whose cipher suite lists hold RC4 suites:
+    FTD resets a session whose server picks RC4 there, before the Unsupported Cipher Suite action is
+    reached (live on FTD 10.0: the lab's only-rc4 case was reset by the cipher rule, not the action)."""
+    out: list[str] = []
+    for r in rules:
+        objs = (r.get("cipherSuiteLists") or {}).get("objects") or []
+        if r.get("ruleAction") not in BLOCKING or not objs:
+            continue
+        for o in objs[:5]:
+            try:
+                lst = await app.api.get(f"{await app.config_path(CIPHER_LISTS, domain)}/{o.get('id')}")
+            except (NotFound, UpstreamError):
+                continue
+            lits = lst.get("literals") or []
+            if any("RC4" in str(lit.get("name") or "") or _weak(lit) == "RC4" for lit in lits):
+                out.append(f"rule {_index(r)} {r.get('name')!r} ({lst.get('name')})")
+                break
+    return out
+
+
+def _weak(lit: dict[str, Any]) -> str | None:
+    s = suite_of_literal(lit)
+    return s.weak if s else None
+
+
+def undecryptable_check(pol: dict[str, Any], rc4_rules: list[str] | None = None) -> dict[str, Any]:
+    """Which undecryptable action applies when a session a decrypt rule takes can't be decrypted (F83)."""
+    eff = effective_undecryptable(pol)
+    raw = pol.get("undecryptableActions") or {}
+    labels = {ours: what for ours, _, what in UNDECRYPTABLE}
+    default = (pol.get("defaultAction") or {}).get("policyAction") or "DO_NOT_DECRYPT"
+    rc4 = eff.get("unsupported_cipher_suite", default)
+    inherited = raw.get("unsupportedCipherSuite") in (None, "INHERIT_DEFAULT_ACTION")
+    lead = "If the session can't be decrypted, the policy's Undecryptable Actions decide instead of the rule."
+    if rc4_rules:
+        head = (
+            f"{lead} A session whose server picks RC4 is stopped first by {', '.join(rc4_rules)}: its cipher "
+            f"suite list holds RC4. Unsupported cipher suite -> {rc4} applies to the other suites FTD can't "
+            "decrypt."
+        )
+    elif rc4 == "DO_NOT_DECRYPT":
+        head = (
+            f"{lead} Unsupported cipher suite (RC4, for example) -> DO_NOT_DECRYPT"
+            + (" (inherited from the default action)" if inherited else "")
+            + ": a session whose server picks RC4 passes undecrypted. fmc_update_decryption_policy "
+            "undecryptable={'unsupported_cipher_suite': 'BLOCK_WITH_RESET'} resets it."
+        )
+    else:
+        head = f"{lead} Unsupported cipher suite (RC4, for example) -> {rc4}."
+    rest = "; ".join(f"{labels[k]} -> {v}" for k, v in eff.items() if k != "unsupported_cipher_suite")
+    return {
+        "check": "undecryptable sessions",
+        "ok": None,
+        "detail": head + (f" Others: {rest}." if rest else ""),
+    }
+
+
 def register(reg: ToolRegistrar) -> None:
     @reg.read(title="What TLS decryption does to a flow")
     async def fmc_tls_decryption_check(
@@ -148,8 +226,11 @@ def register(reg: ToolRegistrar) -> None:
         takes it, whether it is decrypted (re-signed with which internal CA, or with the server's own key),
         exempted or blocked, and what file, malware, intrusion and URL inspection can see as a result. Also
         checks a decrypt-resign rollout for the flow: the CA (CSR pending, expiry, clients must trust it),
-        TLS 1.3 decryption, trusted issuers for the server certificate, the access policy link and pending
-        deploys. Use it before and after fmc_create_decryption_rule; best-effort and offline (see
+        TLS 1.3 decryption, trusted issuers for the server certificate, what happens when the session can't
+        be decrypted (the Undecryptable Actions: an RC4 session passes undecrypted by default), rule order
+        (decrypt rules above TLS version / cipher suite Block rules), the access policy link and pending
+        deploys. Rules with TLS version or cipher suite conditions are conditional (`matches_if` says what
+        they match). Use it before and after fmc_create_decryption_rule; best-effort and offline (see
         `limits`)."""
         app: FmcApp = get_client(ctx)
         src, dst = _ip(source, "source"), _ip(destination, "destination")
@@ -230,6 +311,7 @@ def register(reg: ToolRegistrar) -> None:
 
         url_cache: dict[str, list[str] | None] = {}
         conditional: list[dict[str, Any]] = []
+        conditional_raw: list[dict[str, Any]] = []
         monitored: list[dict[str, Any]] = []
         match: dict[str, Any] | None = None
         match_raw: dict[str, Any] | None = None
@@ -264,7 +346,11 @@ def register(reg: ToolRegistrar) -> None:
             unknown += cert_conditions(r)
             row = rule_row(r)
             if unknown:
-                conditional.append({**row, "depends_on": unknown})
+                cond = {**row, "depends_on": unknown}
+                if matches_if(r):
+                    cond["matches_if"] = matches_if(r)
+                conditional.append(cond)
+                conditional_raw.append(r)
                 continue
             if r.get("ruleAction") == "MONITOR":
                 monitored.append(row)
@@ -365,7 +451,11 @@ def register(reg: ToolRegistrar) -> None:
         versions = [m for m in (version_problem(r) for r in rules.items if r.get("enabled", True)) if m]
         if versions:
             checks.append({"check": "TLS versions", "ok": False, "detail": " ".join(versions[:3])})
+        order = order_problems(rules.items)
+        if order:
+            checks.append({"check": "rule order", "ok": False, "detail": " ".join(order[:3])})
         if decrypting:
+            checks.append(undecryptable_check(pol, await rc4_blockers(app, conditional_raw, domain)))
             tls13 = adv.get("tls13_decryption")
             checks.append(
                 {

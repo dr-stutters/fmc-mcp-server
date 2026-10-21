@@ -1,0 +1,1044 @@
+{
+  "_source": "FMC 10.0.1 (2026-10-21, F82/F83 on the ftd-tls-cipher-policy lab, Global/mcp-test-leaf): the cipher suite list made from the 17 weak suites FMC accepted (lists), decryption policy tls-cipher-dec (policy, GET) and its rules (rules, GET ?expanded=true, as FMC orders them: creation order, not index), all as built with fmc_api_call; the same after the live proof with the new tools (*_final: tls-weak-preset and tls-weak-no-rc4 made by fmc_create_cipher_suite_list, block rules re-created by fmc_create_decryption_rule, undecryptable actions and default logging set by fmc_update_decryption_policy); the policy after a PUT that set only defaultAction.eventLogAction (FMC kept LOG_NONE); the cipher-suite probe. Ids replaced with placeholders, the leaf domain with the unit tests' login domain.",
+  "lists": {
+    "items": [
+      {
+        "metadata": {
+          "readOnly": {
+            "state": false
+          },
+          "timestamp": 1792582370,
+          "lastUser": {
+            "name": "admin",
+            "id": "68d03c42-d9bd-11dc-89f2-b7961d42c462",
+            "type": "user"
+          },
+          "domain": {
+            "name": "Global",
+            "id": "e276abec-e0f2-11e3-8169-6d9ed49b625f",
+            "type": "Domain"
+          }
+        },
+        "literals": [
+          {
+            "name": "TLS_RSA_WITH_RC4_128_SHA",
+            "value": "5"
+          },
+          {
+            "name": "TLS_RSA_WITH_3DES_EDE_CBC_SHA",
+            "value": "10"
+          },
+          {
+            "name": "TLS_RSA_WITH_AES_128_CBC_SHA",
+            "value": "47"
+          },
+          {
+            "name": "TLS_RSA_WITH_AES_256_CBC_SHA",
+            "value": "53"
+          },
+          {
+            "name": "TLS_RSA_WITH_AES_128_CBC_SHA256",
+            "value": "60"
+          },
+          {
+            "name": "TLS_RSA_WITH_AES_256_CBC_SHA256",
+            "value": "61"
+          },
+          {
+            "name": "TLS_RSA_WITH_AES_128_GCM_SHA256",
+            "value": "156"
+          },
+          {
+            "name": "TLS_RSA_WITH_AES_256_GCM_SHA384",
+            "value": "157"
+          },
+          {
+            "name": "TLS_DHE_RSA_WITH_3DES_EDE_CBC_SHA",
+            "value": "22"
+          },
+          {
+            "name": "TLS_DHE_RSA_WITH_AES_128_CBC_SHA",
+            "value": "51"
+          },
+          {
+            "name": "TLS_DHE_RSA_WITH_AES_256_CBC_SHA",
+            "value": "57"
+          },
+          {
+            "name": "TLS_ECDHE_ECDSA_WITH_AES_128_CBC_SHA",
+            "value": "49161"
+          },
+          {
+            "name": "TLS_ECDHE_ECDSA_WITH_AES_256_CBC_SHA",
+            "value": "49162"
+          },
+          {
+            "name": "TLS_ECDHE_RSA_WITH_RC4_128_SHA",
+            "value": "49169"
+          },
+          {
+            "name": "TLS_ECDHE_RSA_WITH_3DES_EDE_CBC_SHA",
+            "value": "49170"
+          },
+          {
+            "name": "TLS_ECDHE_RSA_WITH_AES_128_CBC_SHA",
+            "value": "49171"
+          },
+          {
+            "name": "TLS_ECDHE_RSA_WITH_AES_256_CBC_SHA",
+            "value": "49172"
+          }
+        ],
+        "name": "tls-weak-ciphers",
+        "id": "00000000-0000-0ed3-0000-000000f82000",
+        "type": "CipherSuiteList"
+      }
+    ],
+    "paging": {
+      "offset": 0,
+      "limit": 25,
+      "count": 1,
+      "pages": 1
+    }
+  },
+  "lists_final": {
+    "items": [
+      {
+        "metadata": {
+          "readOnly": {
+            "state": false
+          },
+          "timestamp": 1792586498,
+          "lastUser": {
+            "name": "admin",
+            "id": "68d03c42-d9bd-11dc-89f2-b7961d42c462",
+            "type": "user"
+          },
+          "domain": {
+            "name": "Global",
+            "id": "e276abec-e0f2-11e3-8169-6d9ed49b625f",
+            "type": "Domain"
+          }
+        },
+        "literals": [
+          {
+            "name": "TLS_RSA_WITH_3DES_EDE_CBC_SHA",
+            "value": "10"
+          },
+          {
+            "name": "TLS_RSA_WITH_AES_128_CBC_SHA",
+            "value": "47"
+          },
+          {
+            "name": "TLS_RSA_WITH_AES_256_CBC_SHA",
+            "value": "53"
+          },
+          {
+            "name": "TLS_RSA_WITH_AES_128_CBC_SHA256",
+            "value": "60"
+          },
+          {
+            "name": "TLS_RSA_WITH_AES_256_CBC_SHA256",
+            "value": "61"
+          },
+          {
+            "name": "TLS_RSA_WITH_AES_128_GCM_SHA256",
+            "value": "156"
+          },
+          {
+            "name": "TLS_RSA_WITH_AES_256_GCM_SHA384",
+            "value": "157"
+          },
+          {
+            "name": "TLS_DHE_RSA_WITH_3DES_EDE_CBC_SHA",
+            "value": "22"
+          },
+          {
+            "name": "TLS_DHE_RSA_WITH_AES_128_CBC_SHA",
+            "value": "51"
+          },
+          {
+            "name": "TLS_DHE_RSA_WITH_AES_256_CBC_SHA",
+            "value": "57"
+          },
+          {
+            "name": "TLS_ECDHE_ECDSA_WITH_AES_128_CBC_SHA",
+            "value": "49161"
+          },
+          {
+            "name": "TLS_ECDHE_ECDSA_WITH_AES_256_CBC_SHA",
+            "value": "49162"
+          },
+          {
+            "name": "TLS_ECDHE_RSA_WITH_3DES_EDE_CBC_SHA",
+            "value": "49170"
+          },
+          {
+            "name": "TLS_ECDHE_RSA_WITH_AES_128_CBC_SHA",
+            "value": "49171"
+          },
+          {
+            "name": "TLS_ECDHE_RSA_WITH_AES_256_CBC_SHA",
+            "value": "49172"
+          },
+          {
+            "name": "TLS_RSA_WITH_NULL_SHA",
+            "value": "2"
+          },
+          {
+            "name": "TLS_RSA_WITH_NULL_SHA256",
+            "value": "59"
+          },
+          {
+            "name": "TLS_RSA_EXPORT_WITH_DES40_CBC_SHA",
+            "value": "8"
+          },
+          {
+            "name": "TLS_RSA_WITH_DES_CBC_SHA",
+            "value": "9"
+          }
+        ],
+        "name": "tls-weak-no-rc4",
+        "id": "00000000-0000-0ed3-0000-000000f82001",
+        "type": "CipherSuiteList"
+      },
+      {
+        "metadata": {
+          "readOnly": {
+            "state": false
+          },
+          "timestamp": 1792585733,
+          "lastUser": {
+            "name": "admin",
+            "id": "68d03c42-d9bd-11dc-89f2-b7961d42c462",
+            "type": "user"
+          },
+          "domain": {
+            "name": "Global",
+            "id": "e276abec-e0f2-11e3-8169-6d9ed49b625f",
+            "type": "Domain"
+          }
+        },
+        "literals": [
+          {
+            "name": "TLS_RSA_WITH_RC4_128_SHA",
+            "value": "5"
+          },
+          {
+            "name": "TLS_RSA_WITH_3DES_EDE_CBC_SHA",
+            "value": "10"
+          },
+          {
+            "name": "TLS_RSA_WITH_AES_128_CBC_SHA",
+            "value": "47"
+          },
+          {
+            "name": "TLS_RSA_WITH_AES_256_CBC_SHA",
+            "value": "53"
+          },
+          {
+            "name": "TLS_RSA_WITH_AES_128_CBC_SHA256",
+            "value": "60"
+          },
+          {
+            "name": "TLS_RSA_WITH_AES_256_CBC_SHA256",
+            "value": "61"
+          },
+          {
+            "name": "TLS_RSA_WITH_AES_128_GCM_SHA256",
+            "value": "156"
+          },
+          {
+            "name": "TLS_RSA_WITH_AES_256_GCM_SHA384",
+            "value": "157"
+          },
+          {
+            "name": "TLS_DHE_RSA_WITH_3DES_EDE_CBC_SHA",
+            "value": "22"
+          },
+          {
+            "name": "TLS_DHE_RSA_WITH_AES_128_CBC_SHA",
+            "value": "51"
+          },
+          {
+            "name": "TLS_DHE_RSA_WITH_AES_256_CBC_SHA",
+            "value": "57"
+          },
+          {
+            "name": "TLS_ECDHE_ECDSA_WITH_AES_128_CBC_SHA",
+            "value": "49161"
+          },
+          {
+            "name": "TLS_ECDHE_ECDSA_WITH_AES_256_CBC_SHA",
+            "value": "49162"
+          },
+          {
+            "name": "TLS_ECDHE_RSA_WITH_RC4_128_SHA",
+            "value": "49169"
+          },
+          {
+            "name": "TLS_ECDHE_RSA_WITH_3DES_EDE_CBC_SHA",
+            "value": "49170"
+          },
+          {
+            "name": "TLS_ECDHE_RSA_WITH_AES_128_CBC_SHA",
+            "value": "49171"
+          },
+          {
+            "name": "TLS_ECDHE_RSA_WITH_AES_256_CBC_SHA",
+            "value": "49172"
+          },
+          {
+            "name": "TLS_RSA_WITH_NULL_SHA",
+            "value": "2"
+          },
+          {
+            "name": "TLS_RSA_WITH_NULL_SHA256",
+            "value": "59"
+          },
+          {
+            "name": "TLS_RSA_EXPORT_WITH_RC4_40_MD5",
+            "value": "3"
+          },
+          {
+            "name": "TLS_RSA_EXPORT_WITH_DES40_CBC_SHA",
+            "value": "8"
+          },
+          {
+            "name": "TLS_RSA_WITH_DES_CBC_SHA",
+            "value": "9"
+          },
+          {
+            "name": "TLS_RSA_WITH_RC4_128_MD5",
+            "value": "4"
+          }
+        ],
+        "name": "tls-weak-preset",
+        "id": "00000000-0000-0ed3-0000-000000f82002",
+        "type": "CipherSuiteList"
+      }
+    ],
+    "paging": {
+      "offset": 0,
+      "limit": 25,
+      "count": 2,
+      "pages": 1
+    }
+  },
+  "policy": {
+    "metadata": {
+      "readOnly": {
+        "state": false
+      },
+      "timestamp": 1792582746,
+      "lastUser": {
+        "name": "admin"
+      },
+      "domain": {
+        "name": "Global",
+        "id": "e276abec-e0f2-11e3-8169-6d9ed49b625f",
+        "type": "Domain"
+      }
+    },
+    "mode": "EXPERT",
+    "undecryptableActions": {
+      "compressedSession": "INHERIT_DEFAULT_ACTION",
+      "sslV2Session": "INHERIT_DEFAULT_ACTION",
+      "unknownCipherSuite": "INHERIT_DEFAULT_ACTION",
+      "unsupportedCipherSuite": "BLOCK_WITH_RESET",
+      "sessionNotCached": "INHERIT_DEFAULT_ACTION",
+      "handshakeErrors": "INHERIT_DEFAULT_ACTION",
+      "decryptionErrors": "BLOCK"
+    },
+    "defaultAction": {
+      "policyAction": "DO_NOT_DECRYPT",
+      "eventLogAction": "LOG_NONE"
+    },
+    "advancedOptions": {
+      "disallowUntrustedIssuerResign": true,
+      "stripHTTP3": false,
+      "blockExtensions": [],
+      "tls13Decryption": true,
+      "quicDecryption": false,
+      "adaptiveProbe": true
+    },
+    "logging": {
+      "logEnd": false,
+      "sendEvents": false
+    },
+    "trustedCAs": {
+      "objects": [
+        {
+          "name": "Cisco-Trusted-Authorities",
+          "id": "d3856136-b65c-49e6-ac4c-0daf5be98bc1",
+          "type": "ExternalCACertificateGroup"
+        }
+      ]
+    },
+    "id": "00000000-0000-0ed3-0000-000000f82003",
+    "name": "tls-cipher-dec",
+    "description": "ftd-tls-cipher-policy recipe",
+    "type": "DecryptionPolicy"
+  },
+  "policy_after_event_log_put": {
+    "metadata": {
+      "readOnly": {
+        "state": false
+      },
+      "timestamp": 1792585988,
+      "lastUser": {
+        "name": "admin"
+      },
+      "domain": {
+        "name": "Global",
+        "id": "e276abec-e0f2-11e3-8169-6d9ed49b625f",
+        "type": "Domain"
+      }
+    },
+    "mode": "EXPERT",
+    "undecryptableActions": {
+      "compressedSession": "INHERIT_DEFAULT_ACTION",
+      "sslV2Session": "INHERIT_DEFAULT_ACTION",
+      "unknownCipherSuite": "INHERIT_DEFAULT_ACTION",
+      "unsupportedCipherSuite": "INHERIT_DEFAULT_ACTION",
+      "sessionNotCached": "INHERIT_DEFAULT_ACTION",
+      "handshakeErrors": "INHERIT_DEFAULT_ACTION",
+      "decryptionErrors": "BLOCK"
+    },
+    "defaultAction": {
+      "policyAction": "DO_NOT_DECRYPT",
+      "eventLogAction": "LOG_NONE"
+    },
+    "advancedOptions": {
+      "disallowUntrustedIssuerResign": true,
+      "stripHTTP3": false,
+      "blockExtensions": [],
+      "tls13Decryption": true,
+      "quicDecryption": false,
+      "adaptiveProbe": true
+    },
+    "logging": {
+      "logEnd": false,
+      "sendEvents": false
+    },
+    "trustedCAs": {
+      "objects": [
+        {
+          "name": "Cisco-Trusted-Authorities",
+          "id": "d3856136-b65c-49e6-ac4c-0daf5be98bc1",
+          "type": "ExternalCACertificateGroup"
+        }
+      ]
+    },
+    "id": "00000000-0000-0ed3-0000-000000f82003",
+    "name": "tls-cipher-dec",
+    "description": "ftd-tls-cipher-policy recipe",
+    "type": "DecryptionPolicy"
+  },
+  "policy_final": {
+    "metadata": {
+      "readOnly": {
+        "state": false
+      },
+      "timestamp": 1792586619,
+      "lastUser": {
+        "name": "admin"
+      },
+      "domain": {
+        "name": "Global",
+        "id": "e276abec-e0f2-11e3-8169-6d9ed49b625f",
+        "type": "Domain"
+      }
+    },
+    "mode": "EXPERT",
+    "undecryptableActions": {
+      "compressedSession": "INHERIT_DEFAULT_ACTION",
+      "sslV2Session": "INHERIT_DEFAULT_ACTION",
+      "unknownCipherSuite": "INHERIT_DEFAULT_ACTION",
+      "unsupportedCipherSuite": "BLOCK_WITH_RESET",
+      "sessionNotCached": "INHERIT_DEFAULT_ACTION",
+      "handshakeErrors": "INHERIT_DEFAULT_ACTION",
+      "decryptionErrors": "BLOCK"
+    },
+    "defaultAction": {
+      "policyAction": "DO_NOT_DECRYPT",
+      "eventLogAction": "LOG_FLOW_END"
+    },
+    "advancedOptions": {
+      "disallowUntrustedIssuerResign": true,
+      "stripHTTP3": false,
+      "blockExtensions": [],
+      "tls13Decryption": true,
+      "quicDecryption": false,
+      "adaptiveProbe": true
+    },
+    "logging": {
+      "logEnd": true,
+      "sendEvents": true
+    },
+    "trustedCAs": {
+      "objects": [
+        {
+          "name": "Cisco-Trusted-Authorities",
+          "id": "d3856136-b65c-49e6-ac4c-0daf5be98bc1",
+          "type": "ExternalCACertificateGroup"
+        }
+      ]
+    },
+    "id": "00000000-0000-0ed3-0000-000000f82003",
+    "name": "tls-cipher-dec",
+    "description": "ftd-tls-cipher-policy recipe",
+    "type": "DecryptionPolicy"
+  },
+  "probe": {
+    "_note": "Single-suite and grouped POSTs of object/ciphersuitelists with IANA names (tls-probe-*; the accepted ones deleted again). FMC checks the object name first: a duplicate name answers 'already exists' even for an unknown suite.",
+    "accepted": [
+      2,
+      3,
+      4,
+      8,
+      9,
+      59
+    ],
+    "refused": [
+      52,
+      58
+    ],
+    "refused_also_as": "TLS_DH_ANON_WITH_AES_128_CBC_SHA",
+    "refused_answer": "Not saved. The SHA is incorrect. (code = 0)",
+    "duplicate_name_answer": "Object with the same name already exists (code = 100)",
+    "accepted_post_answer": {
+      "metadata": {
+        "readOnly": {
+          "state": false
+        },
+        "timestamp": 1792585439,
+        "lastUser": {
+          "name": "admin",
+          "id": "68d03c42-d9bd-11dc-89f2-b7961d42c462",
+          "type": "user"
+        },
+        "domain": {
+          "name": "Global",
+          "id": "e276abec-e0f2-11e3-8169-6d9ed49b625f",
+          "type": "Domain"
+        }
+      },
+      "literals": [
+        {
+          "name": "TLS_RSA_WITH_RC4_128_MD5",
+          "value": "4"
+        },
+        {
+          "name": "TLS_RSA_EXPORT_WITH_DES40_CBC_SHA",
+          "value": "8"
+        },
+        {
+          "name": "TLS_RSA_WITH_DES_CBC_SHA",
+          "value": "9"
+        }
+      ],
+      "name": "tls-probe-4-8-9",
+      "id": "00000000-0000-0ed3-0000-000000f82004",
+      "type": "CipherSuiteList"
+    }
+  },
+  "rules": {
+    "items": [
+      {
+        "metadata": {
+          "ruleIndex": 3,
+          "category": {
+            "name": "standard_category"
+          }
+        },
+        "enabled": true,
+        "replacePublicKey": false,
+        "decryptionCerts": {
+          "objects": [
+            {
+              "id": "00000000-0000-0ed3-0000-000000f82005",
+              "name": "tls-cipher-resign-ca",
+              "type": "InternalCA"
+            }
+          ]
+        },
+        "sourceNetworks": {},
+        "destinationNetworks": {},
+        "sourcePorts": {},
+        "destinationPorts": {
+          "literals": [
+            {
+              "type": "PortLiteral",
+              "port": "10443",
+              "protocol": "6"
+            },
+            {
+              "type": "PortLiteral",
+              "port": "11443",
+              "protocol": "6"
+            },
+            {
+              "type": "PortLiteral",
+              "port": "12443",
+              "protocol": "6"
+            }
+          ]
+        },
+        "sourceZones": {
+          "objects": [
+            {
+              "name": "tls-inside",
+              "id": "00000000-0000-0ed3-0000-000000f82006",
+              "type": "SecurityZone"
+            }
+          ]
+        },
+        "destinationZones": {
+          "objects": [
+            {
+              "name": "tls-outside",
+              "id": "00000000-0000-0ed3-0000-000000f82007",
+              "type": "SecurityZone"
+            }
+          ]
+        },
+        "vlanTags": {},
+        "logging": {
+          "logEnd": true,
+          "sendEvents": true
+        },
+        "issuerDNs": {},
+        "subjectDNs": {},
+        "urls": {},
+        "certificateStatuses": {
+          "notYetValid": "ANY",
+          "invalidIssuer": "ANY",
+          "invalidSignature": "ANY",
+          "selfSigned": "ANY",
+          "invalidCertificate": "ANY",
+          "serverMismatch": "ANY",
+          "invalidCrl": "ANY",
+          "valid": "ANY",
+          "expired": "ANY",
+          "revoked": "ANY"
+        },
+        "cipherSuiteLists": {},
+        "applications": {},
+        "externalCertificates": {},
+        "tlsVersions": {
+          "sslv3": true,
+          "tls10": true,
+          "tls11": true,
+          "tls12": true,
+          "tls13": true
+        },
+        "users": {},
+        "clientThreat": "ANY",
+        "ruleAction": "DECRYPT_RESIGN",
+        "id": "00000000-0000-0ed3-0000-000000f82008",
+        "name": "resign-stepup",
+        "type": "DecryptionPolicyRule"
+      },
+      {
+        "metadata": {
+          "ruleIndex": 1,
+          "category": {
+            "name": "standard_category"
+          }
+        },
+        "enabled": true,
+        "replacePublicKey": false,
+        "sourceNetworks": {},
+        "destinationNetworks": {},
+        "sourcePorts": {},
+        "destinationPorts": {},
+        "sourceZones": {
+          "objects": [
+            {
+              "name": "tls-inside",
+              "id": "00000000-0000-0ed3-0000-000000f82006",
+              "type": "SecurityZone"
+            }
+          ]
+        },
+        "destinationZones": {
+          "objects": [
+            {
+              "name": "tls-outside",
+              "id": "00000000-0000-0ed3-0000-000000f82007",
+              "type": "SecurityZone"
+            }
+          ]
+        },
+        "vlanTags": {},
+        "logging": {
+          "logEnd": true,
+          "sendEvents": true
+        },
+        "issuerDNs": {},
+        "subjectDNs": {},
+        "urls": {},
+        "certificateStatuses": {
+          "notYetValid": "ANY",
+          "invalidIssuer": "ANY",
+          "invalidSignature": "ANY",
+          "selfSigned": "ANY",
+          "invalidCertificate": "ANY",
+          "serverMismatch": "ANY",
+          "invalidCrl": "ANY",
+          "valid": "ANY",
+          "expired": "ANY",
+          "revoked": "ANY"
+        },
+        "cipherSuiteLists": {},
+        "applications": {},
+        "externalCertificates": {},
+        "tlsVersions": {
+          "sslv3": true,
+          "tls10": true,
+          "tls11": true,
+          "tls12": false,
+          "tls13": false
+        },
+        "users": {},
+        "clientThreat": "ANY",
+        "ruleAction": "BLOCK_WITH_RESET",
+        "id": "00000000-0000-0ed3-0000-000000f82009",
+        "name": "block-old-tls",
+        "type": "DecryptionPolicyRule"
+      },
+      {
+        "metadata": {
+          "ruleIndex": 2,
+          "category": {
+            "name": "standard_category"
+          }
+        },
+        "enabled": true,
+        "replacePublicKey": false,
+        "sourceNetworks": {},
+        "destinationNetworks": {},
+        "sourcePorts": {},
+        "destinationPorts": {},
+        "sourceZones": {
+          "objects": [
+            {
+              "name": "tls-inside",
+              "id": "00000000-0000-0ed3-0000-000000f82006",
+              "type": "SecurityZone"
+            }
+          ]
+        },
+        "destinationZones": {
+          "objects": [
+            {
+              "name": "tls-outside",
+              "id": "00000000-0000-0ed3-0000-000000f82007",
+              "type": "SecurityZone"
+            }
+          ]
+        },
+        "vlanTags": {},
+        "logging": {
+          "logEnd": true,
+          "sendEvents": true
+        },
+        "issuerDNs": {},
+        "subjectDNs": {},
+        "urls": {},
+        "certificateStatuses": {
+          "notYetValid": "ANY",
+          "invalidIssuer": "ANY",
+          "invalidSignature": "ANY",
+          "selfSigned": "ANY",
+          "invalidCertificate": "ANY",
+          "serverMismatch": "ANY",
+          "invalidCrl": "ANY",
+          "valid": "ANY",
+          "expired": "ANY",
+          "revoked": "ANY"
+        },
+        "cipherSuiteLists": {
+          "objects": [
+            {
+              "name": "tls-weak-ciphers",
+              "id": "00000000-0000-0ed3-0000-000000f82000",
+              "type": "CipherSuiteList"
+            }
+          ]
+        },
+        "applications": {},
+        "externalCertificates": {},
+        "tlsVersions": {
+          "sslv3": true,
+          "tls10": true,
+          "tls11": true,
+          "tls12": true,
+          "tls13": true
+        },
+        "users": {},
+        "clientThreat": "ANY",
+        "ruleAction": "BLOCK_WITH_RESET",
+        "id": "00000000-0000-0ed3-0000-000000f8200a",
+        "name": "block-weak-ciphers",
+        "type": "DecryptionPolicyRule"
+      }
+    ],
+    "paging": {
+      "offset": 0,
+      "limit": 25,
+      "count": 3,
+      "pages": 1
+    }
+  },
+  "rules_final": {
+    "items": [
+      {
+        "metadata": {
+          "ruleIndex": 3,
+          "category": {
+            "name": "standard_category"
+          }
+        },
+        "enabled": true,
+        "replacePublicKey": false,
+        "decryptionCerts": {
+          "objects": [
+            {
+              "id": "00000000-0000-0ed3-0000-000000f82005",
+              "name": "tls-cipher-resign-ca",
+              "type": "InternalCA"
+            }
+          ]
+        },
+        "sourceNetworks": {},
+        "destinationNetworks": {},
+        "sourcePorts": {},
+        "destinationPorts": {
+          "literals": [
+            {
+              "type": "PortLiteral",
+              "port": "10443",
+              "protocol": "6"
+            },
+            {
+              "type": "PortLiteral",
+              "port": "11443",
+              "protocol": "6"
+            },
+            {
+              "type": "PortLiteral",
+              "port": "12443",
+              "protocol": "6"
+            }
+          ]
+        },
+        "sourceZones": {
+          "objects": [
+            {
+              "name": "tls-inside",
+              "id": "00000000-0000-0ed3-0000-000000f82006",
+              "type": "SecurityZone"
+            }
+          ]
+        },
+        "destinationZones": {
+          "objects": [
+            {
+              "name": "tls-outside",
+              "id": "00000000-0000-0ed3-0000-000000f82007",
+              "type": "SecurityZone"
+            }
+          ]
+        },
+        "vlanTags": {},
+        "logging": {
+          "logEnd": true,
+          "sendEvents": true
+        },
+        "issuerDNs": {},
+        "subjectDNs": {},
+        "urls": {},
+        "certificateStatuses": {
+          "notYetValid": "ANY",
+          "invalidIssuer": "ANY",
+          "invalidSignature": "ANY",
+          "selfSigned": "ANY",
+          "invalidCertificate": "ANY",
+          "serverMismatch": "ANY",
+          "invalidCrl": "ANY",
+          "valid": "ANY",
+          "expired": "ANY",
+          "revoked": "ANY"
+        },
+        "cipherSuiteLists": {},
+        "applications": {},
+        "externalCertificates": {},
+        "tlsVersions": {
+          "sslv3": true,
+          "tls10": true,
+          "tls11": true,
+          "tls12": true,
+          "tls13": true
+        },
+        "users": {},
+        "clientThreat": "ANY",
+        "ruleAction": "DECRYPT_RESIGN",
+        "id": "00000000-0000-0ed3-0000-000000f82008",
+        "name": "resign-stepup",
+        "type": "DecryptionPolicyRule"
+      },
+      {
+        "metadata": {
+          "ruleIndex": 1,
+          "category": {
+            "name": "standard_category"
+          }
+        },
+        "enabled": true,
+        "replacePublicKey": false,
+        "sourceNetworks": {},
+        "destinationNetworks": {},
+        "sourcePorts": {},
+        "destinationPorts": {},
+        "sourceZones": {
+          "objects": [
+            {
+              "name": "tls-inside",
+              "id": "00000000-0000-0ed3-0000-000000f82006",
+              "type": "SecurityZone"
+            }
+          ]
+        },
+        "destinationZones": {
+          "objects": [
+            {
+              "name": "tls-outside",
+              "id": "00000000-0000-0ed3-0000-000000f82007",
+              "type": "SecurityZone"
+            }
+          ]
+        },
+        "vlanTags": {},
+        "logging": {
+          "logEnd": true,
+          "sendEvents": true
+        },
+        "issuerDNs": {},
+        "subjectDNs": {},
+        "urls": {},
+        "certificateStatuses": {
+          "notYetValid": "ANY",
+          "invalidIssuer": "ANY",
+          "invalidSignature": "ANY",
+          "selfSigned": "ANY",
+          "invalidCertificate": "ANY",
+          "serverMismatch": "ANY",
+          "invalidCrl": "ANY",
+          "valid": "ANY",
+          "expired": "ANY",
+          "revoked": "ANY"
+        },
+        "cipherSuiteLists": {},
+        "applications": {},
+        "externalCertificates": {},
+        "tlsVersions": {
+          "sslv3": true,
+          "tls10": true,
+          "tls11": true,
+          "tls12": false,
+          "tls13": false
+        },
+        "users": {},
+        "clientThreat": "ANY",
+        "ruleAction": "BLOCK_WITH_RESET",
+        "id": "00000000-0000-0ed3-0000-000000f8200b",
+        "name": "block-old-tls",
+        "type": "DecryptionPolicyRule"
+      },
+      {
+        "metadata": {
+          "ruleIndex": 2,
+          "category": {
+            "name": "standard_category"
+          }
+        },
+        "enabled": true,
+        "replacePublicKey": false,
+        "sourceNetworks": {},
+        "destinationNetworks": {},
+        "sourcePorts": {},
+        "destinationPorts": {},
+        "sourceZones": {
+          "objects": [
+            {
+              "name": "tls-inside",
+              "id": "00000000-0000-0ed3-0000-000000f82006",
+              "type": "SecurityZone"
+            }
+          ]
+        },
+        "destinationZones": {
+          "objects": [
+            {
+              "name": "tls-outside",
+              "id": "00000000-0000-0ed3-0000-000000f82007",
+              "type": "SecurityZone"
+            }
+          ]
+        },
+        "vlanTags": {},
+        "logging": {
+          "logEnd": true,
+          "sendEvents": true
+        },
+        "issuerDNs": {},
+        "subjectDNs": {},
+        "urls": {},
+        "certificateStatuses": {
+          "notYetValid": "ANY",
+          "invalidIssuer": "ANY",
+          "invalidSignature": "ANY",
+          "selfSigned": "ANY",
+          "invalidCertificate": "ANY",
+          "serverMismatch": "ANY",
+          "invalidCrl": "ANY",
+          "valid": "ANY",
+          "expired": "ANY",
+          "revoked": "ANY"
+        },
+        "cipherSuiteLists": {
+          "objects": [
+            {
+              "name": "tls-weak-no-rc4",
+              "id": "00000000-0000-0ed3-0000-000000f82001",
+              "type": "CipherSuiteList"
+            }
+          ]
+        },
+        "applications": {},
+        "externalCertificates": {},
+        "tlsVersions": {
+          "sslv3": true,
+          "tls10": true,
+          "tls11": true,
+          "tls12": true,
+          "tls13": true
+        },
+        "users": {},
+        "clientThreat": "ANY",
+        "ruleAction": "BLOCK_WITH_RESET",
+        "id": "00000000-0000-0ed3-0000-000000f8200c",
+        "name": "block-weak-ciphers",
+        "type": "DecryptionPolicyRule"
+      }
+    ],
+    "paging": {
+      "offset": 0,
+      "limit": 25,
+      "count": 3,
+      "pages": 1
+    }
+  }
+}
