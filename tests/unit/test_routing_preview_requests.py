@@ -6,6 +6,7 @@ Shapes: tests/fixtures/bgp_preview_parity_fmc10.json (the two requests live-B se
 2026-10-21)."""
 
 import copy
+from typing import Any
 
 import httpx
 import respx
@@ -110,3 +111,69 @@ async def test_ospf_preview_shows_its_request(fmc: respx.MockRouter) -> None:
     assert (req["step"], req["method"]) == ("update ospf process", "PUT")
     assert req["path"].endswith(f"/routing/ospfv2routes/{OSPF_ID}")
     assert req["body"] == body(put)
+
+
+# Review of #307: core's mask_secrets leaves a secret-named value that looks like a flag ('on', 'off', 'true',
+# ...) in clear. A routing password or key is masked in the preview body whatever its value.
+
+
+async def test_a_flag_looking_md5_password_is_masked_too(fmc: respx.MockRouter) -> None:
+    for password in ("on", "true", "off", "Yes"):
+        mount(fmc)
+        put = fmc.put(f"{R}/bgp/{BGP_ID}").mock(return_value=httpx.Response(200, json={}))
+        args = {
+            "device": DEV["name"],
+            "neighbor": "192.0.2.2",
+            "neighbor_description": "edge peer",
+            "neighbor_password": password,
+        }
+        async with Client(server()) as c:
+            preview = await run(c, "fmc_configure_bgp", args)
+            assert preview["status"] == "preview", preview
+            await run(c, "fmc_configure_bgp", {**args, "confirm": preview["confirm"]})
+        (req,) = preview["preview"]["requests"]
+        shown = req["body"]["addressFamilyIPv4"]["neighbors"][0]["neighborAdvanced"]
+        assert shown["neighborSecret"] == "********", password
+        wire = body(put)["addressFamilyIPv4"]["neighbors"][0]["neighborAdvanced"]
+        assert wire["neighborSecret"] == password
+
+
+def ospf_with_keys() -> dict[str, Any]:
+    """The recorded OSPF process with a virtual link that authenticates with a password and MD5 keys
+    (IOspfAuthentication in the FMC 10.0.1 spec), values that look like flags among them."""
+    proc = copy.deepcopy(FX["ospf_recorded"])
+    proc["areas"][0]["virtualLinks"] = [
+        {
+            "routerId": "198.51.100.7",
+            "helloInterval": 10,
+            "authentication": {
+                "passwdAuth": {"authKey": "on", "authType": "PASSWORD"},
+                "md5AuthList": [
+                    {"md5KeyId": 1, "md5Key": "true", "authType": "MESSAGE_DIGEST"},
+                    {"md5KeyId": 2, "md5Key": "ospf-K3y-2", "authType": "MESSAGE_DIGEST"},
+                ],
+                "areaAuth": {"md5AuthList": [{"md5KeyId": 3, "md5Key": "off"}]},
+            },
+        }
+    ]
+    return proc
+
+
+async def test_ospf_keys_are_masked_in_the_preview_body(fmc: respx.MockRouter) -> None:
+    mount(fmc)
+    fmc.get(f"{R}/ospfv2routes").mock(return_value=items([ospf_with_keys()]))
+    put = fmc.put(f"{R}/ospfv2routes/{OSPF_ID}").mock(return_value=httpx.Response(200, json={}))
+    args = {"device": DEV["name"], "area": "0", "add_networks": ["lab-net"]}
+    async with Client(server()) as c:
+        preview = await run(c, "fmc_configure_ospf", args)
+        await run(c, "fmc_configure_ospf", {**args, "confirm": preview["confirm"]})
+    (req,) = preview["preview"]["requests"]
+    auth = req["body"]["areas"][0]["virtualLinks"][0]["authentication"]
+    assert auth["passwdAuth"] == {"authKey": "********", "authType": "********"}
+    assert [k["md5Key"] for k in auth["md5AuthList"]] == ["********", "********"]
+    assert auth["areaAuth"]["md5AuthList"][0]["md5Key"] == "********"
+    for secret in ("ospf-K3y-2", "'on'", "'off'"):
+        assert secret not in str(req["body"]), secret
+    wire = body(put)["areas"][0]["virtualLinks"][0]
+    assert wire["authentication"] == ospf_with_keys()["areas"][0]["virtualLinks"][0]["authentication"]
+    assert req["body"]["areas"][0]["virtualLinks"][0]["helloInterval"] == 10  # nothing else masked

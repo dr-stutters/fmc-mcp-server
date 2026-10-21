@@ -25,7 +25,7 @@ from fmc_mcp._core import (
     UpstreamError,
     get_client,
 )
-from fmc_mcp._core.formatting import mask_secrets
+from fmc_mcp._core.formatting import MASK, is_secret_key
 from fmc_mcp.client import FmcApp
 from fmc_mcp.preview import fmc_preview
 from fmc_mcp.refs import NETWORK_TYPES, RefResolver
@@ -201,15 +201,44 @@ def ospf_summary(p: dict[str, Any]) -> dict[str, Any]:
 OSPF_STEPS = {"POST": "create ospf process", "PUT": "update ospf process", "DELETE": "delete ospf process"}
 
 
+# Routing secrets in FMC 10.0.1's BGP and OSPF bodies: a BGP neighbor's MD5 password, OSPF MD5 keys and
+# passwords (areas, virtual links, interfaces). Masked in a preview body whatever their value.
+ROUTING_SECRETS = frozenset({"neighborSecret", "md5Key", "authKey", "passwdAuth"})
+
+
+def _mask_every_leaf(v: Any) -> Any:
+    if isinstance(v, dict):
+        return {k: _mask_every_leaf(x) for k, x in v.items()}
+    if isinstance(v, list):
+        return [_mask_every_leaf(x) for x in v]
+    return v if v is None or v == "" else MASK
+
+
+def mask_body(v: Any) -> Any:
+    """A request body as a preview shows it: every value under a secret-named field (ROUTING_SECRETS or
+    one core's SECRET_KEY_RE matches) masked, even one that looks like a flag. Core's mask_secrets leaves
+    'on', 'off', 'true', 'yes', ... in clear, but a BGP password 'on' is still a password
+    (CORE-REQUESTS.md). Nothing else changes."""
+    if isinstance(v, list):
+        return [mask_body(x) for x in v]
+    if not isinstance(v, dict):
+        return v
+    return {
+        k: _mask_every_leaf(x) if k in ROUTING_SECRETS or is_secret_key(str(k)) else mask_body(x)
+        for k, x in v.items()
+    }
+
+
 def requests_shown(steps: list[tuple[str, str, str, dict[str, Any] | None]]) -> list[dict[str, Any]]:
     """The requests a confirm sends, in order, as the preview shows them: method, path and body, with
-    secrets (a BGP neighbor's MD5 password) masked. The bodies are what goes on the wire, so a change can
-    be checked or repeated by hand (W6N live-B rebuilt them from the code for a preview-parity run)."""
+    secrets (a BGP neighbor's MD5 password, OSPF keys) masked whatever their value. The bodies are what
+    goes on the wire, so a change can be checked or repeated by hand (W6N live-B rebuilt them from the
+    code for a preview-parity run)."""
     out = []
     for name, method, path, body in steps:
         row: dict[str, Any] = {"step": name, "method": method, "path": path}
         if body is not None:
-            row["body"] = mask_secrets(body)
+            row["body"] = mask_body(body)
         out.append(row)
     return out
 
@@ -730,7 +759,7 @@ def register(reg: ToolRegistrar) -> None:
         """Edit OSPFv2 on an FTD: add or remove networks (network objects) in an area, creating the
         process and area when needed, or delete a whole process. Interfaces whose address falls in an
         area network run OSPF in that area. The preview shows the areas before and after, and the request
-        it sends (`requests`: method, path, body). Deploy to apply; verify with
+        it sends (`requests`: method, path, body; keys masked). Deploy to apply; verify with
         fmc_run_show_command('show route') (O routes) and the neighbor's CLI.
 
         Redistribution (F77): connected, static, BGP or another OSPF process into this one, with a
