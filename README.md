@@ -358,8 +358,9 @@ MD5 password, because FMC returns it masked and a PUT would replace it, unless y
   `fmc_diff_device_config(a=<before>, b=<after>)` (no FMC requests for two stored snapshots), or
   `a=<before>` alone against the device now: `findings` says "route lost", "interface Ethernet0/0:
   status up -> down", "tunnel ...: TUNNEL_UP -> TUNNEL_DOWN", "new health alert ...", a new deployment;
-  hit-count changes come as `deltas` and never make two snapshots differ. Route ages, SA lifetimes and
-  alert times are left out, so an unchanged device compares identical. The `fmc_rule_change_review`
+  hit-count changes and health readings (an alert's CPU or memory percentage) come as `deltas` and never
+  make two snapshots differ. Route ages, SA lifetimes and alert times are left out, so an unchanged device
+  compares identical. A snapshot against a named device (`b=<device>`) reads the device the same way. The `fmc_rule_change_review`
   prompt snapshots before the deploy and diffs after it; `fmc_firewall_health_review(baseline=<files>)`
   compares the devices with snapshots taken earlier.
 - **Send FTD logs to a SIEM:** `fmc_configure_syslog` -> `fmc_assign_policy(kind='platform_settings')`

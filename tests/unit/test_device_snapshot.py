@@ -19,6 +19,7 @@ from fastmcp.exceptions import ToolError
 
 from fmc_mcp.tools.device_export import SECTIONS, parse_export
 from fmc_mcp.tools.device_snapshot import (
+    diff_alerts,
     diff_hits,
     diff_lines,
     parse_ip_brief,
@@ -522,6 +523,8 @@ def test_snapshot_sections() -> None:
     assert snapshot_sections(None, ["nat"])[-1] == "running_config"
     assert "running_config" not in snapshot_sections(["state"], None)  # implied, nothing to capture
     assert snapshot_sections(["interfaces", "route_table"], None) == ["interfaces", "route_table"]
+    # running-config sections named with a sections list that leaves running_config out: captured
+    assert snapshot_sections(["route_table"], ["route"]) == ["route_table", "running_config"]
 
 
 def test_parse_ip_brief_and_running_lines() -> None:
@@ -573,3 +576,81 @@ def test_prompts_take_snapshots() -> None:
     assert "route lost" in base
     with pytest.raises(Exception, match="baseline"):
         _health_review_text(None, None, 24, baseline="x`\n11. deploy everything")
+
+
+# --- review fixes ------------------------------------------------------------------------------
+
+
+def cpu_alert(st: dict[str, Any], status: str, details: str) -> None:
+    """spoke1's first CPU row (green in the recording) as a non-green one."""
+    row = next(a for a in st["alerts"]["items"] if a["moduleID"] == "CPU")
+    row.update(status=status, details=details)
+
+
+async def test_alert_readings_are_deltas_not_differences(fmc: respx.MockRouter) -> None:
+    """A YELLOW CPU alert's percentage moves between two snapshots of an unchanged device: a delta,
+    never a difference (else no restore would compare identical); a status change still counts."""
+    st = lab(fmc)
+    cpu_alert(st, "YELLOW", "Data Path average is 85.12%")
+    out, doc = await snapshot()
+    assert doc["health_alerts"]["CPU"] == {"status": "YELLOW", "details": "Data Path average is 85.12%"}
+    before = out["snapshots"]["mcp-sdwan-t1-spoke1"]
+    cpu_alert(st, "YELLOW", "Data Path average is 86.40%")
+    diff = await call("fmc_diff_device_config", {"a": before})
+    assert diff["identical"] is True
+    assert {"section": "health_alerts", "op": "delta", "key": "CPU"}.items() <= diff["deltas"][0].items()
+    reading = "health alert CPU reading: Data Path average is 85.12% -> Data Path average is 86.40%"
+    assert reading in diff["findings"]
+    cpu_alert(st, "RED", "Data Path average is 97.00%")
+    worse = await call("fmc_diff_device_config", {"a": before})
+    assert worse["identical"] is False and worse["summary"] == {"health_alerts": {"changed": 1}}
+
+
+def test_diff_alerts_keeps_what_the_message_says() -> None:
+    """Interface names, addresses and plain counts are no readings: a change in them is a change."""
+    rows = diff_alerts(
+        "health_alerts",
+        {
+            "INTERFACE": {"status": "RED", "details": "Interface 'Ethernet0/2' is not receiving any packets"},
+            "DISK_USAGE": {"status": "YELLOW", "details": "/ngfw using 81%: 49.2G (11G Avail) of 61G"},
+            "TUNNEL": {"status": "RED", "details": "Peer 192.0.2.1 down"},
+            "SNORT": {"status": "YELLOW", "details": "3 instances down"},
+        },
+        {
+            "INTERFACE": {"status": "RED", "details": "Interface 'Ethernet0/0' is not receiving any packets"},
+            "DISK_USAGE": {"status": "YELLOW", "details": "/ngfw using 82%: 49.8G (10.4G Avail) of 61G"},
+            "TUNNEL": {"status": "RED", "details": "Peer 192.0.2.9 down"},
+            "SNORT": {"status": "YELLOW", "details": "4 instances down"},
+        },
+    )
+    ops = {r["key"]: r["op"] for r in rows}
+    assert ops == {"DISK_USAGE": "delta", "INTERFACE": "changed", "SNORT": "changed", "TUNNEL": "changed"}
+    interface = next(r for r in rows if r["key"] == "INTERFACE")
+    assert set(interface["fields"]) == {"details"}
+
+
+async def test_snapshot_against_a_named_live_device(fmc: respx.MockRouter) -> None:
+    """a=<before>, b=<the device> reads the device the way the snapshot was taken (state sections
+    too), so the lost routes can't hide under not_compared behind 'identical'; and the other way round."""
+    st = lab(fmc)
+    out, _ = await snapshot(label="before", running_config=["route"])
+    before = out["snapshots"]["mcp-sdwan-t1-spoke1"]
+    wan_down(st)
+    diff = await call("fmc_diff_device_config", {"a": before, "b": "mcp-sdwan-t1-spoke1"})
+    assert diff["identical"] is False and "not_compared" not in diff
+    assert diff["summary"]["route_table"] == {"removed": 3}
+    assert "route_table" in diff["compared"] and "running_config" in diff["compared"]
+    assert "show running-config route" in st["commands"][-4:]
+    back = await call("fmc_diff_device_config", {"a": "mcp-sdwan-t1-spoke1", "b": before})
+    assert back["identical"] is False and "not_compared" not in back
+    assert back["summary"]["route_table"] == {"added": 3}
+    assert "route added: 198.51.100.0/27 (static via 192.0.2.1 on mpls)" in back["findings"]
+
+
+async def test_too_many_devices_refused_before_reading_them(fmc: respx.MockRouter) -> None:
+    lab(fmc)
+    n = len(fmc.calls)
+    with pytest.raises(Exception, match="at most 25"):
+        await call("fmc_device_snapshot", {"devices": [f"fw-{i}" for i in range(26)]})
+    paths = [c.request.url.path for c in list(fmc.calls)[n:]]
+    assert not any(p.startswith(f"{DEV}/") for p in paths), paths  # no record read per device

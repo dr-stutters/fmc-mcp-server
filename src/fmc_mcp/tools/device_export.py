@@ -128,7 +128,7 @@ _FILE_NAME = re.compile(r"[\w.@+-]+\.ya?ml")
 _EMPTY: tuple[Any, ...] = (None, "", [], {})
 # meta keys of a stored export that a live re-read needs to read the same way (F73 snapshots)
 LIVE_SETTINGS = ("running_config", "hit_count_refresh")
-MAX_DELTAS = 100  # counter deltas (hit counts) returned by a diff
+MAX_DELTAS = 100  # deltas (hit counts, health readings) returned by a diff
 
 SectionShape = Literal["keyed", "single", "policy"]
 SectionKind = Literal["config", "state"]
@@ -1080,6 +1080,19 @@ SectionsArg = Annotated[
 ]
 
 
+def read_like(
+    doc: dict[str, Any], sections: list[str] | None, names: list[str], shared: dict[str, Any]
+) -> list[str]:
+    """The sections to read a live device with when the other side is a stored export or snapshot: the
+    ones it was taken with (only those of `names` when the call named sections), with its running-config
+    sections and hit-count refresh setting (into `shared`)."""
+    meta = doc.get("meta") or {}
+    for key in LIVE_SETTINGS:
+        if key in meta:
+            shared[f"setting:{key}"] = meta[key]
+    return [n for n in meta.get("sections") or [] if n in SECTIONS and (sections is None or n in names)]
+
+
 async def _side(
     app: FmcApp,
     ref: str,
@@ -1233,34 +1246,48 @@ def register(reg: ToolRegistrar) -> None:
         password shows no difference. Reads only FMC for configuration sections. State sections (a
         snapshot from fmc_device_snapshot, or sections=['state']) read the device too and add
         `findings`: routes lost or added, tunnels and SAs down, interface state changes, new or
-        cleared health alerts, a new deployment, running-config lines; hit-count changes are
-        `deltas` (traffic moves them, so they never make two snapshots differ). A stored snapshot
-        as `a` with `b` omitted re-reads exactly its sections (about ten requests per device)."""
+        cleared health alerts, a new deployment, running-config lines; hit-count changes and health
+        readings (a CPU or memory percentage in an alert's message) are `deltas` (traffic and load
+        move them, so they never make two snapshots differ). A stored snapshot as `a` with `b`
+        omitted (or a live device as `b`) reads exactly its sections (about ten requests per
+        device)."""
         app: FmcApp = get_client(ctx)
         names = select_sections(sections)
         shared: dict[str, Any] = {}
-        da, warnings = await _side(app, a, "auto", domain, names, shared, mcp=ctx)
-        if b is None or b.strip().lower() == "live":
-            if da.get("meta", {}).get("exported_at") == "live":
-                raise InvalidRequest(
-                    "Pass `b` (another device, an export or a template), or a stored export as `a` to "
-                    "compare it with the live device."
-                )
-            meta_a = da.get("meta") or {}
-            target = str(meta_a.get("id") or meta_a.get("device") or "")
-            if not target or meta_a.get("kind") == "template":
-                raise InvalidRequest("Export `a` names no device to read live; pass `b`.")
-            live_sections = [
-                n for n in meta_a.get("sections") or [] if n in SECTIONS and (sections is None or n in names)
-            ]
-            for key in LIVE_SETTINGS:  # the same running-config sections, hit-count refresh, ...
-                if key in meta_a:
-                    shared[f"setting:{key}"] = meta_a[key]
-            db, more = await _side(
-                app, target, "device", domain or meta_a.get("domain"), live_sections, shared, mcp=ctx
-            )
+        b_live = b is None or b.strip().lower() == "live"
+        b_stored = not b_live and (b_kind == "export" or (b_kind == "auto" and looks_like_export(str(b))))
+        if b_stored and not looks_like_export(a):
+            # a live device against a stored export or snapshot: read `a` the way `b` was taken
+            db, more = await _side(app, str(b), "export", domain, names, shared)
+            like = read_like(db, sections, names, shared)
+            da, warnings = await _side(app, a, "auto", domain, like, shared, mcp=ctx)
         else:
-            db, more = await _side(app, b, b_kind, domain, names, shared, a=da, mcp=ctx)
+            da, warnings = await _side(app, a, "auto", domain, names, shared, mcp=ctx)
+            stored_a = da.get("meta", {}).get("exported_at") != "live"
+            if b_live:
+                if not stored_a:
+                    raise InvalidRequest(
+                        "Pass `b` (another device, an export or a template), or a stored export as `a` to "
+                        "compare it with the live device."
+                    )
+                meta_a = da.get("meta") or {}
+                target = str(meta_a.get("id") or meta_a.get("device") or "")
+                if not target or meta_a.get("kind") == "template":
+                    raise InvalidRequest("Export `a` names no device to read live; pass `b`.")
+                db, more = await _side(
+                    app,
+                    target,
+                    "device",
+                    domain or meta_a.get("domain"),
+                    read_like(da, sections, names, shared),
+                    shared,
+                    mcp=ctx,
+                )
+            else:
+                # a stored export or snapshot against a live device: that device is read the same way
+                # (a snapshot's state sections too, so lost routes can't hide under not_compared)
+                like = read_like(da, sections, names, shared) if stored_a else names
+                db, more = await _side(app, str(b), b_kind, domain, like, shared, a=da, mcp=ctx)
         warnings += more
         result = diff_exports(da, db, None if sections is None else names)
         if not result["compared"]:  # never 'identical' on nothing

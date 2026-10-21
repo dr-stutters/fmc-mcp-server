@@ -15,12 +15,13 @@ tools reads them too):
     deployment:      {status, deployed_version, last_job, ..., pending}   job history + deployable list
     running_config:  {<section>: [lines]}                                 show running-config <section>
 
-An HA pair's per-unit sections key each item by unit ('mcp-fw-ha-a: 10.1.0.0/16'). Show commands go
+An HA pair's per-unit sections key each item by unit ('mcp-fw-ha-a: 198.51.100.0/24'). Show commands go
 through F68's fleet runner: `fmc_device_snapshot` runs each command once for every device (FMC's
 bulkcommands where FMC enables it, else one request per device, eight at a time) before the per-device
 FMC reads. Volatile values are left out (route ages, SA lifetimes and SPIs, alert timestamps, tunnel
-change times), so two snapshots of an unchanged device compare identical; hit-count changes are
-reported as deltas, never as a difference (traffic moves them all the time).
+change times), so two snapshots of an unchanged device compare identical; hit-count changes, and a
+health message whose only change is a reading (a CPU or memory percentage, a disk size), are reported
+as deltas, never as a difference (traffic and load move them all the time).
 """
 
 # No `from __future__ import annotations`: FastMCP inspects signatures at runtime.
@@ -38,7 +39,7 @@ from pydantic import Field
 from fmc_mcp._core import InvalidRequest, ToolRegistrar, UpstreamError, get_client
 from fmc_mcp._core.formatting import max_chars
 from fmc_mcp.client import FmcApp
-from fmc_mcp.tools.bundle import finish, write_file
+from fmc_mcp.tools.bundle import field_delta, finish, write_file
 from fmc_mcp.tools.common import Domain
 from fmc_mcp.tools.deploy import DEPLOYABLE, JOBS, deployable_row
 from fmc_mcp.tools.device_export import (
@@ -76,6 +77,12 @@ MAX_LABEL = 60
 # Per-unit show commands of each section; failover runs on HA units only.
 SECTION_COMMANDS = {"route_table": ROUTES, "interface_state": INTERFACES, "vpn_sas": IKE_SAS}
 SNAPSHOT_DEFAULT = ("device", "policies")  # the cheap config sections a snapshot adds to the state ones
+# Readings in a health module's message: a percentage, a size, a time of day ('Data Path average is
+# 0.12%', '/ngfw using 4%: 2.2G (55G Avail) of 61G', '35.86%'). Interface names (Ethernet0/2), addresses,
+# versions with more than one dot and plain counts are not readings, so a change in them still counts.
+_READING = re.compile(
+    r"(?<![\w/.:])(?:\d+:\d{2}(?::\d{2})?|\d+(?:\.\d+)?\s?(?:%|[KMGT]i?B?\b)|\d+\.\d+)(?![\w/.:]*\d)"
+)
 
 
 # --- show output, per unit ------------------------------------------------------------------------
@@ -254,6 +261,8 @@ def explain_tunnel(c: dict[str, Any]) -> str | None:
 
 
 def explain_alert(c: dict[str, Any]) -> str | None:
+    if c["op"] == "delta":
+        return f"health alert {c['key']} reading: {c['from']} -> {c['to']}"
     if c["op"] == "added":
         return f"new health alert {c['key']} ({c['value'].get('status')}): {c['value'].get('details')}"
     if c["op"] == "removed":
@@ -309,6 +318,36 @@ def diff_hits(section: str, a: dict[str, Any], b: dict[str, Any]) -> list[dict[s
         elif a[key] != b[key]:
             fields = {"value": {"from": a[key], "to": b[key]}}
             out.append({"section": section, "op": "changed", "key": key, "fields": fields})
+    return out
+
+
+def without_readings(text: Any) -> str:
+    """A health message with its readings (percentages, sizes, times) replaced by '#'."""
+    return _READING.sub("#", str(text or ""))
+
+
+def diff_alerts(section: str, a: dict[str, Any], b: dict[str, Any]) -> list[dict[str, Any]]:
+    """Modules that turned non-green or green again and status changes are changes, and so is a message
+    that says something else (another interface); a message whose only change is a reading (CPU 85.1% ->
+    86.4% while YELLOW) is a delta (op 'delta': from, to), never a difference."""
+    out: list[dict[str, Any]] = []
+    for key in sorted(set(a) | set(b), key=str):
+        if key not in b:
+            out.append({"section": section, "op": "removed", "key": key, "value": a[key]})
+        elif key not in a:
+            out.append({"section": section, "op": "added", "key": key, "value": b[key]})
+        elif a[key] != b[key]:
+            va, vb = a[key], b[key]
+            if (
+                isinstance(va, dict)
+                and isinstance(vb, dict)
+                and va.get("status") == vb.get("status")
+                and without_readings(va.get("details")) == without_readings(vb.get("details"))
+            ):
+                change = {"from": va.get("details"), "to": vb.get("details")}
+                out.append({"section": section, "op": "delta", "key": key, **change})
+            else:
+                out.append({"section": section, "op": "changed", "key": key, "fields": field_delta(va, vb)})
     return out
 
 
@@ -512,6 +551,7 @@ async def _hit_counts(ctx: ExportContext) -> dict[str, Any]:
     kind="state",
     default=False,
     summary="health modules that are not green on the device: status and FMC's message",
+    diff=diff_alerts,
     explain=explain_alert,
 )
 async def _health_alerts(ctx: ExportContext) -> dict[str, Any]:
@@ -523,7 +563,9 @@ async def _health_alerts(ctx: ExportContext) -> dict[str, Any]:
             for a in rows
             if str(a.get("status") or "").upper() != "GREEN"
         ]
-        for module, status, details in sorted(bad, key=lambda x: (x[0], str(x[2]), x[1])):
+        # a module's several rows ('CPU', 'CPU #2') in an order its readings can't change
+        order = sorted(bad, key=lambda x: (x[0], without_readings(x[2]), x[1], str(x[2])))
+        for module, status, details in order:
             _put(
                 out,
                 f"{prefix(ctx, unit)}{module}",
@@ -608,7 +650,8 @@ async def _running_config(ctx: ExportContext) -> dict[str, Any]:
 
 def snapshot_sections(sections: list[str] | None, running_config: list[str] | None) -> list[str]:
     """The sections a snapshot reads: by default the device record, the assigned policies and every state
-    section; running_config only with sections of it to capture (named alone without them: refused)."""
+    section; running_config only with sections of it to capture (named alone without them: refused), and
+    always when it names some (also with a `sections` list that leaves running_config out)."""
     names = select_sections(sections or [*SNAPSHOT_DEFAULT, "state"])
     if "running_config" in names and not running_config:
         if any(str(s).strip().lower() == "running_config" for s in sections or []):
@@ -616,6 +659,8 @@ def snapshot_sections(sections: list[str] | None, running_config: list[str] | No
                 "Name the running-config sections to capture: running_config=['route', 'nat', ...]."
             )
         names.remove("running_config")
+    if running_config and "running_config" not in names:
+        names = select_sections([*names, "running_config"])
     return names
 
 
@@ -639,6 +684,10 @@ async def resolve_targets(
     and the groups expanded. One device listing, the cached group list, one record read per device."""
     records = (await app.all(await app.config_path(DEVICES, domain), cap=2000)).items
     fleet = await expand_devices(app, refs, domain, records=records)
+    if len(fleet.refs) > MAX_FLEET:  # before one record read per device
+        raise InvalidRequest(
+            f"{len(fleet.refs)} devices; one snapshot covers at most {MAX_FLEET}. Split the list."
+        )
     by_id = {str(d.get("id", "")).lower(): d for d in records}
     out: list[tuple[dict[str, Any], dict[str, Any] | None]] = []
     seen: set[str] = set()
