@@ -22,6 +22,13 @@
   protocol (tcp, udp, icmp, ... or a number 0-255) and ports 0-65535; anything else (`sdwan-single`, `mcp-test-inside`,
   `HTTPS`, `70000`) is a name/value text search. `443`, `tcp/443`, `udp/53` and `1000-2000` still search ports. The same
   check applies to port values given to `fmc_create_object` and to port literals in rules.
+- **`fmc_tls_decryption_check` named the wrong rule as what stops RC4** (F83): when a cipher suite Block rule above the
+  decrypt rule listed RC4, the "undecryptable sessions" check said that rule stops a session whose server picks RC4,
+  whatever the Unsupported Cipher Suite action. Live on FTDv 10.0.0 (FMC 10.0.1) that holds only while the action lets RC4
+  through (DO_NOT_DECRYPT, or inherited from a Do-not-decrypt default). With BLOCK_WITH_RESET the action resets the session
+  first, under the decrypt rule (connection event: `resign-stepup`, flow status Unsupported Cipher Suite), although the
+  Block rule's list holds RC4. The check now names the action when it is BLOCK or BLOCK_WITH_RESET (set or inherited), and
+  the Block rule only when the action lets the session through. The verdict was a reset either way.
 
 ## 0.15.0 (2026-10-21)
 
