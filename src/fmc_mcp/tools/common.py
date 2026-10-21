@@ -240,13 +240,32 @@ def is_system(obj: dict[str, Any]) -> bool:
     A child domain sees everything an ancestor owns as readOnly with reason DOMAIN, FMC's built-ins
     included (FMC 10.0.1: HTTP, SSH and IPv4-Private-10.0.0.0-8 say SYSTEM only in Global); for those the
     type and id decide (is_builtin_object). Any other inherited object (Global's own hosts, groups, ...) is
-    not a system object; writes to it are blocked with the owner domain instead (fmc_mcp.preview)."""
+    not a system object; writes to it are blocked with the owner domain instead (fmc_mcp.preview).
+    An API user whose role can't change objects sees every object readOnly with reason RBAC, built-ins
+    included (FMC 10.0.1, tests/fixtures/bundle_acp.json): that is about the role, not the object, so the
+    type and id decide there too (#249); writes check role_read_only. Policies, DNS policies and SI lists
+    are outside the object catalog, which has no type and id rule for them: any readOnly but DOMAIN keeps
+    them system, as before."""
     ro = (obj.get("metadata") or {}).get("readOnly")
     if not (isinstance(ro, dict) and ro.get("state")):
         return False
-    if ro.get("reason") != "DOMAIN":
-        return True
-    return is_builtin_object(obj)
+    reason = ro.get("reason")
+    if reason == "DOMAIN" or (reason == "RBAC" and type_for(obj.get("type")) is not None):
+        return is_builtin_object(obj)
+    return True
+
+
+def role_read_only(obj: dict[str, Any]) -> bool:
+    """FMC marks the object read-only for this API user's role (readOnly reason RBAC): a role without
+    modify rights sees every object so. Not a property of the object (is_system): FMC refuses any change
+    to it from this login, whatever the object is."""
+    ro = (obj.get("metadata") or {}).get("readOnly")
+    return isinstance(ro, dict) and bool(ro.get("state")) and ro.get("reason") == "RBAC"
+
+
+ROLE_READ_ONLY = (
+    "read-only for this API user's role (FMC: readOnly reason RBAC): use an account whose role may modify it"
+)
 
 
 def domain_path(name: str) -> str:

@@ -8,6 +8,7 @@ handful of paged requests per tool call and resolves references into numeric int
 from __future__ import annotations
 
 import ipaddress
+import re
 from dataclasses import dataclass, field
 from typing import Any
 
@@ -50,7 +51,9 @@ def parse_port_value(protocol: Any, port: Any) -> PortSpec:
 
 
 def parse_port_query(text: str) -> PortSpec:
-    """'443', 'tcp/443', 'UDP 53', '6/22', 'tcp/1000-2000', 'icmp'."""
+    """'443', 'tcp/443', 'UDP 53', '6/22', 'tcp/1000-2000', 'icmp'. ValueError for anything else: the
+    protocol must be a known name or a number 0-255 and the port 0-65535, so a name such as
+    'sdwan-single' is not read as protocol SDWAN-SINGLE."""
     t = text.strip().replace(" ", "/")
     if "/" in t:
         proto, port = t.split("/", 1)
@@ -58,7 +61,15 @@ def parse_port_query(text: str) -> PortSpec:
         proto, port = "", t
     else:
         proto, port = t, ""
-    return parse_port_value(proto, port)
+    p = proto.strip().upper()
+    if p and p not in PROTO_NUMBERS and not (p.isdigit() and int(p) <= 255):
+        raise ValueError(f"not a protocol: {proto!r}")
+    if port and not re.fullmatch(r"\d+(-\d+)?", port.strip()):
+        raise ValueError(f"not a port or port range: {port!r}")
+    spec = parse_port_value(proto, port)
+    if not spec[1] <= spec[2] <= 65535:
+        raise ValueError(f"not a port or port range: {port!r}")
+    return spec
 
 
 def ip_contains(outer: list[IpInterval], inner: list[IpInterval]) -> bool:
