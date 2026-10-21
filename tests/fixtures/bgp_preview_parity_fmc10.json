@@ -1,0 +1,98 @@
+{
+ "_source": "FMC 10.0.1 (build 1), domain Global/mcp-test-leaf, 2026-10-21 (W6N live-B, F77 on the t1 hub; router id and neighbour address replaced with documentation addresses, links dropped). The two requests fmc_configure_bgp(local_as, router_id, neighbor, remote_as, neighbor_description, advertise, redistribute=[connected via a route map], default_originate) makes on a device without BGP, as the live agent rebuilt them from the code and sent them (preview parity), and FMC's answers. network / route_map: the objects they reference (the network's value replaced).",
+ "general_request": {
+  "type": "BGPGeneralSetting",
+  "name": "AsaBGPGeneralTable",
+  "asNumber": "65110",
+  "routerId": "198.51.100.1",
+  "logNeighborChanges": true
+ },
+ "general_answer": {
+  "bgptimers": {
+   "keepAlive": 60,
+   "holdTime": 180,
+   "minHoldTime": 0,
+   "type": "bgptimers"
+  },
+  "bgpGracefulRestart": {
+   "gracefulRestart": false,
+   "gracefulRestartRestartTime": 120,
+   "gracefulRestartStalePathTime": 360,
+   "type": "bgpgracefulrestart"
+  },
+  "bestPath": {
+   "defaultLocalPreferenceValue": 100,
+   "alwaysCompareMed": false,
+   "bestPathCompareRouterId": false,
+   "deterministicMed": false,
+   "bestPathMedMissingAsWorst": false,
+   "type": "bgpbestpath"
+  },
+  "transportPathMtuDiscovery": true,
+  "maxasLimit": 0,
+  "fastExternalFallOver": true,
+  "enforceFirstAs": true,
+  "asnotationDot": false,
+  "bgpNextHopTriggerDelay": 5,
+  "bgpNextHopTriggerEnable": true,
+  "aggregateTimer": 30,
+  "scanTime": 60,
+  "routerId": "198.51.100.1",
+  "asNumber": "65110",
+  "logNeighborChanges": true,
+  "name": "AsaBGPGeneralTable",
+  "id": "00000000-0000-0ed3-0001-792202030293"
+ },
+ "bgp_request": {
+  "type": "bgp",
+  "asNumber": "65110",
+  "addressFamilyIPv4": {
+   "type": "afipv4",
+   "redistributeProtocols": [
+    {
+     "type": "RedistributeConnected",
+     "routeMap": {
+      "id": "00000000-0000-0ed3-0000-021475073171",
+      "type": "RouteMap",
+      "name": "mcp-w6-t1-rm-conn"
+     }
+    }
+   ],
+   "neighbors": [
+    {
+     "type": "neighboripv4",
+     "ipv4Address": "192.0.2.2",
+     "remoteAs": "65110",
+     "neighborGeneral": {
+      "enableAddress": true,
+      "shutdown": false,
+      "description": "spoke1 transport"
+     },
+     "neighborFiltering": {
+      "neighborDefaultOriginate": {}
+     }
+    }
+   ],
+   "networks": [
+    {
+     "ipv4Address": {
+      "id": "00000000-0000-0ed3-0000-021475073095",
+      "type": "Network",
+      "name": "mcp-w6-t1-hub-inside"
+     }
+    }
+   ]
+  }
+ },
+ "network": {
+  "id": "00000000-0000-0ed3-0000-021475073095",
+  "name": "mcp-w6-t1-hub-inside",
+  "type": "Network",
+  "value": "198.51.100.0/24"
+ },
+ "route_map": {
+  "id": "00000000-0000-0ed3-0000-021475073171",
+  "name": "mcp-w6-t1-rm-conn",
+  "type": "RouteMap"
+ }
+}

@@ -25,6 +25,7 @@ from fmc_mcp._core import (
     UpstreamError,
     get_client,
 )
+from fmc_mcp._core.formatting import mask_secrets
 from fmc_mcp.client import FmcApp
 from fmc_mcp.preview import fmc_preview
 from fmc_mcp.refs import NETWORK_TYPES, RefResolver
@@ -195,6 +196,22 @@ def ospf_summary(p: dict[str, Any]) -> dict[str, Any]:
             else {}
         ),
     }
+
+
+OSPF_STEPS = {"POST": "create ospf process", "PUT": "update ospf process", "DELETE": "delete ospf process"}
+
+
+def requests_shown(steps: list[tuple[str, str, str, dict[str, Any] | None]]) -> list[dict[str, Any]]:
+    """The requests a confirm sends, in order, as the preview shows them: method, path and body, with
+    secrets (a BGP neighbor's MD5 password) masked. The bodies are what goes on the wire, so a change can
+    be checked or repeated by hand (W6N live-B rebuilt them from the code for a preview-parity run)."""
+    out = []
+    for name, method, path, body in steps:
+        row: dict[str, Any] = {"step": name, "method": method, "path": path}
+        if body is not None:
+            row["body"] = mask_secrets(body)
+        out.append(row)
+    return out
 
 
 async def network_refs(app: FmcApp, values: list[str] | None, domain: str | None) -> list[dict[str, Any]]:
@@ -377,7 +394,8 @@ def register(reg: ToolRegistrar) -> None:
         password), and advertise or withdraw networks (network objects). Sets up BGP first (local AS,
         router id) when the device has none; the AS and router id are device-wide, so a VRF uses them
         too. remove_bgp deletes the whole BGP configuration. The preview shows the
-        neighbor and network lists before and after. Deploy to apply; verify with
+        neighbor and network lists before and after, and each request it sends (`requests`: method, path,
+        body; an MD5 password masked). Deploy to apply; verify with
         fmc_run_show_command('show route') and the peer ('show bgp summary').
 
         Route policy on a neighbor (F77): inbound/outbound route maps and prefix lists (objects from
@@ -666,7 +684,8 @@ def register(reg: ToolRegistrar) -> None:
             confirm=confirm,
             plan=Plan(
                 f"{'Remove' if remove_bgp else 'Change'} BGP on {where}",
-                details={"steps": [s[0] for s in steps], **view},
+                details={"steps": [s[0] for s in steps], **view}
+                | ({} if blockers else {"requests": requests_shown(steps)}),
                 fingerprint={"general": general and editable(general), "bgp": bgp and editable(bgp)}
                 | ({"policy": [resolved, [s[3] for s in steps]]} if policy else {}),
                 blockers=blockers,
@@ -710,8 +729,9 @@ def register(reg: ToolRegistrar) -> None:
     ) -> dict[str, Any]:
         """Edit OSPFv2 on an FTD: add or remove networks (network objects) in an area, creating the
         process and area when needed, or delete a whole process. Interfaces whose address falls in an
-        area network run OSPF in that area. The preview shows the areas before and after. Deploy to
-        apply; verify with fmc_run_show_command('show route') (O routes) and the neighbor's CLI.
+        area network run OSPF in that area. The preview shows the areas before and after, and the request
+        it sends (`requests`: method, path, body). Deploy to apply; verify with
+        fmc_run_show_command('show route') (O routes) and the neighbor's CLI.
 
         Redistribution (F77): connected, static, BGP or another OSPF process into this one, with a
         route map (fmc_create_route_map) and metric; the preview shows only the sources that change.
@@ -840,7 +860,12 @@ def register(reg: ToolRegistrar) -> None:
             plan=Plan(
                 f"{'Delete' if remove_process else 'Change'} OSPF process {process_id} on {where}",
                 details={"before": before, "after": after}
-                | ({"redistribute_changes": redist_diff} if redistribute else {}),
+                | ({"redistribute_changes": redist_diff} if redistribute else {})
+                | (
+                    {}
+                    if blockers
+                    else {"requests": requests_shown([(OSPF_STEPS[method], method, target, body)])}
+                ),
                 fingerprint={"process": proc and editable(proc), "others": [p.get("id") for p in procs]},
                 blockers=blockers,
                 side_effects=["Takes effect on the device after the next deployment."],
