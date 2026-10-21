@@ -1,0 +1,115 @@
+{
+ "_about": "FMC 10.0.1 (build 1), Global/mcp-test-leaf, 2026-10-21 (W6N live-A, F76 #171): categories of mcp-w6-child-acp. An empty category reads startIndex/endIndex 0 (the spec example says -1); rule indexes start at 1. links dropped.",
+ "post_default": {
+  "_source": "POST .../categories?section=default {name mcp-w6-cat-a, type Category}: the answer",
+  "metadata": {
+   "section": "Default",
+   "startIndex": 0,
+   "endIndex": 0,
+   "accessPolicy": {
+    "type": "AccessPolicy",
+    "defaultAction": {
+     "sendEventsToFMC": false,
+     "enableSyslog": false,
+     "logBegin": false,
+     "logEnd": false,
+     "type": "AccessPolicyDefaultAction"
+    },
+    "name": "mcp-w6-child-acp",
+    "id": "00000000-0000-0ed3-0000-021475055837"
+   }
+  },
+  "type": "Category",
+  "name": "mcp-w6-cat-a",
+  "id": "00000000-0000-0ed3-0000-000268434568"
+ },
+ "post_mandatory": {
+  "_source": "POST .../categories?section=mandatory {name mcp-w6-cat-m}: the answer",
+  "metadata": {
+   "section": "Mandatory",
+   "startIndex": 0,
+   "endIndex": 0,
+   "accessPolicy": {
+    "type": "AccessPolicy",
+    "name": "mcp-w6-child-acp",
+    "id": "00000000-0000-0ed3-0000-021475055837"
+   }
+  },
+  "type": "Category",
+  "name": "mcp-w6-cat-m",
+  "id": "00000000-0000-0ed3-0000-000268434569"
+ },
+ "post_above": {
+  "_source": "POST .../categories?aboveCategory=mcp-w6-cat-a {name mcp-w6-cat-b}: the answer (FMC takes the name)",
+  "metadata": {
+   "section": "Default",
+   "startIndex": 0,
+   "endIndex": 0,
+   "accessPolicy": {
+    "type": "AccessPolicy",
+    "name": "mcp-w6-child-acp",
+    "id": "00000000-0000-0ed3-0000-021475055837"
+   }
+  },
+  "type": "Category",
+  "name": "mcp-w6-cat-b",
+  "id": "00000000-0000-0ed3-0000-000268434570"
+ },
+ "list_after_creates": {
+  "_source": "GET .../categories?expanded=true after the three creates (FMC's order: m, b, a)",
+  "items": [
+   {
+    "metadata": {
+     "section": "Mandatory",
+     "startIndex": 0,
+     "endIndex": 0
+    },
+    "type": "Category",
+    "name": "mcp-w6-cat-m",
+    "id": "00000000-0000-0ed3-0000-000268434569"
+   },
+   {
+    "metadata": {
+     "section": "Default",
+     "startIndex": 0,
+     "endIndex": 0
+    },
+    "type": "Category",
+    "name": "mcp-w6-cat-b",
+    "id": "00000000-0000-0ed3-0000-000268434570"
+   },
+   {
+    "metadata": {
+     "section": "Default",
+     "startIndex": 0,
+     "endIndex": 0
+    },
+    "type": "Category",
+    "name": "mcp-w6-cat-a",
+    "id": "00000000-0000-0ed3-0000-000268434568"
+   }
+  ],
+  "paging": {
+   "offset": 0,
+   "limit": 25,
+   "count": 3,
+   "pages": 1
+  }
+ },
+ "put_with_one_rule": {
+  "_source": "PUT .../categories/<id> (rename mcp-w6-cat-b -> mcp-w6-cat-b2) while it held one rule, index 1: the answer",
+  "metadata": {
+   "section": "Default",
+   "startIndex": 1,
+   "endIndex": 1,
+   "accessPolicy": {
+    "type": "AccessPolicy",
+    "name": "mcp-w6-child-acp",
+    "id": "00000000-0000-0ed3-0000-021475055837"
+   }
+  },
+  "type": "Category",
+  "name": "mcp-w6-cat-b2",
+  "id": "00000000-0000-0ed3-0000-000268434570"
+ }
+}

@@ -177,14 +177,16 @@ def _index(v: Any) -> int | None:
 
 
 def category_row(c: dict[str, Any]) -> dict[str, Any]:
-    """A category as {name, section, rules (first-last index, or 'none'), id}."""
+    """A category as {name, section, rules (first-last index, or 'none'), id}. Rule indexes start at 1:
+    an empty category reads startIndex/endIndex 0 on FMC 10.0.1 (recorded live) and -1 in the spec's
+    example, so both mean no rules."""
     meta = c.get("metadata") or {}
     start, end = _index(meta.get("startIndex")), _index(meta.get("endIndex"))
     span = f"{start}" if start == end else f"{start}-{end}"
     row = {
         "name": c.get("name"),
         "section": str(meta.get("section") or "").lower() or None,
-        "rules": "none" if start is None or end is None else span,
+        "rules": "none" if not start or not end else span,
         "id": c.get("id"),
     }
     return {k: v for k, v in row.items() if v is not None}
@@ -199,7 +201,7 @@ def _category_order(c: dict[str, Any]) -> tuple[int, int]:
 
 async def list_categories(app: FmcApp, acp: dict[str, Any], domain: str | None) -> list[dict[str, Any]]:
     """The policy's categories, Mandatory first, then FMC's position (or FMC's own order: the sort is
-    stable, and an empty category's rule index is -1)."""
+    stable, and an empty category has no rule index to sort by)."""
     page = await app.all(await app.config_path(f"{ACCESS}/{acp['id']}/categories", domain), cap=1000)
     return sorted((c for c in page.items if isinstance(c, dict) and c.get("id")), key=_category_order)
 
