@@ -24,6 +24,17 @@ BASE = f"{PS_LIST}/{PID}"
 POLICY = {"id": PID, "name": "mcp-w6-ps", "type": "FTDPlatformSettingsPolicy"}
 ZONE = {"id": "0b328828-ed89-11ee-ab99-a04b357bbab6", "name": "mcp-w6-in", "type": "SecurityZone"}
 DEVICE = {"id": "d0000000-0000-4000-8000-000000000001", "name": "mcp-ftd1", "type": "Device"}
+# FMC 10.0.1 takes only an interface group for a NetFlow collector (live-B2 2026-10-21: the one it took)
+IFG = {
+    "id": "a69eebfc-0000-4000-8000-0000000000f1",
+    "name": "mcp-w6-nf-ifg",
+    "type": "InterfaceGroup",
+    "interfaceMode": "ROUTED",
+    "interfaces": [
+        {"type": "PhysicalInterface", "id": "00000000-0000-0ed3-0000-021474837528", "name": "Ethernet0/1"}
+    ],
+}
+IFG_REF = {"id": IFG["id"], "type": "InterfaceGroup", "name": "mcp-w6-nf-ifg"}
 # FMC 10.0.1, untouched sections
 DNS_DEFAULT = {"type": "DNSSetting", "id": PID}
 NETFLOW_DEFAULT = {"metadata": {}, "type": "NetFlowPolicy", "id": PID, "enable": False}
@@ -166,7 +177,7 @@ def mock_ps(fmc: respx.MockRouter, **sections: dict[str, Any]) -> dict[str, resp
         return_value=items([{"policy": POLICY, "targets": [DEVICE]}])
     )
     fmc.get(f"{CFG}/object/securityzones").mock(return_value=items([ZONE]))
-    fmc.get(f"{CFG}/object/interfacegroups").mock(return_value=empty())
+    fmc.get(f"{CFG}/object/interfacegroups").mock(return_value=items([IFG]))
     return puts
 
 
@@ -358,10 +369,11 @@ async def test_netflow_first_collector_creates_host_and_default_class(fmc: respx
     args = {
         "policy": "mcp-w6-ps",
         "collector": "192.0.2.50",
-        "interfaces": ["mcp-w6-in"],
+        "interfaces": ["mcp-w6-nf-ifg"],
         "collector_name": "mcp-w6-nf",
     }
     p, done = await preview_confirm("fmc_configure_netflow", args)
+    assert "notes" not in p["preview"]  # the host is created with collector_name
     assert p["preview"]["creates_host_object"] == {"name": "mcp-w6-nf", "type": "Host", "value": "192.0.2.50"}
     assert p["preview"]["after"]["enabled"] is True
     assert p["preview"]["after"]["traffic_classes"] == [
@@ -371,7 +383,9 @@ async def test_netflow_first_collector_creates_host_and_default_class(fmc: respx
     body = json.loads(puts["netflowpolicies"].calls.last.request.content)
     ref = {"id": COLLECTOR["id"], "type": "Host", "name": "mcp-w6-nf"}
     assert body["enable"] is True and body["refreshInterval"] == 1 and body["templateExportTime"] == 30
-    assert body["flowCollectors"] == [{"collectorHost": ref, "port": 2055, "interfaces": {"objects": [ZONE]}}]
+    assert body["flowCollectors"] == [
+        {"collectorHost": ref, "port": 2055, "interfaces": {"objects": [IFG_REF]}}
+    ]
     assert body["trafficClasses"] == [
         {
             "trafficClassName": "class-default",
@@ -452,7 +466,7 @@ async def test_netflow_blockers(fmc: respx.MockRouter) -> None:
             await run(c, "fmc_configure_netflow", {"policy": "mcp-w6-ps", "collector": "192.0.2.50"})
         on = await run(c, "fmc_configure_netflow", {"policy": "mcp-w6-ps", "enable": True})
         assert on["status"] == "blocked" and "needs a collector" in on["blockers"][0]
-        new = {"policy": "mcp-w6-ps", "collector": "192.0.2.50", "interfaces": ["mcp-w6-in"]}
+        new = {"policy": "mcp-w6-ps", "collector": "192.0.2.50", "interfaces": ["mcp-w6-nf-ifg"]}
         with pytest.raises(ToolError, match="Only one traffic class"):
             await run(c, "fmc_configure_netflow", {**new, "traffic_classes": [{"name": "a"}, {"name": "b"}]})
         named = await run(
@@ -465,6 +479,60 @@ async def test_netflow_blockers(fmc: respx.MockRouter) -> None:
             c, "fmc_configure_netflow", {"policy": "mcp-w6-ps", "remove_collector": "192.0.2.50"}
         )
         assert gone["status"] == "blocked" and "No collector" in gone["blockers"][0]
+
+
+async def test_netflow_refuses_a_security_zone(fmc: respx.MockRouter) -> None:
+    """live-B2: a zone previewed fine and FMC 10.0.1 refused the PUT ('Invalid selection for Interface group.
+    Only Interface Group object of type Management/ Routed/ Switched is allowed.'). The preview now refuses
+    it and gives the interface group to create from the zone's interfaces; an inline group is refused too.
+    A collector IP that already has a host object reuses it, and the preview says collector_name is unused."""
+    puts = mock_ps(fmc)
+    zone_in = {
+        **ZONE,
+        "name": "mcp-test-ftd-in",
+        "interfaceMode": "ROUTED",
+        "interfaces": IFG["interfaces"],
+    }
+    inline = {
+        **IFG,
+        "id": "a69eebfc-0000-4000-8000-0000000000f2",
+        "name": "mcp-w6-inline",
+        "interfaceMode": "INLINE",
+    }
+    fmc.get(f"{CFG}/object/securityzones").mock(return_value=items([zone_in]))
+    fmc.get(f"{CFG}/object/interfacegroups").mock(return_value=items([IFG, inline]))
+    fmc.get(f"{CFG}/object/hosts").mock(return_value=items([{**COLLECTOR, "name": "mcp-w6-syslog-host"}]))
+    fmc.get(f"{CFG}/object/networks").mock(return_value=empty())
+    args = {"policy": "mcp-w6-ps", "collector": "192.0.2.50", "collector_name": "mcp-w6-nf", "port": 2055}
+    async with Client(server()) as c:
+        zone = await run(c, "fmc_configure_netflow", {**args, "interfaces": ["mcp-test-ftd-in"]})
+        assert zone["status"] == "blocked"
+        (msg,) = zone["blockers"]
+        assert "'mcp-test-ftd-in' is a security zone" in msg and "Management/ Routed/ Switched" in msg
+        assert f"path='{CFG}/object/interfacegroups'" in msg
+        hint = json.loads(msg.split("body=", 1)[1].split(") (no 'device'", 1)[0])
+        assert hint == {
+            "type": "InterfaceGroup",
+            "name": "mcp-test-ftd-in-ifg",
+            "interfaceMode": "ROUTED",
+            "interfaces": IFG["interfaces"],
+        }
+        bad = await run(c, "fmc_configure_netflow", {**args, "interfaces": ["mcp-w6-inline"]})
+        assert bad["status"] == "blocked" and "is INLINE" in bad["blockers"][0]
+        ok = await run(c, "fmc_configure_netflow", {**args, "interfaces": ["mcp-w6-nf-ifg"]})
+        assert ok["status"] == "preview" and ok["preview"]["creates_host_object"] is None
+        assert ok["preview"]["notes"] == [
+            "'192.0.2.50' is the existing object 'mcp-w6-syslog-host', used as the collector; "
+            "collector_name 'mcp-w6-nf' is not used."
+        ]
+        await run(
+            c, "fmc_configure_netflow", {**args, "interfaces": ["mcp-w6-nf-ifg"], "confirm": ok["confirm"]}
+        )
+    body = json.loads(puts["netflowpolicies"].calls.last.request.content)
+    assert body["flowCollectors"][0]["interfaces"] == {"objects": [IFG_REF]}
+    assert (
+        body["flowCollectors"][0]["port"] == 2055
+    )  # an int: FMC 10.0.1 took it (the spec example has "4566")
 
 
 # --- ICMP / HTTPS access ------------------------------------------------------------------------------
