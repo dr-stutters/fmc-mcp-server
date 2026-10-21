@@ -1,0 +1,552 @@
+{
+ "_source": "FMC 10.0.1 (build 1), Global/mcp-test-leaf, 2026-10-21 (W6 live-B1, F66 rule lookup). Time ranges: the POST answer of mcp-w6-tr-now (created without a start: FMC stores effectiveStartDateTime 'Started') and mcp-w6-tr-expired in the same shape (absolute 2026-10-01T00:00..2026-10-02T23:59, no recurrence; it got no hits from matching traffic). mcp-w6-acp rules: the live GET of mcp-w6-time-now, and mcp-w6-expired / mcp-w6-allow-out in the same shape (their GETs weren't kept). mcp-fw-threat-acp as it was during the SGT proof: mcp-w6-sgt-block (the rule body the tool sent), the user rule and the baseline, condensed. User activity: the live 10.0.1 row shape (useractivity_fmc10.json) with the login/logoff sequence the run recorded (bob logs in with SGT Contractors 05:53:11Z after alice's logoff; then alice with Employees). Addresses: documentation addresses for servers; the identity client keeps the fixture plan's 10.10.34.100.",
+ "timerange_started": {
+  "effectiveStartDateTime": "Started",
+  "effectiveEndDateTime": "2026-10-23T23:59",
+  "recurrenceList": [
+   {
+    "recurrenceType": "DAILY_INTERVAL",
+    "dailyStartTime": "00:00",
+    "dailyEndTime": "23:59",
+    "days": [
+     "MON",
+     "TUE",
+     "WED",
+     "THU",
+     "FRI",
+     "SAT",
+     "SUN"
+    ]
+   }
+  ],
+  "name": "mcp-w6-tr-now",
+  "type": "TimeRange",
+  "id": "00000000-0000-0ed3-0000-021474975854",
+  "description": "W6 live-B1: in effect now (F66)",
+  "metadata": {
+   "lastUser": "mcp-api-svc",
+   "timestamp": 0,
+   "domain": "Global \\ mcp-test-leaf"
+  }
+ },
+ "timerange_expired": {
+  "effectiveStartDateTime": "2026-10-01T00:00",
+  "effectiveEndDateTime": "2026-10-02T23:59",
+  "name": "mcp-w6-tr-expired",
+  "type": "TimeRange",
+  "id": "00000000-0000-0ed3-0000-021474975872",
+  "description": "W6 live-B1: ended (F66)",
+  "metadata": {
+   "lastUser": "mcp-api-svc",
+   "timestamp": 0,
+   "domain": "Global \\ mcp-test-leaf"
+  }
+ },
+ "acp_rules": [
+  {
+   "metadata": {
+    "ruleIndex": 2,
+    "section": "Default",
+    "category": "--Undefined--",
+    "timestamp": 1792561150358,
+    "domain": "Global \\ mcp-test-leaf"
+   },
+   "timeRangeObjects": [
+    {
+     "name": "mcp-w6-tr-expired",
+     "type": "TimeRange",
+     "id": "00000000-0000-0ed3-0000-021474975872"
+    }
+   ],
+   "enabled": true,
+   "advancedLogging": {},
+   "sendEventsToFMC": true,
+   "enableSyslog": false,
+   "destinationDynamicObjects": {},
+   "logBegin": false,
+   "logEnd": true,
+   "logFiles": false,
+   "sourceDynamicObjects": {},
+   "sourceNetworks": {
+    "objects": [
+     {
+      "type": "Network",
+      "overridable": false,
+      "name": "mcp-test-ftd-inside-net",
+      "id": "00000000-0000-0ed3-0000-021474841321"
+     }
+    ]
+   },
+   "destinationNetworks": {
+    "literals": [
+     {
+      "type": "Host",
+      "value": "192.0.2.80"
+     }
+    ]
+   },
+   "vlanTags": {},
+   "destinationPorts": {
+    "literals": [
+     {
+      "type": "PortLiteral",
+      "port": "80",
+      "protocol": "6"
+     }
+    ]
+   },
+   "action": "ALLOW",
+   "variableSet": {
+    "name": "Default-Set",
+    "id": "76fa83ea-c972-11e2-8be8-8e45bb1343c0",
+    "type": "VariableSet"
+   },
+   "type": "AccessRule",
+   "name": "mcp-w6-expired",
+   "id": "00000000-0000-0ed3-0000-000268434523"
+  },
+  {
+   "metadata": {
+    "ruleIndex": 5,
+    "section": "Default",
+    "category": "--Undefined--",
+    "timestamp": 1792561150358,
+    "domain": "Global \\ mcp-test-leaf"
+   },
+   "timeRangeObjects": [
+    {
+     "name": "mcp-w6-tr-now",
+     "type": "TimeRange",
+     "id": "00000000-0000-0ed3-0000-021474975854"
+    }
+   ],
+   "enabled": true,
+   "advancedLogging": {},
+   "sendEventsToFMC": true,
+   "enableSyslog": false,
+   "destinationDynamicObjects": {},
+   "logBegin": false,
+   "logEnd": true,
+   "logFiles": false,
+   "sourceDynamicObjects": {},
+   "commentHistoryList": [
+    {
+     "date": "2026-10-21T05:38:45.000+0000",
+     "comment": "W6 live-B1 F66: active time range",
+     "user": {
+      "name": "mcp-api-svc",
+      "type": "User"
+     }
+    }
+   ],
+   "sourceNetworks": {
+    "objects": [
+     {
+      "type": "Network",
+      "overridable": false,
+      "name": "mcp-test-ftd-inside-net",
+      "id": "00000000-0000-0ed3-0000-021474841321"
+     }
+    ]
+   },
+   "destinationNetworks": {
+    "literals": [
+     {
+      "type": "Host",
+      "value": "192.0.2.76"
+     }
+    ]
+   },
+   "vlanTags": {},
+   "destinationPorts": {
+    "literals": [
+     {
+      "type": "PortLiteral",
+      "port": "443",
+      "protocol": "6"
+     }
+    ]
+   },
+   "action": "ALLOW",
+   "variableSet": {
+    "name": "Default-Set",
+    "id": "76fa83ea-c972-11e2-8be8-8e45bb1343c0",
+    "type": "VariableSet"
+   },
+   "type": "AccessRule",
+   "name": "mcp-w6-time-now",
+   "id": "00000000-0000-0ed3-0000-000268434526"
+  },
+  {
+   "metadata": {
+    "ruleIndex": 7,
+    "section": "Default",
+    "category": "--Undefined--",
+    "timestamp": 1792561150358,
+    "domain": "Global \\ mcp-test-leaf"
+   },
+   "enabled": true,
+   "advancedLogging": {},
+   "sendEventsToFMC": true,
+   "enableSyslog": false,
+   "destinationDynamicObjects": {},
+   "logBegin": false,
+   "logEnd": true,
+   "logFiles": false,
+   "sourceDynamicObjects": {},
+   "sourceNetworks": {
+    "objects": [
+     {
+      "type": "Network",
+      "overridable": false,
+      "name": "mcp-test-ftd-inside-net",
+      "id": "00000000-0000-0ed3-0000-021474841321"
+     }
+    ]
+   },
+   "vlanTags": {},
+   "action": "ALLOW",
+   "variableSet": {
+    "name": "Default-Set",
+    "id": "76fa83ea-c972-11e2-8be8-8e45bb1343c0",
+    "type": "VariableSet"
+   },
+   "type": "AccessRule",
+   "name": "mcp-w6-allow-out",
+   "id": "00000000-0000-0ed3-0000-000268434507"
+  }
+ ],
+ "threat_rules": [
+  {
+   "enabled": true,
+   "sendEventsToFMC": true,
+   "enableSyslog": false,
+   "logFiles": false,
+   "vlanTags": {},
+   "variableSet": {
+    "name": "Default-Set",
+    "id": "76fa83ea-c972-11e2-8be8-8e45bb1343c0",
+    "type": "VariableSet"
+   },
+   "type": "AccessRule",
+   "metadata": {
+    "ruleIndex": 1,
+    "section": "Default",
+    "category": "--Undefined--"
+   },
+   "name": "mcp-w6-sgt-block",
+   "id": "00000000-0000-0ed3-0000-000268434529",
+   "action": "BLOCK",
+   "logBegin": true,
+   "logEnd": false,
+   "sourceSecurityGroupTags": {
+    "objects": [
+     {
+      "id": "9370d4c0-8c01-11e6-996c-525400b48521",
+      "type": "ISESecurityGroupTag",
+      "name": "Contractors"
+     }
+    ]
+   },
+   "destinationPorts": {
+    "literals": [
+     {
+      "type": "PortLiteral",
+      "port": "23",
+      "protocol": "6"
+     }
+    ]
+   }
+  },
+  {
+   "enabled": true,
+   "sendEventsToFMC": true,
+   "enableSyslog": false,
+   "logFiles": false,
+   "vlanTags": {},
+   "variableSet": {
+    "name": "Default-Set",
+    "id": "76fa83ea-c972-11e2-8be8-8e45bb1343c0",
+    "type": "VariableSet"
+   },
+   "type": "AccessRule",
+   "metadata": {
+    "ruleIndex": 2,
+    "section": "Default",
+    "category": "--Undefined--"
+   },
+   "name": "mcp-fw-contractors-telnet",
+   "id": "00000000-0000-0ed3-0000-000268434400",
+   "action": "BLOCK_RESET",
+   "logBegin": true,
+   "logEnd": false,
+   "destinationPorts": {
+    "literals": [
+     {
+      "type": "PortLiteral",
+      "port": "23",
+      "protocol": "6"
+     }
+    ]
+   },
+   "users": {
+    "objects": [
+     {
+      "name": "mcp-contractors",
+      "type": "RealmUserGroup",
+      "id": "g-contractors",
+      "realm": {
+       "name": "lab",
+       "type": "Realm"
+      }
+     }
+    ]
+   }
+  },
+  {
+   "enabled": true,
+   "sendEventsToFMC": true,
+   "enableSyslog": false,
+   "logFiles": false,
+   "vlanTags": {},
+   "variableSet": {
+    "name": "Default-Set",
+    "id": "76fa83ea-c972-11e2-8be8-8e45bb1343c0",
+    "type": "VariableSet"
+   },
+   "type": "AccessRule",
+   "metadata": {
+    "ruleIndex": 3,
+    "section": "Default",
+    "category": "--Undefined--"
+   },
+   "name": "mcp-fw-baseline",
+   "id": "00000000-0000-0ed3-0000-000268434401",
+   "action": "ALLOW",
+   "logBegin": false,
+   "logEnd": true,
+   "destinationPorts": {
+    "literals": [
+     {
+      "type": "PortLiteral",
+      "port": "23",
+      "protocol": "6"
+     },
+     {
+      "type": "PortLiteral",
+      "port": "80",
+      "protocol": "6"
+     }
+    ]
+   }
+  }
+ ],
+ "useractivity_bob": [
+  {
+   "time": 1792561991,
+   "event": "User Login",
+   "username": "mcp-bob",
+   "realmName": "lab",
+   "discoveryApplication": "LDAP",
+   "authenticationType": "Passive Authentication",
+   "ipAddress": "10.10.34.100",
+   "startPort": null,
+   "endPort": null,
+   "description": "",
+   "vpnSessionType": "",
+   "vpnGroupPolicy": "",
+   "vpnConnectionProfile": "",
+   "vpnClientPublicIP": "",
+   "vpnClientCountry": "",
+   "vpnClientContinent": "",
+   "vpnClientOS": "",
+   "vpnClientApplication": "",
+   "vpnConnectionDuration": "",
+   "vpnBytesOut": 0,
+   "vpnBytesIn": 0,
+   "vpnTotalBytes": 0,
+   "securityGroupTag": "Contractors",
+   "endpointProfile": "",
+   "endpointLocation": "198.51.100.194",
+   "device": "fmc.example",
+   "domain": "Global",
+   "id": "ev-1792561991-mcp-bob",
+   "userRisk": "",
+   "userRiskExplainability": "",
+   "deviceRisk": "",
+   "deviceRiskExplainability": ""
+  },
+  {
+   "time": 1792561986,
+   "event": "User Logoff",
+   "username": "mcp-alice",
+   "realmName": "lab",
+   "discoveryApplication": "LDAP",
+   "authenticationType": "Passive Authentication",
+   "ipAddress": "10.10.34.100",
+   "startPort": null,
+   "endPort": null,
+   "description": "",
+   "vpnSessionType": "",
+   "vpnGroupPolicy": "",
+   "vpnConnectionProfile": "",
+   "vpnClientPublicIP": "",
+   "vpnClientCountry": "",
+   "vpnClientContinent": "",
+   "vpnClientOS": "",
+   "vpnClientApplication": "",
+   "vpnConnectionDuration": "",
+   "vpnBytesOut": 0,
+   "vpnBytesIn": 0,
+   "vpnTotalBytes": 0,
+   "securityGroupTag": "Employees",
+   "endpointProfile": "",
+   "endpointLocation": "198.51.100.194",
+   "device": "fmc.example",
+   "domain": "Global",
+   "id": "ev-1792561986-mcp-alice",
+   "userRisk": "",
+   "userRiskExplainability": "",
+   "deviceRisk": "",
+   "deviceRiskExplainability": ""
+  }
+ ],
+ "useractivity_alice": [
+  {
+   "time": 1792562065,
+   "event": "User Login",
+   "username": "mcp-alice",
+   "realmName": "lab",
+   "discoveryApplication": "LDAP",
+   "authenticationType": "Passive Authentication",
+   "ipAddress": "10.10.34.100",
+   "startPort": null,
+   "endPort": null,
+   "description": "",
+   "vpnSessionType": "",
+   "vpnGroupPolicy": "",
+   "vpnConnectionProfile": "",
+   "vpnClientPublicIP": "",
+   "vpnClientCountry": "",
+   "vpnClientContinent": "",
+   "vpnClientOS": "",
+   "vpnClientApplication": "",
+   "vpnConnectionDuration": "",
+   "vpnBytesOut": 0,
+   "vpnBytesIn": 0,
+   "vpnTotalBytes": 0,
+   "securityGroupTag": "Employees",
+   "endpointProfile": "",
+   "endpointLocation": "198.51.100.194",
+   "device": "fmc.example",
+   "domain": "Global",
+   "id": "ev-1792562065-mcp-alice",
+   "userRisk": "",
+   "userRiskExplainability": "",
+   "deviceRisk": "",
+   "deviceRiskExplainability": ""
+  },
+  {
+   "time": 1792562060,
+   "event": "User Logoff",
+   "username": "mcp-bob",
+   "realmName": "lab",
+   "discoveryApplication": "LDAP",
+   "authenticationType": "Passive Authentication",
+   "ipAddress": "10.10.34.100",
+   "startPort": null,
+   "endPort": null,
+   "description": "",
+   "vpnSessionType": "",
+   "vpnGroupPolicy": "",
+   "vpnConnectionProfile": "",
+   "vpnClientPublicIP": "",
+   "vpnClientCountry": "",
+   "vpnClientContinent": "",
+   "vpnClientOS": "",
+   "vpnClientApplication": "",
+   "vpnConnectionDuration": "",
+   "vpnBytesOut": 0,
+   "vpnBytesIn": 0,
+   "vpnTotalBytes": 0,
+   "securityGroupTag": "Contractors",
+   "endpointProfile": "",
+   "endpointLocation": "198.51.100.194",
+   "device": "fmc.example",
+   "domain": "Global",
+   "id": "ev-1792562060-mcp-bob",
+   "userRisk": "",
+   "userRiskExplainability": "",
+   "deviceRisk": "",
+   "deviceRiskExplainability": ""
+  },
+  {
+   "time": 1792561991,
+   "event": "User Login",
+   "username": "mcp-bob",
+   "realmName": "lab",
+   "discoveryApplication": "LDAP",
+   "authenticationType": "Passive Authentication",
+   "ipAddress": "10.10.34.100",
+   "startPort": null,
+   "endPort": null,
+   "description": "",
+   "vpnSessionType": "",
+   "vpnGroupPolicy": "",
+   "vpnConnectionProfile": "",
+   "vpnClientPublicIP": "",
+   "vpnClientCountry": "",
+   "vpnClientContinent": "",
+   "vpnClientOS": "",
+   "vpnClientApplication": "",
+   "vpnConnectionDuration": "",
+   "vpnBytesOut": 0,
+   "vpnBytesIn": 0,
+   "vpnTotalBytes": 0,
+   "securityGroupTag": "Contractors",
+   "endpointProfile": "",
+   "endpointLocation": "198.51.100.194",
+   "device": "fmc.example",
+   "domain": "Global",
+   "id": "ev-1792561991-mcp-bob",
+   "userRisk": "",
+   "userRiskExplainability": "",
+   "deviceRisk": "",
+   "deviceRiskExplainability": ""
+  },
+  {
+   "time": 1792561986,
+   "event": "User Logoff",
+   "username": "mcp-alice",
+   "realmName": "lab",
+   "discoveryApplication": "LDAP",
+   "authenticationType": "Passive Authentication",
+   "ipAddress": "10.10.34.100",
+   "startPort": null,
+   "endPort": null,
+   "description": "",
+   "vpnSessionType": "",
+   "vpnGroupPolicy": "",
+   "vpnConnectionProfile": "",
+   "vpnClientPublicIP": "",
+   "vpnClientCountry": "",
+   "vpnClientContinent": "",
+   "vpnClientOS": "",
+   "vpnClientApplication": "",
+   "vpnConnectionDuration": "",
+   "vpnBytesOut": 0,
+   "vpnBytesIn": 0,
+   "vpnTotalBytes": 0,
+   "securityGroupTag": "Employees",
+   "endpointProfile": "",
+   "endpointLocation": "198.51.100.194",
+   "device": "fmc.example",
+   "domain": "Global",
+   "id": "ev-1792561986-mcp-alice",
+   "userRisk": "",
+   "userRiskExplainability": "",
+   "deviceRisk": "",
+   "deviceRiskExplainability": ""
+  }
+ ]
+}

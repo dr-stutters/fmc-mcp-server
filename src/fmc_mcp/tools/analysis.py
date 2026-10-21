@@ -7,10 +7,21 @@ from typing import Annotated, Any
 from fastmcp import Context
 from pydantic import Field
 
+from fmc_mcp import lookup_conditions
 from fmc_mcp._core import InvalidRequest, ToolRegistrar, UpstreamError, get_client
 from fmc_mcp.catalog import Catalog, IpInterval, ip_contains, parse_ip_value, port_contains
 from fmc_mcp.client import FmcApp
 from fmc_mcp.flow import access_policy_of, device_context
+from fmc_mcp.lookup_conditions import (
+    FlowSgt,
+    given_sgt,
+    session_sgt,
+    sgt_check,
+    time_range_catalog,
+    time_range_check,
+    uses_time_ranges,
+    with_catalog,
+)
 from fmc_mcp.rule_conditions import SGT_FIELDS, sgt_catalog, sgt_tags
 from fmc_mcp.rules import OPAQUE_CONDITIONS, flatten_access_rule, has_value
 from fmc_mcp.tools.common import PROTO_NUMBERS, Domain, block_labels
@@ -25,8 +36,13 @@ PolicyRef = Annotated[str, Field(description="Access control policy name or UUID
 LIMITS = (
     "Offline, best-effort evaluation of the access control policy only: prefilter rules, NAT, "
     "security intelligence, decryption and inherited parent-policy rules are not evaluated. "
-    "Applications, URLs, SGTs, VLAN tags and time ranges can't be known from addresses and ports, so "
-    "rules using them are reported as 'conditional' (they may match); users too, unless you pass "
+    "Applications, URLs, destination SGTs and VLAN tags can't be known from addresses and ports, so "
+    "rules using them are reported as 'conditional' (they may match). Time ranges are checked against "
+    "their absolute window: a rule whose range has ended (or not started) in every time zone is left out "
+    "(listed in not_in_effect); one in effect everywhere without recurring windows counts as matching; "
+    "others stay conditional (the device reads the times in its own zone). Source SGTs are matched "
+    "against `source_sgt`, else the SGT of the source IP's ISE login in FMC's user activity (shown under "
+    "`source_sgt`); without one, SGT rules stay conditional. Users too stay conditional unless you pass "
     "`identities` (the flow's user and its groups), and URL categories unless you pass `url_category` "
     "(a category rule below ANY_AND_UNKNOWN still depends on the site's reputation). Dynamic objects are "
     "checked against their current IP mappings. FQDN objects can't be resolved offline. Zones are "
@@ -222,9 +238,17 @@ def register(reg: ToolRegistrar) -> None:
                 description="Fill in the identity the firewall would see when rules match on users or "
                 "groups: without `identities`, the user FMC has on the source IP (identity sessions from "
                 "ISE/pxGrid etc.) and their realm groups; with `identities` naming a realm user, that "
-                "user's groups. False = evaluate exactly what you pass"
+                "user's groups. Also, for source SGT rules without `source_sgt`, the SGT of the source "
+                "IP's ISE login (FMC user activity). False = evaluate exactly what you pass"
             ),
         ] = True,
+        source_sgt: Annotated[
+            str | None,
+            Field(
+                description="The flow's source security group tag, by name or number (e.g. 'Contractors' "
+                "or '5'), to evaluate source SGT rules; omit to use the SGT of the source IP's ISE session"
+            ),
+        ] = None,
     ) -> dict[str, Any]:
         """Work out offline which access control rule would handle a flow (source, destination,
         protocol/port): returns the first rule that definitely matches, any earlier 'conditional'
@@ -236,7 +260,9 @@ def register(reg: ToolRegistrar) -> None:
         prefilter, NAT or parent policy). Rules on AD/LDAP users or groups are evaluated with the user FMC
         has on the source IP and their realm groups (shown under `identity`; fmc_user_ip_lookup), or with
         the `identities` you pass (the user and its groups, e.g. from ISE or AD). URL category rules (with
-        their reputation, in each row's `urls`) are evaluated when you pass `url_category`."""
+        their reputation, in each row's `urls`) are evaluated when you pass `url_category`. Source SGT
+        rules use the SGT of the source IP's ISE login (FMC user activity, under `source_sgt`) or the
+        `source_sgt` you pass; rules whose time range has ended are left out (`not_in_effect`)."""
         app: FmcApp = get_client(ctx)
         src, dst = _ip(source, "source"), _ip(destination, "destination")
         dev = await resolve_device(app, device, domain) if device else None
@@ -275,17 +301,27 @@ def register(reg: ToolRegistrar) -> None:
         dyn = await dynamic_sets(
             app, [r for r in rules.items if r.get("enabled", True) or include_disabled], domain
         )
+        live_rules = [r for r in rules.items if r.get("enabled", True) or include_disabled]
         tags: dict[str, Any] | None = None
+        sgts: list[dict[str, Any]] = []
         if any(has_value(r.get(f)) for r in rules.items for f in SGT_FIELDS):
             try:  # SGT labels with their tag numbers ('Employees (SGT 4)')
-                tags = sgt_tags((await sgt_catalog(app, domain))[0])
+                sgts = (await sgt_catalog(app, domain))[0]
+                tags = sgt_tags(sgts)
             except UpstreamError:
                 tags = None
         identity: dict[str, Any] | None = None
-        if resolve_user and any(
-            has_value(r.get("users")) for r in rules.items if r.get("enabled", True) or include_disabled
-        ):
+        if resolve_user and any(has_value(r.get("users")) for r in live_rules):
             identities, identity = await _resolve_identities(app, source.strip(), identities, domain)
+        flow_sgt: FlowSgt | None = None
+        if source_sgt is not None and source_sgt.strip():
+            flow_sgt = with_catalog(given_sgt(source_sgt), sgts)
+        elif resolve_user and any(has_value(r.get("sourceSecurityGroupTags")) for r in live_rules):
+            user = (identity or {}).get("user")
+            flow_sgt = with_catalog(await session_sgt(app, source.strip(), user, domain), sgts)
+        at = lookup_conditions.now()
+        time_ranges = await time_range_catalog(app, domain) if uses_time_ranges(live_rules) else None
+        not_in_effect: list[dict[str, Any]] = []
 
         conditional: list[dict[str, Any]] = []
         monitored: list[dict[str, Any]] = []
@@ -311,8 +347,19 @@ def register(reg: ToolRegistrar) -> None:
             if url_category is not None:
                 checks["url_category"], reputation_open = url_category_match(r.get("urls"), url_category)
                 skip += ("urls",)
+            sgt_ok = sgt_check(r.get("sourceSecurityGroupTags"), flow_sgt, tags)
+            if sgt_ok is not None:
+                checks["source_sgt"] = sgt_ok
+                skip += ("sourceSecurityGroupTags",)
             if any(v is False for v in checks.values()):
                 continue
+            in_effect, why = time_range_check(r, time_ranges, at)
+            if in_effect is False:
+                brief = flatten_access_rule(r, tags)
+                not_in_effect.append({k: brief.get(k) for k in ("index", "name", "action")} | (why or {}))
+                continue
+            if in_effect:
+                skip += ("timeRangeObjects",)
             unknown = [k for k, v in checks.items() if v is None] + _opaque(r, skip)
             if reputation_open and checks.get("url_category"):
                 unknown.append("url_reputation")
@@ -344,6 +391,8 @@ def register(reg: ToolRegistrar) -> None:
             out["device"] = dev_info
         if identity:
             out["identity"] = identity
+        if flow_sgt is not None:
+            out["source_sgt"] = flow_sgt.as_dict()
         if match is not None:
             out["verdict"] = f"Rule {match.get('index')} '{match.get('name')}' → {match.get('action')}"
             out["matched_rule"] = match
@@ -359,6 +408,8 @@ def register(reg: ToolRegistrar) -> None:
                 "Earlier rules listed in may_match_first could take this flow first, depending on the "
                 "listed conditions."
             )
+        if not_in_effect:
+            out["not_in_effect"] = not_in_effect[:20]
         if not rules.complete or not cat.complete:
             out["warning"] = (
                 "Policy or object collections were larger than the scan cap; result may be wrong."

@@ -398,6 +398,7 @@ async def test_rule_lookup_labels_sgts_with_tags(conds: respx.MockRouter) -> Non
             json=rules_with(sourceSecurityGroupTags={"objects": [EMPLOYEES]}, destinationNetworks={}),
         )
     )
+    conds.get(f"{CFG}/analysis/useractivity").mock(return_value=empty())  # no ISE login: SGT unknown
     async with Client(server()) as c:
         out = await run(
             c,
