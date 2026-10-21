@@ -1,0 +1,79 @@
+{
+ "_source": "FMC 10.0.1 (build 1), Global, 2026-10-21 (W6N build:polish-b, read-only GET object/externalcacertificates/{id}): two of FMC's bundled public root CAs with the `cert` PEM FMC returns (also in the expanded list); links dropped. FMC's own name fields are mojibake (NetLock) and cut at a comma (SECOM's O is 'SECOM Trust Systems CO.,LTD.', no CN).",
+ "items": [
+  {
+   "metadata": {
+    "readOnly": {
+     "state": false
+    },
+    "timestamp": 1775158292,
+    "lastUser": {
+     "name": "admin",
+     "id": "68d03c42-d9bd-11dc-89f2-b7961d42c462",
+     "type": "user"
+    },
+    "domain": {
+     "name": "Global",
+     "id": "e276abec-e0f2-11e3-8169-6d9ed49b625f",
+     "type": "Domain"
+    }
+   },
+   "cert": "-----BEGIN CERTIFICATE-----\nMIIEFTCCAv2gAwIBAgIGSUEs5AAQMA0GCSqGSIb3DQEBCwUAMIGnMQswCQYDVQQG\nEwJIVTERMA8GA1UEBwwIQnVkYXBlc3QxFTATBgNVBAoMDE5ldExvY2sgS2Z0LjE3\nMDUGA1UECwwuVGFuw7pzw610dsOhbnlraWFkw7NrIChDZXJ0aWZpY2F0aW9uIFNl\ncnZpY2VzKTE1MDMGA1UEAwwsTmV0TG9jayBBcmFueSAoQ2xhc3MgR29sZCkgRsWR\ndGFuw7pzw610dsOhbnkwHhcNMDgxMjExMTUwODIxWhcNMjgxMjA2MTUwODIxWjCB\npzELMAkGA1UEBhMCSFUxETAPBgNVBAcMCEJ1ZGFwZXN0MRUwEwYDVQQKDAxOZXRM\nb2NrIEtmdC4xNzA1BgNVBAsMLlRhbsO6c8OtdHbDoW55a2lhZMOzayAoQ2VydGlm\naWNhdGlvbiBTZXJ2aWNlcykxNTAzBgNVBAMMLE5ldExvY2sgQXJhbnkgKENsYXNz\nIEdvbGQpIEbFkXRhbsO6c8OtdHbDoW55MIIBIjANBgkqhkiG9w0BAQEFAAOCAQ8A\nMIIBCgKCAQEAxCRec75LbRTDofTjl5Bu0jBFHjzuZ9lk4BqKf8owyoPjIMHj9DrT\nlF8afFttvzBPhCf2nx9JvMaZCpDyD/V/Q4Q3Y1GLeqVw/HpYzY6b7cNGbIRwXdrz\nAZAj/E4wqX7hJ2Pn7WQ8oLjJM2P+FpD/sLj916jAwJRDC7bVWaaeVtAkH3B5r9s5\nVA1lddkVQZQBr17s9o3x/61k/iCa11zr/qYfCGSji3ZVrR47KGAuhyXoqq8fxmRG\nILdwfzzeSNuWU7c5d+Qa4scWhHaXWy+7GRWF+GmF9ZmnqfI0p6m2pgP8b4Y9VHx2\nBJtr+UBdADTHLpl1neWIA6pN+APSQnbAGwIDAKiLo0UwQzASBgNVHRMBAf8ECDAG\nAQH/AgEEMA4GA1UdDwEB/wQEAwIBBjAdBgNVHQ4EFgQUzPpnk/C2uNClwB7zU/2M\nU9+D15YwDQYJKoZIhvcNAQELBQADggEBAKt/7hwWqZw8UQCgwBEIBaeZ5m8BiFRh\nbvG5GK1Krf6BQCOUL/t1fC8oS2IkgYIL9WHxHG64YTjrgfpioTtaYtOUZcTh5m2C\n+C8lcLIhJsFyUR+MLMOEkMNaj7rP9KdlpeuY0fsFskZ1FSNqb4VjMIDw1Z4fKRzC\nbLBQWV2QWzuoDTDPv31/zvGdg73JRm4gpvlhUbohL3u+pRVjodSVh/GeufOJ8z2F\nuLjbvrW5KfnaNwUASZQDhETnv0Mxz3WLJdH0pmT1kvarBes96aULNmLazAZfNou2\nXjG4Kvte9nHfRCaexOYNkbQudZWAUWpLMKawYqGT8ZvYzsRjdT9ZR7E=\n-----END CERTIFICATE-----\n",
+   "subjectOrganization": "NetLock Kft.",
+   "subjectOrganizationUnit": "Tan\u00c3\u00bas\u00c3\u00adtv\u00c3\u00a1nykiad\u00c3\u00b3k (Certification Services)",
+   "subjectCommonName": "NetLock Arany (Class Gold) F\u00c5\u0091tan\u00c3\u00bas\u00c3\u00adtv\u00c3\u00a1ny",
+   "issuerCommonName": "NetLock Arany (Class Gold) F\u00c5\u0091tan\u00c3\u00bas\u00c3\u00adtv\u00c3\u00a1ny",
+   "issuerOrganization": "NetLock Kft.",
+   "issuerOrganizationUnit": "Tan\u00c3\u00bas\u00c3\u00adtv\u00c3\u00a1nykiad\u00c3\u00b3k (Certification Services)",
+   "validityStartDate": "Dec 11 15:08:21 2008 GMT",
+   "validityEndDate": "Dec  6 15:08:21 2028 GMT",
+   "crlSerials": [],
+   "serialNumber": "80544274841616 (0x49412ce40010)",
+   "certFingerprint": "06:08:3F:59:3F:15:A1:04:A0:69:A4:6B:A9:03:D0:06:B7:97:09:91",
+   "publicKeyFingerprint": "58941a2dc7b14c02235d97e9426cd0a0a63aed6f",
+   "id": "cd188e2a-4f90-32ef-9399-e52c54ce221f",
+   "type": "ExternalCACertificate",
+   "name": "NetLock-Arany-Class-Gold-FAtanAosAtvAny"
+  },
+  {
+   "metadata": {
+    "readOnly": {
+     "state": false
+    },
+    "timestamp": 1775158285,
+    "lastUser": {
+     "name": "admin",
+     "id": "68d03c42-d9bd-11dc-89f2-b7961d42c462",
+     "type": "user"
+    },
+    "domain": {
+     "name": "Global",
+     "id": "e276abec-e0f2-11e3-8169-6d9ed49b625f",
+     "type": "Domain"
+    }
+   },
+   "cert": "-----BEGIN CERTIFICATE-----\nMIIDdzCCAl+gAwIBAgIBADANBgkqhkiG9w0BAQsFADBdMQswCQYDVQQGEwJKUDEl\nMCMGA1UEChMcU0VDT00gVHJ1c3QgU3lzdGVtcyBDTy4sTFRELjEnMCUGA1UECxMe\nU2VjdXJpdHkgQ29tbXVuaWNhdGlvbiBSb290Q0EyMB4XDTA5MDUyOTA1MDAzOVoX\nDTI5MDUyOTA1MDAzOVowXTELMAkGA1UEBhMCSlAxJTAjBgNVBAoTHFNFQ09NIFRy\ndXN0IFN5c3RlbXMgQ08uLExURC4xJzAlBgNVBAsTHlNlY3VyaXR5IENvbW11bmlj\nYXRpb24gUm9vdENBMjCCASIwDQYJKoZIhvcNAQEBBQADggEPADCCAQoCggEBANAV\nOVKxUrO6xVmCxF1SrjpDZYBLx/KWvNs2l9amZIyoXvDjChz335c9S672XewhtUGr\nzbl+dp+++T42NKA7wfYxEUV0kz1XgMX5iZnK5atq1LXaQZAQwdbWQonCv/Q4EpVM\nVAX3NuRFg3sUZdbcDE3R3n4MqzvEFb46VqZab3ZpUql6ucjrappdUtAtCms1FgkQ\nhNBqyjoGADdH5H5XTz+L62e4iKrFvlNVspHEfbmwhRkGeC7bYRr6hfVKkaHnFtWO\nojnflLhwHyg/i/xAXmODPIMqGplrz95Zajv8bxbXH/1KEOtOghY6rCcMU/Gt1SSw\nawNQwS08Ft1ENCcadfsCAwEAAaNCMEAwHQYDVR0OBBYEFAqFqXdlBZh8QIH4D5cs\nOPEK7DzPMA4GA1UdDwEB/wQEAwIBBjAPBgNVHRMBAf8EBTADAQH/MA0GCSqGSIb3\nDQEBCwUAA4IBAQBMOqNErLlFsceTfsgLCkLfZOoc7llsCLqJX2rKSpWeeo8HxdpF\ncoJxDjrSzG+ntKEju/Ykn8sX/oymzsLS28yN/HH8AynBbF0zX2S2ZTuJbxh2ePXc\nokgfGT+Ok+vx+hfuzU7jBBJV1uXk3fs+BXziHV7Gp7yXT2g69ekuCkO2r1dcYmh8\nt/2jioSgrGK+KwmHNPBqAbubKVY8/gA3zyNs8U6qtnRGEmyR7jTV7JqR50S+kDFy\n1UkC9gLl9B/rfNmWVan/7Ir5mUf/NVoCqgTLiluHcSmRvaS0eg29mvVXIwAHIRc/\nSjnRBUkLp7Y3gaVdjKozXoEofKd9J+sAro03\n-----END CERTIFICATE-----\n",
+   "subjectOrganization": "SECOM Trust Systems CO.",
+   "subjectOrganizationUnit": "Security Communication RootCA2",
+   "subjectCommonName": "",
+   "issuerCommonName": "",
+   "issuerOrganization": "SECOM Trust Systems CO.",
+   "issuerOrganizationUnit": "Security Communication RootCA2",
+   "validityStartDate": "May 29 05:00:39 2009 GMT",
+   "validityEndDate": "May 29 05:00:39 2029 GMT",
+   "crlSerials": [],
+   "serialNumber": "0 (0x0)",
+   "certFingerprint": "5F:3B:8C:F2:F8:10:B3:7D:78:B4:CE:EC:19:19:C3:73:34:B9:C7:74",
+   "publicKeyFingerprint": "b587bd2de3e7b5024428ff2feefaec17bcb51a63",
+   "id": "0b8e5ae9-dbfa-3c62-a183-7a237887809f",
+   "type": "ExternalCACertificate",
+   "name": "C_JP-O_SECOM-Trust-Systems-CO.LTD.-OU_Security-Communication-RootCA2"
+  }
+ ],
+ "paging": {
+  "offset": 0,
+  "limit": 25,
+  "count": 2,
+  "pages": 1
+ }
+}
