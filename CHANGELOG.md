@@ -1,5 +1,96 @@
 # Changelog
 
+## 0.15.0 (2026-10-21)
+
+Wave 6 Now: operate the fleet, not one device. Built and proven live in the fleet run of 2026-10-20/21 on FMC 10.0.1 with
+FTDv 10.0 in CML ([docs/wave6-proofs.md](docs/wave6-proofs.md): every item with its Stage 2 evidence, the fixes it needed and
+the re-proof on `main`). 20 new tools: access-rule conditions (applications, application filters, VLAN tags, time ranges,
+SGTs), bulk rule edits and hit-count clears, fleet show commands and device groups, DNS/NetFlow/ICMP/HTTPS/banner platform
+settings, object lifecycle at scale, every certificate with days left, device configuration export and compare, pre/post-change
+snapshots, and bulk FTD registration. 200 tools (85 read, 102 write, 13 dangerous) and eleven prompts.
+
+### Added
+- **Access-rule conditions** (F66, #241): `fmc_create_access_rule` / `fmc_update_access_rule` take `applications`,
+  `application_filters`, `vlan_tags`, `time_range`, `source_sgts` and `destination_sgts` (ISE or custom SGTs by name or tag,
+  shown with their tag); new `fmc_find_application` (an application by name or id with risk, relevance and categories;
+  filters; attribute values), `fmc_create_application_filter` and `fmc_create_time_range`.
+- **`fmc_bulk_update_access_rules` and `fmc_clear_hit_counts`** (F67, #243): many rules changed in one preview (selection by
+  ids, names, text, action, section, zero hits; partial bulk PUTs that stop at the first refused rule), and a device's rule
+  counters reset after showing what is lost; `fmc_policy_audit` offers `bulk_fixes` and `fmc_policy_cleanup` uses them.
+- **Fleet show commands and device groups** (F68, #246): `fmc_run_show_command(devices=[...] | group=)` runs one command on up
+  to 25 devices with a row per device (bulkcommands where FMC enables it, per-device commands otherwise);
+  `fmc_list_device_groups`, `fmc_create_device_group`, `fmc_update_device_group`, `fmc_delete_device_group`.
+- **Platform settings** (F69, #242): `fmc_configure_dns` (creates the DNS server group), `fmc_configure_netflow`,
+  `fmc_configure_mgmt_access` (ICMP and HTTPS access) and `fmc_set_banner`.
+- **Object lifecycle at scale** (F70, #238): `fmc_delete_objects` (dangerous: by names, prefix or unused, dependency-ordered,
+  refusals with where-used), `fmc_replace_object` (A to B in rules, groups, NAT rules and static routes through FMC's usage
+  API), `fmc_import_objects(mode='sync')` (desired-state import with group membership and orphans).
+- **`fmc_list_certificates`** (F71, #234): device enrolments, internal certificates and CAs, trusted CAs and external
+  certificates with days left and a severity; bundled roots hidden unless asked for.
+- **`fmc_export_device_config` and `fmc_diff_device_config`** (F72, #245): one device's or HA pair's configuration by section
+  as versioned YAML (stable digest, secrets masked), compared with another device, a stored export, a device template or the
+  live device.
+- **`fmc_device_snapshot`** (F73, #251): what up to 25 FTDs run now (routing table, interfaces, failover, IKEv2/IPsec SAs,
+  tunnels, hit counts, health alerts, deployed version, masked running-config sections) for before/after evidence; state
+  sections in the export and diff tools (findings, hit-count deltas).
+- **`fmc_register_devices`** (F74, #240): several FTDs in one preview and one bulk request (single POSTs if FMC refuses bulk),
+  one wait for all, a row per device; the first FMC tool that runs as an MCP background task with `MCP_TASKS=true`.
+
+### Changed
+- Device groups go wherever devices do (`group:<name>`): `fmc_deploy` (members without pending changes skipped),
+  `fmc_assign_policy`, `fmc_set_device_licenses`, `fmc_backup_devices`, `fmc_device_metrics` and `fmc_sdwan_status` (#246).
+- Show commands go to FMC one at a time per FMC connection, for every tool and session (#252): FMC 10.0.1 mixes up the answers
+  of concurrent ones. A fleet run costs about 1-3 s per device and command.
+- `fmc_get_platform_settings` shows NetFlow, ICMP access and trusted DNS; access-rule and FQDN-object previews warn when a device
+  has no DNS server group to resolve FQDN objects (#242).
+- Prompts: `fmc_firewall_health_review` gains a certificates step (#234), `compare_with` (#245), `group` and fleet calls (#246)
+  and `baseline` (#251); `fmc_rule_change_review` takes snapshots before and after (#251); `fmc_onboard_ftd` takes `devices`
+  (#240); `fmc_policy_cleanup` steps use the bulk and lifecycle tools (#238, #243).
+- `fmc_rule_lookup` gains `source_sgt` and a `not_in_effect` list (#261); `fmc_deploy` waits up to 180 s for FMC to accept a
+  deployment request (#253).
+- The bundled core includes its `tasks` extra (`fastmcp-tasks`) for MCP background tasks (#240).
+
+### Fixed
+- Found in the live run (each with its re-proof in docs/wave6-proofs.md):
+  - Fleet show commands and multi-device snapshots returned another device's output; a `show version` naming another device is
+    now re-asked, then reported as a failure (#252).
+  - A deployment-request timeout gave no hint whether anything was deployed (#253); device-group descriptions, which FMC 10.0.1
+    doesn't store, were reported as set (#254).
+  - Snapshot health alerts kept FMC's `<br>` and an item reorder counted as a change (#256); a snapshot's digest depended on its
+    label (#257).
+  - `fmc_delete_objects` refused unused network groups and their members, and `fmc_unused_objects` never listed them: FMC 10.0.1's
+    unused filter lists no group, so groups are checked with the usage API (#258). A description-only sync row read "from
+    <same value>" (#259).
+  - `fmc_live_connections` says why buffer rows carry no rule, application or time (#260); `fmc_rule_lookup` decides ended time
+    ranges and the source IP's session SGT instead of calling them conditional (#261).
+  - `fmc_bulk_update_access_rules` counted MONITOR rules' logging as turned off (FMC keeps it); it skips them and reports what
+    FMC kept (`kept_by_fmc`); clearing every rule's hit counts says it resets the default action's counter too (#262).
+  - `fmc_pending_changes` returned a 115 KB row (a Snort 3 policy's inspector data); change text is capped (#263).
+  - ICMP access without `icmp_service` was refused by FMC; an ICMPv4 "any" object is used or created (#265).
+    `fmc_configure_dns(disable=True)` failed on confirm; it is refused in the preview with the alternative (#266).
+  - `fmc_set_banner` warns that clearing a banner doesn't reach the FTD, and verifies with `show banner` (#267).
+  - Application filters created over the API couldn't be used in rules (FMC 10.0.1 never returns them on reads); names resolve
+    from created filters and from rules that use them, and ids are sent as given (#268).
+  - `fmc_configure_netflow` sent security zones, which FMC refuses; it takes interface groups and blocks a zone in the preview
+    with the group to create (#269).
+  - `fmc_get_certificate` called Global's certificates "system" in a child domain and hid a custom trusted CA there (#270).
+- Found while building: `fmc_register_device(wait=true)` never saw FMC 10.0.1's initial deployment (ISO start times), and a
+  `reg_key` argument is masked in the audit log (#240); `show version`'s "Key version" is no longer masked (#246);
+  `fmc_run_show_command` masking hides the key after an `md5`, `hex` or `eigrp <as>` qualifier (#251).
+- Tests replay FMC 10.0.1's live answers instead of spec examples and made-up shapes (#255, #264, #271).
+
+### Known limits
+- FMC 10.0.1: bulkcommands is behind a feature flag (403), so fleet runs use per-device commands; API-created application
+  filters can't be listed or deleted over REST (UI cleanup); a platform settings policy's last DNS server group can't be removed;
+  a cleared banner is not removed from the device; MONITOR rules keep their logging; `analysis/useractivity` holds about an hour,
+  so the automatic session SGT works only shortly after a login (pass `source_sgt`).
+- Proven only up to the lab: VLAN tag conditions match only on inline sets (none in the lab); interface-down and route-lost
+  snapshot findings (a CML link stop keeps FTDv carrier); device certificates (none enrolled until F75); device-template compares
+  (F81 #223); MCP task mode for `fmc_register_devices` (run synchronously).
+- `fmc_assign_policy` POSTs the first assignment of an ancestor-owned policy in the child domain, which FMC 10.0.1 answers with
+  406; use `domain='Global'` (#273). Follow-ups: inline application filters (#272), small fixes (#273), two wall-clock-dependent
+  tests (#274).
+
 ## 0.14.2 (2026-10-21)
 
 Fixes for the 14 findings of the Wave 5 operator eval (#197-#210, F46), each reviewed and re-tested on recorded FMC 10.0.1
