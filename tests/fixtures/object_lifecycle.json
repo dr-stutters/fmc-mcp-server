@@ -173,5 +173,86 @@
    "count": 2,
    "pages": 1
   }
+ },
+ "networkgroups_live": {
+  "_recorded": "FMC 10.0.1 (build 1), 2026-10-21 (W6 live-B2), domain Global/mcp-test-leaf shown as the test domain, lastUser scrubbed. FMC's unusedOnly filter on networkgroups answers no group (count 0 in the leaf and in Global) while the usage API names no referrer and FMC accepts the group's DELETE.",
+  "unused_filter": {
+   "paging": {
+    "offset": 0,
+    "limit": 0,
+    "count": 0,
+    "pages": 0
+   }
+  },
+  "by_name": {
+   "items": [
+    {
+     "objects": [
+      {
+       "type": "Host",
+       "name": "mcp-w6-sync-2",
+       "id": "00000000-0000-0ed3-0000-021474996338"
+      },
+      {
+       "type": "Host",
+       "name": "mcp-w6-sync-3",
+       "id": "00000000-0000-0ed3-0000-021474996361"
+      }
+     ],
+     "type": "NetworkGroup",
+     "overridable": false,
+     "name": "mcp-w6-sync-grp",
+     "id": "00000000-0000-0ed3-0000-021474996396",
+     "metadata": {
+      "timestamp": 1792562930417,
+      "lastUser": {
+       "name": "apiuser"
+      },
+      "domain": {
+       "name": "Global",
+       "id": "e276abec-e0f2-11e3-8169-6d9ed49b625f",
+       "type": "Domain"
+      }
+     }
+    }
+   ],
+   "paging": {
+    "offset": 0,
+    "limit": 25,
+    "count": 1,
+    "pages": 1
+   }
+  },
+  "usage_none": {
+   "paging": {
+    "offset": 0,
+    "limit": 0,
+    "count": 0,
+    "pages": 0
+   }
+  },
+  "delete_answer": {
+   "objects": [
+    {
+     "type": "Host",
+     "name": "mcp-w6-sync-2",
+     "id": "00000000-0000-0ed3-0000-021474996338"
+    },
+    {
+     "type": "Host",
+     "name": "mcp-w6-sync-3",
+     "id": "00000000-0000-0ed3-0000-021474996361"
+    }
+   ],
+   "type": "NetworkGroup",
+   "overridable": false,
+   "name": "mcp-w6-sync-grp",
+   "id": "00000000-0000-0ed3-0000-021474996396",
+   "metadata": {
+    "lastUser": "apiuser",
+    "timestamp": 1792562930417,
+    "domain": "Global"
+   }
+  }
  }
 }
