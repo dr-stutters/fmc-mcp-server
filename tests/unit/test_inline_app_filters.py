@@ -221,3 +221,32 @@ async def test_rule_lookup_shows_the_inline_filter_rule_as_conditional(inline: r
     assert first["name"] == "mcp-w6-inline-rule"
     assert first["applications"] == ["inline-filter:risk High or Very High"]
     assert "applications" in first["depends_on"]
+
+
+async def test_a_misspelt_attribute_is_refused_not_read_as_remove(inline: respx.MockRouter) -> None:
+    """Review: unknown keys used to be dropped, so {'risk': [...]} became an empty filter, which on update
+    means "remove the rule's inline filters" (and on create gave a misleading "needs at least one
+    attribute")."""
+    put = mount_rule(inline, copy.deepcopy(RULE))
+    async with Client(server()) as c:
+        with pytest.raises(ToolError, match="risk"):
+            await run(
+                c,
+                "fmc_update_access_rule",
+                {"policy": "mcp-test-acp", "rule": RULE["name"], "inline_app_filter": {"risk": ["High"]}},
+            )
+        with pytest.raises(ToolError, match="category"):
+            await run(
+                c,
+                "fmc_create_access_rule",
+                {
+                    "policy": "mcp-test-acp",
+                    "name": "x",
+                    "action": "ALLOW",
+                    "inline_app_filter": {"category": ["file sharing"]},
+                },
+            )
+    assert not put.called
+    assert not any(
+        call.request.method == "POST" and "accessrules" in str(call.request.url) for call in inline.calls
+    )

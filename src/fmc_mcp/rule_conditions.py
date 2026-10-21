@@ -37,7 +37,7 @@ import weakref
 from datetime import UTC, datetime
 from typing import Any
 
-from pydantic import BaseModel, Field
+from pydantic import BaseModel, ConfigDict, Field
 
 from fmc_mcp._core import InvalidRequest, NotFound, UpstreamError
 from fmc_mcp.client import FmcApp, is_uuid
@@ -335,7 +335,11 @@ def pick_facet(rows: list[dict[str, Any]], text: str, what: str) -> dict[str, An
 
 class InlineAppFilter(BaseModel):
     """Application attributes matched inside one rule (FMC's inline application filter): every application
-    with all the given attributes, any value within one attribute."""
+    with all the given attributes, any value within one attribute. Unknown keys are refused: a misspelt one
+    ('risk') would otherwise leave the filter empty, which fmc_update_access_rule reads as "remove the rule's
+    inline filters"."""
+
+    model_config = ConfigDict(extra="forbid")
 
     risks: list[str] | None = Field(
         None, description="Risk levels: 'Very Low', 'Low', 'Medium', 'High', 'Very High'"
