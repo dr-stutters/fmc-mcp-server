@@ -4,7 +4,8 @@ prefix, default-originate and redistribution).
 
 Shapes, FMC 10.0.1 (spec, cross-checked with the CiscoDevNet terraform provider's definitions):
 - object/ipv4prefixlists: {name, entries[{sequence, action PERMIT|DENY, ipAddress, minPrefixLenth
-  (FMC's spelling), maxPrefixLength}]}; FMC answers with type IPV4PrefixList.
+  (FMC's spelling), maxPrefixLength}]}; FMC answers with type IPV4PrefixList (its non-expanded listing
+  rows have none: references get it from REF_TYPES).
 - object/routemaps: {name, type RouteMap, entries[{sequence, action, ipv4PrefixListAddresses[],
   communityLists[], asPathLists[], localPreferenceSetting, metricBandwidth, weightSetting,
   communityListSetting (+ the well-known community flags, addToExistingCommunity), asPathPrependASPath[]}]}.
@@ -36,6 +37,19 @@ ROUTE_MAPS = "object/routemaps"
 COMMUNITY_LISTS = ("object/standardcommunitylists", "object/expandedcommunitylists")
 AS_PATH_LISTS = "object/aspathlists"
 NONE = "none"  # the value that removes a filter, as elsewhere ('none' clears)
+# Each collection's object type, for references to it. FMC 10.0.1's non-expanded object/ipv4prefixlists
+# listing has no `type` ({name, id} rows; object/routemaps rows do carry it), and a route map whose
+# ipv4PrefixListAddresses reference has type null is refused with HTTP 500 "Prefix lists cannot be added
+# inside Access Lists and vice versa. Also IPv4 and IPv6 lists are not interchangeable." The same POST
+# with IPV4PrefixList is accepted (live 2026-10-21). FMC's own type wins when a row has one; the
+# community and AS-path list types are the spec's (not seen live).
+REF_TYPES = {
+    PREFIX_LISTS: "IPV4PrefixList",
+    ROUTE_MAPS: "RouteMap",
+    COMMUNITY_LISTS[0]: "StandardCommunityList",
+    COMMUNITY_LISTS[1]: "ExpandedCommunityList",
+    AS_PATH_LISTS: "ASPathList",
+}
 
 PolicyName = Annotated[
     str,
@@ -240,10 +254,15 @@ class PolicyRefs:
         self._lists: dict[str, list[dict[str, Any]]] = {}
 
     async def rows(self, path: str) -> list[dict[str, Any]]:
+        """The collection's {name, id, type} rows; a row FMC lists without a type gets the collection's
+        (REF_TYPES), so a reference built from it is one FMC accepts."""
         if path not in self._lists:
             try:
                 page = await self.app.all(await self.app.config_path(path, self.domain), expanded=False)
-                self._lists[path] = list(page.items)
+                default = REF_TYPES.get(path)
+                self._lists[path] = [
+                    r if r.get("type") or default is None else {**r, "type": default} for r in page.items
+                ]
             except NotFound:
                 self._lists[path] = []
         return self._lists[path]
