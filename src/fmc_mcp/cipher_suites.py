@@ -9,6 +9,7 @@ table first and name the bad ones.
 2026-10-21): "accepted", "refused", or None (not tried yet: the tools warn, and name these suites if FMC
 refuses the list)."""
 
+import re
 from dataclasses import dataclass
 from typing import Literal
 
@@ -85,6 +86,8 @@ SUITES: tuple[Suite, ...] = (
     Suite(4866, "TLS_AES_256_GCM_SHA384", None),
     Suite(4867, "TLS_CHACHA20_POLY1305_SHA256", None),
 )
+HEX = re.compile(r"0X[0-9A-F]{1,4}")
+HEX_PAIR = re.compile(r"0X([0-9A-F]{1,2}),\s*0X([0-9A-F]{1,2})")  # the IANA registry's "0x00,0x2F"
 BY_NAME = {s.name.upper(): s for s in SUITES}
 BY_CODE = {s.code: s for s in SUITES}
 # The weak preset: the 17 suites (RSA key exchange, CBC with SHA-1, 3DES, RC4) FMC 10.0.1 accepted in the
@@ -108,11 +111,11 @@ def find_suite(ref: str) -> Suite | None:
         up = "TLS_" + up[4:]
     if up in BY_NAME:
         return BY_NAME[up]
-    try:
-        code = int(up.replace(",0X", "").replace(",", ""), 16) if up.startswith("0X") else int(up)
-    except ValueError:
-        return None
-    return BY_CODE.get(code)
+    if m := HEX_PAIR.fullmatch(up):
+        return BY_CODE.get(int(m.group(1), 16) * 256 + int(m.group(2), 16))
+    if HEX.fullmatch(up):
+        return BY_CODE.get(int(up, 16))
+    return BY_CODE.get(int(up)) if up.isdigit() and up.isascii() else None
 
 
 def suite_of_literal(lit: dict[str, object]) -> Suite | None:
