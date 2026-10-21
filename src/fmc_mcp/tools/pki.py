@@ -34,6 +34,7 @@ from fmc_mcp._core import (
     list_result,
 )
 from fmc_mcp._core.http import page_of
+from fmc_mcp.cert_names import cert_names
 from fmc_mcp.client import FmcApp, is_uuid
 from fmc_mcp.preview import fmc_preview
 from fmc_mcp.tools.common import Domain, domain_path, pick_by_name
@@ -124,15 +125,16 @@ def csr_pending(c: dict[str, Any]) -> bool:
 def cert_row(c: dict[str, Any], kind: CertKind, now: datetime | None = None) -> dict[str, Any]:
     now = now or datetime.now(UTC)
     end = parse_date(c.get("validityEndDate"))
-    subject, issuer = c.get("subjectCommonName"), c.get("issuerCommonName")
     owner = ((c.get("metadata") or {}).get("domain") or {}).get("name")
+    names = cert_names(c)  # from the PEM: FMC's own name fields are garbled for some bundled roots
+    subject, issuer = names.subject_cn, names.issuer_cn
     row: dict[str, Any] = {
         "name": c.get("name"),
         "kind": kind.key,
-        "subject": subject or None,
-        "organization": c.get("subjectOrganization") or None,
-        "issuer": issuer or None,
-        "self_signed": (subject == issuer and c.get("subjectOrganization") == c.get("issuerOrganization"))
+        "subject": subject,
+        "organization": names.subject_o,
+        "issuer": issuer,
+        "self_signed": (subject == issuer and names.subject_o == names.issuer_o)
         if subject and issuer
         else None,
         "valid_until": c.get("validityEndDate") or None,

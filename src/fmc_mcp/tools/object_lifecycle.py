@@ -44,15 +44,18 @@ from fmc_mcp.rules import flatten_nat_rule
 from fmc_mcp.tools.common import (
     FILTERABLE,
     OBJECT_TYPES,
+    ROLE_READ_ONLY,
     Domain,
     ObjectTypeName,
     ObjType,
+    is_builtin_object,
     is_system,
     obj_type,
     object_summary,
     ref_label,
     ref_of,
     resolve_object,
+    role_read_only,
 )
 from fmc_mcp.tools.devices import DEVICES
 from fmc_mcp.tools.dynamic_objects import DYNAMIC
@@ -328,17 +331,24 @@ class Gather:
             c.users[str(u.get("id")).lower()] = label
 
     def _fixed(self, c: Candidate) -> bool:
-        """System and inherited objects are refused whatever else is selected. The owner domain is checked
-        first: in a child domain FMC 10.0.1 marks an ancestor's objects read-only, sometimes without a reason,
-        so they would otherwise read as built-ins."""
+        """System and inherited objects, and objects the API user's role may not change (readOnly reason
+        RBAC, #249), are refused whatever else is selected. The owner domain is checked before FMC's
+        read-only flag: in a child domain FMC 10.0.1 marks an ancestor's objects read-only, sometimes without
+        a reason, so they would otherwise read as built-ins. FMC's own built-ins (fixed ids,
+        is_builtin_object) are said to be built-in there too, not "defined in Global": deleting them in
+        Global is refused as well."""
         owner = inherited_from(c.obj, self.here)
-        if owner:
+        if owner and is_builtin_object(c.obj):
+            c.refuse("FMC built-in (system) object, read-only in every domain", in_use=False)
+        elif owner:
             c.refuse(f"defined in domain {owner!r} (only inherited here; delete it there)", in_use=False)
         elif c.kind == "policies":
             if c.obj.get("isSystemDefined"):
                 c.refuse("system-defined policy", in_use=False)
         elif is_system(c.obj):
             c.refuse("FMC built-in (system) object", in_use=False)
+        elif role_read_only(c.obj):
+            c.refuse(ROLE_READ_ONLY, in_use=False)
         return c.reason is not None
 
     async def zones(self) -> list[Candidate]:
@@ -483,6 +493,19 @@ def _requests(steps: list[tuple[int, str, str, list[Candidate]]]) -> int:
 # --- replace everywhere ---------------------------------------------------------------------------
 
 Scope = Literal["access_rules", "prefilter_rules", "groups", "nat_rules", "static_routes"]
+
+
+def nat_where(policy: str, row: dict[str, Any]) -> str:
+    """A NAT rule for the replace preview: a manual rule by index and section, an auto NAT rule (no index:
+    FMC keeps one per object) by the object it translates: 'mcp-w6-nat auto NAT of mcp-w6-a (DYNAMIC)'."""
+    if row.get("kind") == "auto":
+        nat_type = f" ({row['nat_type']})" if row.get("nat_type") else ""
+        return f"{policy} auto NAT of {row.get('original_source') or '?'}{nat_type}"
+    index = f" #{row['index']}" if row.get("index") is not None else ""
+    section = f" ({str(row['section']).lower()})" if row.get("section") else ""
+    return f"{policy} manual NAT{index}{section}"
+
+
 SCOPES: tuple[str, ...] = get_args(Scope)  # also the order the changes are applied in
 REPLACEABLE = (
     "host",
@@ -703,8 +726,7 @@ class Walk:
                 path = await self.app.config_path(f"{NAT}/{pid}/{sub}/{r['id']}", self.domain)
                 # PUT back what the typed endpoint returns, not the natrules aggregate's row
                 full: dict[str, Any] = await self.app.api.get(path)
-                row = flatten_nat_rule(full)
-                where = f"{pname} {row.get('section') or ''} #{row.get('index') or '-'} ({row.get('kind')})"
+                where = nat_where(pname, flatten_nat_rule(full))
                 site = make_site(
                     "nat_rules", re.sub(r"\s+", " ", where), path, full, self.old_id, self.new_ref
                 )
@@ -1138,6 +1160,8 @@ def register(reg: ToolRegistrar) -> None:
             details["delete_old"] = True
             if is_system(cur_old):
                 blockers.append("delete_old: the old object is an FMC built-in and can't be deleted.")
+            elif role_read_only(cur_old):
+                blockers.append(f"delete_old: the old object is {ROLE_READ_ONLY}.")
             owner = inherited_from(cur_old, here)
             if owner:
                 blockers.append(

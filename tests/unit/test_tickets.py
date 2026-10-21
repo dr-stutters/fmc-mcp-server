@@ -57,3 +57,28 @@ async def test_release_works_without_fmc_and_submit_needs_open_ticket(fmc: respx
         p = await run(c, "fmc_ticket", {"action": "release"})
         done = await run(c, "fmc_ticket", {"action": "release", "confirm": p["confirm"]})
         assert done["result"]["current_ticket"] is None
+
+
+async def test_ticket_changes_carry_the_cut_note(fmc: respx.MockRouter) -> None:
+    """#273: a ticket's changes are pending-change rows (capped the same way): say what was cut."""
+    long = "x" * 5000
+    fmc.get(TICKETS).mock(return_value=items([{**T, "status": "IN_PROGRESS"}]))
+    fmc.get(f"{TICKETS}/t-1/previewchanges").mock(
+        return_value=items(
+            [
+                {
+                    "entityName": "mcp-w6-nap",
+                    "entityType": "Snort3NapPolicy",
+                    "action": "UPDATE",
+                    "valueUpdated": [{"fieldName": "inspectorData", "oldValue": long, "newValue": "short"}],
+                },
+                {"entityName": "h", "entityType": "Host", "action": "ADD"},
+            ]
+        )
+    )
+    fmc.get(f"{TICKETS}/t-1/validationresults").mock(return_value=items([]))
+    async with Client(create_server(make_settings())) as c:
+        out = await run(c, "fmc_change_tickets", {"ticket": "CHG001", "response_format": "json"})
+    (line,) = out["changes"][0]["changes"]
+    assert line.endswith(" -> short")  # the new value survives a long old one
+    assert "each side of 'old -> new' at 200 characters" in out["changes_note"]
