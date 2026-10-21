@@ -640,3 +640,107 @@ async def test_a_device_that_fails_to_resolve_is_read_once(lab: respx.MockRouter
     # mcp-ftd1's name lookup
     reads = [c for c in listing.calls if c.request.url.params.get("expanded") == "true"]
     assert len(reads) == 3
+
+
+# --- an HA pair / cluster whose traffic unit FMC lists as disconnected (#248) ---------------------------
+# Live re-check of #198 on FMC 10.0.1: device='mcp-fw-ha' resolved to FMC's active unit mcp-fw-ha-a, which was
+# disconnected, and the row carried FMC's 503 "device is not available". The recorded records have exactly
+# that layout: mcp-fw-ha-a PRIMARY/Active isConnected false, mcp-fw-ha-b SECONDARY/Standby connected.
+
+ACTIVE_DOWN = (
+    "mcp-fw-ha-a (active unit of mcp-fw-ha, disconnected): FMC can't run packet tracer on it. "
+    "Connected: mcp-fw-ha-b (standby unit). FMC still lists mcp-fw-ha-a as the active unit, but FMC's "
+    "failover state may be stale (mcp-fw-ha-b may have taken over while FMC lost mcp-fw-ha-a): check "
+    "fmc_get_ha_status, then trace on the active unit by its name. No other unit is traced on "
+    "automatically: a standby unit drops everything."
+)
+
+
+def pair_lab(lab: respx.MockRouter, *records: dict[str, Any]) -> respx.Route:
+    """The recorded HA pair as FMC lists it (defaults: active unit down, standby up); the device list
+    route, so tests can count its reads."""
+    listing = records or (recorded("mcp-fw-ha-b"), recorded("mcp-fw-ha-a"))
+    return lab.get(f"{CFG}/devices/devicerecords").mock(return_value=items(list(listing)))
+
+
+async def test_pair_whose_active_unit_is_disconnected_names_the_connected_peer(lab: respx.MockRouter) -> None:
+    listing = pair_lab(lab)
+    post = tracer(lab, lambda b: ALLOW)
+    rows = (await call({"device": "mcp-fw-ha", "flows": [ICMP, {**ICMP, "name": "again"}]}))["results"]
+    assert [r["result"] for r in rows] == ["error", "error"]
+    assert rows[0]["device"] == "mcp-fw-ha (mcp-fw-ha-a, active)", rows[0]
+    assert rows[0]["note"] == ACTIVE_DOWN and rows[1]["note"] == ACTIVE_DOWN
+    assert not post.called  # neither the disconnected unit nor the standby was traced on
+    # the name lookup and the pair lookup once, not again for the second flow
+    assert len([c for c in listing.calls if c.request.url.params.get("expanded") == "true"]) == 2
+    data = await call({"device": "mcp-fw-ha", "flows": [ICMP], "response_format": "markdown"})
+    assert "mcp-fw-ha-b may have taken over" in str(data)
+
+
+async def test_packet_tracer_on_a_pair_whose_active_unit_is_disconnected(lab: respx.MockRouter) -> None:
+    from fastmcp.exceptions import ToolError
+
+    pair_lab(lab)
+    post = tracer(lab, lambda b: ALLOW)
+    args = {"protocol": "icmp", "source_ip": "10.99.1.10", "destination_ip": "192.0.2.10"}
+    server = create_server(make_settings())
+    with pytest.raises(ToolError) as err:
+        await call_tool(server, "fmc_packet_tracer", {"device": "mcp-fw-ha", **args})
+    assert str(err.value) == ACTIVE_DOWN
+    # the unit named directly: the same answer (its peer comes from the device list)
+    with pytest.raises(ToolError) as err:
+        await call_tool(server, "fmc_packet_tracer", {"device": "mcp-fw-ha-a", **args})
+    assert str(err.value) == ACTIVE_DOWN
+    assert not post.called
+
+
+async def test_disconnected_standby_points_at_the_connected_active_unit(lab: respx.MockRouter) -> None:
+    pair_lab(lab, recorded("mcp-fw-ha-b", isConnected=False), recorded("mcp-fw-ha-a", isConnected=True))
+    post = tracer(lab, lambda b: ALLOW)
+    (row,) = (await call({"device": "mcp-fw-ha-b", "flows": [ICMP]}))["results"]
+    assert row["result"] == "error" and row["device"] == "mcp-fw-ha (mcp-fw-ha-b, standby)", row
+    assert row["note"] == (
+        "mcp-fw-ha-b (standby unit of mcp-fw-ha, disconnected): FMC can't run packet tracer on it. "
+        "Connected: mcp-fw-ha-a (active unit): trace on mcp-fw-ha-a, or give mcp-fw-ha's name."
+    )
+    assert not post.called
+
+
+async def test_pair_with_no_connected_unit(lab: respx.MockRouter) -> None:
+    pair_lab(lab, recorded("mcp-fw-ha-b", isConnected=False), recorded("mcp-fw-ha-a"))
+    tracer(lab, lambda b: ALLOW)
+    (row,) = (await call({"device": "mcp-fw-ha", "flows": [ICMP]}))["results"]
+    assert row["result"] == "error"
+    assert row["note"] == (
+        "mcp-fw-ha-a (active unit of mcp-fw-ha, disconnected): FMC can't run packet tracer on it, and no "
+        "other unit of mcp-fw-ha is connected (mcp-fw-ha-b): FMC can't reach the pair."
+    )
+
+
+async def test_cluster_whose_control_node_is_disconnected(lab: respx.MockRouter) -> None:
+    pair_lab(lab, recorded("mcp-sdwan-t3-hub2", isConnected=True), recorded("mcp-sdwan-t3-hub"))
+    post = tracer(lab, lambda b: ALLOW)
+    (row,) = (await call({"device": "mcp-sdwan-t3-cluster", "flows": [ICMP]}))["results"]
+    assert row["result"] == "error" and row["device"] == "mcp-sdwan-t3-cluster (mcp-sdwan-t3-hub, control)"
+    assert row["note"] == (
+        "mcp-sdwan-t3-hub (control node of mcp-sdwan-t3-cluster, disconnected): FMC can't run packet tracer "
+        "on it. Connected: mcp-sdwan-t3-hub2 (data node). FMC still lists mcp-sdwan-t3-hub as the control "
+        "node, but FMC's cluster state may be stale (mcp-sdwan-t3-hub2 may have become the control node "
+        "while FMC lost mcp-sdwan-t3-hub): check fmc_list_clusters, then trace on the control node by its "
+        "name. No other node is traced on automatically."
+    )
+    assert not post.called
+
+
+async def test_candidates_naming_a_pair_whose_active_unit_is_down_leave_it_out(lab: respx.MockRouter) -> None:
+    """Candidates are a pool, not a flow's device: the pair is left out (not an error) and another
+    candidate traces the flow."""
+    pair_lab(lab, recorded("mcp-fw-ha-b"), recorded("mcp-fw-ha-a"), {**DEV, "isConnected": True})
+    tracer(lab, lambda b: ALLOW)
+    data = await call({"candidates": ["mcp-fw-ha", "mcp-ftd1"], "flows": [ICMP]})
+    (row,) = data["results"]
+    assert row["result"] == "pass" and row["device"] == "mcp-ftd1", row
+    assert data["not_checked"] == [
+        "mcp-fw-ha-b (standby unit of mcp-fw-ha)",
+        "mcp-fw-ha-a (active unit of mcp-fw-ha, disconnected)",
+    ]
