@@ -330,24 +330,25 @@ async def _sync(
             )
             continue
         desired = _updated(t.key, have, fields, row.description)
-        same = canon(t.key, have) == canon(t.key, fields) and (
-            row.description is None or row.description == (have.get("description") or "")
-        )
-        if same:
+        value_changed = canon(t.key, have) != canon(t.key, fields)
+        old_description = have.get("description") or ""
+        description_changed = row.description is not None and row.description != old_description
+        if not value_changed and not description_changed:
             rows.append({"row": n, "name": row.name, "type": t.key, "action": "unchanged"})
             continue
         updates.append((t.key, have, desired))
-        before = object_summary(have).get("value")
-        rows.append(
-            {
-                "row": n,
-                "name": row.name,
-                "type": t.key,
-                "action": "update",
-                "value": row.value,
-                "from": before,
-            }
-        )
+        update: dict[str, Any] = {
+            "row": n,
+            "name": row.name,
+            "type": t.key,
+            "action": "update",
+            "value": row.value,
+        }
+        if value_changed:  # `from` only when the value changes (a description-only row said "from <same>")
+            update["from"] = object_summary(have).get("value")
+        if description_changed:
+            update["description"] = {"from": old_description or None, "to": row.description}
+        rows.append(update)
 
     groups: list[dict[str, Any]] = []
     group_writes: list[tuple[str, dict[str, Any] | None, dict[str, Any]]] = []  # (key, current, plan)
