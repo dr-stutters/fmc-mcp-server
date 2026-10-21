@@ -3,6 +3,31 @@
   "manifest": 1,
   "prefix": "fmc",
   "prompts": {
+    "fmc_compliance_evidence": {
+      "arguments": [
+        "policy",
+        "device",
+        "since_days",
+        "baseline",
+        "domain"
+      ],
+      "references": [
+        "fmc_status",
+        "fmc_list_policy_assignments",
+        "fmc_hardening_check",
+        "fmc_export_access_rules",
+        "fmc_policy_audit",
+        "fmc_list_audit_records",
+        "fmc_change_tickets",
+        "fmc_pending_changes",
+        "fmc_deploy"
+      ],
+      "rendered": true,
+      "tier": "read",
+      "uses": [
+        "fmc"
+      ]
+    },
     "fmc_firewall_health_review": {
       "arguments": [
         "domain",
@@ -927,6 +952,10 @@
     "fmc_ha_action": {
       "tier": "dangerous",
       "title": "Break, switch or delete HA pair"
+    },
+    "fmc_hardening_check": {
+      "tier": "read",
+      "title": "FTD hardening check"
     },
     "fmc_import_access_rules": {
       "tier": "write",
