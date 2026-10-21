@@ -106,7 +106,7 @@ Changes made in FMC reach the firewalls only after a **deployment** (`fmc_deploy
 
 ## Tools
 
-There are 202 tools when every tier is enabled (86 read, 103 write, 13 dangerous; the dangerous tier turns `fmc_api_call` into a raw call), and eleven workflow prompts (`fmc_why_blocked`, `fmc_firewall_health_review`, `fmc_sdwan_troubleshoot`, `fmc_vpn_troubleshoot`, `fmc_threat_defense_review`, `fmc_prove_user_policy`; `fmc_rule_change_review` and `fmc_policy_cleanup`, write tier; `fmc_onboard_ftd`, `fmc_onboard_branch` and `fmc_ha_failover_check`, dangerous tier). `FMC_TOOLSETS` loads only some areas of them (see "Toolsets").
+There are 217 tools when every tier is enabled (89 read, 114 write, 14 dangerous; the dangerous tier turns `fmc_api_call` into a raw call), and eleven workflow prompts (`fmc_why_blocked`, `fmc_firewall_health_review`, `fmc_sdwan_troubleshoot`, `fmc_vpn_troubleshoot`, `fmc_threat_defense_review`, `fmc_prove_user_policy`; `fmc_rule_change_review` and `fmc_policy_cleanup`, write tier; `fmc_onboard_ftd`, `fmc_onboard_branch` and `fmc_ha_failover_check`, dangerous tier). `FMC_TOOLSETS` loads only some areas of them (see "Toolsets").
 
 **Read**
 
@@ -205,7 +205,7 @@ Notes on some read tools:
 | Intrusion tuning | `fmc_set_intrusion_rule_state` (ALERT/BLOCK/DROP/REJECT/PASS/DISABLE/DEFAULT per policy), `fmc_create_intrusion_policy`, `fmc_create_intrusion_rule` / `fmc_delete_intrusion_rule` (custom Snort 3 rules); `fmc_update_access_rule(intrusion_policy=...)` |
 | Snort profiling | `fmc_snort_profile` (Snort 3 rule profiler for 1-60 min: start, wait, stop; rules ranked by time with gid:sid for `fmc_find_intrusion_rules` / `fmc_set_intrusion_rule_state`), `fmc_cpu_profile` (Snort 3 module CPU profiler, 15-120 min, FMC stops it); no configuration change, but Snort is slower while they run; MCP tasks with `MCP_TASKS=true` |
 | Change management | `fmc_ticket` (open / submit / discard / release; an open ticket is sent as `ticket-id` with every change) |
-| Decryption | `fmc_create_decryption_policy` / `fmc_update_decryption_policy` (default action and its logging, trusted CAs, TLS 1.3 decryption, untrusted issuers, undecryptable actions such as Unsupported Cipher Suite), `fmc_create_decryption_rule` (DECRYPT_RESIGN with an internal CA, DECRYPT_KNOWN_KEY, DO_NOT_DECRYPT, BLOCK, MONITOR; `tls_versions` and `cipher_suite_lists` on Block and Monitor rules; `insert_before`; warns when a decrypt rule would sit above a TLS Block rule), `fmc_create_cipher_suite_list` (IANA names or codes checked against FMC's predefined suites; `preset='weak'`), `fmc_delete_decryption_rule`, `fmc_set_decryption_policy` |
+| Decryption | `fmc_create_decryption_policy` / `fmc_update_decryption_policy` (default action and its logging, trusted CAs, TLS 1.3 decryption, untrusted issuers, undecryptable actions such as Unsupported Cipher Suite), `fmc_create_decryption_rule` (DECRYPT_RESIGN with an internal CA, DECRYPT_KNOWN_KEY, DO_NOT_DECRYPT, BLOCK, MONITOR; `tls_versions` and `cipher_suite_lists` on Block and Monitor rules; `insert_before`; warns when a decrypt rule would sit above a TLS Block rule), `fmc_update_decryption_rule` (an existing rule's `tls_versions`, `cipher_suite_lists`, `enabled`, `log`, or move it with `insert_before`; full-body PUT, previews each field from/to and the rule-order warning), `fmc_create_cipher_suite_list` (IANA names or codes checked against FMC's predefined suites; `preset='weak'`; delete an unused one with `fmc_delete_object type='cipher_suite_list'`, refused while a decryption rule uses it), `fmc_delete_decryption_rule`, `fmc_set_decryption_policy` |
 | TLS certificates | `fmc_create_internal_ca` (FMC generates the key: self-signed, or a CSR for your CA), `fmc_install_internal_ca_cert` (the signed certificate for that CSR), `fmc_import_certificate_files` (an existing CA or server certificate + key read from `FMC_PKI_DIR` on the server host; only file names pass through MCP), `fmc_delete_certificate`, `fmc_create_cert_enrollment` (a device certificate enrollment: self-signed, PKCS12 read from `FMC_PKI_DIR` with its passphrase from a file there or `FMC_PKI_PASSPHRASE`, CA certificate only, SCEP or EST; the preview shows the certificate's subject, expiry and fingerprint, never the key or a password) |
 | Identity (AD/LDAP) | `fmc_create_trusted_ca` (CA for LDAPS), `fmc_create_realm` (bind password write-only), `fmc_download_realm` (users and groups now; needs `FMC_UI_USERNAME`), `fmc_delete_realm`, `fmc_create_identity_policy`, `fmc_create_identity_rule` (PASSIVE / ACTIVE / NO), `fmc_delete_identity_rule`; access rules on users and groups: `fmc_create_access_rule` / `fmc_update_access_rule` `users=[...]` |
 | DNS | `fmc_create_dns_policy`, `fmc_set_dns_policy`, `fmc_dns_block` (block/unblock domains via custom SI DNS lists; NXDOMAIN or drop) |
@@ -331,7 +331,9 @@ MD5 password, because FMC returns it masked and a PUT would replace it, unless y
   `cipher_suite_lists`, both above any DECRYPT_RESIGN rule) -> `fmc_update_decryption_policy`
   (`undecryptable={'unsupported_cipher_suite': 'BLOCK_WITH_RESET'}`, else RC4 passes a resign rule
   undecrypted) -> `fmc_deploy`. FTD doesn't step a weak suite up: Decrypt-Resign gives the client the suite
-  the server chose, though it strips RC4 from the ClientHello it forwards.
+  the server chose, though it strips RC4 from the ClientHello it forwards. Later: `fmc_update_decryption_rule`
+  switches a rule to another list, changes its versions, disables or moves it; `fmc_delete_object
+  type='cipher_suite_list'` removes a list no rule uses.
 - **PoC to production:** `fmc_export_policy_bundle` -> `fmc_plan_policy_bundle_import` in the target domain or
   FMC -> `fmc_import_policy_bundle` -> `fmc_diff_policy_bundle` -> assign and `fmc_deploy`.
 - **Rules on AD users and groups:** `fmc_create_trusted_ca` (for LDAPS) -> `fmc_create_realm` ->
@@ -511,7 +513,7 @@ of the server, and FMC's 120 requests/minute are shared by every API user of tha
 
 ### Toolsets (`FMC_TOOLSETS`, F46)
 
-With every tier on, the server registers 202 tools, and a client sends all their descriptions to the
+With every tier on, the server registers 217 tools, and a client sends all their descriptions to the
 model on every turn. Some clients also cap the number of tools. `FMC_TOOLSETS` loads only the areas you
 name:
 
@@ -550,7 +552,7 @@ checks it against the registered tools.
 | `routing` | 10 (2/8/0) | static routes, BGP, OSPF, VRFs, prefix lists and route maps |  |
 | `sdwan` | 7 (1/6/0) | SD-WAN hub and spoke topologies, WAN interfaces, application-aware routing, branch health | `fmc_onboard_branch`, `fmc_sdwan_troubleshoot` |
 | `threat` | 13 (5/8/0) | intrusion (IPS), file/malware and network analysis policies, an ACP's threat posture | `fmc_threat_defense_review` |
-| `tls` | 17 (5/11/1) | TLS decryption policies and rules, cipher suite lists, certificates (days left, enrolment), readiness check |  |
+| `tls` | 18 (5/12/1) | TLS decryption policies and rules, cipher suite lists, certificates (days left, enrolment), readiness check |  |
 | `troubleshoot` | 13 (11/2/0) | why is traffic blocked or slow: packet tracer, rule lookup, hit counts, show commands, live state, profiling | `fmc_firewall_health_review`, `fmc_prove_user_policy`, `fmc_why_blocked` |
 | `vpn` | 7 (5/2/0) | site-to-site VPN topologies, tunnel status and troubleshooting, remote access VPN (read) | `fmc_vpn_troubleshoot` |
 

@@ -20,7 +20,7 @@ from fmc_mcp._core import (
 )
 from fmc_mcp.catalog import parse_port_query
 from fmc_mcp.client import FmcApp
-from fmc_mcp.preview import fmc_preview
+from fmc_mcp.preview import fmc_preview, owner_domain
 from fmc_mcp.refs import NETWORK_TYPES, PORT_TYPES, URL_TYPES, RefResolver
 from fmc_mcp.tools.common import (
     ROLE_READ_ONLY,
@@ -35,6 +35,7 @@ from fmc_mcp.tools.common import (
     slim,
 )
 from fmc_mcp.tools.fqdn_dns import fqdn_dns_check
+from fmc_mcp.tools.policies import all_rules
 
 ValueType = Literal["host", "network", "range", "fqdn", "port", "icmpv4", "url", "vlan_tag"]
 GroupKind = Literal["network", "port", "url"]
@@ -45,7 +46,8 @@ OptionalType = Annotated[
     str | None,
     Field(
         description="Object type (host, network, range, fqdn, network_group, port, port_group, url, "
-        "url_group, security_zone, ...); default: search common types"
+        "url_group, security_zone, cipher_suite_list, ...); default: search common types (not "
+        "cipher_suite_list)"
     ),
 ]
 
@@ -199,6 +201,12 @@ def register(reg: ToolRegistrar) -> None:
             raise InvalidRequest(f"{current.get('name')!r} is a read-only system object.")
         if role_read_only(current):
             raise InvalidRequest(f"{current.get('name')!r} is {ROLE_READ_ONLY}.")
+        if t.key == "cipher_suite_list":
+            raise InvalidRequest(
+                "FMC's API documents no PUT for cipher suite lists: create a new list "
+                "(fmc_create_cipher_suite_list), switch the rules to it (fmc_update_decryption_rule) and "
+                "delete this one (fmc_delete_object)."
+            )
         desired = editable(current)
         if new_name:
             desired["name"] = new_name
@@ -260,11 +268,17 @@ def register(reg: ToolRegistrar) -> None:
         domain: Domain = None,
         confirm: Confirm = None,
     ) -> dict[str, Any]:
-        """Delete an unused object or group (any type, including security zones). Preview-first and
-        blocked while anything references it (the preview lists the policies/groups to fix first) or
-        when it is a read-only system object."""
+        """Delete an unused object or group (any type, including security zones and, with
+        type='cipher_suite_list', cipher suite lists). Preview-first and blocked while anything references it
+        (the preview lists the policies/groups, or for a cipher suite list the decryption rules, to fix first)
+        or when it is a read-only system object."""
         app: FmcApp = get_client(ctx)
-        t, current = await resolve_object(app, object, domain, [type] if type else None)
+        try:
+            t, current = await resolve_object(app, object, domain, [type] if type else None)
+        except NotFound as e:
+            if type:
+                raise
+            raise NotFound(f"{e} A cipher suite list: pass type='cipher_suite_list'.", 404) from None
         usage = await _usage(app, current, t, domain)
         blockers = []
         if is_system(current):
@@ -273,7 +287,13 @@ def register(reg: ToolRegistrar) -> None:
             blockers.append(f"{current.get('name')!r} is {ROLE_READ_ONLY}.")
         if usage:
             names = ", ".join(f"{u['type']} {u['name']}" for u in usage)
-            blockers.append(f"Still in use by: {names}. Remove those references first (see fmc_where_used).")
+            fix = (
+                "Point those rules at another list (fmc_update_decryption_rule cipher_suite_lists=[...]) or "
+                "delete them first."
+                if t.key == "cipher_suite_list"
+                else "Remove those references first (see fmc_where_used)."
+            )
+            blockers.append(f"Still in use by: {names}. {fix}")
         path = await app.config_path(f"{t.path}/{current['id']}", domain)
         plan = Plan(
             f"Delete {t.key} {current.get('name')!r}",
@@ -475,7 +495,10 @@ async def _members(app: FmcApp, kind: str, members: list[str], domain: str | Non
 
 async def _usage(app: FmcApp, obj: dict[str, Any], t: ObjType, domain: str | None) -> list[dict[str, Any]]:
     """Who references the object. FMC's usage API doesn't support every type (e.g. security zones);
-    then this returns [] and FMC itself refuses a delete of an object that is still in use."""
+    then this returns [] and FMC itself refuses a delete of an object that is still in use. Cipher suite
+    lists: the decryption rules that use them."""
+    if t.key == "cipher_suite_list":
+        return await _cipher_list_usage(app, obj, domain)
     try:
         page = await app.all(
             await app.config_path("object/operational/usage", domain),
@@ -485,3 +508,41 @@ async def _usage(app: FmcApp, obj: dict[str, Any], t: ObjType, domain: str | Non
     except ValidationFailed:
         return []
     return [{"type": u.get("type"), "name": u.get("name"), "id": u.get("id")} for u in page.items]
+
+
+DECRYPTION = "policy/decryptionpolicies"
+
+
+async def _cipher_list_usage(app: FmcApp, obj: dict[str, Any], domain: str | None) -> list[dict[str, Any]]:
+    """The decryption rules that use a cipher suite list. FMC 10.0.1's usage API answers 400 "API not
+    supported for specified type" for CipherSuiteList, so the rules are read: those of every decryption
+    policy in the requested domain and in each domain below the list's own (a child domain's policies are
+    invisible from its parent)."""
+    here = await app.domain_uuid(domain)
+    owner = str((owner_domain(obj) or {}).get("id") or here).lower()
+    top = next((d["name"] for d in app.domains if d["uuid"].lower() == owner), None)
+    domains = [here] + [
+        d["uuid"]
+        for d in app.domains
+        if top and d["name"].startswith(top + "/") and d["uuid"].lower() != here.lower()
+    ]
+    seen: set[str] = set()
+    out: list[dict[str, Any]] = []
+    for dom in domains:
+        for p in (await app.all(await app.config_path(DECRYPTION, dom))).items:
+            if not p.get("id") or p["id"] in seen:
+                continue
+            seen.add(p["id"])
+            rules = await all_rules(
+                app, await app.config_path(f"{DECRYPTION}/{p['id']}/decryptionpolicyrules", dom)
+            )
+            for r in rules.items:
+                if obj["id"] in {o.get("id") for o in (r.get("cipherSuiteLists") or {}).get("objects") or []}:
+                    out.append(
+                        {
+                            "type": "DecryptionPolicyRule",
+                            "name": f"{p.get('name')} / {r.get('name')}",
+                            "id": r.get("id"),
+                        }
+                    )
+    return out
