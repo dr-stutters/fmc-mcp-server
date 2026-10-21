@@ -485,9 +485,15 @@ approves a preview; deploying is a separate approval.
    e. Rules on expired time ranges: delete, or extend the time range in the FMC UI.
    f. ALLOW rules without an intrusion policy, rules that log nothing, any-any rules: propose the
       change per rule; these change inspection and traffic, so the user decides each.
-   g. Merge candidates and duplicate objects: optional tidy-ups; for duplicates use
-      {tool_ref("fmc_where_used")} on each object before repointing and
-      {tool_ref("fmc_delete_object")}.
+   g. Merge candidates and duplicate objects: optional tidy-ups. For a duplicate, keep one object and
+      repoint everything to it in one preview: {tool_ref("fmc_replace_object")} with old=<the duplicate>,
+      new=<the one kept>, delete_old=true (it lists every rule, group, NAT rule and static route it
+      changes, and anything it can't, such as VPN or Security Intelligence references: check those with
+      {tool_ref("fmc_where_used")}).
+   h. Unused objects: {tool_ref("fmc_unused_objects")}, then one preview for all of them with
+      {tool_ref("fmc_delete_objects")} (names=[...] or unused_only=true; dangerous tier; it refuses
+      built-ins, objects an ancestor domain owns and anything still in use), or
+      {tool_ref("fmc_delete_object")} one at a time.
    For each group give the rules or objects, the change and its risk. Ask which groups to apply.
 
 4. Change management: {tool_ref("fmc_change_tickets")}. If FMC requires tickets, open one with
