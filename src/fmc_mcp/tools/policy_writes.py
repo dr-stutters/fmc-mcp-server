@@ -564,6 +564,8 @@ def register(reg: ToolRegistrar) -> None:
             },
         )
         cats = None if url_categories is None else await category_conditions(ctx, app, url_categories, domain)
+        base = await app.config_path(f"{ACCESS}/{p['id']}/accessrules", domain)
+        order = await all_rules(app, base)  # the policy's rules: move_to below, and the filters they use
         extra = await ExtraConditions(app, domain).resolve(
             current,
             applications=applications,
@@ -571,6 +573,8 @@ def register(reg: ToolRegistrar) -> None:
             time_range=time_range,
             source_sgts=source_sgts,
             destination_sgts=destination_sgts,
+            # application filter names FMC 10.0.1 doesn't list resolve from the policy's other rules too
+            known_filters=filter_refs_in_rules(order.items) if application_filters else None,
         )
         for field, value in extra.fields.items():
             if value:
@@ -597,7 +601,6 @@ def register(reg: ToolRegistrar) -> None:
         if comment:
             desired["newComments"] = [comment]
         old_index = (current.get("metadata") or {}).get("ruleIndex")
-        base = await app.config_path(f"{ACCESS}/{p['id']}/accessrules", domain)
         changes = relabel_changes(
             {**rule_changes(editable(current), desired), **cleared}, editable(current), desired, extra.tags
         )
@@ -607,7 +610,6 @@ def register(reg: ToolRegistrar) -> None:
             details["url_categories"] = category_details(cats, desired.get("action"))
         details.update(extra.details)
         blockers = await identity_blockers(app, p, new_conditions.get("users"), domain)
-        order = await all_rules(app, base)
         if move_to:
             total = len(order.items)
             if move_to > total:

@@ -23,7 +23,8 @@ returned by any later REST read: `GET object/applicationfilters` answers `{"pagi
 id in an access rule (POST accessrules with `applications.applicationFilters: [{id, type, name}]` -> 201),
 and rule GETs carry it as {name, id, type}. So a filter name also resolves against the filters this server
 created (remembered from the POST answer, per server process) and the filters rules already use, and a UUID
-FMC answers 404 for is sent as given: FMC checks it when it saves the rule.
+FMC answers 404 for is sent as given. Whether FMC refuses a rule naming an id that exists nowhere is not
+proven yet (only ids of filters that exist were sent live), so nothing here claims it does.
 """
 
 from __future__ import annotations
@@ -168,7 +169,8 @@ UNLISTED_FILTERS = (
 )
 FILTER_BY_ID = (
     "pass the filter's UUID instead (the id in fmc_create_application_filter's result, or in "
-    "fmc_get_access_rule of a rule that uses it); FMC checks the id when it saves the rule"
+    "fmc_get_access_rule of a rule that uses it); it can't be checked against FMC's list beforehand, so "
+    "check the rule afterwards with fmc_get_access_rule"
 )
 
 
@@ -262,7 +264,10 @@ async def resolve_app_filters(
         if all(r["id"].lower() != ref["id"].lower() for r in out):
             out.append(ref)
             if unlisted and notes is not None:
-                notes.append(f"{unlisted} {UNLISTED_FILTERS} FMC checks the id when it saves the rule.")
+                notes.append(
+                    f"{unlisted} {UNLISTED_FILTERS} The id can't be checked beforehand: confirm the rule "
+                    "carries the filter with fmc_get_access_rule after saving."
+                )
     return out
 
 

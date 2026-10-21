@@ -201,6 +201,26 @@ async def test_update_keeps_and_reuses_the_rules_own_filter(fmc10: respx.MockRou
     }
 
 
+async def test_update_resolves_a_name_another_rule_of_the_policy_uses(fmc10: respx.MockRouter) -> None:
+    """After a restart (nothing remembered) fmc_update_access_rule(rule=A, application_filters=['x']) where
+    only rule B uses x: the policy's rules are read once and x resolves from B, as AppFiltersParam says."""
+    target = copy.deepcopy(fixture("accessrules")["items"][0])  # mcp-test-allow-web: no filter
+    rules = fmc10.get(RULES).mock(return_value=rules_plus(FX["rule_with_filter"]))
+    fmc10.get(f"{RULES}/{target['id']}").mock(return_value=httpx.Response(200, json=target))
+    put = fmc10.put(f"{RULES}/{target['id']}").mock(return_value=httpx.Response(200, json=target))
+    async with Client(server()) as c:
+        preview, _ = await confirm(
+            c,
+            "fmc_update_access_rule",
+            {"policy": "mcp-test-acp", "rule": target["id"], "application_filters": ["mcp-w6-appfilter"]},
+        )
+    assert json.loads(put.calls.last.request.content)["applications"] == {"applicationFilters": [REF]}
+    assert preview["preview"]["changes"]["applications"]["to"] == ["filter:mcp-w6-appfilter"]
+    assert any("isn't listed by FMC; it is sent by id" in e for e in preview["side_effects"])
+    # no extra request: the update reads the policy's rules once anyway (rule positions for move_to)
+    assert rules.call_count == 2  # once for the preview, once for the confirm
+
+
 def test_filter_refs_in_rules_reads_the_live_rule_shape() -> None:
     rules = [
         FX["rule_with_filter"],

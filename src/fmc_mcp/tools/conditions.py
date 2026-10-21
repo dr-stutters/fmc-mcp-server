@@ -201,7 +201,10 @@ def register(reg: ToolRegistrar) -> None:
         with its risk, business relevance, categories, tags and types; part of a name lists up to `limit`
         matching names (never the whole catalogue). Also finds application filters (named filters a rule
         can use) and the attribute values fmc_create_application_filter takes. The rule writers take the
-        names: fmc_create_access_rule(applications=[...], application_filters=[...])."""
+        names: fmc_create_access_rule(applications=[...], application_filters=[...]). FMC 10.0.1 doesn't
+        list application filters created over its API: the ones this server created since it started are
+        remembered (per server process) and listed with listed_by_fmc false; others need their UUID (from
+        the create result or fmc_get_access_rule of a rule using one)."""
         app: FmcApp = get_client(ctx)
         t = text.strip()
         out: dict[str, Any] = {"query": t}
@@ -288,7 +291,10 @@ def register(reg: ToolRegistrar) -> None:
         fmc_create_access_rule / fmc_update_access_rule). It matches the listed applications plus every
         application that has all the given attributes, any value within one attribute: risks=['High',
         'Very High'] and categories=['file sharing'] = high- and very-high-risk file sharing. Attribute
-        values: fmc_find_application kind=attribute. Which applications match changes with VDB updates."""
+        values: fmc_find_application kind=attribute. Which applications match changes with VDB updates.
+        FMC 10.0.1 doesn't list (or delete over REST) a filter created over its API: this server remembers
+        the new filter's name and id for the rule writers and fmc_find_application while it runs (per
+        process, lost on restart); keep the id from the result for later (application_filters=[id])."""
         app: FmcApp = get_client(ctx)
         cond: dict[str, Any] = {}
         if risks:
