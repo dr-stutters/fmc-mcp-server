@@ -1,21 +1,61 @@
 # Changelog
 
-## Unreleased
+## 0.16.0 (2026-10-22)
+
+Wave 6 Next: certificate enrolment, access policy structure, route policy, profiling, indicators and compliance evidence (F75-F80),
+built and proven live in the run of 2026-10-21 on FMC 10.0.1 with FTDv 10.0 in CML ([docs/wave6-next-proofs.md](docs/wave6-next-proofs.md):
+every item with its live evidence, the path it was proven on, the 16 fixes from the live run and the calls that wait for a re-proof
+through a freshly connected client). Also the Wave 6 Now follow-ups (#248-#250, #272-#274) and, from the TLS cipher lab, TLS
+version and cipher suite rules with Undecryptable Actions (F82/F83). 17 new tools and one prompt: 217 tools (89 read, 114 write,
+14 dangerous) and twelve prompts.
 
 ### Added
-- **Block old TLS and weak ciphers** (F82, #276): `fmc_create_decryption_rule` takes `tls_versions` and `cipher_suite_lists`
+- **Certificate enrolment lifecycle** (F75, #279): `fmc_create_cert_enrollment` (self-signed, PKCS12, CA-only, SCEP and EST
+  enrollment objects) and `fmc_enroll_certificate` (dangerous: enrol, re-enrol, refresh or delete a device certificate and wait for
+  FMC's task). No secret is ever a tool argument: a PKCS12 bundle is a file in `FMC_PKI_DIR`, and its passphrase, a SCEP challenge
+  or an EST password come from a file there or the new `FMC_PKI_PASSPHRASE`. The PKCS12 file is opened locally first (wrong
+  passphrase, missing or mismatched key and expiry are blockers; a missing CA chain, an expiry within 30 days and a loose file mode
+  are warnings). The enrol preview carries the exact request and names the RA VPN, site-to-site and decryption policies that use the
+  enrolment; a delete is refused while one does, or while a usage read fails. `fmc_api_call` masks an enrollment's PKCS12 bundle.
+- **Access policy structure** (F76, #281): `fmc_create_category`, `fmc_rename_category` and `fmc_delete_category` (rule categories in
+  the mandatory and default sections), `fmc_set_base_policy` (inheritance; loops and no-ops refused, the preview lists the policies
+  that inherit from it and their devices) and `fmc_policy_lock` (lock and unlock as the API user; another user's lock only with
+  `break_lock=True`); `fmc_create_access_policy(base_policy=)` and `fmc_update_access_rule(category=)`. `fmc_get_access_policy` shows
+  the base chain, the categories and the lock holder, and every access policy write preview and `fmc_pending_changes` name a lock
+  holder. `fmc_onboard_branch` offers a site child policy.
+- **BGP/OSPF route policy** (F77, #282): `fmc_create_prefix_list` and `fmc_create_route_map` (`replace=true` changes an existing
+  one); `fmc_configure_bgp` gains neighbour route maps and prefix lists in and out, `max_prefix`, `default_originate` with
+  `default_originate_route_map`, and `redistribute`; `fmc_configure_ospf` gains `redistribute`; `fmc_get_routing` names each
+  neighbour's filters and the redistribution route maps. Route-policy previews diff only the touched neighbour and sources, and
+  existing callers send the same requests as on 0.15.0.
+- **Snort rule and CPU profiling** (F78, #290): `fmc_snort_profile` and `fmc_cpu_profile` (write tier, MCP tasks; the preview states
+  the duration and the CPU cost; a cancelled Snort run is stopped) and `fmc_get_profiler_results` (rules and modules ranked by time,
+  each gid:sid linked to `fmc_find_intrusion_rules` and `fmc_set_intrusion_rule_state`). A 403 names the role's missing Snort 3
+  Profiling permission instead of the credentials.
+- **`fmc_find_indicator`** (F79, #280): one domain, URL or file hash across FQDN and URL objects and groups, access and decryption
+  rules, Security Intelligence lists and feeds and DNS policy rules, ranked like `fmc_find_address`, within a request budget
+  (`max_requests`, skipped reads named). A hash makes no request: FMC's file lists and TID are stated as not searched.
+- **Compliance pack** (F80, #288): `fmc_hardening_check` (a device or platform settings policy against the baseline
+  `docs/baselines/ftd-hardening.yaml`, 21 checks each with its source and the tool that fixes it; edited copies by file name from
+  `FMC_BUNDLE_DIR`), `fmc_export_access_rules(evidence=true, since_days=)` (per rule: hits, logging, inspection, the last change and
+  its user, the deployment that pushed it, comments, and the change ticket when FMC's change management answers) and the
+  `fmc_compliance_evidence` prompt.
+- **Inline application filters** (#272, #284): `fmc_create_access_rule` / `fmc_update_access_rule` take
+  `inline_app_filter={risks, business_relevance, categories, tags, types}` (no filter object needed), shown as `inline-filter:...` in
+  previews, rule lists and `fmc_rule_lookup`; unknown keys are refused.
+- **Block old TLS and weak ciphers** (F82, #285): `fmc_create_decryption_rule` takes `tls_versions` and `cipher_suite_lists`
   on BLOCK, BLOCK_WITH_RESET and MONITOR rules (refused on decrypt and do-not-decrypt rules, which FMC 10 won't deploy with
   versions). New `fmc_create_cipher_suite_list` checks IANA names or codes against FMC 10.0.1's suites before sending (FMC's
   own refusal, "The SHA is incorrect", names none; the anonymous suites are refused, NULL/EXPORT/DES/RC4 accepted) and has a
   23-suite `weak` preset; new `fmc_list_cipher_suite_lists`. Previews, `fmc_get_decryption_policy` and
   `fmc_tls_decryption_check` warn when a decrypt rule sits above an overlapping TLS version / cipher Block rule (decryptable
   weak suites then pass decrypted). `fmc_get_decryption_policy` lists rules by index with their versions and lists.
-- **Undecryptable Actions and default-action logging** (F83, #277): `fmc_update_decryption_policy` takes `undecryptable`
+- **Undecryptable Actions and default-action logging** (F83, #285): `fmc_update_decryption_policy` takes `undecryptable`
   (the seven actions, e.g. Unsupported Cipher Suite BLOCK_WITH_RESET so RC4 doesn't pass a resign rule undecrypted) and
   `default_log` (FMC 10.0.1 keeps it only through the policy's `logging`, not `defaultAction.eventLogAction`);
   `fmc_get_decryption_policy` shows both and `fmc_tls_decryption_check` says which action a session that can't be
   decrypted gets, or which cipher Block rule stops RC4 first.
-- **Change an existing decryption rule** (F82, #276, last scope item): new `fmc_update_decryption_rule` sets a rule's
+- **Change an existing decryption rule** (F82, #313, last scope item): new `fmc_update_decryption_rule` sets a rule's
   `tls_versions` and `cipher_suite_lists` (BLOCK, BLOCK_WITH_RESET and MONITOR rules only, as on create), `enabled` and
   `log`, or moves it (`insert_before`: just above the rule now at that index; the rule count + 1 = the end). It sends the
   whole rule back (FMC's PUT replaces it), previews each field from/to, warns when the result leaves a decrypt rule above an
@@ -23,30 +63,100 @@
   lists' suites. FMC 10.0.1 answers a rule PUT with `insertBefore` or `insertAfter` with 500 "JsonNull" but moves the rule;
   the tool reads the rule back and reports where it landed. A Do-not-decrypt or Decrypt-Resign rule FMC stored with no
   version selected (it then refuses the deploy) gets every version on its next update.
-- **`fmc_delete_object` deletes cipher suite lists** (`type='cipher_suite_list'`; GET and DELETE by id work on FMC 10.0.1
+- **`fmc_delete_object` deletes cipher suite lists** (F82, #313; `type='cipher_suite_list'`; GET and DELETE by id work on FMC 10.0.1
   though the spec lists only the collection). FMC's usage API refuses the type, so the delete reads the decryption rules
   of the domain and every domain below the list's own, and is refused while one uses the list (naming it).
   `fmc_update_object` refuses cipher suite lists (no PUT in FMC's API).
-- **`fmc_where_used` reports cipher suite lists** (`type='cipher_suite_list'`): FMC 10.0.1's usage API answers 400 "API
+- **`fmc_where_used` reports cipher suite lists** (F82, #315; `type='cipher_suite_list'`): FMC 10.0.1's usage API answers 400 "API
   not supported for specified type" for them, so the tool reads the decryption rules as `fmc_delete_object` does (every
   decryption policy in the domain and the domains below the list's own) and lists each rule that uses the list
   (`used_by` as 'policy / rule', `rules` with index, action and conditions, the policy's domain on a multi-domain FMC).
   Without `type` a cipher suite list name gets "pass type='cipher_suite_list'". `cipher_suite_list` is now an object type
   for `fmc_list_objects` and `fmc_get_object` too (the suites are the members).
 
+### Changed
+- `fmc_configure_bgp` and `fmc_configure_ospf` previews carry `requests`: the method, path and body of each request a confirm
+  sends, with passwords and keys masked whatever their value (#307).
+- `fmc_assign_policy` assigns a policy owned by an ancestor domain in that domain: FMC 10.0.1 refused the first assignment of a
+  Global policy from a leaf with 406 (0.15.0's known limit). The preview names `assigned_in`, and a call from Global shows a leaf
+  device's current leaf-owned policy as `from` (#286).
+- `fmc_packet_tracer` / `fmc_prove_policy` name an HA unit or cluster node FMC lists as disconnected, with its connected peer and a
+  stale-failover-state hint, instead of passing on FMC's 503; no other unit is traced on instead (#287).
+- `fmc_bulk_update_access_rules` verifies comments, lists rules it couldn't re-read under `not_verified` and keeps partly applied
+  rules in `applied` with `applied_fields`; the single-rule writers no longer promise turning off a MONITOR rule's logging (#295).
+- Rule-writer previews say FMC checks an application filter id on save, and `fmc_find_application(kind='filter')` also lists the
+  filters the access policies' rules use (`used_by`), which helps after a server restart (#294).
+- `fmc_find_indicator` and `fmc_find_address` label a child policy's inherited rules "[inherited from <base>]" (#309).
+- `cryptography` is a declared dependency (it was transitive) (#279); `docs/least-privilege.md` lists the Snort 3 Profiling
+  permission (#290).
+- Tests: registration waits read one injectable wall clock, and the two flaky registration tests use a frozen clock and bounded
+  waits (#292); tests replay FMC 10.0.1's live answers for enrolments, inheritance, route policy and inline filters (#305, #312).
+
 ### Fixed
-- **`fmc_find_object` read hyphenated names as ports**: `value='sdwan-single'` searched port objects for protocol
-  `SDWAN-SINGLE` on ports 0-65535 (query `SDWAN-SINGLE/0-65535`) and silently found nothing. A port query now needs a known
-  protocol (tcp, udp, icmp, ... or a number 0-255) and ports 0-65535; anything else (`sdwan-single`, `mcp-test-inside`,
-  `HTTPS`, `70000`) is a name/value text search. `443`, `tcp/443`, `udp/53` and `1000-2000` still search ports. The same
-  check applies to port values given to `fmc_create_object` and to port literals in rules.
-- **`fmc_tls_decryption_check` named the wrong rule as what stops RC4** (F83): when a cipher suite Block rule above the
-  decrypt rule listed RC4, the "undecryptable sessions" check said that rule stops a session whose server picks RC4,
-  whatever the Unsupported Cipher Suite action. Live on FTDv 10.0.0 (FMC 10.0.1) that holds only while the action lets RC4
-  through (DO_NOT_DECRYPT, or inherited from a Do-not-decrypt default). With BLOCK_WITH_RESET the action resets the session
-  first, under the decrypt rule (connection event: `resign-stepup`, flow status Unsupported Cipher Suite), although the
-  Block rule's list holds RC4. The check now names the action when it is BLOCK or BLOCK_WITH_RESET (set or inherited), and
-  the Block rule only when the action lets the session through. The verdict was a reset either way.
+- Found in the live run (each with its re-proof in docs/wave6-next-proofs.md):
+  - `fmc_update_access_rule(category=)` reported a 404 after a successful move: FMC 10.0.1 re-creates a rule moved into a category
+    (new id, and the PUT's answer carries yet another). The rule is found again by name and the result shows `id_changed` (#297).
+  - A child access policy's first deployment failed FMC's "Logging configuration is invalid" check: FMC keeps a REST-created
+    child's own Logging settings. `fmc_create_access_policy(base_policy=)` now inherits the base's; `fmc_set_base_policy` does so
+    when the base sends syslog and the policy doesn't (or with `inherit_logging=True`), and otherwise leaves them alone (#298).
+  - An empty rule category read rules "0" (FMC reports 0/0): now "none" (#299). The lock holder is read where FMC 10.0.1 puts it
+    (`lockingStatus.metadata.lockedByUser`), so an own lock no longer blocks own writes when the lock list can't be read (#300).
+  - `fmc_enroll_certificate`'s re_enroll preview said the device generates its key pair; FMC re-issues a self-signed certificate
+    on the existing key (#301).
+  - Show-command output masked public key labels (`Public Key Type:`, `Key name:`, `Key Data:`) as secrets; real secrets stay
+    masked (#302).
+  - `fmc_configure_snmp` sent a community FMC refuses (it must be 1-32 letters and digits) and FMC's 400 echoed it: the preview now
+    blocks it without showing the value (#303). The snmp-v3-only finding reads "SNMP is on, but ..." (#304).
+  - `fmc_create_route_map` sent prefix-list references with `type: null` (FMC's listing has no type) and FMC answered HTTP 500:
+    references now carry the collection's type (#306).
+  - `fmc_configure_bgp(default_originate=True)` without a route map claimed a default route FMC 10.0.1 silently drops: it is
+    refused, naming a permit-all route map (#310).
+  - `fmc_pending_changes` masked true/false settings whose names look secret (a BGP neighbour's "Send Community attribute");
+    allow-listed flags are shown, communities and passwords stay masked (#308).
+  - A certificate without a CN had no subject or issuer: CN, else OU, else O, and `self_signed` read from the certificate (#311).
+- Follow-ups from Wave 6 Now:
+  - A read-only API user's objects were taken for FMC built-ins (readOnly reason RBAC): `fmc_list_objects`,
+    `fmc_unused_objects`, `fmc_find_address` and the hygiene check keep them, and object writes name the role when refusing (#249,
+    #291).
+  - `fmc_set_si_lists` called a DNS policy inherited from Global "FMC's read-only default": it now gives the leaf way (a DNS
+    policy of its own) and the owner domain (#250, #289).
+  - `fmc_list_certificates` and `fmc_get_certificate` read subject and issuer from the PEM: FMC 10.0.1's fields are garbled for
+    some bundled roots (mojibake, a value cut at a comma) (#293).
+  - Small fixes (#296): replace previews name auto NAT rules by their object; removing the last HTTPS entry warns that the server
+    stays on; leaf writes call FMC built-ins built-in; pending-change lines are cut per side (and tickets say so); the
+    device-group description check ignores whitespace; `fmc_rule_lookup`'s automatic SGT notes say FMC keeps about an hour of
+    user activity.
+- From the TLS cipher lab and the SD-WAN runs:
+  - **`fmc_find_object` read hyphenated names as ports** (#283): `value='sdwan-single'` searched port objects for protocol
+    `SDWAN-SINGLE` on ports 0-65535 (query `SDWAN-SINGLE/0-65535`) and silently found nothing. A port query now needs a known
+    protocol (tcp, udp, icmp, ... or a number 0-255) and ports 0-65535; anything else (`sdwan-single`, `mcp-test-inside`,
+    `HTTPS`, `70000`) is a name/value text search. `443`, `tcp/443`, `udp/53` and `1000-2000` still search ports. The same
+    check applies to port values given to `fmc_create_object` and to port literals in rules.
+  - **`fmc_tls_decryption_check` named the wrong rule as what stops RC4** (F83, #314): when a cipher suite Block rule above the
+    decrypt rule listed RC4, the "undecryptable sessions" check said that rule stops a session whose server picks RC4,
+    whatever the Unsupported Cipher Suite action. Live on FTDv 10.0.0 (FMC 10.0.1) that holds only while the action lets RC4
+    through (DO_NOT_DECRYPT, or inherited from a Do-not-decrypt default). With BLOCK_WITH_RESET the action resets the session
+    first, under the decrypt rule (connection event: `resign-stepup`, flow status Unsupported Cipher Suite), although the
+    Block rule's list holds RC4. The check now names the action when it is BLOCK or BLOCK_WITH_RESET (set or inherited), and
+    the Block rule only when the action lets the session through. The verdict was a reset either way.
+
+### Known limits
+- FMC 10.0.1: a rule moved into a category gets a new id, and a category itself can't be moved (its PUT takes no position);
+  OSPFv2 passive interfaces are not in the REST model; BGP default-originate is kept only with a route map, and when BGP is
+  created from scratch in one call FMC drops the neighbour's default-originate route map although it answers OK (F77-6, #172):
+  configure the neighbour first, then set default-originate in a second call; turning SNMP off keeps the stored community (only a
+  PUT without it clears it); FMC's file lists have no REST endpoints.
+- Role permissions (403 for the lab's API role, both users): the Snort and CPU profilers (F78 runs, stop semantics and result
+  JSON are unit-tested from FMC's spec), change-management tickets (the evidence ticket column is unit-tested) and TID (F79 has no
+  TID section).
+- Proven only up to the lab: a PKCS12 enrolment is proven to the preview; its create and enrol wait for a re-proof through a
+  freshly connected client (#170). SCEP and EST enrolment are mock-tested and an HA or cluster unit's enrolment is refused (not
+  built); OSPF `redistribute` and `fmc_find_indicator`'s DNS-rule match (no seed rule in the lab) are unit-tested. 21 cipher
+  suites in the table are not yet seen accepted (the tool warns).
+- An MCP client that connected before an upgrade keeps the old tool list: it can't see the new tools, and it sends new list and
+  dict arguments of existing tools as strings. Reconnect after upgrading the server.
+- Cosmetic: show-command output still masks the labels "Public Key Hashes:" and "Key Size (bits):"; `fmc_create_access_rule`'s
+  `rules_now` and `fmc_delete_policy`'s preview count a child policy's inherited rules as its own.
 
 ## 0.15.0 (2026-10-21)
 
