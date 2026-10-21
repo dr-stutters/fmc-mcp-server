@@ -130,10 +130,12 @@ def register(reg: ToolRegistrar) -> None:
         name, so search rules by their policy name (fmc_pending_changes names the rules not yet deployed).
         FMC returns only 100 records per request and logs every API read, so: `subsystem` is filtered by
         FMC itself over the whole window; changes (the default) are read in full for the newest 500
-        records and through FMC's change subsystems for the rest of the window; with changes_only=false
-        every record is read in slices (up to 2500). A note says how far back the read got and how many
-        records were reads. `user` and `text` are matched here (FMC ignores a username filter). API URLs
-        are shortened ('PUT fmc_config/policy/...')."""
+        records, and for the rest of the window only through FMC's UI-path and Task Queue subsystems
+        (policy, object and device changes, deployments), which leaves out changes FMC logs only under
+        another subsystem or as an API request (the note says when; use a shorter window or `subsystem`);
+        with changes_only=false every record is read in slices (up to 2500). A note says how far back the
+        read got and how many records were reads. `user` and `text` are matched here (FMC ignores a
+        username filter). API URLs are shortened ('PUT fmc_config/policy/...')."""
         app: FmcApp = get_client(ctx)
         start = int(time.time()) - since_minutes * 60
         if changes_only is None:

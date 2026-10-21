@@ -11,13 +11,16 @@ on the whole subsystem name ('task queue' matches 'Task Queue', 'Task' matches n
 '%>%' are wildcards). `username` and `source` are ignored: every record comes back. So user filters run
 here, and a subsystem filter goes to FMC as '%<text>%'.
 
-Changes have their own subsystems. FMC logs a configuration change in words under the UI path it belongs
-to, also when it came through the API: 'Save Policy mcp-acp:12' under 'Policies > Security policies >
-Access Control > Policy Editor', 'create host1:34' under 'Objects > Object Management > NetworkObject',
-'Save Policy ftd1:56' under 'Devices > Device Management > Secure Firewall Interfaces'. Deployments are
-'Task Queue' records. The API request of the same change is an 'API' record among every API read, and
-those reads are the bulk of the log. fetch_changes therefore reads every record only for the newest few
-slices, and the rest of the window through those subsystems (CHANGE_SUBSYSTEMS), filtered by FMC.
+Most changes have their own subsystems. FMC logs a configuration change in words under the UI path it
+belongs to, also when it came through the API: 'Save Policy mcp-acp:12' under 'Policies > Security
+policies > Access Control > Policy Editor', 'create host1:34' under 'Objects > Object Management >
+NetworkObject', 'Save Policy ftd1:56' under 'Devices > Device Management > Secure Firewall Interfaces' (next
+to the API DELETE of the interface). Deployments are 'Task Queue' records. The API request of a change is
+an 'API' record among every API read, and those reads are the bulk of the log. fetch_changes therefore
+reads every record only for the newest few slices, and the rest of the window through those subsystems
+(CHANGE_SUBSYSTEMS), filtered by FMC. That older part is not complete: a change FMC logs under a subsystem
+without a UI path (such as 'Cloud Services') or only as its 'API' request is not in it, and coverage_note
+says so.
 """
 
 import re
@@ -211,26 +214,46 @@ async def fetch_changes(
             out.complete = False
             out.reached = max(out.reached or 0, part.reached or 0)
     if not found:
-        # Nothing under any UI path or the task queue (an FMC whose filter matches whole names only, or
-        # a stretch with no change and no page view): read on through every record, as before.
-        rest = await fetch_audit(
-            app, start, domain, max_pages=max(1, AUDIT_MAX_PAGES - out.pages), end=scan.reached
-        )
-        merge(rest)
-        out.all_to, out.subsystems = None, ()
-        out.complete, out.reached = rest.complete, rest.reached
+        out.pages += 1
+        if not await like_works(app, start, domain, scan.reached):
+            # An FMC whose subsystem filter matches whole names only: read on through every record, as
+            # before, within the usual page budget.
+            rest = await fetch_audit(
+                app, start, domain, max_pages=max(1, AUDIT_MAX_PAGES - out.pages), end=scan.reached
+            )
+            merge(rest)
+            out.all_to, out.subsystems = None, ()
+            out.complete, out.reached = rest.complete, rest.reached
     out.items.sort(key=audit_time, reverse=True)
     return out
 
 
+async def like_works(app: FmcApp, start: int, domain: str | None, end: int | None = None) -> bool:
+    """Whether FMC's `subsystem` filter takes SQL LIKE wildcards (FMC 10.0.1 does): one record for '%'
+    means it does. An FMC matching whole names only finds none (no subsystem is called '%'); so does an
+    empty window, where reading every record costs one request anyway."""
+    path = await app.platform_path(AUDIT_PATH, domain)
+    params: dict[str, Any] = {"starttime": start, "limit": 1, "subsystem": "%"}
+    if end is not None:
+        params["endtime"] = end
+    data = await app.api.get(path, params)
+    return bool((data or {}).get("items"))
+
+
 async def fetch_subsystem(app: FmcApp, start: int, domain: str | None, text: str) -> AuditScan:
     """Every audit record whose subsystem contains `text`, from `start` to now: FMC filters them (SQL
-    LIKE), so the window is read in a request or two. If FMC finds nothing (also what an FMC matching
-    whole names only answers), every record is read so the caller can filter them itself, as before."""
+    LIKE), so the window is read in a request or two. When FMC finds nothing, like_works tells an empty
+    answer (one request more) from an FMC matching whole names only; only then is every record read, as
+    before, within the usual page budget, for the caller to filter."""
     scan = await fetch_audit(app, start, domain, subsystem=contains(text))
     if scan.items:
         return scan
-    return await fetch_audit(app, start, domain)
+    scan.pages += 1
+    if await like_works(app, start, domain):
+        return scan
+    rest = await fetch_audit(app, start, domain, max_pages=max(1, AUDIT_MAX_PAGES - scan.pages))
+    rest.pages += scan.pages
+    return rest
 
 
 def coverage_note(scan: AuditScan, reads: int | None = None) -> str | None:
@@ -244,11 +267,11 @@ def coverage_note(scan: AuditScan, reads: int | None = None) -> str | None:
     notes = []
     if scan.all_to is not None:
         notes.append(
-            f"Every audit record was read back to {iso(scan.all_to)} ({counted}); before that only FMC's "
-            "configuration and deployment records, which FMC filters itself (subsystems with a UI path "
-            "such as 'Policies > ... > Policy Editor' or 'Objects > Object Management > ...', and 'Task "
-            "Queue'). API requests FMC logs only as 'API' (failed writes, for example) are not in that "
-            "older part."
+            f"Every audit record was read back to {iso(scan.all_to)} ({counted}). Before that, only the "
+            "records FMC files under a UI path ('Policies > ...', 'Objects > ...', 'Devices > ...': its "
+            "worded policy, object and device changes) or 'Task Queue' (deployments) were read, filtered "
+            "by FMC. Changes it logs under another subsystem (such as 'Cloud Services') or only as their "
+            "'API' request are not listed for that part: use a shorter window, or `subsystem`, to see them."
         )
         if not scan.complete:
             notes.append(

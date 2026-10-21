@@ -6,6 +6,7 @@ collected in the background."""
 import html
 import re
 import time
+from collections.abc import Callable
 from typing import Annotated, Any, Literal
 
 from fastmcp import Context
@@ -31,6 +32,9 @@ from fmc_mcp.tools.system import iso
 
 ALERTS = "health/alerts"
 ALERT_FETCH = 1000  # newest raw alerts read per call (FMC re-reports each module every few minutes)
+# fmc_recent_activity reads the alerts of this long before the window, every level (GREEN too), to tell a
+# problem that began in the window from one that was already there (#201).
+HEALTH_LOOKBACK = 7200
 ACTIVITY_AUDIT_PAGES = 20  # up to 2000 audit records per timeline
 DEPLOY_FETCH = 100
 FMC_DEVICE = "0"  # health alerts about the FMC itself use deviceUUID "0"
@@ -91,6 +95,7 @@ def _runs(raw: list[dict[str, Any]], names: dict[str, str]) -> list[dict[str, An
             "details": details,
             "count": 1,
             "details_changed": 0,
+            "_dev": dev,
             "_first": ts,
             "_last": ts,
             "_times": [ts],
@@ -118,30 +123,60 @@ def collapse_alerts(raw: list[dict[str, Any]], names: dict[str, str]) -> list[di
     return _finish(_runs(raw, names))
 
 
-def _began_before(run: dict[str, Any], start: int) -> bool:
-    """A run that opens the window and repeats at its module's health-run interval was already there when
-    the window began: its first alert in the window comes no later than one interval (plus half) after
-    the start. A single alert has no interval to judge by, so it counts as new."""
-    times: list[int] = run["_times"]
-    if run["changed_from"] or len(times) < 2:
-        return False
-    gaps = sorted(b - a for a, b in zip(times, times[1:], strict=False) if b > a)
-    if not gaps:
-        return False
-    first: int = run["_first"]
-    return first - start <= gaps[len(gaps) // 2] * 1.5
+def first_runs(raw: list[dict[str, Any]], names: dict[str, str]) -> list[dict[str, Any]]:
+    """The runs that open the window for their (device, module): whether they are changes depends on the
+    status before the window (prior_status)."""
+    return [r for r in _runs(raw, names) if not r["changed_from"]]
+
+
+async def prior_status(
+    app: FmcApp,
+    before: int,
+    runs: list[dict[str, Any]],
+    domain: str | None,
+    keep: Callable[[list[dict[str, Any]]], list[dict[str, Any]]] | None = None,
+) -> tuple[dict[tuple[str, str], str], bool]:
+    """The last status of each (device, module) of `runs` in the HEALTH_LOOKBACK before `before`, every
+    level (GREEN too), and whether all of those alerts were read. FMC filters by the runs' devices and
+    modules; when it holds more than ALERT_FETCH, the newest (those nearest the window) are read. `keep`
+    narrows them as the window's alerts were (for_device)."""
+    devs = sorted({str(r["_dev"]) for r in runs})
+    mods = sorted({str(r["module"]) for r in runs})
+    filters = [
+        f"startTime:{before - HEALTH_LOOKBACK}",
+        f"endTime:{before - 1}",
+        "deviceUUIDs:" + ",".join(devs),
+        "moduleIDs:" + ",".join(mods),
+    ]
+    items, total = await _read_tail(app, {"filter": ";".join(filters)}, domain)
+    whole = total <= len(items)
+    if keep:
+        items = keep(items)
+    latest: dict[tuple[str, str], str] = {}
+    for a in sorted(items, key=_ts):
+        if _ts(a) < before:
+            latest[(str(a.get("deviceUUID", "")), str(a.get("moduleID", "")))] = str(a.get("status", ""))
+    return latest, whole
 
 
 def status_changes(
-    raw: list[dict[str, Any]], names: dict[str, str], start: int
+    raw: list[dict[str, Any]], names: dict[str, str], prior: dict[tuple[str, str], str] | None
 ) -> tuple[list[dict[str, Any]], list[dict[str, Any]]]:
-    """Health for a 'what changed' timeline (#201): the runs where a (device, module) changed status in
-    the window (from another level, or from healthy since FMC's GREEN repeats are not read), and
-    separately the runs that were already in that status when the window began (ongoing, not changes)."""
+    """Health for a 'what changed' timeline (#201): the runs where a (device, module) changed status in the
+    window, and separately the ones already in that status when the window began (ongoing, not changes).
+    A run that opens the window is ongoing when `prior` (prior_status: the last status before the window)
+    has the same status; with another status (GREEN included) it is a change from that one; with none
+    (nothing in the lookback, or prior=None when it could not be read) it counts as a change."""
     changed: list[dict[str, Any]] = []
     ongoing: list[dict[str, Any]] = []
     for r in _runs(raw, names):
-        (ongoing if _began_before(r, start) else changed).append(r)
+        if not r["changed_from"] and prior is not None:
+            before = prior.get((r["_dev"], r["module"]))
+            if before == r["status"]:
+                ongoing.append(r)
+                continue
+            r["changed_from"] = before
+        changed.append(r)
     return _finish(changed), _finish(ongoing)
 
 
@@ -169,7 +204,14 @@ async def fetch_alerts(
         filters.append("status:" + ",".join(statuses))
     if module:
         filters.append(f"moduleIDs:{module.strip().upper()}")
-    params = {"filter": ";".join(filters)}
+    return await _read_tail(app, {"filter": ";".join(filters)}, domain)
+
+
+async def _read_tail(
+    app: FmcApp, params: dict[str, Any], domain: str | None
+) -> tuple[list[dict[str, Any]], int]:
+    """The newest ALERT_FETCH alerts FMC holds for `params`, and how many it holds. FMC returns them oldest
+    first, so read the count, then the tail."""
     path = await app.config_path(ALERTS, domain)
     head = await app.page(path, params, limit=1)
     total = head.total if head.total is not None else 0
@@ -293,7 +335,8 @@ def register(reg: ToolRegistrar) -> None:
         changed what; logins and API writes) and deployments. Each row has time, source
         (health/audit/deploy), device, summary and user; a health row marks a module changing status in
         the window, at the time it began (first seen). Problems already active when the window began
-        are not changes: `health_ongoing` names them (fmc_list_health_alerts has the detail). Audit
+        (the same status in FMC's alerts of the 2 hours before it) are not changes: `health_ongoing`
+        names them (fmc_list_health_alerts has the detail). Audit
         reads, page views and packet-tracer runs are left out unless include_audit_reads. With `device`,
         health and deployments are
         filtered to it (plus FMC's own alerts that name it, such as lost heartbeats) and audit records
@@ -318,7 +361,25 @@ def register(reg: ToolRegistrar) -> None:
             # with only the newest alerts read, the window effectively starts at the oldest one read
             began = max(start, min((_ts(a) for a in raw), default=start)) if partial else start
             raw = for_device(raw, dev_id, dev_name)
-            changed, ongoing = status_changes(raw, names, began)
+            prior: dict[tuple[str, str], str] | None = {}
+            opening = first_runs(raw, names)
+            if opening:
+                try:
+                    prior, whole = await prior_status(
+                        app, began, opening, domain, keep=lambda a: for_device(a, dev_id, dev_name)
+                    )
+                    if not whole:
+                        notes["health_before"] = (
+                            f"partial: newest {ALERT_FETCH} alerts before the window read; a problem whose "
+                            "earlier alerts were not among them is listed as a change"
+                        )
+                except UpstreamError as e:
+                    prior = None
+                    notes["health_before"] = (
+                        f"alerts before the window not read ({e}); problems already active then are listed "
+                        "as changes"
+                    )
+            changed, ongoing = status_changes(raw, names, prior)
             for r in changed:
                 change = f"{r['changed_from']} -> {r['status']}" if r["changed_from"] else r["status"]
                 rows.append(
