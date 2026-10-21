@@ -22,6 +22,8 @@
         "fmc_license_status",
         "fmc_upgrade_status",
         "fmc_list_backups",
+        "fmc_list_certificates",
+        "fmc_get_certificate",
         "fmc_list_vpn_tunnels",
         "fmc_list_health_alerts",
         "fmc_recent_activity",
@@ -857,6 +859,10 @@
     "fmc_list_backups": {
       "tier": "read",
       "title": "List backups"
+    },
+    "fmc_list_certificates": {
+      "tier": "read",
+      "title": "List certificates with days left"
     },
     "fmc_list_clusters": {
       "tier": "read",
