@@ -1,7 +1,8 @@
 """F77 route policy: prefix lists, route maps, BGP neighbour filters and redistribution.
 
 Shapes: tests/fixtures/route_policy_fmc10.json (the BGP/OSPF models recorded from FMC 10.0.1, and the
-spec/terraform-provider shapes for route maps and prefix lists, which the lab FMC had none of)."""
+spec/terraform-provider shapes for route maps and prefix lists, which the lab FMC had none of); their
+non-expanded listings answer as FMC 10.0.1 does (route_policy_listings_fmc10.json, recorded live)."""
 
 import copy
 import json
@@ -51,6 +52,19 @@ def paged(rows: list[dict[str, Any]], count: int | None = None) -> httpx.Respons
     )
 
 
+def listing(rows: list[dict[str, Any]], *, typed: bool) -> Any:
+    """A collection as FMC 10.0.1 lists it: the objects when expanded, else {name, id} rows, with `type`
+    only where FMC sends it (route maps yes, IPv4 prefix lists no: route_policy_listings_fmc10.json)."""
+
+    def answer(request: httpx.Request) -> httpx.Response:
+        if request.url.params.get("expanded") == "true":
+            return items(copy.deepcopy(rows))
+        keep = ("type", "name", "id") if typed else ("name", "id")
+        return items([{k: r[k] for k in keep if k in r} for r in rows])
+
+    return answer
+
+
 def mount(fmc: respx.MockRouter, bgp: dict[str, Any] | None = None) -> respx.MockRouter:
     """The recorded device routing (or `bgp` instead of the recorded BGP model) and the route-policy
     objects."""
@@ -73,8 +87,8 @@ def mount(fmc: respx.MockRouter, bgp: dict[str, Any] | None = None) -> respx.Moc
         fmc.get(f"{CFG}/devices/devicerecords/{DEV['id']}/{kind}interfaces").mock(return_value=empty())
     fmc.get(f"{CFG}/object/networks").mock(return_value=items([NET, OTHER]))
     fmc.get(f"{CFG}/object/hosts").mock(return_value=empty())
-    fmc.get(f"{CFG}/object/ipv4prefixlists").mock(return_value=items(FX["prefix_lists"]))
-    fmc.get(f"{CFG}/object/routemaps").mock(return_value=items(FX["route_maps"]))
+    fmc.get(f"{CFG}/object/ipv4prefixlists").mock(side_effect=listing(FX["prefix_lists"], typed=False))
+    fmc.get(f"{CFG}/object/routemaps").mock(side_effect=listing(FX["route_maps"], typed=True))
     fmc.get(f"{CFG}/object/standardcommunitylists").mock(return_value=items(FX["standard_community_lists"]))
     fmc.get(f"{CFG}/object/expandedcommunitylists").mock(return_value=empty())
     fmc.get(f"{CFG}/object/aspathlists").mock(return_value=items(FX["as_path_lists"]))

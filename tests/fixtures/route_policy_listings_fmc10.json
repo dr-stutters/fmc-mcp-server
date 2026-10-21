@@ -1,0 +1,116 @@
+{
+ "_source": "FMC 10.0.1 (build 1), domain Global/mcp-test-leaf, 2026-10-21 (W6N live-B, F77 on the t1 pair; links dropped). prefix_list_listing / route_map_listing: GET object/ipv4prefixlists and object/routemaps without expanded (prefix-list rows carry no type, route-map rows do). route_map_refused: the POST fmc_create_route_map built from that listing (ipv4PrefixListAddresses[].type null) and FMC's HTTP 500. route_map_accepted: the same body with type IPV4PrefixList (as the live agent sent it; the recording omits the description it also carried), and FMC's answer.",
+ "prefix_list_listing": {
+  "items": [
+   {
+    "name": "mcp-w6-t1-pl-conn",
+    "id": "00000000-0000-0ed3-0000-021475073131"
+   },
+   {
+    "name": "mcp-w6-t1-pl-in",
+    "id": "00000000-0000-0ed3-0000-021475073151"
+   }
+  ],
+  "paging": {
+   "offset": 0,
+   "limit": 25,
+   "count": 2,
+   "pages": 1
+  }
+ },
+ "route_map_listing": {
+  "items": [
+   {
+    "type": "RouteMap",
+    "name": "mcp-w6-t1-rm-conn",
+    "id": "00000000-0000-0ed3-0000-021475073171"
+   }
+  ],
+  "paging": {
+   "offset": 0,
+   "limit": 1,
+   "count": 1,
+   "pages": 1
+  }
+ },
+ "route_map_refused": {
+  "request": {
+   "name": "mcp-w6-t1-rm-conn",
+   "type": "RouteMap",
+   "entries": [
+    {
+     "sequence": 10,
+     "action": "PERMIT",
+     "ipv4PrefixListAddresses": [
+      {
+       "id": "00000000-0000-0ed3-0000-021475073131",
+       "type": null,
+       "name": "mcp-w6-t1-pl-conn"
+      }
+     ]
+    }
+   ]
+  },
+  "answer": {
+   "http": 500,
+   "error": "Prefix lists cannot be added inside Access Lists and vice versa. Also IPv4 and IPv6 lists are not interchangeable."
+  }
+ },
+ "route_map_accepted": {
+  "request": {
+   "name": "mcp-w6-t1-rm-conn",
+   "type": "RouteMap",
+   "entries": [
+    {
+     "sequence": 10,
+     "action": "PERMIT",
+     "ipv4PrefixListAddresses": [
+      {
+       "id": "00000000-0000-0ed3-0000-021475073131",
+       "type": "IPV4PrefixList",
+       "name": "mcp-w6-t1-pl-conn"
+      }
+     ]
+    }
+   ]
+  },
+  "answer": {
+   "entries": [
+    {
+     "ipv4PrefixListAddresses": [
+      {
+       "name": "mcp-w6-t1-pl-conn",
+       "id": "00000000-0000-0ed3-0000-021475073131",
+       "type": "IPV4PrefixList"
+      }
+     ],
+     "extendedCommunityAdditive": false,
+     "specificIPsIPV4Setting": [
+      " "
+     ],
+     "specificIPsIPV6Setting": [
+      " "
+     ],
+     "sequence": 10,
+     "action": "PERMIT"
+    }
+   ],
+   "type": "RouteMap",
+   "name": "mcp-w6-t1-rm-conn",
+   "overridable": false,
+   "description": "live-B F77: hub redistribute connected (inet+lte only, not mpls)",
+   "id": "00000000-0000-0ed3-0000-021475073171",
+   "metadata": {
+    "timestamp": 0,
+    "lastUser": {
+     "name": "mcp-api-svc"
+    },
+    "domain": {
+     "name": "Global \\ mcp-test-leaf",
+     "id": "a1c73df0-8353-8db7-1097-000000000000",
+     "type": "Domain"
+    }
+   }
+  }
+ }
+}
