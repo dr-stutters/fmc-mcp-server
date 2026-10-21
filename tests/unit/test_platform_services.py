@@ -613,9 +613,20 @@ async def test_banner_set_and_clear(fmc: respx.MockRouter) -> None:
         "id": PID,
         "bannerText": ["Authorised use only", "$(hostname)"],
     }
+    assert "warnings" not in p["preview"]
     puts = mock_ps(fmc, bannersettings={**BANNER_DEFAULT, "bannerText": ["old"]})
-    await preview_confirm("fmc_set_banner", {"policy": "mcp-w6-ps", "text": ""})
+    p, done = await preview_confirm("fmc_set_banner", {"policy": "mcp-w6-ps", "text": ""})
     assert json.loads(puts["bannersettings"].calls.last.request.content)["bannerText"] == []
+    # live-B2: FMC 10.0.1 then stores no lines (GET answers {type, id}, BANNER_DEFAULT) and the deploy sends
+    # no 'no banner': the FTD kept the old banner. The preview and the result say so.
+    assert p["action"].endswith(
+        ": cleared (policy only; the devices keep their banner until new text is deployed)"
+    )
+    assert "removed" not in p["action"]
+    (warning,) = p["preview"]["warnings"]
+    assert "doesn't remove a deployed banner" in warning and "'show banner'" in warning
+    assert done["result"]["warning"] == warning
+    assert done["result"]["verify"] == "after the deploy: fmc_run_show_command(command='show banner')"
     async with Client(server()) as c:
         same = await run(c, "fmc_set_banner", {"policy": "mcp-w6-ps", "text": "old"})
         assert same["status"] == "blocked"
