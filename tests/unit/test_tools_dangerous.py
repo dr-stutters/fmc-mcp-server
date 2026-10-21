@@ -4,10 +4,12 @@ import json
 from typing import Any
 
 import httpx
+import pytest
 import respx
 from fastmcp import Client
 
 from fmc_mcp.server import create_server
+from fmc_mcp.tools import dangerous
 from fmc_mcp.tools.dangerous import DEPLOY_POST_TIMEOUT, task_state
 
 from .conftest import ACP_ID, CFG, empty, items, make_settings
@@ -93,16 +95,51 @@ async def test_deploy_request_timeout_says_whether_anything_started(fmc: respx.M
     post = fmc.post(f"{CFG}/deployment/deploymentrequests").mock(side_effect=httpx.ReadTimeout("slow"))
     async with Client(server()) as c:
         for expect in (
-            "lists none of them as deploying now, so probably nothing was deployed",
-            "lists ftd1 as deploying now: a deployment did start",
+            # FMC may still create the job after the request gave up (validation is what timed out): an
+            # empty deploying list right after the timeout proves nothing
+            "No deployment visible yet; FMC may still start it: re-check fmc_list_deployable_devices",
+            "lists ftd1 as deploying now: a deployment did start: re-check fmc_list_deployable_devices",
         ):
             preview = await run(c, "fmc_deploy", {})
             r = await c.call_tool("fmc_deploy", {"confirm": preview["confirm"]}, raise_on_error=False)
             text = r.content[0].text  # type: ignore[union-attr]
             assert r.is_error and "FMC request timed out: POST" in text and expect in text
-            assert "fmc_list_deployments(since_hours=1)" in text and "preview again" in text
+            assert "fmc_list_deployments(since_hours=1) before deploying again" in text
+            assert "preview again" in text and "probably nothing" not in text
     assert post.call_count == 2 and lists.call_count == 6  # a POST is never re-sent on a timeout
     assert post.calls.last.request.extensions["timeout"]["read"] == DEPLOY_POST_TIMEOUT
+
+
+@pytest.mark.parametrize(
+    "failure",
+    [httpx.Response(504, text="Gateway Time-out"), httpx.Response(502), httpx.RemoteProtocolError("closed")],
+)
+async def test_deploy_gateway_error_after_a_long_wait_gets_the_same_hint(
+    fmc: respx.MockRouter, monkeypatch: pytest.MonkeyPatch, failure: Any
+) -> None:
+    """A 502/504 or a dropped connection after a long wait may follow a request FMC received and is still
+    validating: the same hint as a timeout. The same failure answered at once is an ordinary error."""
+    lists = fmc.get(f"{CFG}/deployment/deployabledevices").mock(return_value=items([PENDING]))
+    route = fmc.post(f"{CFG}/deployment/deploymentrequests")
+    if isinstance(failure, Exception):
+        route.mock(side_effect=failure)
+    else:
+        route.mock(return_value=failure)
+    async with Client(server()) as c:
+        preview = await run(c, "fmc_deploy", {})
+        r = await c.call_tool("fmc_deploy", {"confirm": preview["confirm"]}, raise_on_error=False)
+        text = r.content[0].text  # type: ignore[union-attr]
+        assert r.is_error and "deploying again" not in text  # answered at once: nothing to re-check
+        reads = lists.call_count
+        monkeypatch.setattr(dangerous, "DEPLOY_LONG_WAIT", 0.0)  # every wait counts as long
+        preview = await run(c, "fmc_deploy", {})
+        r = await c.call_tool("fmc_deploy", {"confirm": preview["confirm"]}, raise_on_error=False)
+        text = r.content[0].text  # type: ignore[union-attr]
+    assert r.is_error and "FMC may have received the request and still be validating it" in text
+    assert "No deployment visible yet; FMC may still start it" in text
+    assert "fmc_list_deployments(since_hours=1) before deploying again" in text
+    assert lists.call_count == reads + 3  # preview, confirm re-check, the read after the failure
+    assert route.call_count == 2  # a POST is never re-sent
 
 
 async def test_deploy_nothing_pending_is_blocked(fmc: respx.MockRouter) -> None:
