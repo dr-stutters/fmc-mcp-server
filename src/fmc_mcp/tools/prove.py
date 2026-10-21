@@ -40,14 +40,12 @@ from fmc_mcp.tools.common import Domain
 from fmc_mcp.tools.device_config import device_interfaces
 from fmc_mcp.tools.devices import DEVICES, Membership, memberships, resolve_unit, traffic_unit
 from fmc_mcp.tools.identity_sources import user_ips
-from fmc_mcp.tools.troubleshoot import packet_trace
+from fmc_mcp.tools.troubleshoot import FO_STANDBY, packet_trace, standby_note
 
 MAX_FLOWS = 25
 # Devices searched to place a flow with no device: one interface read each (ftdallinterfaces), their
 # static routes only for the device with the source on a connected subnet, or when none has.
 AUTO_DEVICE_CAP = 30
-# The drop of a trace run on an HA standby unit: it drops everything, so says nothing about the policy.
-FO_STANDBY = "fo-standby"
 # Drops that are the policy's decision (access/prefilter rule, Snort verdict, Security Intelligence).
 POLICY_DROP = re.compile(r"acl-drop|snort|firewall|deny|denied|block|sec-?intel|prefilter", re.I)
 POLICY_PHASES = ("ACCESS-LIST", "SNORT", "PREFILTER")
@@ -110,12 +108,20 @@ class Placer:
     pool: list[dict[str, Any]] | None = None
     catalog: Catalog | None = None
     left_out: list[str] = field(default_factory=list)
+    failed: dict[str, InvalidRequest | UpstreamError] = field(default_factory=dict)  # ref -> why
 
     async def named(self, ref: str) -> dict[str, Any]:
         """A device by name or UUID; an HA pair's or cluster's name or UUID means its active unit / control
-        node (FMC's failover state; the primary when FMC knows no active unit)."""
+        node (FMC's failover state; the primary when FMC knows no active unit). A ref that failed to
+        resolve fails the same way for the next flow, without reading FMC again."""
+        if ref in self.failed:
+            raise self.failed[ref]
         if ref not in self.devices:
-            dev, member = await resolve_unit(self.app, ref, self.domain)
+            try:
+                dev, member = await resolve_unit(self.app, ref, self.domain)
+            except (InvalidRequest, UpstreamError) as e:
+                self.failed[ref] = e
+                raise
             self.devices[ref] = dev
             if member:
                 self.members[str(dev.get("id", "")).lower()] = member
@@ -304,22 +310,6 @@ def judge(exp: Expectation, trace: dict[str, Any], source: str | None = None) ->
     return row
 
 
-def standby_note(placer: Placer, dev: dict[str, Any], trace: dict[str, Any]) -> str:
-    """The error for a trace an HA standby unit answered (fo-standby): never a policy verdict."""
-    member = placer.member(dev)
-    if member and member.carries_traffic:
-        hint = (
-            f"FMC lists it as the active unit of {member.container} but it answered as the standby, so FMC's "
-            "failover state is out of date: check fmc_get_ha_status and trace on the other unit"
-        )
-    else:
-        hint = "trace on the active unit, or give the HA pair's name"
-    return (
-        f"traced on the standby unit {dev.get('name')} ({trace.get('drop_reason')}): a standby unit drops "
-        f"everything, so this says nothing about the policy; {hint}"
-    )
-
-
 def _flow_label(exp: Expectation, source: str | None) -> str:
     port = f":{exp.port}" if exp.port and exp.protocol != "icmp" else ""
     return f"{exp.protocol} {source or '?'} -> {exp.destination}{port}"
@@ -436,7 +426,7 @@ def register(reg: ToolRegistrar) -> None:
                         **base,
                         "result": "error",
                         "expect": exp.expect,
-                        "note": standby_note(placer, dev, traces[0]),
+                        "note": standby_note(dev, placer.member(dev), traces[0]),
                     }
                 )
                 continue

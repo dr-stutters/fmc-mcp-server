@@ -33,7 +33,7 @@ from fmc_mcp.flow import device_context
 from fmc_mcp.tools.common import Domain
 from fmc_mcp.tools.dangerous import task_id_of, wait_task
 from fmc_mcp.tools.device_config import device_interfaces, pick_interface, resolve_device
-from fmc_mcp.tools.devices import DeviceRef, resolve_unit
+from fmc_mcp.tools.devices import DeviceRef, Membership, resolve_unit
 from fmc_mcp.tools.policies import ACCESS, PREFILTER, all_rules, resolve_policy
 from fmc_mcp.tools.show_commands import Supported, check_command, supported_commands
 from fmc_mcp.tools.system import iso
@@ -380,6 +380,27 @@ async def rule_hits(
     return hits, last, notes
 
 
+# The drop of a trace run on an HA standby unit: it drops everything, so says nothing about the policy.
+FO_STANDBY = "fo-standby"
+
+
+def standby_note(dev: dict[str, Any], member: Membership | None, trace: dict[str, Any]) -> str:
+    """Why a trace an HA standby unit answered (fo-standby) is no policy verdict, and what to do: when FMC
+    lists the unit as the active one (the caller named the pair, or the unit FMC calls active), FMC's
+    failover state is out of date; otherwise trace on the active unit or name the pair."""
+    if member and member.carries_traffic:
+        hint = (
+            f"FMC lists it as the active unit of {member.container} but it answered as the standby, so FMC's "
+            "failover state is out of date: check fmc_get_ha_status and trace on the other unit"
+        )
+    else:
+        hint = "trace on the active unit, or give the HA pair's name"
+    return (
+        f"traced on the standby unit {dev.get('name')} ({trace.get('drop_reason')}): a standby unit drops "
+        f"everything, so this says nothing about the policy; {hint}"
+    )
+
+
 async def packet_trace(
     app: FmcApp,
     dev: dict[str, Any],
@@ -571,11 +592,11 @@ def register(reg: ToolRegistrar) -> None:
         )
         name = str(dev.get("name"))
         out = {"device": member.label(name) if member else name, **out}
-        if any("fo-standby" in str(t.get("drop_reason") or "") for t in out.get("results") or []):
-            out["note"] = (
-                f"{name} answered as an HA standby unit, which drops everything: this says nothing about the "
-                "policy. Trace on the active unit or give the HA pair's name."
-            )
+        standby = next(
+            (t for t in out.get("results") or [] if FO_STANDBY in str(t.get("drop_reason") or "")), None
+        )
+        if standby:
+            out["note"] = standby_note(dev, member, standby)
         return out
 
     @reg.read(title="Rule hit counts")
