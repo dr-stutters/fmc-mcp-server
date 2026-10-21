@@ -34,7 +34,7 @@ from fmc_mcp._core import (
     get_settings,
 )
 from fmc_mcp._core import formatting as _formatting
-from fmc_mcp._core.secrets import mask_values, register_secret, scrub_text
+from fmc_mcp._core.secrets import mask_values, scrub_text
 from fmc_mcp.client import FmcApp
 from fmc_mcp.preview import fmc_preview
 from fmc_mcp.rails import check_deploy_window, deploy_window_blockers
@@ -204,6 +204,7 @@ class _Run:
         self.started = int(time.time())  # wall clock, for FMC's job history filter
         self.groups: list[_Group] = []
         self.finished: dict[str, tuple[bool, str | None, str]] = {}  # task id -> (done, failure, text)
+        self.task_data: dict[str, dict[str, Any]] = {}  # task id -> FMC's latest TaskStatus
         self.method = "single"
         self.bulk_tasks: list[str] = []
         self.bulk_answer: Any = None
@@ -326,17 +327,40 @@ class _Run:
         if tid not in self.finished:
             t = await self._get(f"job/taskstatuses/{tid}")
             t = t if isinstance(t, dict) else {}
+            self.task_data[tid] = t
             done, failure = task_state(t)
             if not done:
                 return False, None, _task_text(t)
             self.finished[tid] = (True, failure, self.clean(_task_text(t)))
         return self.finished[tid]
 
+    def _subtasks(self, g: _Group) -> None:
+        """A batch task's `subTasks` (TaskStatus.subTasks in the spec: target device, status, message), where
+        FMC fills them: each row named by a finished sub-task takes its outcome, before the batch ends."""
+        by_name = {r.name.lower(): r for r in g.rows}
+        for tid in g.tasks:
+            for sub in (self.task_data.get(tid) or {}).get("subTasks") or []:
+                if not isinstance(sub, dict):
+                    continue
+                r = by_name.get(str((sub.get("target") or {}).get("name") or "").lower())
+                if r is None or r.status != "registering":
+                    continue
+                done, failure = task_state(sub)
+                if not done:
+                    continue
+                r.registration = self.clean(_task_text(sub))
+                if failure:
+                    self._failed(r, failure)
+                else:
+                    self._registered(r)
+
     async def _poll_tasks(self) -> None:
         for g in self.groups:
             if g.done or not g.tasks:
                 continue
             states = [await self._task(tid) for tid in g.tasks]
+            if len(g.rows) > 1:
+                self._subtasks(g)
             if not all(done for done, _, _ in states):
                 continue
             g.done = True
@@ -380,11 +404,10 @@ class _Run:
                     self._registered(r)
             elif r.status == "listed?":
                 group = next(g for g in self.groups if any(x is r for x in g.rows))
-                self._failed(
-                    r,
-                    "; ".join(group.failures)
-                    or "FMC's bulk registration task finished but this device is not listed.",
-                )
+                if group.failures:  # the batch failed and FMC doesn't list this device: it is one that failed
+                    self._failed(r, "; ".join(group.failures))
+                # else FMC reported the batch as done without a failure: the device list may lag behind the
+                # task, so keep looking for it until the deadline instead of calling the row failed
 
     async def _poll_deployments(self) -> None:
         watch = {r.device_id: r for r in self.rows if r.status == "deploying" and r.device_id}
@@ -449,6 +472,13 @@ class _Run:
                 r.status = "submitted"
                 continue
             deploying = r.status == "deploying"
+            if r.status == "listed?":
+                r.error = (
+                    "FMC's registration task finished without an error, but FMC did not list the device "
+                    "before the wait ended; check fmc_list_devices."
+                )
+                r.status = "running"
+                continue
             phase = "the initial deployment" if deploying else "the registration"
             follow = "fmc_list_deployments" if deploying or not r.task_id else f"fmc_get_task {r.task_id}"
             r.status = "running"
@@ -566,9 +596,6 @@ def register(reg: ToolRegistrar) -> None:
                 f"No registration key for {', '.join(no_key)}: set FMC_FTD_REG_KEY (or _FILE / _REF) on the "
                 "server so the key stays out of the conversation, or give the row its own reg_key."
             )
-        for key, source in keys:
-            if source != SERVER_KEY:
-                register_secret(key)  # masked in later log lines and tool errors
         for n, (key, source) in enumerate(keys, 1):
             problem = registration_key_problem(key, source)
             if problem and source != SERVER_KEY:

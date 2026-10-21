@@ -280,6 +280,122 @@ async def test_bulk_task_failure_fails_only_the_rows_fmc_does_not_list(fmc: resp
     assert "retry" in result
 
 
+def devices_listed_late(fmc: respx.MockRouter, post: respx.Route, rounds: list[list[int]]) -> None:
+    """Empty for the preview; once posted, each device-list GET lists the next round's rows."""
+    seen: list[int] = []
+
+    def answer(request: httpx.Request) -> httpx.Response:
+        if not post.called:
+            return items([])
+        seen.append(1)
+        return items([record(n) for n in rounds[min(len(seen), len(rounds)) - 1]])
+
+    fmc.get(DEVICES_PATH).mock(side_effect=answer)
+
+
+async def test_bulk_success_waits_for_a_device_fmc_lists_late(fmc: respx.MockRouter) -> None:
+    """A batch task that succeeded is FMC's word: a row the device list doesn't show yet keeps waiting."""
+    mock_policies(fmc)
+    post = bulk_route(fmc, httpx.Response(202, json=FIX["bulk_response"]))
+    devices_listed_late(fmc, post, [[1, 2], [1, 2, 3]])
+    fmc.get(f"{CFG}/job/taskstatuses/30064772170").mock(return_value=task())
+    fmc.get(f"{CFG}/deployment/jobhistories").mock(
+        return_value=items([job([(1, "SUCCEEDED"), (2, "SUCCEEDED"), (3, "SUCCEEDED")])])
+    )
+    _, done = await confirm({"devices": ROWS, "access_policy": "mcp-w6-bulk-acp"})
+    result = done["result"]
+    assert result["summary"] == {"deployed": 3}, result
+    assert result["devices"][2]["device_id"] == dev_id(3)
+
+
+async def test_bulk_success_but_never_listed_is_reported_running(
+    fmc: respx.MockRouter, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    class Clock:
+        now = 1000.0
+
+        def monotonic(self) -> float:
+            self.now += 20.0
+            return self.now
+
+        def time(self) -> float:
+            return time.time()
+
+    monkeypatch.setattr(registration, "time", Clock())
+    mock_policies(fmc)
+    post = bulk_route(fmc, httpx.Response(202, json=FIX["bulk_response"]))
+    devices_after(fmc, post, [1])
+    fmc.get(f"{CFG}/job/taskstatuses/30064772170").mock(return_value=task())
+    fmc.get(f"{CFG}/deployment/jobhistories").mock(return_value=items([job([(1, "SUCCEEDED")])]))
+    _, done = await confirm({"devices": ROWS[:2], "access_policy": "mcp-w6-bulk-acp", "timeout_minutes": 1})
+    result = done["result"]
+    assert result["summary"] == {"deployed": 1, "running": 1}
+    assert result["devices"][1]["error"] == (
+        "FMC's registration task finished without an error, but FMC did not list the device before the "
+        "wait ended; check fmc_list_devices."
+    )
+
+
+def subtask(n: int, status: str, message: str) -> dict[str, Any]:
+    """TaskStatus.subTasks entry (spec: ISubTask with a target device)."""
+    return {"target": {"name": f"bulk-{n}", "type": "Device"}, "status": status, "message": message}
+
+
+async def test_bulk_subtasks_give_each_row_its_own_outcome(fmc: respx.MockRouter) -> None:
+    """Where FMC fills the batch task's subTasks, each row takes its own sub-task's outcome when it ends."""
+    mock_policies(fmc)
+    post = bulk_route(fmc, httpx.Response(202, json=FIX["bulk_response"]))
+    devices_after(fmc, post, [1, 3])
+    ok = "DEVICE_SUCCESSFULLY_REGISTERED"
+    running = {
+        **FIX["registration_task"],
+        "status": "RUNNING",
+        "message": "IN_PROGRESS",
+        "subTasks": [
+            subtask(1, "SUCCESS", ok),
+            subtask(2, "FAILED", "Registration timed out"),
+            subtask(3, "PENDING", "IN_PROGRESS"),
+        ],
+    }
+    final = {
+        **running,
+        "status": "FAILED",
+        "message": "BULK_REGISTRATION_PARTIAL",
+        "subTasks": [
+            subtask(1, "SUCCESS", ok),
+            subtask(2, "FAILED", "Registration timed out"),
+            subtask(3, "SUCCESS", ok),
+        ],
+    }
+    fmc.get(f"{CFG}/job/taskstatuses/30064772170").mock(
+        side_effect=[httpx.Response(200, json=running), httpx.Response(200, json=final)]
+    )
+    jobs = fmc.get(f"{CFG}/deployment/jobhistories").mock(
+        return_value=items([job([(1, "SUCCEEDED")]), job([(3, "SUCCEEDED")])])
+    )
+    args = {"devices": ROWS, "access_policy": "mcp-w6-bulk-acp", "stop_on_failure": False}
+    _, done = await confirm(args)
+    result = done["result"]
+    assert result["summary"] == {"deployed": 2, "failed": 1}
+    one, two, three = result["devices"]
+    assert one["registration"] == f"SUCCESS: {ok}" and three["registration"] == f"SUCCESS: {ok}"
+    assert two["status"] == "failed" and two["error"].startswith("FAILED: Registration timed out")
+    assert "show managers" in two["error"] and "BULK_REGISTRATION_PARTIAL" not in two["error"]
+    assert jobs.call_count == 2  # row 1 was followed into its deployment before the batch ended
+
+
+def test_registration_keys_are_registered_as_secrets(monkeypatch: pytest.MonkeyPatch) -> None:
+    """Log lines and tool errors mask the key actually sent: the stripped server key, or an argument's."""
+    from fmc_mcp.tools import dangerous
+
+    seen: list[str] = []
+    monkeypatch.setattr(dangerous, "register_secret", seen.append)
+    settings = make_settings(ftd_reg_key=f" {SERVER_KEY}\n")
+    assert dangerous.registration_key(settings, None) == (SERVER_KEY, dangerous.SERVER_KEY)
+    assert dangerous.registration_key(settings, f"{ROW_KEY} ") == (ROW_KEY, "argument")
+    assert seen == [SERVER_KEY, ROW_KEY]
+
+
 async def test_bulk_refused_stop_on_failure_registers_nothing(fmc: respx.MockRouter) -> None:
     mock_policies(fmc)
     post = bulk_route(

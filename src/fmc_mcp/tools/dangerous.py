@@ -24,6 +24,7 @@ from fmc_mcp._core import (
     get_settings,
     poll_until,
 )
+from fmc_mcp._core.secrets import register_secret
 from fmc_mcp.client import FmcApp
 from fmc_mcp.config import Settings
 from fmc_mcp.preview import fmc_preview
@@ -116,16 +117,20 @@ SERVER_KEY = "server config (FMC_FTD_REG_KEY)"
 
 def registration_key(settings: Settings, reg_key: str | None, what: str = "argument") -> tuple[str, str]:
     """(key, where it comes from) for a registration: the caller's key, else FMC_FTD_REG_KEY. Surrounding
-    whitespace is dropped (an env file or _FILE often leaves a newline). Raises when there is neither."""
+    whitespace is dropped (an env file or _FILE often leaves a newline). Raises when there is neither.
+    The key is registered as a secret: later log lines and tool errors mask it (core masks the configured
+    value as given, which is not this one when it was stripped, and knows nothing of an argument's key)."""
     if reg_key and reg_key.strip():
-        return reg_key.strip(), what
-    configured = settings.ftd_reg_key
-    if configured is None:
+        key, source = reg_key.strip(), what
+    elif settings.ftd_reg_key is not None:
+        key, source = settings.ftd_reg_key.get_secret_value().strip(), SERVER_KEY
+    else:
         raise InvalidRequest(
             "No registration key: pass reg_key, or set FMC_FTD_REG_KEY (or _FILE / _REF) on the server "
             "so the key stays out of the conversation."
         )
-    return configured.get_secret_value().strip(), SERVER_KEY
+    register_secret(key)
+    return key, source
 
 
 def registration_key_problem(key: str, source: str) -> str | None:
