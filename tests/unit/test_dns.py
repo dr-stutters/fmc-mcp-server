@@ -214,3 +214,119 @@ async def test_threat_posture_names_the_dns_policy_itself(fmc: respx.MockRouter)
     assert out["security_intelligence"]["dns_policy"] == "Default DNS Policy"  # not the SI reference's name
     dns = next(f for f in out["findings"] if f["check"] == "dns_no_talos")
     assert dns["detail"].startswith("DNS policy 'Default DNS Policy' blocks no Talos DNS category")
+    # a read-only DNS policy of the domain itself: not "FMC's read-only default" (#250), a policy of its own
+    assert dns["detail"].endswith("(it is read-only in this domain)."), dns["detail"]
+    assert dns["fix"].startswith("fmc_create_dns_policy + fmc_set_dns_policy("), dns["fix"]
+
+
+async def test_threat_posture_on_an_inherited_dns_policy_names_the_owner(fmc: respx.MockRouter) -> None:
+    """The inherited branch (#235) keeps its wording: the owner domain, read-only here."""
+    from .conftest import TOP, TOP_CFG, as_leaf, empty
+    from .test_threat_posture import mock_lab, posture
+
+    mock_lab(fmc)
+    as_leaf(fmc)
+    fmc.get(f"{TOP_CFG}/assignment/policyassignments").mock(return_value=empty())
+    si, _ = leaf_recordings()  # the leaf's view: Global owns the Default DNS Policy
+    dns = si["dns_policy"]
+    assert dns["metadata"]["domain"]["id"] == TOP
+    fmc.get(f"{CFG}/policy/dnspolicies/{dns['id']}").mock(return_value=httpx.Response(200, json=dns))
+    out = await posture(fmc)
+    dns = next(f for f in out["findings"] if f["check"] == "dns_no_talos")
+    assert dns["detail"] == (
+        "DNS policy 'Default DNS Policy' blocks no Talos DNS category (it belongs to domain 'Global', "
+        "read-only here)."
+    ), dns["detail"]
+
+
+# --- fmc_set_si_lists on a DNS policy the domain inherits (#250) --------------------------------------
+# It called any inherited DNS policy "FMC's read-only default", although it can be a custom Global one.
+# Now it says what #235 says for fmc_dns_block: the leaf way first, then the owner domain.
+
+LEAF = "Global/mcp-test-leaf"
+
+
+def si_lists_setup(fmc: respx.MockRouter, custom: bool) -> dict[str, Any]:
+    """inherited_setup, plus what fmc_set_si_lists reads; with `custom` the inherited policy is a Global
+    DNS policy of the owner's (not FMC's Default DNS Policy), used by both access policies."""
+    import copy
+
+    from .test_si_feeds import CATALOG, CUSTOM, FEEDS
+
+    si, rec = inherited_setup(fmc)
+    dns = copy.deepcopy(si["dns_policy"])
+    if custom:
+        dns.update(id="00000000-0000-0ed3-0000-0000000d0c01", name="corp-dns")
+        sip = copy.deepcopy(si["si_policy"])
+        sip["items"][0]["dnsPolicy"] = {"id": dns["id"], "name": "corp-dns", "type": "DNSPolicy"}
+        for path in (
+            f"{CFG}/policy/accesspolicies/{rec['access_policy']['id']}/securityintelligencepolicies",
+            f"{CFG}/policy/accesspolicies/00000000-0000-0ed3-0000-021474836766/securityintelligencepolicies",
+        ):
+            fmc.get(path).mock(return_value=httpx.Response(200, json=sip))
+        fmc.get(f"{CFG}/policy/dnspolicies/{dns['id']}/dnsrules").mock(
+            return_value=items(si["dns_rules"]["items"])
+        )
+    fmc.get(f"{CFG}/policy/dnspolicies/{dns['id']}").mock(return_value=httpx.Response(200, json=dns))
+    for kind in ("ip", "url", "dns"):
+        fmc.get(f"{CFG}/object/{CATALOG[kind]}").mock(return_value=items(si["catalog"][kind]))
+        fmc.get(f"{CFG}/object/{FEEDS[kind]}").mock(return_value=items([]))
+        fmc.get(f"{CFG}/object/{CUSTOM[kind]}").mock(return_value=items([]))
+    return dns
+
+
+async def si_lists(**args: Any) -> Any:
+    base = {"policy": "mcp-fw-threat-acp", "names": ["DNS Malware"]}
+    async with Client(create_server(make_settings(mcp_enable_writes=True))) as c:
+        return await run(c, "fmc_set_si_lists", {**base, **args})
+
+
+@pytest.mark.parametrize("custom", [False, True], ids=["default-dns-policy", "custom-global-policy"])
+async def test_si_lists_in_an_inherited_dns_policy_offer_the_leaf_way(
+    fmc: respx.MockRouter, custom: bool
+) -> None:
+    dns = si_lists_setup(fmc, custom)
+    put = fmc.put(path__regex=r".*/dnsrules.*")
+    post = fmc.post(path__regex=r".*/dnsrules.*")
+    out = await si_lists()
+    assert out["status"] == "blocked", out
+    local, reach = out["blockers"][:2]
+    assert local.startswith(f"{dns['name']!r} is defined in domain 'Global' and only inherited by {LEAF!r}")
+    assert (
+        f"To add these DNS feeds/lists to 'mcp-fw-threat-acp' in {LEAF!r} only, give it a DNS policy of its "
+        f"own: fmc_create_dns_policy(name='<new DNS policy>', domain={LEAF!r}) -> fmc_set_dns_policy("
+        f"access_policy='mcp-fw-threat-acp', dns_policy='<new DNS policy>', domain={LEAF!r}) -> "
+        "fmc_set_si_lists(policy='mcp-fw-threat-acp', names=['DNS Malware'], list_type='block', "
+        f"action='add', dns_answer='NXDOMAIN', domain={LEAF!r}), then fmc_deploy."
+    ) in local
+    # only the access policy named is relinked: Global's mcp-test-acp is not offered (nor called Global's)
+    assert "belongs to an ancestor domain" not in local
+    assert reach.startswith(f"Or: repeat with domain='Global' to change {dns['name']!r} itself")
+    assert "used by mcp-fw-threat-acp, mcp-test-acp (devices: mcp-ftd-identity)" in reach
+    assert not [b for b in out["blockers"] if "default" in b.lower() and "read-only" in b], out["blockers"]
+    assert not any("it then applies to every domain below" in b for b in out["blockers"])  # said once
+    assert not put.called and not post.called
+
+
+async def test_si_lists_remove_from_an_inherited_dns_policy_points_to_the_owner(
+    fmc: respx.MockRouter,
+) -> None:
+    si_lists_setup(fmc, custom=True)
+    out = await si_lists(action="remove")
+    assert out["status"] == "blocked"
+    first = out["blockers"][0]
+    assert first.startswith("'corp-dns' is defined in domain 'Global'")
+    assert "Repeat with domain='Global' to change 'corp-dns' itself" in first
+    assert not any(
+        "fmc_create_dns_policy" in b for b in out["blockers"]
+    )  # a new policy has nothing to remove
+
+
+async def test_si_lists_for_an_inherited_access_policy_point_to_the_owner(fmc: respx.MockRouter) -> None:
+    si_lists_setup(fmc, custom=True)
+    out = await si_lists(policy="mcp-test-acp")
+    assert out["status"] == "blocked"
+    first = out["blockers"][0]
+    assert "Repeat with domain='Global' to change 'corp-dns' itself" in first
+    assert first.endswith("(mcp-test-acp belongs to an ancestor domain too and can only be relinked there.)")
+    assert not any("fmc_create_dns_policy" in b for b in out["blockers"])

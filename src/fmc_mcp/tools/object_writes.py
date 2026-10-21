@@ -23,6 +23,7 @@ from fmc_mcp.client import FmcApp
 from fmc_mcp.preview import fmc_preview
 from fmc_mcp.refs import NETWORK_TYPES, PORT_TYPES, URL_TYPES, RefResolver
 from fmc_mcp.tools.common import (
+    ROLE_READ_ONLY,
     Domain,
     ObjType,
     block_labels,
@@ -30,6 +31,7 @@ from fmc_mcp.tools.common import (
     obj_type,
     ref_label,
     resolve_object,
+    role_read_only,
     slim,
 )
 from fmc_mcp.tools.fqdn_dns import fqdn_dns_check
@@ -195,6 +197,8 @@ def register(reg: ToolRegistrar) -> None:
         t, current = await resolve_object(app, object, domain, [type] if type else None)
         if is_system(current):
             raise InvalidRequest(f"{current.get('name')!r} is a read-only system object.")
+        if role_read_only(current):
+            raise InvalidRequest(f"{current.get('name')!r} is {ROLE_READ_ONLY}.")
         desired = editable(current)
         if new_name:
             desired["name"] = new_name
@@ -265,6 +269,8 @@ def register(reg: ToolRegistrar) -> None:
         blockers = []
         if is_system(current):
             blockers.append("Read-only system object.")
+        elif role_read_only(current):
+            blockers.append(f"{current.get('name')!r} is {ROLE_READ_ONLY}.")
         if usage:
             names = ", ".join(f"{u['type']} {u['name']}" for u in usage)
             blockers.append(f"Still in use by: {names}. Remove those references first (see fmc_where_used).")

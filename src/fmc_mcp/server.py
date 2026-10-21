@@ -35,6 +35,7 @@ from fmc_mcp.tools import (
     devices,
     dns,
     dynamic_objects,
+    enrollment,
     file_policy,
     find_address,
     fleet,
@@ -55,6 +56,7 @@ from fmc_mcp.tools import (
     platform_services,
     platform_settings,
     policies,
+    policy_structure,
     policy_writes,
     prefilter,
     prompts,
@@ -154,8 +156,9 @@ Workflows:
   UI-only).
 - Application, VLAN, time and SGT rules: fmc_find_application (an app or filter by exact name or id, with
   risk and business relevance) -> fmc_create_application_filter / fmc_create_time_range if needed ->
-  fmc_create_access_rule applications=[...], application_filters=[...], vlan_tags=[...], time_range=...,
-  source_sgts=[...] (ISE SGTs by name or tag) -> fmc_deploy -> fmc_get_hit_counts after real traffic
+  fmc_create_access_rule applications=[...], application_filters=[...] or inline_app_filter={risks: [...]}
+  (no filter object), vlan_tags=[...], time_range=..., source_sgts=[...] (ISE SGTs by name or tag) ->
+  fmc_deploy -> fmc_get_hit_counts after real traffic
   (packet tracer can't simulate app-id).
 - Users and groups in access rules (AD/LDAP): fmc_create_trusted_ca (LDAPS) -> fmc_create_realm ->
   fmc_test_realm -> fmc_download_realm -> fmc_create_identity_policy + fmc_create_identity_rule (PASSIVE
@@ -178,6 +181,15 @@ Workflows:
   (BLOCK_WITH_RESET with tls_versions=['sslv3','tls10','tls11'], another with cipher_suite_lists; above any
   DECRYPT_RESIGN rule) -> fmc_update_decryption_policy undecryptable={'unsupported_cipher_suite':
   'BLOCK_WITH_RESET'} (else RC4 passes a resign rule undecrypted) -> fmc_deploy.
+- One corporate policy, a child per site: fmc_create_access_policy(base_policy=<parent>) or
+  fmc_set_base_policy (the parent's Mandatory rules run first, its Default rules last) -> fmc_assign_policy
+  -> fmc_pending_changes -> fmc_deploy. Rule categories: fmc_create_category / fmc_rename_category /
+  fmc_delete_category, fmc_update_access_rule(category=...). Change windows: fmc_policy_lock; another
+  user's lock blocks a write preview with their name (fmc_get_access_policy shows the holder).
+- Device certificates (RA VPN, certificate-authenticated S2S): fmc_create_cert_enrollment (self_signed;
+  pkcs12 read from FMC_PKI_DIR; manual_ca_only; scep; est) -> fmc_enroll_certificate(device, enrollment)
+  (reaches the device at once, no deploy; also re_enroll, refresh, delete) ->
+  fmc_list_certificates(device=...).
 - PoC to production / domain to domain: fmc_export_policy_bundle -> fmc_plan_policy_bundle_import (target
   domain) -> fmc_import_policy_bundle -> fmc_diff_policy_bundle against live -> assign + fmc_deploy.
 - "Where does 10.1.2.3 appear?": fmc_find_address (objects and groups, dynamic-object mappings, access,
@@ -283,6 +295,7 @@ REGISTER: list[Callable[[ToolRegistrar], None]] = [
     object_import.register,
     object_lifecycle.register,
     policy_writes.register,
+    policy_structure.register,
     bulk_rules.register,
     dangerous.register,
     registration.register,
@@ -321,6 +334,7 @@ REGISTER: list[Callable[[ToolRegistrar], None]] = [
     tickets.register,
     pki.register,
     certificates.register,
+    enrollment.register,
     decryption.register,
     decryption_check.register,
     dns.register,

@@ -653,6 +653,21 @@ def register(reg: ToolRegistrar) -> None:
         changes = field_changes(editable(cur), desired, replace=True)
         if not changes and not blockers:
             blockers.append("Nothing to change.")
+        warnings: list[str] = []
+        if (
+            kind == "http"
+            and action == "remove"
+            and networks
+            and http_server is None
+            and not desired.get(list_key)
+            and desired.get("enableHttpServer")
+        ):
+            # FMC keeps enableHttpServer on when the last entry goes (Wave 6 live-B2, FMC 10.0.1)
+            warnings.append(
+                "This removes the last HTTPS access entry, but the HTTPS server stays on (FMC keeps "
+                "enableHttpServer true): no network may reach it, yet the devices keep listening. Add "
+                "http_server=False to turn it off too."
+            )
         summary = icmp_summary if kind == "icmp" else http_summary
         made: dict[str, Any] = {}  # the ICMPv4 'any' object created on confirm
 
@@ -707,7 +722,7 @@ def register(reg: ToolRegistrar) -> None:
                 },
                 fingerprint={"section": editable(cur), "icmp_service": service},
                 blockers=blockers,
-                side_effects=[DEPLOY_NOTE],
+                side_effects=warnings + [DEPLOY_NOTE],
             ),
             apply=lambda: _apply_steps(app, steps),
         )

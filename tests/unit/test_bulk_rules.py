@@ -32,6 +32,7 @@ DEV = fixture("ftd_device")
 BALANCED = {"id": "ips-1", "name": "Balanced Security and Connectivity", "type": "IntrusionPolicy"}
 INSIDE = {"id": "z-in", "name": "inside", "type": "SecurityZone"}
 REJECTED = httpx.Response(400, json={"error": FX["rejected"]["error"]})
+USER = FX["comment"]["items"][0]["commentHistoryList"][-1]["user"]  # the API user FMC records
 
 
 def server() -> Any:
@@ -53,7 +54,7 @@ async def preview_apply(name: str, args: dict[str, Any]) -> tuple[Any, Any]:
 
 def honest(router: respx.MockRouter, rules: list[dict[str, Any]]) -> Any:
     """FMC's rule list as the probe recorded partialUpdate: after a PUT it answered 200, the rules hold
-    exactly the fields that PUT sent (comments aside)."""
+    exactly the fields that PUT sent, and a sent comment is appended to the comment history (FX comment)."""
 
     def get(request: httpx.Request) -> httpx.Response:
         now = copy.deepcopy(rules)
@@ -63,7 +64,12 @@ def honest(router: respx.MockRouter, rules: list[dict[str, Any]]) -> Any:
             if req.method == "PUT" and req.url.path == RULES and resp is not None and resp.status_code == 200:
                 for b in json.loads(req.content):
                     if b["id"] in by_id:
-                        by_id[b["id"]].update({k: v for k, v in b.items() if k != "newComments"})
+                        rule = by_id[b["id"]]
+                        rule.update({k: v for k, v in b.items() if k != "newComments"})
+                        for text in b.get("newComments") or []:
+                            rule.setdefault("commentHistoryList", []).append(
+                                {"date": "2026-10-20T22:59:05.000+0000", "comment": text, "user": USER}
+                            )
         return items(now)
 
     return get
@@ -402,6 +408,25 @@ async def test_clear_hit_counts_previews_what_is_lost(probe: respx.MockRouter) -
     assert delete.calls.last.request.url.params["filter"] == f"deviceId:{DEV['id']}"  # every rule
 
 
+async def test_clear_hit_counts_ignores_policy_locks(probe: respx.MockRouter) -> None:
+    """F76: hit counts are the device's counters, not the policy's configuration, so another user's lock on
+    the policy doesn't block clearing them (it does block rule edits)."""
+    acp = copy.deepcopy(fixture("accesspolicies")["items"][0])
+    acp["metadata"]["lockingStatus"] = {"status": "LOCKED", "userName": "alice"}
+    probe.get(f"{CFG}/policy/accesspolicies").mock(return_value=items([acp]))
+    probe.put(HC).mock(return_value=httpx.Response(200, json={}))
+    probe.get(HC).mock(return_value=items([{"rule": {"id": P1, "name": "mcp-w6-probe-1"}, "hitCount": 1}]))
+    async with Client(server()) as c:
+        out = await run(c, "fmc_clear_hit_counts", {"policy": "mcp-test-acp", "device": DEV["name"]})
+        assert out["status"] == "preview" and "policy_lock" not in out["preview"]
+        out = await run(
+            c,
+            "fmc_bulk_update_access_rules",
+            {"policy": "mcp-test-acp", "select": {"names": ["mcp-w6-probe-1"]}, "set": {"enabled": False}},
+        )
+    assert out["status"] == "blocked" and "locked by alice" in out["blockers"][-1]
+
+
 async def test_clear_every_rule_shows_the_default_action_counter(probe: respx.MockRouter) -> None:
     """Without rule ids FMC clears every rule on the device and, as recorded live on 10.0.1, the default
     action's counter too, so the preview shows it (apart from hits_lost)."""
@@ -519,7 +544,7 @@ async def test_fields_fmc_kept_are_reported_not_applied(lab: respx.MockRouter) -
     assert result["kept_by_fmc"] == [
         {"rule": "mcp-w6-monitor", "fields": {"enabled": {"sent": False, "fmc_has": True}}}
     ]
-    assert "left 1 rule(s) without the change" in result["warning"]
+    assert "kept some sent fields on 1 rule(s)" in result["warning"]
 
 
 async def test_kept_by_fmc_reads_the_live_monitor_answer(lab: respx.MockRouter) -> None:
@@ -527,13 +552,13 @@ async def test_kept_by_fmc_reads_the_live_monitor_answer(lab: respx.MockRouter) 
     lab.get(RULES).mock(return_value=items([MONITOR["after"]]))
     app = FmcApp(make_settings())
     try:
-        kept, why = await bulk_rules.kept_by_fmc(
+        check = await bulk_rules.kept_by_fmc(
             app, RULES, [MONITOR["sent"]], {MONITOR["rule"]["id"]: "mcp-w6-monitor"}
         )
     finally:
         await app.aclose()
-    assert why is None
-    assert kept == [
+    assert "error" not in check and check["missing"] == [] and check["incomplete"] is False
+    assert check["kept"] == [
         {
             "rule": "mcp-w6-monitor",
             "fields": {
@@ -560,3 +585,151 @@ async def test_a_failed_read_back_says_unverified(probe: respx.MockRouter) -> No
         {"policy": "mcp-test-acp", "select": {"ids": [P1]}, "set": {"enabled": False}},
     )
     assert done["result"]["applied"] == 1 and done["result"]["verified"].startswith("Not verified")
+
+
+# --- #273: what the read-back verifies -------------------------------------------------------------
+
+
+async def test_a_comment_fmc_didnt_append_is_reported(probe: respx.MockRouter) -> None:
+    """newComments is a sent field too: FMC answered 200 but the comment history didn't grow."""
+    probe.get(RULES).mock(return_value=items(PROBE))  # nothing changes on FMC
+    probe.put(RULES).mock(return_value=httpx.Response(200, json={"items": []}))
+    _, done = await preview_apply(
+        "fmc_bulk_update_access_rules",
+        {"policy": "mcp-test-acp", "select": {"ids": [P1]}, "set": {"comment": "w6 probe rule 1"}},
+    )
+    result = done["result"]  # probe-1 already holds that text once: it must hold it twice afterwards
+    assert result["applied"] == 0 and result["rules"] == []
+    assert result["kept_by_fmc"] == [
+        {
+            "rule": "mcp-w6-probe-1",
+            "fields": {
+                "newComments": {"sent": "w6 probe rule 1", "fmc_has": "not in the rule's comment history"}
+            },
+        }
+    ]
+
+
+async def test_an_appended_comment_counts_as_applied(probe: respx.MockRouter) -> None:
+    probe.put(RULES).mock(return_value=httpx.Response(200, json=FX["comment"]))
+    _, done = await preview_apply(
+        "fmc_bulk_update_access_rules",
+        {"policy": "mcp-test-acp", "select": {"ids": [P1]}, "set": {"comment": "w6 probe partial comment"}},
+    )
+    assert done["result"]["applied"] == 1 and "kept_by_fmc" not in done["result"]
+
+
+async def test_a_partly_kept_rule_stays_applied(probe: respx.MockRouter) -> None:
+    """enabled took, the comment didn't: the rule is applied (its other field changed) and listed with
+    the field FMC kept and the ones it took."""
+
+    def get(request: httpx.Request) -> httpx.Response:
+        rows = honest(probe, PROBE)(request).json()["items"]
+        for r in rows:
+            if r["id"] == P3:
+                r["commentHistoryList"] = copy.deepcopy(PROBE[2].get("commentHistoryList") or [])
+        return items(rows)
+
+    probe.get(RULES).mock(side_effect=get)
+    probe.put(RULES).mock(return_value=httpx.Response(200, json={"items": []}))
+    _, done = await preview_apply(
+        "fmc_bulk_update_access_rules",
+        {"policy": "mcp-test-acp", "select": {"ids": [P3]}, "set": {"enabled": True, "comment": "w6 bulk"}},
+    )
+    result = done["result"]
+    assert result["applied"] == 1 and result["rules"] == ["mcp-w6-probe-3"]
+    (row,) = result["kept_by_fmc"]
+    assert row["rule"] == "mcp-w6-probe-3" and list(row["fields"]) == ["newComments"]
+    assert row["applied_fields"] == ["enabled"]
+    assert "1 of them took the other fields" in result["warning"]
+
+
+async def test_a_rule_missing_from_the_read_back_is_not_verified(probe: respx.MockRouter) -> None:
+    def get(request: httpx.Request) -> httpx.Response:
+        rows = honest(probe, PROBE)(request).json()["items"]
+        if any(c.request.method == "PUT" for c in probe.calls):
+            rows = [r for r in rows if r["id"] != P2]  # gone (deleted meanwhile)
+        return items(rows)
+
+    probe.get(RULES).mock(side_effect=get)
+    probe.put(RULES).mock(return_value=httpx.Response(200, json={"items": []}))
+    _, done = await preview_apply(
+        "fmc_bulk_update_access_rules",
+        {"policy": "mcp-test-acp", "select": {"ids": [P1, P2]}, "set": {"enabled": False}},
+    )
+    result = done["result"]
+    assert result["not_verified"] == ["mcp-w6-probe-2"]
+    assert result["applied"] == 1 and result["rules"] == ["mcp-w6-probe-1"]
+    assert "could not be checked: they are not in the policy's rules any more" in result["warning"]
+    assert result["verified"] == (
+        "one GET of the policy's rules after the change, 1 sent rule(s) not in it (not_verified)"
+    )
+
+
+async def test_an_incomplete_read_back_says_so(lab: respx.MockRouter) -> None:
+    app = FmcApp(make_settings())
+    lab.get(RULES).mock(return_value=items([PROBE[0]], total=20_000))
+    try:
+        check = await bulk_rules.kept_by_fmc(
+            app,
+            RULES,
+            [
+                {"id": P1, "type": "AccessRule", "enabled": True},
+                {"id": P2, "type": "AccessRule", "enabled": False},
+            ],
+            {P1: "mcp-w6-probe-1", P2: "mcp-w6-probe-2"},
+        )
+    finally:
+        await app.aclose()
+    assert check["missing"] == ["mcp-w6-probe-2"] and check["incomplete"] is True
+
+
+# --- #273: single-rule writers on MONITOR rules ----------------------------------------------------
+
+
+async def test_single_rule_log_none_keeps_monitor_end_logging(lab: respx.MockRouter) -> None:
+    """The single-rule writers promised MONITOR logging off; FMC keeps logEnd/sendEventsToFMC there."""
+    rule = copy.deepcopy({**MONITOR["rule"], "logBegin": True})
+    lab.get(RULES).mock(return_value=items([*PROBE, rule]))
+    lab.get(f"{RULES}/{rule['id']}").mock(return_value=httpx.Response(200, json=rule))
+    put = lab.put(f"{RULES}/{rule['id']}").mock(return_value=httpx.Response(200, json=rule))
+    post = lab.post(RULES).mock(return_value=httpx.Response(201, json=rule))
+    async with Client(server()) as c:
+        upd = await run(
+            c, "fmc_update_access_rule", {"policy": "mcp-test-acp", "rule": rule["name"], "log": "none"}
+        )
+        assert upd["status"] == "preview", upd
+        assert upd["preview"]["changes"] == {"logBegin": {"from": True, "to": False}}
+        assert any("MONITOR rules always log the connection end" in s for s in upd["side_effects"])
+        await run(
+            c,
+            "fmc_update_access_rule",
+            {"policy": "mcp-test-acp", "rule": rule["name"], "log": "none", "confirm": upd["confirm"]},
+        )
+        new = await run(
+            c,
+            "fmc_create_access_rule",
+            {"policy": "mcp-test-acp", "name": "mcp-w6-mon2", "action": "MONITOR", "log": "none"},
+        )
+        assert new["preview"]["body"]["logEnd"] is True and new["preview"]["body"]["logBegin"] is False
+        assert any("MONITOR rules always log the connection end" in s for s in new["side_effects"])
+        await run(
+            c,
+            "fmc_create_access_rule",
+            {
+                "policy": "mcp-test-acp",
+                "name": "mcp-w6-mon2",
+                "action": "MONITOR",
+                "log": "none",
+                "confirm": new["confirm"],
+            },
+        )
+        plain = await run(
+            c, "fmc_update_access_rule", {"policy": "mcp-test-acp", "rule": "mcp-w6-probe-1", "log": "none"}
+        )
+    body = json.loads(put.calls.last.request.content)
+    assert (body["logBegin"], body["logEnd"], body["sendEventsToFMC"]) == (False, True, True)
+    created = json.loads(post.calls.last.request.content)
+    assert (created["logBegin"], created["logEnd"], created["sendEventsToFMC"]) == (False, True, True)
+    assert not any("MONITOR" in s for s in plain["side_effects"])  # an ALLOW rule really goes quiet
+    assert plain["preview"]["changes"]["logEnd"] == {"from": True, "to": False}

@@ -28,7 +28,8 @@ services:
       - "${MCP_PUBLISH_PORT:-8035}:8000"
     volumes:
       - spec-cache:/cache
-      # fmc_import_certificate_files: mount a host directory of PEM files read-only and set FMC_PKI_DIR=/pki
+      # fmc_import_certificate_files / fmc_create_cert_enrollment: mount a host directory of PEM / PKCS12
+      # files read-only and set FMC_PKI_DIR=/pki
       # in .env. The container runs as uid 10001: make the keys readable by that uid only (chown 10001, chmod 600).
       # - /srv/fmc-pki:/pki:ro
     read_only: true
