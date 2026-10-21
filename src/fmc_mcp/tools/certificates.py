@@ -10,7 +10,6 @@ seconds on some device enrolments (0 = not applicable). All three become one ISO
 Read-only. Renewing or enrolling is F75; one certificate's PEM and where it is used: fmc_get_certificate."""
 
 # No `from __future__ import annotations`: FastMCP inspects signatures at runtime.
-import uuid
 from dataclasses import dataclass
 from datetime import UTC, datetime
 from typing import Annotated, Any, Literal
@@ -30,7 +29,7 @@ from fmc_mcp._core import (
 from fmc_mcp._core.http import page_of
 from fmc_mcp.client import FmcApp, is_uuid
 from fmc_mcp.tools.common import Domain, pick_by_name
-from fmc_mcp.tools.pki import parse_date
+from fmc_mcp.tools.pki import bundled, parse_date
 
 DEVICE_CERTS = "devices/certificates"
 DEVICES = "devices/devicerecords"
@@ -101,23 +100,6 @@ def severity(days_left: int | None) -> str:
 def days_until(end: datetime | None, now: datetime) -> int | None:
     """Whole days to `end`: 0 = expires within a day, negative = expired."""
     return (end - now).days if end else None
-
-
-def bundled(obj: dict[str, Any]) -> bool:
-    """One of FMC's bundled public root CAs (not one somebody imported). FMC marks them read-only with
-    reason SYSTEM in Global. Any other read-only says nothing about the object itself: in a child domain
-    FMC 10.0.1 marks Global's own objects read-only with no reason (or DOMAIN), and an API user without
-    write rights sees every object read-only with reason RBAC. Then the id decides: FMC names the bundled
-    roots with name-derived (version 3) UUIDs, and objects created on FMC get time-based or FMC-style ids."""
-    ro = (obj.get("metadata") or {}).get("readOnly")
-    if not (isinstance(ro, dict) and ro.get("state")):
-        return False
-    if ro.get("reason") == "SYSTEM":
-        return True
-    try:
-        return uuid.UUID(str(obj.get("id"))).version == 3
-    except ValueError:
-        return False
 
 
 # --- rows ---------------------------------------------------------------------------------------------

@@ -12,6 +12,7 @@ read ('********'), and these tools never return them."""
 import os
 import re
 import stat
+import uuid
 from dataclasses import dataclass
 from datetime import UTC, datetime
 from pathlib import Path
@@ -35,7 +36,7 @@ from fmc_mcp._core import (
 from fmc_mcp._core.http import page_of
 from fmc_mcp.client import FmcApp, is_uuid
 from fmc_mcp.preview import fmc_preview
-from fmc_mcp.tools.common import Domain, is_system, pick_by_name
+from fmc_mcp.tools.common import Domain, domain_path, pick_by_name
 from fmc_mcp.tools.identity import PEM_RE, fmc_fingerprint, pem_body
 from fmc_mcp.tools.object_writes import applied
 from fmc_mcp.tools.render import object_reply
@@ -94,6 +95,23 @@ def parse_date(text: Any) -> datetime | None:
         return None
 
 
+def bundled(obj: dict[str, Any]) -> bool:
+    """One of FMC's bundled public root CAs (not one somebody imported). FMC marks them read-only with
+    reason SYSTEM in Global. Any other read-only says nothing about the object itself: in a child domain
+    FMC 10.0.1 marks Global's own objects read-only with no reason (or DOMAIN), and an API user without
+    write rights sees every object read-only with reason RBAC. Then the id decides: FMC names the bundled
+    roots with name-derived (version 3) UUIDs, and objects created on FMC get time-based or FMC-style ids."""
+    ro = (obj.get("metadata") or {}).get("readOnly")
+    if not (isinstance(ro, dict) and ro.get("state")):
+        return False
+    if ro.get("reason") == "SYSTEM":
+        return True
+    try:
+        return uuid.UUID(str(obj.get("id"))).version == 3
+    except ValueError:
+        return False
+
+
 def has_cert(c: dict[str, Any]) -> bool:
     return bool(str(c.get("cert") or "").strip())
 
@@ -107,6 +125,7 @@ def cert_row(c: dict[str, Any], kind: CertKind, now: datetime | None = None) -> 
     now = now or datetime.now(UTC)
     end = parse_date(c.get("validityEndDate"))
     subject, issuer = c.get("subjectCommonName"), c.get("issuerCommonName")
+    owner = ((c.get("metadata") or {}).get("domain") or {}).get("name")
     row: dict[str, Any] = {
         "name": c.get("name"),
         "kind": kind.key,
@@ -121,7 +140,10 @@ def cert_row(c: dict[str, Any], kind: CertKind, now: datetime | None = None) -> 
         "expired": (end < now) if end else None,
         "csr_pending": True if csr_pending(c) else None,
         "fingerprint": c.get("certFingerprint") or None,
-        "system": True if is_system(c) else None,
+        # bundled(), not is_system(): in a child domain FMC 10.0.1 marks Global's own certificates read-only
+        # with no reason, which is_system reads as built-in (live 2026-10-21: mcp-fw-fmc-pxgrid, system true)
+        "system": True if bundled(c) else None,
+        "domain": domain_path(str(owner)) if owner else None,
         "id": c.get("id"),
     }
     return {k: v for k, v in row.items() if v is not None}
@@ -360,7 +382,7 @@ def register(reg: ToolRegistrar) -> None:
                 rows += [
                     cert_row(c, k)
                     for c in page.items
-                    if include_system or k.key != "trusted_ca" or not is_system(c)
+                    if include_system or k.key != "trusted_ca" or not bundled(c)
                 ]
             return list_result(page_of(rows, limit=1000, offset=0), fmt=response_format)
         k, c = await resolve_cert(app, certificate, kinds, domain)
@@ -675,7 +697,7 @@ def register(reg: ToolRegistrar) -> None:
         app: FmcApp = get_client(ctx)
         k, c = await resolve_cert(app, certificate, [KINDS[kind]] if kind else list(KINDS.values()), domain)
         blockers = []
-        if is_system(c):
+        if bundled(c):
             blockers.append("Read-only system certificate.")
         users = await used_by(app, str(c["id"]), domain)
         if users:
