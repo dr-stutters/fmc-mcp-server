@@ -1,0 +1,146 @@
+{
+ "_source": "FMC 10.0.1, recorded read-only 2026-10-21 (W6N build:polish-b) in Global/mcp-test-leaf and Global; the leaf's UUID and name replaced by the test child domain (Global/Branch), links dropped. The policies' metadata.domain names their owner (Global for the mcp-test-* seeds, the leaf for mcp-fw-ps / mcp-w6-ps); Global's assignment list holds only Global-owned policies, and a PolicyAssignment's id is its policy's id. final-live (2026-10-21): POST assignment/policyassignments in the leaf for Global's mcp-test-ftd-acp (no assignment yet) -> 406 'You do not have the required authorization to do this operation.'; the same POST in Global -> 201. fmc_406: FMC's usual error body around the recorded message (the 406's raw body wasn't kept).",
+ "leaf_accesspolicy_global_owned": {
+  "metadata": {
+   "readOnly": {
+    "state": true,
+    "reason": "DOMAIN"
+   },
+   "inherit": false,
+   "lockingStatus": {
+    "status": "UNLOCKED"
+   },
+   "timestamp": 1792556320770,
+   "lastUser": {
+    "name": "Firepower System"
+   },
+   "domain": {
+    "name": "Global",
+    "id": "e276abec-e0f2-11e3-8169-6d9ed49b625f",
+    "type": "Domain"
+   }
+  },
+  "type": "AccessPolicy",
+  "name": "mcp-test-ftd-acp",
+  "id": "00000000-0000-0ed3-0000-021474837072"
+ },
+ "leaf_platformsettings_expanded": {
+  "items": [
+   {
+    "metadata": {
+     "readOnly": {
+      "state": true,
+      "reason": "DOMAIN"
+     },
+     "timestamp": 1792206411168,
+     "lastUser": {
+      "name": "mcp-api-rw"
+     },
+     "domain": {
+      "name": "Global",
+      "id": "e276abec-e0f2-11e3-8169-6d9ed49b625f",
+      "type": "Domain"
+     }
+    },
+    "type": "FTDPlatformSettingsPolicy",
+    "name": "mcp-test-ps",
+    "id": "00000000-0000-0ed3-0000-021474843415"
+   },
+   {
+    "metadata": {
+     "timestamp": 1792364790085,
+     "lastUser": {
+      "name": "mcp-api-svc"
+     },
+     "domain": {
+      "name": "Global \\ Branch",
+      "id": "11111111-2222-3333-4444-555555555555",
+      "type": "Domain"
+     }
+    },
+    "type": "FTDPlatformSettingsPolicy",
+    "name": "mcp-fw-ps",
+    "id": "00000000-0000-0ed3-0000-021474909026"
+   },
+   {
+    "metadata": {
+     "timestamp": 1792575225528,
+     "lastUser": {
+      "name": "mcp-api-svc"
+     },
+     "domain": {
+      "name": "Global \\ Branch",
+      "id": "11111111-2222-3333-4444-555555555555",
+      "type": "Domain"
+     }
+    },
+    "type": "FTDPlatformSettingsPolicy",
+    "name": "mcp-w6-ps",
+    "id": "00000000-0000-0ed3-0000-021474965445"
+   }
+  ],
+  "paging": {
+   "offset": 0,
+   "limit": 25,
+   "count": 3,
+   "pages": 1
+  }
+ },
+ "global_assignments": {
+  "items": [
+   {
+    "type": "PolicyAssignment",
+    "policy": {
+     "type": "FTDPlatformSettingsPolicy",
+     "name": "mcp-test-ps",
+     "id": "00000000-0000-0ed3-0000-021474843415"
+    },
+    "targets": [
+     {
+      "id": "43d57cc8-c9c6-11f1-858d-a03accd83568",
+      "type": "Device",
+      "name": "mcp-ftd1",
+      "keepLocalEvents": false
+     }
+    ],
+    "name": "mcp-test-ps",
+    "id": "00000000-0000-0ed3-0000-021474843415"
+   },
+   {
+    "type": "PolicyAssignment",
+    "policy": {
+     "type": "AccessPolicy",
+     "name": "mcp-test-ftd-acp",
+     "id": "00000000-0000-0ed3-0000-021474837072"
+    },
+    "targets": [
+     {
+      "id": "43d57cc8-c9c6-11f1-858d-a03accd83568",
+      "type": "Device",
+      "name": "mcp-ftd1",
+      "keepLocalEvents": false
+     }
+    ],
+    "name": "mcp-test-ftd-acp",
+    "id": "00000000-0000-0ed3-0000-021474837072"
+   }
+  ],
+  "paging": {
+   "offset": 0,
+   "limit": 100,
+   "count": 2,
+   "pages": 1
+  }
+ },
+ "fmc_406": {
+  "error": {
+   "category": "FRAMEWORK",
+   "messages": [
+    {
+     "description": "You do not have the required authorization to do this operation."
+    }
+   ],
+   "severity": "ERROR"
+  }
+ }
+}

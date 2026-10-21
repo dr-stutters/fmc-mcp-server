@@ -1,0 +1,917 @@
+{
+ "_source": "F79 build, 2026-10-21. Recorded on FMC 10.0.1 (Global/mcp-test-leaf, GETs): the FQDN object mcp-w6-fqdn, the URL object mcp-test-url, mcp-w6-acp's FQDN rule (#1 here), the Global SI block lists by id (entryCount 0, no validEntries when empty), plus security_intelligence.json's SI policy and Default DNS Policy rules. The leaf held no SI feeds, custom SI lists, URL groups or custom DNS policy at recording time: those (mcp-w6-* here), the extra URL/FQDN objects and rules 2-4 follow the 10.0.1 spec schemas (SIURLFeed metadata.validEntries as recorded live for a network feed in Wave 5, CustomSIDNSList with fmc_dns_block's file name, URL groups, decryption rule urls). Domains are documentation names (example.com/.net/.test).",
+ "acp": {
+  "type": "AccessPolicy",
+  "name": "mcp-w6-acp",
+  "id": "00000000-0000-0ed3-0000-021474963108"
+ },
+ "object/fqdns": {
+  "items": [
+   {
+    "type": "FQDN",
+    "dnsResolution": "IPV4_AND_IPV6",
+    "value": "cisco.com",
+    "overridable": false,
+    "description": "W6 live-B2 F69 FQDN rule proof",
+    "name": "mcp-w6-fqdn",
+    "id": "00000000-0000-0ed3-0000-021474996491",
+    "metadata": {
+     "timestamp": 1792563025177,
+     "lastUser": {
+      "name": "mcp-api-svc"
+     },
+     "domain": {
+      "name": "Global \\ mcp-test-leaf",
+      "id": "e276abec-e0f2-11e3-8169-6d9ed49b625f",
+      "type": "Domain"
+     },
+     "parentType": "NetworkAddress"
+    }
+   },
+   {
+    "type": "FQDN",
+    "dnsResolution": "IPV4_AND_IPV6",
+    "value": "bad.example.com",
+    "overridable": false,
+    "description": "F79 unit seed",
+    "name": "mcp-w6-fqdn-apex",
+    "id": "00000000-0000-0ed3-0000-021479000001",
+    "metadata": {
+     "timestamp": 1792563025177,
+     "lastUser": {
+      "name": "mcp-api-svc"
+     },
+     "domain": {
+      "name": "Global \\ mcp-test-leaf",
+      "id": "e276abec-e0f2-11e3-8169-6d9ed49b625f",
+      "type": "Domain"
+     },
+     "parentType": "NetworkAddress"
+    }
+   },
+   {
+    "type": "FQDN",
+    "dnsResolution": "IPV4_AND_IPV6",
+    "value": "dl.bad.example.com",
+    "overridable": false,
+    "description": "F79 unit seed",
+    "name": "mcp-w6-fqdn-dl",
+    "id": "00000000-0000-0ed3-0000-021479000002",
+    "metadata": {
+     "timestamp": 1792563025177,
+     "lastUser": {
+      "name": "mcp-api-svc"
+     },
+     "domain": {
+      "name": "Global \\ mcp-test-leaf",
+      "id": "e276abec-e0f2-11e3-8169-6d9ed49b625f",
+      "type": "Domain"
+     },
+     "parentType": "NetworkAddress"
+    }
+   }
+  ],
+  "paging": {
+   "count": 3
+  }
+ },
+ "object/urls": {
+  "items": [
+   {
+    "type": "Url",
+    "url": "https://example.com",
+    "overridable": false,
+    "name": "mcp-test-url",
+    "id": "00000000-0000-0ed3-0000-021474836748",
+    "metadata": {
+     "readOnly": {
+      "state": true,
+      "reason": "DOMAIN"
+     },
+     "timestamp": 1792202024541,
+     "lastUser": {
+      "name": "mcp-api-svc"
+     },
+     "domain": {
+      "name": "Global",
+      "id": "99999999-0000-4000-8000-000000000001",
+      "type": "Domain"
+     }
+    }
+   },
+   {
+    "type": "Url",
+    "url": "bad.example.com",
+    "overridable": false,
+    "name": "mcp-si-bad.example.com",
+    "id": "00000000-0000-0ed3-0000-021479000101",
+    "metadata": {
+     "timestamp": 1792563025177,
+     "lastUser": {
+      "name": "mcp-api-svc"
+     },
+     "domain": {
+      "name": "Global \\ mcp-test-leaf",
+      "id": "e276abec-e0f2-11e3-8169-6d9ed49b625f",
+      "type": "Domain"
+     }
+    },
+    "description": "Security Intelligence block (fmc_si_block): bad.example.com"
+   },
+   {
+    "type": "Url",
+    "url": "http://bad.example.com/payload.exe",
+    "overridable": false,
+    "name": "mcp-w6-url-payload",
+    "id": "00000000-0000-0ed3-0000-021479000102",
+    "metadata": {
+     "timestamp": 1792563025177,
+     "lastUser": {
+      "name": "mcp-api-svc"
+     },
+     "domain": {
+      "name": "Global \\ mcp-test-leaf",
+      "id": "e276abec-e0f2-11e3-8169-6d9ed49b625f",
+      "type": "Domain"
+     }
+    }
+   },
+   {
+    "type": "Url",
+    "url": "https://other.example.net/login",
+    "overridable": false,
+    "name": "mcp-w6-url-other",
+    "id": "00000000-0000-0ed3-0000-021479000103",
+    "metadata": {
+     "timestamp": 1792563025177,
+     "lastUser": {
+      "name": "mcp-api-svc"
+     },
+     "domain": {
+      "name": "Global \\ mcp-test-leaf",
+      "id": "e276abec-e0f2-11e3-8169-6d9ed49b625f",
+      "type": "Domain"
+     }
+    }
+   }
+  ],
+  "paging": {
+   "count": 4
+  }
+ },
+ "object/urlgroups": {
+  "items": [
+   {
+    "type": "UrlGroup",
+    "objects": [
+     {
+      "type": "Url",
+      "name": "mcp-w6-url-payload",
+      "id": "00000000-0000-0ed3-0000-021479000102"
+     }
+    ],
+    "literals": [
+     {
+      "type": "Url",
+      "url": "evil.test"
+     }
+    ],
+    "overridable": false,
+    "name": "mcp-w6-urlgrp",
+    "id": "00000000-0000-0ed3-0000-021479000201",
+    "metadata": {
+     "timestamp": 1792563025177,
+     "lastUser": {
+      "name": "mcp-api-svc"
+     },
+     "domain": {
+      "name": "Global \\ mcp-test-leaf",
+      "id": "e276abec-e0f2-11e3-8169-6d9ed49b625f",
+      "type": "Domain"
+     }
+    }
+   }
+  ],
+  "paging": {
+   "count": 1
+  }
+ },
+ "networkgroup_fqdn": {
+  "type": "NetworkGroup",
+  "objects": [
+   {
+    "type": "FQDN",
+    "overridable": false,
+    "name": "mcp-w6-fqdn-dl",
+    "id": "00000000-0000-0ed3-0000-021479000002"
+   },
+   {
+    "type": "Host",
+    "overridable": false,
+    "name": "mcp-test-web",
+    "id": "00000000-0000-0ed3-0000-021474837286"
+   }
+  ],
+  "overridable": false,
+  "name": "mcp-w6-fqdn-grp",
+  "id": "00000000-0000-0ed3-0000-021479000301",
+  "metadata": {
+   "timestamp": 1792563025177,
+   "lastUser": {
+    "name": "mcp-api-svc"
+   },
+   "domain": {
+    "name": "Global \\ mcp-test-leaf",
+    "id": "e276abec-e0f2-11e3-8169-6d9ed49b625f",
+    "type": "Domain"
+   }
+  }
+ },
+ "object/siurlfeeds": {
+  "items": [
+   {
+    "metadata": {
+     "readOnly": {
+      "state": false
+     },
+     "entryCount": 0,
+     "validEntries": [
+      "bad.example.com",
+      "other.example.net/x"
+     ],
+     "timestamp": 1792365076,
+     "lastUser": {
+      "name": "admin",
+      "id": "68d03c42-d9bd-11dc-89f2-b7961d42c462",
+      "type": "user"
+     },
+     "domain": {
+      "name": "Global \\ mcp-test-leaf",
+      "id": "e276abec-e0f2-11e3-8169-6d9ed49b625f",
+      "type": "Domain"
+     }
+    },
+    "type": "SIURLFeed",
+    "id": "391fa90a-cb49-11f1-a5c2-000000000001",
+    "name": "mcp-w6-feed-url",
+    "feedURL": "http://feed.example.test/url.txt",
+    "updateFrequency": 30
+   }
+  ],
+  "paging": {
+   "count": 1
+  }
+ },
+ "object/sidnsfeeds": {
+  "items": [
+   {
+    "metadata": {
+     "readOnly": {
+      "state": false
+     },
+     "entryCount": 0,
+     "timestamp": 1792365076,
+     "lastUser": {
+      "name": "admin",
+      "id": "68d03c42-d9bd-11dc-89f2-b7961d42c462",
+      "type": "user"
+     },
+     "domain": {
+      "name": "Global \\ mcp-test-leaf",
+      "id": "e276abec-e0f2-11e3-8169-6d9ed49b625f",
+      "type": "Domain"
+     }
+    },
+    "type": "SIDNSFeed",
+    "id": "391fa90a-cb49-11f1-a5c2-000000000002",
+    "name": "mcp-w6-feed-dns",
+    "feedURL": "http://feed.example.test/dns.txt",
+    "updateFrequency": 30
+   }
+  ],
+  "paging": {
+   "count": 1
+  }
+ },
+ "object/customsidnslists": {
+  "items": [
+   {
+    "fileName": "mcp-dns-bad.example.com.fmc-mcp.txt",
+    "name": "mcp-dns-bad.example.com",
+    "type": "CustomSIDNSListObject",
+    "id": "039c5244-9568-11ed-b64f-000000000001",
+    "metadata": {
+     "readOnly": {
+      "state": false
+     },
+     "entryCount": 1,
+     "timestamp": 1792365076,
+     "lastUser": {
+      "name": "mcp-api-svc"
+     },
+     "domain": {
+      "name": "Global \\ mcp-test-leaf",
+      "id": "e276abec-e0f2-11e3-8169-6d9ed49b625f",
+      "type": "Domain"
+     }
+    }
+   },
+   {
+    "fileName": "soc-iocs.txt",
+    "name": "soc-iocs",
+    "type": "CustomSIDNSListObject",
+    "id": "039c5244-9568-11ed-b64f-000000000002",
+    "metadata": {
+     "readOnly": {
+      "state": false
+     },
+     "entryCount": 12,
+     "timestamp": 1792365076,
+     "lastUser": {
+      "name": "admin"
+     },
+     "domain": {
+      "name": "Global \\ mcp-test-leaf",
+      "id": "e276abec-e0f2-11e3-8169-6d9ed49b625f",
+      "type": "Domain"
+     }
+    }
+   }
+  ],
+  "paging": {
+   "count": 2
+  }
+ },
+ "securityintelligencepolicies": {
+  "items": [
+   {
+    "id": "00000000-0000-0ed3-0000-021474901902",
+    "type": "SecurityIntelligencePolicy",
+    "urls": {
+     "allowlist": [
+      {
+       "url": {
+        "name": "Domain-Do-Not-Block-List-for-URL-mcp-test-leaf",
+        "id": "916cc1ba-c9d7-11f1-b4f6-cdbc6f180443",
+        "type": "SIURLList"
+       }
+      },
+      {
+       "url": {
+        "name": "Global Do-Not-Block List for URL",
+        "id": "5915d129-0d33-4e9c-969a-eab3cde32156",
+        "type": "SIURLList"
+       }
+      }
+     ],
+     "blocklist": [
+      {
+       "url": {
+        "name": "Domain-Block-List-for-URL-mcp-test-leaf",
+        "id": "9236e33c-c9d7-11f1-b4f6-cdbc6f180443",
+        "type": "SIURLList"
+       }
+      },
+      {
+       "url": {
+        "name": "Global Block List for URL",
+        "id": "127dc4a2-1ea3-4423-a02d-1f02069828ac",
+        "type": "SIURLList"
+       }
+      },
+      {
+       "url": {
+        "name": "mcp-si-bad.example.com",
+        "id": "00000000-0000-0ed3-0000-021479000101",
+        "type": "Url"
+       }
+      },
+      {
+       "url": {
+        "name": "mcp-w6-feed-url",
+        "id": "391fa90a-cb49-11f1-a5c2-000000000001",
+        "type": "SIURLFeed"
+       }
+      },
+      {
+       "url": {
+        "name": "URL Malware",
+        "id": "23f2a124-8278-4c03-8c9d-d28fe08b0000",
+        "type": "SIURLList"
+       }
+      }
+     ],
+     "blocklistLogging": {
+      "enableLogging": true,
+      "sendLogsToSyslogServer": false,
+      "sendLogsToEventViewer": true
+     }
+    },
+    "networks": {
+     "allowlist": [
+      {
+       "network": {
+        "name": "Domain-Do-Not-Block-List-mcp-test-leaf",
+        "id": "8f05bd1e-c9d7-11f1-b4f6-cdbc6f180443",
+        "type": "SINetworkList"
+       }
+      },
+      {
+       "network": {
+        "name": "Global Do-Not-Block List",
+        "id": "d8eea83e-6167-11e1-a154-589de99bfdf1",
+        "type": "SINetworkList"
+       }
+      }
+     ],
+     "blocklist": [
+      {
+       "network": {
+        "name": "Domain-Block-List-mcp-test-leaf",
+        "id": "8f3e82fc-c9d7-11f1-b4f6-cdbc6f180443",
+        "type": "SINetworkList"
+       }
+      },
+      {
+       "network": {
+        "name": "Global Block List",
+        "id": "c76556bc-6167-11e1-88e8-479de99bfdf1",
+        "type": "SINetworkList"
+       }
+      }
+     ],
+     "blocklistLogging": {
+      "enableLogging": true,
+      "sendLogsToSyslogServer": false,
+      "sendLogsToEventViewer": true
+     }
+    },
+    "metadata": {
+     "timestamp": 1792330616435
+    },
+    "dnsPolicy": {
+     "blocklistLogging": {
+      "enableLogging": true,
+      "sendLogsToSyslogServer": false,
+      "sendLogsToEventViewer": true
+     },
+     "id": "00000000-0000-0ed3-0000-021479000401",
+     "name": "mcp-w6-dns alias",
+     "type": "DNSPolicy"
+    }
+   }
+  ],
+  "paging": {
+   "offset": 0,
+   "limit": 25,
+   "count": 1,
+   "pages": 1
+  }
+ },
+ "dnspolicy": {
+  "metadata": {
+   "readOnly": {
+    "state": false
+   },
+   "timestamp": 1792365076,
+   "domain": {
+    "name": "Global \\ mcp-test-leaf",
+    "id": "e276abec-e0f2-11e3-8169-6d9ed49b625f",
+    "type": "Domain"
+   }
+  },
+  "id": "00000000-0000-0ed3-0000-021479000401",
+  "name": "mcp-w6-dns",
+  "type": "DNSPolicy"
+ },
+ "default_dnspolicy": {
+  "metadata": {
+   "readOnly": {
+    "state": true
+   },
+   "timestamp": 1775158277,
+   "lastUser": {
+    "name": "admin",
+    "id": "68d03c42-d9bd-11dc-89f2-b7961d42c462",
+    "type": "user"
+   },
+   "domain": {
+    "name": "Global",
+    "id": "e276abec-e0f2-11e3-8169-6d9ed49b625f",
+    "type": "Domain"
+   }
+  },
+  "id": "dc906e6e-69ed-11e4-82ce-87dc73eef419",
+  "name": "Default DNS Policy",
+  "description": "Default DNS Policy with Global Block List and Global Do-Not-Block List",
+  "type": "DNSPolicy"
+ },
+ "dnsrules": {
+  "items": [
+   {
+    "metadata": {
+     "readOnly": {
+      "state": true
+     },
+     "ruleIndex": 1,
+     "timestamp": 1775158277,
+     "lastUser": {
+      "name": "admin",
+      "id": "68d03c42-d9bd-11dc-89f2-b7961d42c462",
+      "type": "user"
+     },
+     "domain": {
+      "name": "Global",
+      "id": "e276abec-e0f2-11e3-8169-6d9ed49b625f",
+      "type": "Domain"
+     }
+    },
+    "enabled": true,
+    "systemDefault": true,
+    "action": "ALLOW",
+    "sourceZones": [],
+    "dnsLists": {
+     "objects": [
+      {
+       "name": "Global-Do-Not-Block-List-for-DNS",
+       "id": "663da2e4-32f4-44d2-ad1f-8d6182720d32",
+       "type": "SIDNSList"
+      }
+     ]
+    },
+    "networks": {},
+    "vlanTags": {},
+    "name": "Global Do-Not-Block List for DNS",
+    "type": "DNSRule"
+   },
+   {
+    "metadata": {
+     "readOnly": {
+      "state": true
+     },
+     "ruleIndex": 2,
+     "timestamp": 1775158277,
+     "lastUser": {
+      "name": "admin",
+      "id": "68d03c42-d9bd-11dc-89f2-b7961d42c462",
+      "type": "user"
+     },
+     "domain": {
+      "name": "Global",
+      "id": "e276abec-e0f2-11e3-8169-6d9ed49b625f",
+      "type": "Domain"
+     }
+    },
+    "enabled": false,
+    "systemDefault": true,
+    "action": "ALLOW",
+    "sourceZones": [],
+    "dnsLists": {
+     "objects": [
+      {
+       "name": "Descendant-Do-Not-Block-Lists-for-DNS_-_Global",
+       "id": "17a11eb0-ff56-11e4-9081-764afb0f5dcb",
+       "type": "SIDNSList"
+      }
+     ]
+    },
+    "networks": {},
+    "vlanTags": {},
+    "name": "Descendant Do-Not-Block Lists for DNS - Global",
+    "type": "DNSRule"
+   },
+   {
+    "metadata": {
+     "readOnly": {
+      "state": true
+     },
+     "ruleIndex": 3,
+     "timestamp": 1775158277,
+     "lastUser": {
+      "name": "admin",
+      "id": "68d03c42-d9bd-11dc-89f2-b7961d42c462",
+      "type": "user"
+     },
+     "domain": {
+      "name": "Global",
+      "id": "e276abec-e0f2-11e3-8169-6d9ed49b625f",
+      "type": "Domain"
+     }
+    },
+    "enabled": true,
+    "systemDefault": true,
+    "action": "NXDOMAIN",
+    "sourceZones": [],
+    "dnsLists": {
+     "objects": [
+      {
+       "name": "Global-Block-List-for-DNS",
+       "id": "ded9848d-3580-4ca1-9d3c-04113549f129",
+       "type": "SIDNSList"
+      }
+     ]
+    },
+    "networks": {},
+    "vlanTags": {},
+    "name": "Global Block List for DNS",
+    "type": "DNSRule"
+   },
+   {
+    "metadata": {
+     "readOnly": {
+      "state": true
+     },
+     "ruleIndex": 4,
+     "timestamp": 1775158277,
+     "lastUser": {
+      "name": "admin",
+      "id": "68d03c42-d9bd-11dc-89f2-b7961d42c462",
+      "type": "user"
+     },
+     "domain": {
+      "name": "Global",
+      "id": "e276abec-e0f2-11e3-8169-6d9ed49b625f",
+      "type": "Domain"
+     }
+    },
+    "enabled": false,
+    "systemDefault": true,
+    "action": "NXDOMAIN",
+    "sourceZones": [],
+    "dnsLists": {
+     "objects": [
+      {
+       "name": "Descendant-Block-Lists-for-DNS_-_Global",
+       "id": "1fca9c10-ff56-11e4-866e-ad4afb0f5dcb",
+       "type": "SIDNSList"
+      }
+     ]
+    },
+    "networks": {},
+    "vlanTags": {},
+    "name": "Descendant Block Lists for DNS - Global",
+    "type": "DNSRule"
+   },
+   {
+    "metadata": {
+     "ruleIndex": 5,
+     "timestamp": 1792365076,
+     "domain": {
+      "name": "Global \\ mcp-test-leaf",
+      "id": "e276abec-e0f2-11e3-8169-6d9ed49b625f",
+      "type": "Domain"
+     }
+    },
+    "enabled": true,
+    "action": "NXDOMAIN",
+    "sourceZones": [],
+    "dnsLists": {
+     "objects": [
+      {
+       "name": "mcp-dns-bad.example.com",
+       "id": "039c5244-9568-11ed-b64f-000000000001",
+       "type": "CustomSIDNSListObject"
+      },
+      {
+       "name": "soc-iocs",
+       "id": "039c5244-9568-11ed-b64f-000000000002",
+       "type": "SIDNSList"
+      }
+     ]
+    },
+    "dnsFeeds": {
+     "objects": [
+      {
+       "name": "mcp-w6-feed-dns",
+       "id": "391fa90a-cb49-11f1-a5c2-000000000002",
+       "type": "SIDNSFeed"
+      }
+     ]
+    },
+    "networks": {},
+    "vlanTags": {},
+    "name": "mcp-dns-block",
+    "type": "DNSRule",
+    "id": "00000000-0000-0ed3-0000-021479000402"
+   }
+  ],
+  "paging": {
+   "offset": 0,
+   "limit": 25,
+   "count": 4,
+   "pages": 1
+  }
+ },
+ "accessrules": {
+  "items": [
+   {
+    "metadata": {
+     "ruleIndex": 1,
+     "section": "Default",
+     "category": "--Undefined--"
+    },
+    "enabled": true,
+    "sourceNetworks": {
+     "objects": [
+      {
+       "type": "Network",
+       "overridable": false,
+       "name": "mcp-test-ftd-inside-net",
+       "id": "00000000-0000-0ed3-0000-021474841321"
+      }
+     ]
+    },
+    "destinationNetworks": {
+     "objects": [
+      {
+       "type": "FQDN",
+       "overridable": false,
+       "name": "mcp-w6-fqdn",
+       "id": "00000000-0000-0ed3-0000-021474996491"
+      }
+     ]
+    },
+    "destinationPorts": {
+     "literals": [
+      {
+       "type": "PortLiteral",
+       "port": "443",
+       "protocol": "6"
+      }
+     ]
+    },
+    "action": "ALLOW",
+    "type": "AccessRule",
+    "name": "mcp-w6-fqdn-allow",
+    "id": "00000000-0000-0ed3-0000-000268434534"
+   },
+   {
+    "metadata": {
+     "ruleIndex": 2,
+     "section": "Default",
+     "category": "--Undefined--"
+    },
+    "enabled": true,
+    "urls": {
+     "objects": [
+      {
+       "type": "UrlGroup",
+       "name": "mcp-w6-urlgrp",
+       "id": "00000000-0000-0ed3-0000-021479000201"
+      }
+     ],
+     "literals": [
+      {
+       "type": "Url",
+       "url": "https://bad.example.com/"
+      }
+     ],
+     "urlCategoriesWithReputation": [
+      {
+       "type": "UrlCategoryAndReputation",
+       "category": {
+        "name": "Malware Sites",
+        "id": "cat-1",
+        "type": "URLCategory"
+       },
+       "reputation": "QUESTIONABLE_AND_UNKNOWN"
+      }
+     ]
+    },
+    "action": "BLOCK",
+    "type": "AccessRule",
+    "name": "mcp-w6-url-block",
+    "id": "00000000-0000-0ed3-0000-000268434600"
+   },
+   {
+    "metadata": {
+     "ruleIndex": 3,
+     "section": "Default",
+     "category": "--Undefined--"
+    },
+    "enabled": false,
+    "destinationNetworks": {
+     "objects": [
+      {
+       "type": "NetworkGroup",
+       "overridable": false,
+       "name": "mcp-w6-fqdn-grp",
+       "id": "00000000-0000-0ed3-0000-021479000301"
+      }
+     ]
+    },
+    "action": "ALLOW",
+    "type": "AccessRule",
+    "name": "mcp-w6-dl-allow",
+    "id": "00000000-0000-0ed3-0000-000268434601"
+   },
+   {
+    "metadata": {
+     "ruleIndex": 4,
+     "section": "Default",
+     "category": "--Undefined--"
+    },
+    "enabled": true,
+    "destinationNetworks": {
+     "literals": [
+      {
+       "type": "Host",
+       "value": "192.0.2.10"
+      }
+     ]
+    },
+    "action": "ALLOW",
+    "type": "AccessRule",
+    "name": "mcp-w6-ip-only",
+    "id": "00000000-0000-0ed3-0000-000268434602"
+   }
+  ],
+  "paging": {
+   "count": 4
+  }
+ },
+ "decryptionpolicy": {
+  "id": "f4f0302c-cb4a-11f1-987d-cf906f180443",
+  "name": "mcp-fw-dec",
+  "type": "DecryptionPolicy"
+ },
+ "decryptionpolicyrules": {
+  "items": [
+   {
+    "metadata": {
+     "ruleIndex": 1
+    },
+    "enabled": true,
+    "ruleAction": "DO_NOT_DECRYPT",
+    "urls": {
+     "literals": [
+      {
+       "type": "Url",
+       "url": "bad.example.com"
+      }
+     ]
+    },
+    "name": "mcp-w6-dnd-bad",
+    "type": "DecryptionPolicyRule",
+    "id": "00000000-0000-0ed3-0000-021479000501"
+   }
+  ],
+  "paging": {
+   "count": 1
+  }
+ },
+ "siurllist_domain_block": {
+  "metadata": {
+   "readOnly": {
+    "state": true
+   },
+   "entryCount": 1,
+   "validEntries": [
+    "evil.test"
+   ],
+   "timestamp": 1792206312,
+   "domain": {
+    "name": "Global \\ mcp-test-leaf",
+    "id": "e276abec-e0f2-11e3-8169-6d9ed49b625f",
+    "type": "Domain"
+   }
+  },
+  "type": "SIURLList",
+  "id": "9236e33c-c9d7-11f1-b4f6-cdbc6f180443",
+  "name": "Domain-Block-List-for-URL-mcp-test-leaf"
+ },
+ "siurllist_global_block": {
+  "metadata": {
+   "readOnly": {
+    "state": true
+   },
+   "entryCount": 0,
+   "timestamp": 1775158277,
+   "domain": {
+    "name": "Global",
+    "id": "99999999-0000-4000-8000-000000000001",
+    "type": "Domain"
+   }
+  },
+  "type": "SIURLList",
+  "id": "127dc4a2-1ea3-4423-a02d-1f02069828ac",
+  "name": "Global-Block-List-for-URL"
+ },
+ "sidnslist_global_block": {
+  "metadata": {
+   "readOnly": {
+    "state": true
+   },
+   "entryCount": 0,
+   "timestamp": 1775158277,
+   "domain": {
+    "name": "Global",
+    "id": "99999999-0000-4000-8000-000000000001",
+    "type": "Domain"
+   }
+  },
+  "type": "SIDNSList",
+  "id": "ded9848d-3580-4ca1-9d3c-04113549f129",
+  "name": "Global-Block-List-for-DNS"
+ }
+}

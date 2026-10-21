@@ -59,7 +59,14 @@ class Settings(BaseServerSettings):
         description="Directory on the server host that fmc_import_certificate_files reads PEM certificate, "
         "key and passphrase files from (an existing CA for decrypt-resign, a server certificate for "
         "decrypt-known-key), so private keys never pass through MCP. Unset: file imports are off "
-        "(fmc_create_internal_ca still works: FMC generates the key).",
+        "(fmc_create_internal_ca still works: FMC generates the key). fmc_create_cert_enrollment reads "
+        "PKCS12 files, CA certificates and SCEP/EST password files from it too.",
+    )
+    pki_passphrase: SecretStr | None = Field(
+        default=None,
+        description="Passphrase of the PKCS12 files fmc_create_cert_enrollment reads from FMC_PKI_DIR, used "
+        "when the call names no passphrase_file, so the passphrase never passes through MCP. Also as "
+        "FMC_PKI_PASSPHRASE_FILE or FMC_PKI_PASSPHRASE_REF.",
     )
     toolsets: str | None = Field(
         default=None,

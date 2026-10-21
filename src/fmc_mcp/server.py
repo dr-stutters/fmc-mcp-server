@@ -22,6 +22,7 @@ from fmc_mcp.tools import (
     bundle,
     bundle_import,
     certificates,
+    compliance,
     conditions,
     containment,
     dangerous,
@@ -35,10 +36,13 @@ from fmc_mcp.tools import (
     devices,
     dns,
     dynamic_objects,
+    enrollment,
     file_policy,
     find_address,
+    find_indicator,
     fleet,
     ha,
+    hardening,
     hygiene,
     identity,
     identity_sources,
@@ -55,12 +59,14 @@ from fmc_mcp.tools import (
     platform_services,
     platform_settings,
     policies,
+    policy_structure,
     policy_writes,
     prefilter,
     profiling,
     prompts,
     prove,
     registration,
+    route_policy,
     routing,
     rule_io,
     sdwan,
@@ -117,9 +123,14 @@ Workflows:
   fmc_set_access_logging sends connection/intrusion events there too. NetFlow to a collector:
   fmc_configure_netflow; DNS (FQDN objects in rules only match once the device has a DNS server group;
   rule and FQDN object previews warn): fmc_configure_dns; ICMP/HTTPS access and the login banner:
-  fmc_configure_mgmt_access, fmc_set_banner.
+  fmc_configure_mgmt_access, fmc_set_banner. Hardening against a baseline (each finding with its source and
+  fix tool): fmc_hardening_check; an auditor's evidence pack: the fmc_compliance_evidence prompt
+  (fmc_export_access_rules evidence=true: hits, logging, last change and user, deployment, ticket per rule).
 - Dynamic routing: fmc_get_routing (BGP, OSPF, ECMP, PBR, VRFs) -> fmc_configure_bgp /
   fmc_configure_ospf / fmc_create_vrf -> fmc_deploy -> fmc_run_show_command('show route').
+  Route policy: fmc_create_prefix_list / fmc_create_route_map, then fmc_configure_bgp
+  (neighbor_route_map_in/out, neighbor_prefix_list_in/out, max_prefix, default_originate,
+  redistribute) or fmc_configure_ospf(redistribute) -> fmc_deploy -> 'show route bgp'.
 - SD-WAN (hub and spoke over VTIs): zone the WAN and inside interfaces (fmc_update_interface) ->
   fmc_create_sdwan_topology (hub DVTI, spoke pool, spokes, backup hub, iBGP overlay) -> fmc_deploy hubs
   and spokes -> fmc_get_vpn_topology / fmc_list_vpn_tunnels; add or remove branches and the backup hub
@@ -151,8 +162,9 @@ Workflows:
   UI-only).
 - Application, VLAN, time and SGT rules: fmc_find_application (an app or filter by exact name or id, with
   risk and business relevance) -> fmc_create_application_filter / fmc_create_time_range if needed ->
-  fmc_create_access_rule applications=[...], application_filters=[...], vlan_tags=[...], time_range=...,
-  source_sgts=[...] (ISE SGTs by name or tag) -> fmc_deploy -> fmc_get_hit_counts after real traffic
+  fmc_create_access_rule applications=[...], application_filters=[...] or inline_app_filter={risks: [...]}
+  (no filter object), vlan_tags=[...], time_range=..., source_sgts=[...] (ISE SGTs by name or tag) ->
+  fmc_deploy -> fmc_get_hit_counts after real traffic
   (packet tracer can't simulate app-id).
 - Users and groups in access rules (AD/LDAP): fmc_create_trusted_ca (LDAPS) -> fmc_create_realm ->
   fmc_test_realm -> fmc_download_realm -> fmc_create_identity_policy + fmc_create_identity_rule (PASSIVE
@@ -175,10 +187,21 @@ Workflows:
   (BLOCK_WITH_RESET with tls_versions=['sslv3','tls10','tls11'], another with cipher_suite_lists; above any
   DECRYPT_RESIGN rule) -> fmc_update_decryption_policy undecryptable={'unsupported_cipher_suite':
   'BLOCK_WITH_RESET'} (else RC4 passes a resign rule undecrypted) -> fmc_deploy.
+- One corporate policy, a child per site: fmc_create_access_policy(base_policy=<parent>) or
+  fmc_set_base_policy (the parent's Mandatory rules run first, its Default rules last) -> fmc_assign_policy
+  -> fmc_pending_changes -> fmc_deploy. Rule categories: fmc_create_category / fmc_rename_category /
+  fmc_delete_category, fmc_update_access_rule(category=...). Change windows: fmc_policy_lock; another
+  user's lock blocks a write preview with their name (fmc_get_access_policy shows the holder).
+- Device certificates (RA VPN, certificate-authenticated S2S): fmc_create_cert_enrollment (self_signed;
+  pkcs12 read from FMC_PKI_DIR; manual_ca_only; scep; est) -> fmc_enroll_certificate(device, enrollment)
+  (reaches the device at once, no deploy; also re_enroll, refresh, delete) ->
+  fmc_list_certificates(device=...).
 - PoC to production / domain to domain: fmc_export_policy_bundle -> fmc_plan_policy_bundle_import (target
   domain) -> fmc_import_policy_bundle -> fmc_diff_policy_bundle against live -> assign + fmc_deploy.
 - "Where does 10.1.2.3 appear?": fmc_find_address (objects and groups, dynamic-object mappings, access,
   prefilter and NAT rules, static routes, VPN endpoints in one ranked call) -> fmc_where_used on an object.
+  A domain, URL or hash: fmc_find_indicator (FQDN/URL objects, access and decryption rules, SI URL lists,
+  DNS policy rules, SI feeds and lists).
 - Policy review: fmc_policy_audit ranks shadowed, permissive, unlogged, uninspected, unused and mergeable
   rules, expired time ranges and duplicate objects, each with a fix to preview; groups of identical fixes
   go through fmc_bulk_update_access_rules (one preview, every rule's diff; select by names or
@@ -273,6 +296,7 @@ REGISTER: list[Callable[[ToolRegistrar], None]] = [
     objects.register,
     analysis.register,
     find_address.register,
+    find_indicator.register,
     hygiene.register,
     threat_posture.register,
     deploy.register,
@@ -282,6 +306,7 @@ REGISTER: list[Callable[[ToolRegistrar], None]] = [
     object_import.register,
     object_lifecycle.register,
     policy_writes.register,
+    policy_structure.register,
     bulk_rules.register,
     dangerous.register,
     registration.register,
@@ -306,7 +331,9 @@ REGISTER: list[Callable[[ToolRegistrar], None]] = [
     platform_settings.register,
     platform_access.register,
     platform_services.register,
+    hardening.register,
     routing.register,
+    route_policy.register,
     app_routing.register,
     intrusion.register,
     file_policy.register,
@@ -320,12 +347,14 @@ REGISTER: list[Callable[[ToolRegistrar], None]] = [
     tickets.register,
     pki.register,
     certificates.register,
+    enrollment.register,
     decryption.register,
     decryption_check.register,
     dns.register,
     identity.register,
     identity_sources.register,
     prompts.register,
+    compliance.register,
 ]
 
 

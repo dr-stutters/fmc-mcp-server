@@ -34,6 +34,13 @@ Stop and report when a step fails; keep notes of what each step returned.
    - `fmc_get_device` on one existing spoke: model, version, licences, access, NAT and
      platform settings policies. The new branch should match it; "mcp-fw-branch1" gets the same access policy
      unless the user named one.
+   - Site policy (ask the user): when every site should run the corporate rules plus its own, give the
+     branch a child policy of the spokes' access policy instead: `fmc_get_access_policy` on it
+     (its base chain, lock and categories), then `fmc_create_access_policy`
+     name=<the site's policy, e.g. the branch name + '-acp'>, base_policy=<the spokes' policy> (the
+     preview lists the rules it inherits) and use that child as the access policy from step 2 on. The
+     parent's Mandatory rules still run first. A parent locked by someone else (the preview names them)
+     means a change is in progress: ask.
    - `fmc_sdwan_status` topology="mcp-fw-t1": the hubs must be healthy before a branch joins.
 
 1. The FTD must point at this FMC: `show managers` on its CLI lists the FMC as pending (CML:
