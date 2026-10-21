@@ -226,8 +226,11 @@ def dump(data: Any) -> str:
 
 
 def digest_of(bundle: dict[str, Any]) -> str:
-    """sha256 of the bundle without meta.exported_at / meta.digest: equal for an unchanged policy."""
-    meta = {k: v for k, v in (bundle.get("meta") or {}).items() if k not in ("exported_at", "digest")}
+    """sha256 of the bundle without meta.exported_at / meta.digest / meta.label (a device snapshot's note,
+    not its state): equal for an unchanged policy or device."""
+    meta = {
+        k: v for k, v in (bundle.get("meta") or {}).items() if k not in ("exported_at", "digest", "label")
+    }
     body = dump({**bundle, "meta": meta})
     return "sha256:" + hashlib.sha256(body.encode()).hexdigest()
 
