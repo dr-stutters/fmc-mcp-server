@@ -329,9 +329,20 @@ def own_logging(fmc: respx.MockRouter, policy_id: str) -> respx.Route:
     )
 
 
+def base_logging(fmc: respx.MockRouter, policy_id: str, setting: dict[str, Any] | None = None) -> respx.Route:
+    """A base policy's Logging settings: by default mcp-w6-acp's as recorded live (syslog to the platform
+    settings), which a child with FMC's defaults must inherit to deploy."""
+    live = fixture("child_logging_fmc10")
+    setting = setting or live["parent_loggingsettings"]["items"][0]
+    return fmc.get(f"{CFG}/policy/accesspolicies/{policy_id}/loggingsettings").mock(
+        return_value=items([setting])
+    )
+
+
 def child_and_parent(fmc: respx.MockRouter) -> None:
     acp_list(fmc, ACP, CHILD_ACP)
     own_logging(fmc, CHILD)
+    base_logging(fmc, ACP_ID)
     fmc.get(f"{CFG}/policy/accesspolicies/{ACP_ID}/accessrules").mock(
         return_value=httpx.Response(200, json=fixture("accessrules"))
     )
@@ -385,6 +396,7 @@ async def test_set_base_policy_counts_the_devices_of_policies_below(fmc: respx.M
     corp = {**copy.deepcopy(ACP), "id": corp_id, "name": "mcp-w6-corp-acp"}
     acp_list(fmc, ACP, CHILD_ACP, corp)
     own_logging(fmc, ACP_ID)
+    base_logging(fmc, corp_id)
     fmc.get(f"{CFG}/policy/accesspolicies/{corp_id}/accessrules").mock(return_value=empty())
     no_base(fmc, corp_id)
     no_base(fmc, ACP_ID)
