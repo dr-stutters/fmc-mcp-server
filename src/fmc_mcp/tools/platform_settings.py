@@ -43,7 +43,11 @@ SINGLE = {
     "http_access": "httpaccesssettings",
     "banner": "bannersettings",
     "dns": "dnssettings",
+    "trusted_dns": "trusteddnssettings",
+    "netflow": "netflowpolicies",
+    "icmp": "icmpsettings",
 }
+NEWER = {"trusted_dns", "netflow", "icmp"}  # read when the FMC has them (F69)
 LISTS = {
     "logging_destinations": "syslog/loggingdestinations",
     "event_lists": "syslog/eventlists",
@@ -149,6 +153,144 @@ def server_key(s: dict[str, Any]) -> str:
     return _norm(str(_addr(s.get("ipAddress")) or ""))
 
 
+# --- readable summaries of the F69 sections (DNS, trusted DNS, NetFlow, ICMP, HTTP, banner) ---------
+
+
+def wrapper_labels(block: Any) -> list[str]:
+    if not isinstance(block, dict):
+        return []
+    return sorted(
+        [ref_label(o) for o in block.get("objects") or []] + [str(x) for x in block.get("literals") or []]
+    )
+
+
+def dns_summary(d: dict[str, Any]) -> dict[str, Any] | None:
+    groups = d.get("dnsServerGroups") or []
+    out = {
+        "server_groups": [
+            {
+                "group": ref_label(g.get("dnsServerGroup") or {}),
+                "default": bool(g.get("isDefault")),
+                "domains": g.get("bypassDomains") or None,
+            }
+            for g in groups
+        ]
+        or None,
+        "lookup_via_management": d.get("enableLookupViaMgmt"),
+        "interfaces": wrapper_labels({"objects": d.get("interfaceObjects") or []}) or None,
+        "poll_minutes": d.get("pollTimerInMins"),
+        "expiry_minutes": d.get("expiryTimerInMins"),
+    }
+    out = {k: v for k, v in out.items() if v is not None}
+    if not groups:
+        out["note"] = (
+            "No DNS server group: FQDN objects in rules never resolve on these devices (fmc_configure_dns)."
+        )
+    return out
+
+
+def trusted_dns_summary(t: dict[str, Any]) -> dict[str, Any] | None:
+    if not t:
+        return None
+    flags = {
+        "any_dns_server": "trustAnyDNSServer",
+        "dns_server_group": "trustDNSServerGroup",
+        "dhcp_pool": "trustDhcpPool",
+        "dhcp_relay": "trustDhcpRelay",
+        "dhcp_client": "trustDhcpClient",
+    }
+    out: dict[str, Any] = {k: t.get(f) for k, f in flags.items() if f in t}
+    servers = wrapper_labels(t.get("dnsServers"))
+    if servers:
+        out["servers"] = servers
+    return out or None
+
+
+def collector_row(c: dict[str, Any]) -> dict[str, Any]:
+    return {
+        "collector": ref_label(c.get("collectorHost") or {}),
+        "port": c.get("port"),
+        "via": wrapper_labels(c.get("interfaces")),
+    }
+
+
+def netflow_summary(n: dict[str, Any]) -> dict[str, Any] | None:
+    if not n:
+        return None
+    out = {
+        "enabled": bool(n.get("enable")),
+        "collectors": [collector_row(c) for c in n.get("flowCollectors") or []] or None,
+        "traffic_classes": [
+            {
+                "name": c.get("trafficClassName"),
+                "match": ref_label(c["extendedAccessList"]) if c.get("extendedAccessList") else "all traffic",
+                "exports": [
+                    f"{ref_label(e.get('collectorHost') or {})}: {','.join(e.get('eventType') or [])}"
+                    for e in c.get("exportFlows") or []
+                ],
+            }
+            for c in n.get("trafficClasses") or []
+        ]
+        or None,
+        "refresh_minutes": n.get("refreshInterval"),
+        "template_minutes": n.get("templateExportTime"),
+        "delay_seconds": n.get("delayFlowCreate"),
+    }
+    return {k: v for k, v in out.items() if v is not None}
+
+
+def net_label(w: Any) -> str:
+    if not isinstance(w, dict):
+        return str(w)
+    if w.get("literal"):
+        return str(w["literal"])
+    if isinstance(w.get("object"), dict):
+        return ref_label(w["object"])
+    return ref_label(w)
+
+
+def icmp_summary(i: dict[str, Any]) -> dict[str, Any] | None:
+    if not i:
+        return None
+    out = {
+        "rules": [
+            {
+                "action": c.get("icmpAction"),
+                "service": ref_label(c["icmpService"]) if c.get("icmpService") else "any",
+                "network": net_label(c.get("network")),
+                "via": wrapper_labels(c.get("interfaces")),
+            }
+            for c in i.get("icmpConfigs") or []
+        ]
+        or None,
+        "rate_limit": i.get("rateLimit"),
+        "burst_size": i.get("burstSize"),
+    }
+    return {k: v for k, v in out.items() if v is not None}
+
+
+def http_summary(h: dict[str, Any]) -> dict[str, Any] | None:
+    if not h:
+        return None
+    out = {
+        "enabled": bool(h.get("enableHttpServer")),
+        "port": h.get("port"),
+        "allowed": [
+            {"network": net_label(c.get("ipAddress")), "via": wrapper_labels(c.get("interfaces"))}
+            for c in h.get("httpConfiguration") or []
+        ]
+        or None,
+    }
+    return {k: v for k, v in out.items() if v is not None}
+
+
+def banner_text(b: dict[str, Any]) -> str | None:
+    lines = b.get("bannerText")
+    if isinstance(lines, list):
+        return "\n".join(str(x) for x in lines) or None
+    return str(lines) if lines else None
+
+
 def register(reg: ToolRegistrar) -> None:
     @reg.read(title="Get platform settings")
     async def fmc_get_platform_settings(
@@ -156,16 +298,23 @@ def register(reg: ToolRegistrar) -> None:
     ) -> dict[str, Any]:
         """Readable summary of an FTD platform settings policy: syslog (logging on/off, what goes to
         FMC, destinations and their levels, syslog servers with interface, protocol and port,
-        facility, timestamp format, EMBLEM), NTP, SNMP (secrets masked), SSH and HTTP access,
-        banner, DNS, plus the devices it is assigned to. Edit with fmc_configure_syslog,
-        fmc_configure_ntp, fmc_configure_snmp and fmc_configure_ssh_access; other sections through
-        fmc_api_call (fmc_get_definition for the models)."""
+        facility, timestamp format, EMBLEM), NTP, SNMP (secrets masked), SSH, HTTPS and ICMP access,
+        banner, DNS (server groups, lookup interfaces, timers; none means FQDN objects never resolve),
+        trusted DNS servers and NetFlow (collectors, traffic classes), plus the devices it is assigned
+        to. Edit with fmc_configure_syslog, fmc_configure_ntp, fmc_configure_snmp,
+        fmc_configure_ssh_access, fmc_configure_dns, fmc_configure_netflow, fmc_configure_mgmt_access
+        and fmc_set_banner; other sections through fmc_api_call (fmc_get_definition for the models)."""
         app: FmcApp = get_client(ctx)
         pol = await resolve_ps(app, policy, domain)
         pid = pol["id"]
         got: dict[str, Any] = {}
         for key, sub in SINGLE.items():
-            items = await section(app, pid, sub, domain)
+            try:
+                items = await section(app, pid, sub, domain)
+            except NotFound:
+                if key not in NEWER:
+                    raise
+                items = []  # an FMC release without this section
             got[key] = items[0] if items else {}
         for key, sub in LISTS.items():
             got[key] = await section(app, pid, sub, domain)
@@ -193,9 +342,12 @@ def register(reg: ToolRegistrar) -> None:
                 for s in got["ssh_access"]
             ]
             or None,
-            "http_access": mask_secrets(_strip(got["http_access"])) or None,
-            "banner": got["banner"].get("bannerText") or None,
-            "dns": mask_secrets(_strip(got["dns"])) or None,
+            "http_access": http_summary(got["http_access"]),
+            "icmp_access": icmp_summary(got["icmp"]),
+            "banner": banner_text(got["banner"]),
+            "dns": dns_summary(got["dns"]) if got["dns"] else None,
+            "trusted_dns": trusted_dns_summary(got["trusted_dns"]),
+            "netflow": netflow_summary(got["netflow"]),
         }
 
     @reg.write(title="Create platform settings policy")
@@ -207,7 +359,8 @@ def register(reg: ToolRegistrar) -> None:
         confirm: Confirm = None,
     ) -> dict[str, Any]:
         """Create an FTD platform settings policy with FMC's defaults. Configure it with
-        fmc_configure_syslog, fmc_configure_ntp, fmc_configure_snmp and fmc_configure_ssh_access, assign it
+        fmc_configure_syslog, fmc_configure_ntp, fmc_configure_snmp, fmc_configure_ssh_access,
+        fmc_configure_dns, fmc_configure_netflow, fmc_configure_mgmt_access and fmc_set_banner, assign it
         with fmc_assign_policy(kind='platform_settings') (a device has one; the preview names the one it
         replaces), then deploy. Check it with fmc_get_platform_settings."""
         app: FmcApp = get_client(ctx)

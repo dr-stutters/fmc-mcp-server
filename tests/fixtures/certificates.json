@@ -1,0 +1,251 @@
+{
+ "_source": "FMC 10.0.1, Global/mcp-test-leaf, 2026-10-20 (GET ...?expanded=true): internal_certificates and trusted_cas are real responses (links and PEM bodies dropped, lab host names replaced with example.com / example-CA, the lab CA renamed mcp-test-lab-CA, 3 of the 107 trusted CAs). Global's objects come back read-only with no reason in the leaf (custom and bundled alike). devices/certificates and externalcertificates were empty on the lab (device_certificates_empty / external_certificates_empty, verbatim: no 'items' key); device_certificates follows FMC 10.0.1's spec examples 1 and 2 (the nested certificate reference with ISO dates, with and without seconds, and the inline form with epoch seconds where 0 means not applicable).",
+ "internal_certificates": {
+  "items": [
+   {
+    "metadata": {
+     "readOnly": {
+      "state": true
+     },
+     "timestamp": 1792391909,
+     "lastUser": {
+      "name": "admin"
+     },
+     "domain": {
+      "name": "Global",
+      "id": "e276abec-e0f2-11e3-8169-6d9ed49b625f",
+      "type": "Domain"
+     }
+    },
+    "privateKey": "********",
+    "passPhrase": "********",
+    "subjectCommonName": "fmc.example.com",
+    "issuerCommonName": "example-CA",
+    "validityStartDate": "2026-10-19T02:48:52Z",
+    "validityEndDate": "2028-10-18T02:48:52Z",
+    "serialNumber": "79:00:00:00:06:a3:fe:8a:72:29:45:60:fb:00:00:00:00:00:06",
+    "certFingerprint": "AB:59:FB:F3:07:72:19:40:8A:EE:C4:D0:8A:B4:0E:F7:6F:82:25:81",
+    "publicKeyFingerprint": "9fb52b0664f5f57ed332c1ca17bf11a9ed1eff0a",
+    "id": "b2010736-cb87-11f1-8ae7-e8b56f180443",
+    "name": "mcp-fw-fmc-pxgrid2",
+    "type": "InternalCertificate"
+   }
+  ],
+  "paging": {
+   "offset": 0,
+   "limit": 100,
+   "count": 1,
+   "pages": 1
+  }
+ },
+ "trusted_cas": {
+  "items": [
+   {
+    "metadata": {
+     "readOnly": {
+      "state": true
+     },
+     "timestamp": 1775158286,
+     "lastUser": {
+      "name": "admin"
+     },
+     "domain": {
+      "name": "Global",
+      "id": "e276abec-e0f2-11e3-8169-6d9ed49b625f",
+      "type": "Domain"
+     }
+    },
+    "subjectOrganization": "COMODO CA Limited",
+    "subjectOrganizationUnit": "",
+    "subjectCommonName": "COMODO ECC Certification Authority",
+    "issuerCommonName": "COMODO ECC Certification Authority",
+    "issuerOrganization": "COMODO CA Limited",
+    "issuerOrganizationUnit": "",
+    "validityStartDate": "Mar  6 00:00:00 2008 GMT",
+    "validityEndDate": "Jan 18 23:59:59 2038 GMT",
+    "crlSerials": [],
+    "serialNumber": "1f:47:af:aa:62:00:70:50:54:4c:01:9e:9b:63:99:2a",
+    "certFingerprint": "9F:74:4E:9F:2B:4D:BA:EC:0F:31:2C:50:B6:56:3B:8E:2D:93:C3:11",
+    "id": "862b1fb0-a647-37d8-a790-85e7070d44c6",
+    "type": "ExternalCACertificate",
+    "name": "COMODO-ECC-Certification-Authority"
+   },
+   {
+    "metadata": {
+     "readOnly": {
+      "state": true
+     },
+     "timestamp": 1792205442,
+     "lastUser": {
+      "name": "admin"
+     },
+     "domain": {
+      "name": "Global",
+      "id": "e276abec-e0f2-11e3-8169-6d9ed49b625f",
+      "type": "Domain"
+     }
+    },
+    "subjectOrganization": "",
+    "subjectOrganizationUnit": "",
+    "subjectCommonName": "example-CA",
+    "issuerCommonName": "example-CA",
+    "issuerOrganization": "",
+    "issuerOrganizationUnit": "",
+    "validityStartDate": "Oct 17 00:54:20 2026 GMT",
+    "validityEndDate": "Oct 17 01:04:19 2036 GMT",
+    "crlSerials": [],
+    "serialNumber": "40:ec:72:63:89:a0:6b:ab:4a:b1:0b:7c:ce:59:52:cf",
+    "certFingerprint": "AA:EF:CA:3D:CC:80:30:8E:52:D4:F7:2D:CA:B2:8D:30:2D:62:39:8C",
+    "id": "8ac6e464-c9d5-11f1-a4e0-98786f180443",
+    "type": "ExternalCACertificate",
+    "name": "mcp-test-lab-CA"
+   },
+   {
+    "metadata": {
+     "readOnly": {
+      "state": true
+     },
+     "timestamp": 1775158288,
+     "lastUser": {
+      "name": "admin"
+     },
+     "domain": {
+      "name": "Global",
+      "id": "e276abec-e0f2-11e3-8169-6d9ed49b625f",
+      "type": "Domain"
+     }
+    },
+    "subjectOrganization": "FNMT-RCM",
+    "subjectOrganizationUnit": "AC RAIZ FNMT-RCM",
+    "subjectCommonName": "",
+    "issuerCommonName": "",
+    "issuerOrganization": "FNMT-RCM",
+    "issuerOrganizationUnit": "AC RAIZ FNMT-RCM",
+    "validityStartDate": "Oct 29 15:59:56 2008 GMT",
+    "validityEndDate": "Jan  1 00:00:00 2030 GMT",
+    "crlSerials": [],
+    "serialNumber": "5d:93:8d:30:67:36:c8:06:1d:1a:c7:54:84:69:07",
+    "certFingerprint": "EC:50:35:07:B2:15:C4:95:62:19:E2:A8:9A:5B:42:99:2C:4C:2C:20",
+    "id": "8c65facd-82da-3635-8efb-7ed424be072a",
+    "type": "ExternalCACertificate",
+    "name": "C_ES-O_FNMT-RCM-OU_AC-RAIZ-FNMT-RCM"
+   }
+  ],
+  "paging": {
+   "offset": 0,
+   "limit": 3,
+   "count": 3,
+   "pages": 1
+  }
+ },
+ "device_certificates_empty": {
+  "paging": {
+   "offset": 0,
+   "limit": 0,
+   "count": 0,
+   "pages": 0
+  }
+ },
+ "external_certificates_empty": {
+  "paging": {
+   "offset": 0,
+   "limit": 0,
+   "count": 0,
+   "pages": 0
+  }
+ },
+ "device_certificates": {
+  "items": [
+   {
+    "id": "4ff46228-70ac-11ef-b9e1-9bf082619052",
+    "type": "DeviceCertificate",
+    "weakCryptoEnabled": true,
+    "enrolledCertificates": [
+     {
+      "certificate": {
+       "name": "test-cert-1",
+       "id": "0050568C-F0AE-0ed3-0000-012884901940",
+       "type": "CertEnrollment"
+      },
+      "enrollmentType": "PKCS12",
+      "deploymentStatus": "SUCCESS",
+      "caCertificateStatus": "AVAILABLE",
+      "identityCertificateStatus": "AVAILABLE",
+      "isOutdated": false,
+      "caCertExpiryDate": "2034-10-27T09:01Z",
+      "identityCertExpiryDate": "2034-10-27T09:01Z"
+     },
+     {
+      "certificate": {
+       "id": "0050568C-F0AE-0ed3-0000-012884901941",
+       "name": "test-cert-2",
+       "type": "CertEnrollment"
+      },
+      "enrollmentType": "PKCS12",
+      "deploymentStatus": "SUCCESS",
+      "caCertificateStatus": "AVAILABLE",
+      "identityCertificateStatus": "AVAILABLE",
+      "isOutdated": false,
+      "caCertExpiryDate": "2034-10-27T09:01:09Z",
+      "identityCertExpiryDate": "2034-10-27T09:01:09Z"
+     }
+    ]
+   },
+   {
+    "id": "d9b0ef62-3921-11ef-b2a5-e9c9e2e20bd3",
+    "type": "DeviceCertificate",
+    "weakCryptoEnabled": false,
+    "enrolledCertificates": [
+     {
+      "id": "00000000-0000-0ed3-0000-012884902062",
+      "name": "selfsigned3renamed",
+      "enrollmentType": "SELF_SIGNED_CERTFICATE",
+      "deploymentStatus": "SUCCESS",
+      "caCertificateStatus": "NOT_APPLICABLE",
+      "identityCertificateStatus": "AVAILABLE",
+      "isOutdated": false,
+      "caCertExpiryDate": 0,
+      "identityCertExpiryDate": 1730881490
+     },
+     {
+      "id": "00000000-0000-0ed3-0000-047244640346",
+      "name": "selfsigned2",
+      "enrollmentType": "SELF_SIGNED_CERTFICATE",
+      "deploymentStatus": "SUCCESS",
+      "caCertificateStatus": "NOT_APPLICABLE",
+      "identityCertificateStatus": "AVAILABLE",
+      "isOutdated": false,
+      "caCertExpiryDate": 0,
+      "identityCertExpiryDate": 2044513874
+     }
+    ]
+   }
+  ],
+  "paging": {
+   "offset": 0,
+   "limit": 25,
+   "count": 2,
+   "pages": 1
+  }
+ },
+ "devicerecords": {
+  "items": [
+   {
+    "id": "4ff46228-70ac-11ef-b9e1-9bf082619052",
+    "type": "Device",
+    "name": "mcp-test-ftd-a"
+   },
+   {
+    "id": "d9b0ef62-3921-11ef-b2a5-e9c9e2e20bd3",
+    "type": "Device",
+    "name": "mcp-test-ftd-b"
+   }
+  ],
+  "paging": {
+   "offset": 0,
+   "limit": 25,
+   "count": 2,
+   "pages": 1
+  }
+ }
+}

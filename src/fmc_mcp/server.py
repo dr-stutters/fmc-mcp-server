@@ -21,6 +21,8 @@ from fmc_mcp.tools import (
     bulk_rules,
     bundle,
     bundle_import,
+    certificates,
+    conditions,
     containment,
     dangerous,
     decryption,
@@ -41,10 +43,12 @@ from fmc_mcp.tools import (
     metrics,
     network_analysis,
     object_import,
+    object_lifecycle,
     object_writes,
     objects,
     pki,
     platform_access,
+    platform_services,
     platform_settings,
     policies,
     policy_writes,
@@ -98,7 +102,10 @@ Workflows:
   the fmc_prove_user_policy prompt.
 - Send FTD logs to the customer's syslog/SIEM: fmc_get_platform_settings -> fmc_configure_syslog
   (servers, level, facility, RFC 5424) -> fmc_assign_policy(kind='platform_settings') -> fmc_deploy;
-  fmc_set_access_logging sends connection/intrusion events there too.
+  fmc_set_access_logging sends connection/intrusion events there too. NetFlow to a collector:
+  fmc_configure_netflow; DNS (FQDN objects in rules only match once the device has a DNS server group;
+  rule and FQDN object previews warn): fmc_configure_dns; ICMP/HTTPS access and the login banner:
+  fmc_configure_mgmt_access, fmc_set_banner.
 - Dynamic routing: fmc_get_routing (BGP, OSPF, ECMP, PBR, VRFs) -> fmc_configure_bgp /
   fmc_configure_ospf / fmc_create_vrf -> fmc_deploy -> fmc_run_show_command('show route').
 - SD-WAN (hub and spoke over VTIs): zone the WAN and inside interfaces (fmc_update_interface) ->
@@ -130,6 +137,11 @@ Workflows:
   ALLOW rules -> fmc_deploy; fmc_get_file_policy shows the rules. Network analysis (preprocessing):
   fmc_get_network_analysis_policy, fmc_create_network_analysis_policy (linking it to an access policy is
   UI-only).
+- Application, VLAN, time and SGT rules: fmc_find_application (an app or filter by exact name or id, with
+  risk and business relevance) -> fmc_create_application_filter / fmc_create_time_range if needed ->
+  fmc_create_access_rule applications=[...], application_filters=[...], vlan_tags=[...], time_range=...,
+  source_sgts=[...] (ISE SGTs by name or tag) -> fmc_deploy -> fmc_get_hit_counts after real traffic
+  (packet tracer can't simulate app-id).
 - Users and groups in access rules (AD/LDAP): fmc_create_trusted_ca (LDAPS) -> fmc_create_realm ->
   fmc_test_realm -> fmc_download_realm -> fmc_create_identity_policy + fmc_create_identity_rule (PASSIVE
   needs ISE/pxGrid or an agent for user-IP mappings) -> select the identity policy in the access policy
@@ -174,6 +186,10 @@ Workflows:
 - Day-2 admin: fmc_upgrade_status (versions), fmc_list_backups / fmc_backup_devices,
   fmc_get_health_policy / fmc_update_health_policy, fmc_list_users, fmc_list_object_overrides /
   fmc_set_object_override (per-device values).
+- Object cleanup and migrations at scale: fmc_delete_objects (by names, a name prefix or every unused
+  object; one preview lists each victim and refuses built-ins, inherited and in-use objects),
+  fmc_replace_object (A becomes B in every rule, group, NAT rule and static route, then optionally delete A),
+  fmc_import_objects(mode='sync') (an IPAM export or CSV as the desired state: create, update, group members).
 Before changing or deleting an object, check fmc_where_used.
 
 Gotchas: FMC allows about 120 API requests per minute, so prefer the aggregate tools over many small
@@ -234,7 +250,9 @@ REGISTER: list[Callable[[ToolRegistrar], None]] = [
     deploy.register,
     device_config.register,
     object_writes.register,
+    conditions.register,
     object_import.register,
+    object_lifecycle.register,
     policy_writes.register,
     bulk_rules.register,
     dangerous.register,
@@ -253,6 +271,7 @@ REGISTER: list[Callable[[ToolRegistrar], None]] = [
     activity.register,
     platform_settings.register,
     platform_access.register,
+    platform_services.register,
     routing.register,
     app_routing.register,
     intrusion.register,
@@ -266,6 +285,7 @@ REGISTER: list[Callable[[ToolRegistrar], None]] = [
     bundle_import.register,
     tickets.register,
     pki.register,
+    certificates.register,
     decryption.register,
     decryption_check.register,
     dns.register,

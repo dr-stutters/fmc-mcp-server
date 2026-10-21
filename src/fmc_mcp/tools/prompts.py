@@ -289,10 +289,14 @@ def _health_review_text(domain: str | None, device: str | None, lookback_hours: 
         scope = f"the devices whose name contains {dev}" + (f" in domain {dom}" if dom else "")
         inventory = f"{tool_ref('fmc_list_devices')} with name={dev}{d}"
         keep = " Keep only the rows of the devices from step 1 (and, for alerts, the FMC's own)."
+        cert_keep = (
+            " Of the device rows keep those of the devices from step 1; the other certificates are FMC-wide."
+        )
     else:
         scope = f"every device in domain {dom}" if dom else "every managed device"
         inventory = f"{tool_ref('fmc_list_devices')}{wd}"
         keep = ""
+        cert_keep = ""
     return f"""Review the health of {scope} and of the FMC itself over the last
 {lookback_hours} hours, and write one ranked report with next steps. Every step is read-only:
 change, deploy or back up nothing; the report only proposes next steps.
@@ -346,10 +350,22 @@ note it and carry on.
 6. Backups: {tool_ref("fmc_list_backups")}{wd}. No FMC backup, or none in the last 7 days, is a
    warning; the same for each device in scope. Give the newest date per device.
 
-7. VPN: {tool_ref("fmc_list_vpn_tunnels")}{wd}.{keep} TUNNEL_DOWN is critical and UNKNOWN a
+7. Certificates: {tool_ref("fmc_list_certificates")} with expiring_within_days=90{d}.{cert_keep} Each
+   row has days_left and a severity: expired or within 30 days is critical, within 90 days a
+   warning. A device enrolment whose deployment FAILED or whose identity or CA certificate is
+   PENDING or NOT_AVAILABLE is at least a warning (its problems say why). Say what each one
+   serves where the row shows it (a device enrolment: RA or site-to-site VPN on that device; a
+   trusted CA: LDAPS, ISE/pxGrid or decryption trust; an internal certificate or CA: decryption or
+   FMC's pxGrid client); for an internal certificate, internal CA or trusted CA that is due,
+   {tool_ref("fmc_get_certificate")} with certificate=<name>{d} shows what uses it (counts towards
+   the per-device limit). FMC's bundled public roots are hidden; a bundled_roots_expiring count
+   is info (FMC's updates replace them). The next step is a renewal: re-enrol or import the new
+   certificate on FMC before days_left reaches 0.
+
+8. VPN: {tool_ref("fmc_list_vpn_tunnels")}{wd}.{keep} TUNNEL_DOWN is critical and UNKNOWN a
    warning; no tunnels at all is info.
 
-8. Health alerts: {tool_ref("fmc_list_health_alerts")} with since_minutes={minutes}{d}.{keep}
+9. Health alerts: {tool_ref("fmc_list_health_alerts")} with since_minutes={minutes}{d}.{keep}
    Repeats are collapsed with first/last seen and a count. An alert last seen in the last hour is
    current and counts at its level; older ones are history (info, unless the same alert keeps
    coming back). Note what the FMC reports about itself (Security Intelligence and Talos feeds,
@@ -358,8 +374,9 @@ note it and carry on.
    changed just before it: {tool_ref("fmc_recent_activity")} with since_minutes={minutes},
    device=<name>{d} (audit records and deployments around it).
 
-9. Report: one list, critical first, then warning, then info; within a level, what affects
-   traffic (devices, HA, VPN) comes before what affects management (licences, content, backups).
+10. Report: one list, critical first, then warning, then info; within a level, what affects
+   traffic (devices, HA, VPN and their certificates) comes before what affects management
+   (licences, content, backups).
    Merge findings with one cause (a red device and its INTERFACE alerts). Each finding gives:
    - its level and a one-line title naming the device or the FMC;
    - evidence: the tool and the values it returned (status, module, count, dates);
@@ -469,9 +486,15 @@ approves a preview; deploying is a separate approval.
    e. Rules on expired time ranges: delete, or extend the time range in the FMC UI.
    f. ALLOW rules without an intrusion policy, rules that log nothing, any-any rules: propose the
       change per rule; these change inspection and traffic, so the user decides each.
-   g. Merge candidates and duplicate objects: optional tidy-ups; for duplicates use
-      {tool_ref("fmc_where_used")} on each object before repointing and
-      {tool_ref("fmc_delete_object")}.
+   g. Merge candidates and duplicate objects: optional tidy-ups. For a duplicate, keep one object and
+      repoint everything to it in one preview: {tool_ref("fmc_replace_object")} with old=<the duplicate>,
+      new=<the one kept>, delete_old=true (it lists every rule, group, NAT rule and static route it
+      changes, and anything it can't, such as VPN or Security Intelligence references: check those with
+      {tool_ref("fmc_where_used")}).
+   h. Unused objects: {tool_ref("fmc_unused_objects")}, then one preview for all of them with
+      {tool_ref("fmc_delete_objects")} (names=[...] or unused_only=true; dangerous tier; it refuses
+      built-ins, objects an ancestor domain owns and anything still in use), or
+      {tool_ref("fmc_delete_object")} one at a time.
    For each group give the rules or objects, the change and its risk. Ask which groups to apply.
 
 4. Change management: {tool_ref("fmc_change_tickets")}. If FMC requires tickets, open one with
@@ -1474,9 +1497,9 @@ def register(reg: ToolRegistrar) -> None:
         """Is the firewall estate healthy? Reviews device health and connectivity (with CPU, memory,
         throughput and drops over the review window for the devices that need it), HA pairs and
         clusters, the deployment backlog and failed deployments, licences, software and VDB/SRU/LSP
-        content age, backups, VPN tunnels and recent health alerts with the aggregate tools, and
-        writes one ranked report (critical, warning, info), each finding with its evidence and a
-        concrete next step. Read-only."""
+        content age, backups, certificate expiry, VPN tunnels and recent health alerts with the
+        aggregate tools, and writes one ranked report (critical, warning, info), each finding with
+        its evidence and a concrete next step. Read-only."""
         return _health_review_text(domain, device, lookback_hours)
 
     @reg.prompt(
