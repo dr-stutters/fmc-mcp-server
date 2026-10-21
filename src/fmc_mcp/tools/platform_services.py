@@ -53,6 +53,15 @@ DEFAULT_CLASS = "class-default"
 DEFAULT_PORT = 2055  # NetFlow collectors' usual UDP port
 BANNER_LINE_MAX = 510  # characters per banner line on the FTD
 BANNER_LINES_MAX = 100
+# FMC 10.0.1 / FTD 10.0 (live 2026-10-21): the banner is not part of 'show running-config banner' (it prints
+# nothing), 'show banner' shows it; and a policy whose banner lines are emptied deploys no 'no banner', so the
+# device keeps the last banner it got.
+BANNER_VERIFY = "fmc_run_show_command(command='show banner')"
+BANNER_CLEAR_WARNING = (
+    "FMC 10.0.1 doesn't remove a deployed banner: with no banner lines the deploy sends no 'no banner', so "
+    "the devices keep the old one (check with 'show banner'). To change what they show, set new text "
+    "instead (e.g. one line); clearing only empties the policy."
+)
 FlowEvent = Literal["ALL", "CREATED", "DENIED", "UPDATED", "TORN_DOWN"]
 DEPLOY_NOTE = "Takes effect on the assigned devices after the next deployment."
 
@@ -690,8 +699,9 @@ def register(reg: ToolRegistrar) -> None:
             str,
             Field(
                 max_length=20000,
-                description="Banner shown before login (SSH, console); lines split on newlines; '' removes "
-                "it. $(hostname) and $(domain) are filled in by the device",
+                description="Banner shown before login (SSH, console); lines split on newlines; '' empties "
+                "the policy's banner (FMC 10.0.1 then leaves the deployed one on the devices). $(hostname) "
+                "and $(domain) are filled in by the device",
             ),
         ],
         domain: Domain = None,
@@ -699,7 +709,9 @@ def register(reg: ToolRegistrar) -> None:
     ) -> dict[str, Any]:
         """Set (or clear) the login banner of the FTDs using a platform settings policy, e.g. the legal
         'authorised use only' notice. The preview shows the banner before and after. Deploy afterwards;
-        verify with fmc_run_show_command('show running-config banner')."""
+        verify with fmc_run_show_command('show banner') ('show running-config banner' prints nothing on
+        FTD 10.0). Clearing: FMC 10.0.1 deploys no 'no banner', so the devices keep the old banner (the
+        preview warns); replace the text instead."""
         app: FmcApp = get_client(ctx)
         lines = [ln.rstrip() for ln in text.replace("\r\n", "\n").split("\n")]
         while lines and not lines[-1]:
@@ -714,6 +726,15 @@ def register(reg: ToolRegistrar) -> None:
         desired = editable(cur)
         _set_list(desired, cur, "bannerText", lines)
         before, after = banner_text(cur), banner_text(desired)
+        warnings = [BANNER_CLEAR_WARNING] if before and not after else []
+
+        async def apply() -> Any:
+            out = await _apply_steps(app, [("banner", lambda: app.api.put(path, desired))])
+            out["verify"] = f"after the deploy: {BANNER_VERIFY}"
+            if warnings:
+                out["warning"] = warnings[0]
+            return out
+
         return await fmc_preview(
             ctx,
             tool="fmc_set_banner",
@@ -726,12 +747,13 @@ def register(reg: ToolRegistrar) -> None:
                     "before": before,
                     "after": after,
                     "assigned_to": await assigned_devices(app, pol["id"], domain),
+                    **({"warnings": warnings} if warnings else {}),
                 },
                 fingerprint=editable(cur),
                 blockers=[] if before != after else ["Nothing to change."],
                 side_effects=[DEPLOY_NOTE],
             ),
-            apply=lambda: _apply_steps(app, [("banner", lambda: app.api.put(path, desired))]),
+            apply=apply,
         )
 
 
