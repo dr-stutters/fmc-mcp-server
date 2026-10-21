@@ -106,6 +106,29 @@ async def test_contain_sets_up_object_and_rules(fmc: respx.MockRouter) -> None:
     assert done["result"]["deploy_needed"]
 
 
+async def test_contain_blocked_when_the_rules_policy_is_locked(fmc: respx.MockRouter) -> None:
+    """F76: the block rules go into an access policy another user has locked: blocked before anything is
+    created (FMC would refuse the rule POST after the object exists). Rules already in place: no lock read."""
+    base(fmc, objects=[QDYN], rules=[ALLOW], mapped=[])
+    lock = {
+        "type": "PolicyLock",
+        "policy": {"name": ACP["name"], "id": ACP["id"], "type": "AccessPolicy"},
+        "status": "LOCKED",
+        "metadata": {"lockedByUser": {"name": "alice"}},
+    }
+    locks = fmc.get(f"{CFG}/policy/operational/policylocks").mock(
+        return_value=httpx.Response(200, json={"items": [{"policies": [lock]}], "paging": {"count": 1}})
+    )
+    async with Client(server()) as c:
+        out = await run(c, "fmc_contain_host", {"ip": "192.0.2.10", "reason": "x"})
+        assert out["status"] == "blocked"
+        assert f"Access policy {ACP['name']!r} is locked by alice." in out["blockers"][0]
+        base(fmc, objects=[QDYN], rules=[*QRULES, ALLOW], mapped=[])
+        locks.reset()
+        out = await run(c, "fmc_contain_host", {"ip": "192.0.2.10", "reason": "x"})
+    assert out["status"] == "preview" and locks.call_count == 0
+
+
 async def test_contain_needs_policy_when_ambiguous(fmc: respx.MockRouter) -> None:
     base(fmc, objects=[QDYN], rules=[ALLOW], mapped=[])
     other = {"id": "p2", "name": "other-acp", "type": "AccessPolicy"}

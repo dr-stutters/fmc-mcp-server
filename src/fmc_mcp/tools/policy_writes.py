@@ -13,8 +13,17 @@ from fmc_mcp._core import (
     NotFound,
     Plan,
     ToolRegistrar,
+    UpstreamError,
     field_changes,
     get_client,
+)
+from fmc_mcp.acp_structure import (
+    category_blocker,
+    category_row,
+    find_category,
+    list_categories,
+    rule_category,
+    rule_place,
 )
 from fmc_mcp.client import FmcApp, is_uuid
 from fmc_mcp.preview import fmc_preview
@@ -31,6 +40,7 @@ from fmc_mcp.tools.common import Domain, block_labels, ref_label, resolve_in, ru
 from fmc_mcp.tools.fqdn_dns import fqdn_dns_check
 from fmc_mcp.tools.object_writes import applied, editable
 from fmc_mcp.tools.policies import ACCESS, NAT, all_rules, find_access_rule, resolve_policy
+from fmc_mcp.tools.policy_structure import base_body, inheritance_effect, put_base, rules_summary
 from fmc_mcp.url_categories import (
     UrlCategoryCondition,
     category_conditions,
@@ -252,10 +262,19 @@ def register(reg: ToolRegistrar) -> None:
             Field(description="What happens to traffic no rule matches (PERMIT = intrusion prevention)"),
         ] = "BLOCK",
         description: Annotated[str | None, Field(description="Optional description")] = None,
+        base_policy: Annotated[
+            str | None,
+            Field(
+                description="Base (parent) access policy to inherit from, name or UUID (e.g. a corporate "
+                "policy for a site): its Mandatory rules run before this policy's rules and its Default "
+                "rules after them. Change it later with fmc_set_base_policy"
+            ),
+        ] = None,
         domain: Domain = None,
         confirm: Confirm = None,
     ) -> dict[str, Any]:
-        """Create an empty access control policy with a default action. Add rules with
+        """Create an empty access control policy with a default action, optionally as a child of a base
+        policy (inheritance: the preview shows what the base hands down). Add rules with
         fmc_create_access_rule; it affects devices only once assigned and deployed."""
         app: FmcApp = get_client(ctx)
         body: dict[str, Any] = {
@@ -271,19 +290,52 @@ def register(reg: ToolRegistrar) -> None:
             blockers.append(f"An access policy named {name!r} already exists.")
         except NotFound:
             pass
+        details: dict[str, Any] = {"body": body}
+        side_effects: list[str] = []
+        base: dict[str, Any] | None = None
+        if base_policy:
+            try:
+                found = await resolve_policy(app, "access", base_policy, domain)
+            except NotFound as e:
+                blockers.append(str(e))
+            else:
+                base = {"id": found["id"], "name": found.get("name")}
+                details["base_policy"] = found.get("name")
+                details["inherited_from_base"] = await rules_summary(app, found, domain)
+                details["then"] = base_body("<the new policy's id>", base)
+                side_effects.append(inheritance_effect(str(found.get("name"))))
         path = await app.config_path(ACCESS, domain)
+
+        async def apply() -> Any:
+            created = await applied(app, lambda: app.api.post(path, body))
+            if base is None:
+                return created
+            try:
+                inherited = await put_base(app, str(created["id"]), base, domain)
+            except UpstreamError as e:
+                return {
+                    "policy": created,
+                    "warning": f"The policy was created, but FMC refused its base policy ({e}). Set it with "
+                    f"fmc_set_base_policy(policy={name!r}, base={base.get('name')!r}).",
+                }
+            return {"policy": created, **inherited}
+
+        args: dict[str, Any] = {
+            "name": name,
+            "default_action": default_action,
+            "description": description,
+            "domain": domain,
+        }
+        if base_policy is not None:
+            args["base_policy"] = base_policy
+        summary = f"Create access policy {name!r}" + (f" with base {base['name']!r}" if base else "")
         return await fmc_preview(
             ctx,
             tool="fmc_create_access_policy",
-            args={
-                "name": name,
-                "default_action": default_action,
-                "description": description,
-                "domain": domain,
-            },
+            args=args,
             confirm=confirm,
-            plan=Plan(f"Create access policy {name!r}", details={"body": body}, blockers=blockers),
-            apply=lambda: applied(app, lambda: app.api.post(path, body)),
+            plan=Plan(summary, details=details, blockers=blockers, side_effects=side_effects),
+            apply=apply,
         )
 
     @reg.write(title="Create access rule")
@@ -414,15 +466,18 @@ def register(reg: ToolRegistrar) -> None:
         if comment:
             body["newComments"] = [comment]
         params: dict[str, Any] = {}
+        blockers = await identity_blockers(app, p, body.get("users"), domain)
         if section:
             params["section"] = section
         if category:
-            params["category"] = category
+            cat_name, missing = await category_blocker(app, p, category, domain)
+            if missing:
+                blockers.append(missing)
+            params["category"] = cat_name or category
         if insert_before:
             params["insertBefore"] = insert_before
         elif insert_after:
             params["insertAfter"] = insert_after
-        blockers = await identity_blockers(app, p, body.get("users"), domain)
         if any(str(r.get("name", "")).lower() == name.lower() for r in existing.items):
             blockers.append(f"Policy {p.get('name')!r} already has a rule named {name!r}.")
         count = len(existing.items)
@@ -547,6 +602,13 @@ def register(reg: ToolRegistrar) -> None:
         move_to: Annotated[
             int | None, Field(ge=1, description="Move the rule so it sits at this 1-based index")
         ] = None,
+        category: Annotated[
+            str | None,
+            Field(
+                description="Move the rule into this existing rule category of the policy "
+                "(fmc_create_category; fmc_get_access_policy lists them). Not with move_to"
+            ),
+        ] = None,
         comment: Annotated[str | None, Field(description="Add a comment to the rule's history")] = None,
         domain: Domain = None,
         confirm: Confirm = None,
@@ -554,9 +616,12 @@ def register(reg: ToolRegistrar) -> None:
         """Change an access rule: rename, action, enable/disable, logging, replace any condition (a
         given list replaces the old one; [] means any) including applications, application filters (named,
         or inline_app_filter by attributes), URL categories, users, VLAN tags, the time range ('' removes it)
-        and SGTs, add a comment, or move it to another position. Preview shows the field changes and the
-        old/new index."""
+        and SGTs, add a comment, or move it to another position or into a rule category. Preview shows the
+        field changes and the old/new index (a category move: the category's section and rule range; the
+        result shows where the rule landed)."""
         app: FmcApp = get_client(ctx)
+        if move_to and category:
+            raise InvalidRequest("Give either move_to or category, not both.")
         p = await resolve_policy(app, "access", policy, domain)
         current = await find_access_rule(app, p, rule, domain)
         desired = editable(current)
@@ -666,10 +731,42 @@ def register(reg: ToolRegistrar) -> None:
                         "within a section (delete and re-create the rule to change section)."
                     )
             details["move"] = f"{old_index} -> {move_to}"
-        if not changes and not (move_to and move_to != old_index):
+        into: str | None = None  # the category the rule moves into
+        move_note: list[str] = []
+        no_category = False
+        if category:
+            try:
+                target_cat = find_category(await list_categories(app, p, domain), category, p)
+            except NotFound:
+                no_category = True
+                blockers.append(
+                    f"Policy {p.get('name')!r} has no category {category!r}; create it first "
+                    "(fmc_create_category)."
+                )
+            else:
+                here = rule_category(current) or ""
+                if here.lower() != str(target_cat.get("name", "")).lower():
+                    into = str(target_cat.get("name"))
+                    place, row = rule_place(current), category_row(target_cat)
+                    details["move"] = {"from": place, "into_category": row}
+                    if row.get("section") and place.get("section") and row["section"] != place["section"]:
+                        move_note.append(
+                            f"The rule moves from the {place['section']} section into the {row['section']} "
+                            "section: it is evaluated in a different place."
+                        )
+        if not changes and not (move_to and move_to != old_index) and not into and not no_category:
             blockers.append("Nothing to change.")
 
         async def apply() -> Any:
+            if into:
+                # FMC moves rules into a category through the bulk PUT with the category parameter
+                await app.api.put(base, [desired], params={"bulk": "true", "category": into})
+                now = await app.api.get(f"{base}/{current['id']}")
+                return {
+                    "rule": flatten_access_rule(now),
+                    "now_at": rule_place(now),
+                    "next": "fmc_deploy (fmc_pending_changes shows the diff)",
+                }
             if move_to and move_to != old_index:
                 # FMC moves rules through the bulk PUT with an insert position.
                 params: dict[str, Any] = {"bulk": "true"}
@@ -713,12 +810,14 @@ def register(reg: ToolRegistrar) -> None:
                 "intrusion_policy": intrusion_policy,
                 "file_policy": file_policy,
                 "move_to": move_to,
+                **({"category": category} if category is not None else {}),
                 "comment": comment,
                 "domain": domain,
             },
             confirm=confirm,
             plan=Plan(
-                f"Update rule {current.get('name')!r} in {p.get('name')!r}",
+                f"Update rule {current.get('name')!r} in {p.get('name')!r}"
+                + (f" (into category {into!r})" if into else ""),
                 details=details,
                 # rule content, its position and the policy's rule order: a move is index-based
                 fingerprint={
@@ -726,9 +825,11 @@ def register(reg: ToolRegistrar) -> None:
                     "index": old_index,
                     "order": [r.get("id") for r in order.items],
                     "desired": desired,
+                    **({"into": into} if into else {}),
                 },
                 blockers=blockers,
                 side_effects=extra.warnings
+                + move_note
                 + ["Takes effect on devices after the next deployment."]
                 + ([MONITOR_LOG_NONE] if desired.get("action") == "MONITOR" and log == "none" else [])
                 + ([URL_LICENCE] if cats else [])

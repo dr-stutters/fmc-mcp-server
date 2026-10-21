@@ -1,0 +1,163 @@
+{
+ "_about": "F76 access policy structure on FMC 10.0.1. 'live' entries were recorded by the W6N probe on 2026-10-21 (notes/w6n-fixtures/f76-probe-*.json; domain ids replaced by the test domain, links dropped); 'spec' entries follow the 10.0.1 spec examples and await the Stage 2 live proof.",
+ "inheritance_none_live": {
+  "items": [
+   {
+    "metadata": {
+     "timestamp": 1792574677626
+    },
+    "id": "00000000-0000-0ed3-0000-021474963108",
+    "type": "AccessPolicyInheritanceSetting"
+   }
+  ],
+  "paging": {
+   "offset": 0,
+   "limit": 25,
+   "count": 1,
+   "pages": 1
+  }
+ },
+ "inheritance_none_one_live": {
+  "metadata": {
+   "timestamp": 1792574677626
+  },
+  "id": "00000000-0000-0ed3-0000-021474963108",
+  "type": "AccessPolicyInheritanceSetting"
+ },
+ "inheritance_with_base_spec": {
+  "metadata": {
+   "timestamp": 1750161212104
+  },
+  "basePolicy": {
+   "id": "00000000-0000-0ed3-0000-021474837418",
+   "type": "AccessPolicy"
+  },
+  "id": "00000000-0000-0ed3-0000-021474963108",
+  "type": "AccessPolicyInheritanceSetting"
+ },
+ "acp_metadata_unlocked_live": {
+  "inherit": false,
+  "lockingStatus": {
+   "status": "UNLOCKED"
+  },
+  "timestamp": 1792574677626,
+  "lastUser": {
+   "name": "apiuser"
+  },
+  "domain": {
+   "name": "Global \\ mcp-test-leaf",
+   "id": "e276abec-e0f2-11e3-8169-6d9ed49b625f",
+   "type": "Domain"
+  }
+ },
+ "acp_metadata_locked_spec": {
+  "inherit": false,
+  "lockingStatus": {
+   "status": "LOCKED",
+   "userName": "alice"
+  },
+  "timestamp": 1792574677626,
+  "domain": {
+   "name": "Global",
+   "id": "e276abec-e0f2-11e3-8169-6d9ed49b625f",
+   "type": "Domain"
+  }
+ },
+ "policylocks_none_live": {
+  "items": [
+   {}
+  ],
+  "paging": {
+   "offset": 0,
+   "limit": 25,
+   "count": 1,
+   "pages": 1
+  }
+ },
+ "policylocks_locked_spec": {
+  "items": [
+   {
+    "policies": [
+     {
+      "type": "PolicyLock",
+      "policy": {
+       "name": "mcp-test-acp",
+       "id": "00000000-0000-0ed3-0000-021474837418",
+       "type": "AccessPolicy"
+      },
+      "status": "LOCKED",
+      "metadata": {
+       "lockedByUser": {
+        "name": "alice"
+       }
+      }
+     }
+    ]
+   }
+  ],
+  "paging": {
+   "offset": 0,
+   "limit": 25,
+   "count": 1,
+   "pages": 1
+  }
+ },
+ "policylock_post_response_spec": {
+  "policies": [
+   {
+    "type": "PolicyLock",
+    "policy": {
+     "name": "mcp-test-acp",
+     "id": "00000000-0000-0ed3-0000-021474837418",
+     "type": "AccessPolicy"
+    },
+    "status": "LOCKED",
+    "metadata": {
+     "lockedByUser": {
+      "name": "apiuser"
+     }
+    }
+   }
+  ]
+ },
+ "categories_spec": {
+  "items": [
+   {
+    "id": "00000000-0000-0ed3-0000-000000000c02",
+    "type": "Category",
+    "name": "mcp-w6-cat-web",
+    "metadata": {
+     "section": "Default",
+     "startIndex": 1,
+     "endIndex": 2,
+     "accessPolicy": {
+      "name": "mcp-test-acp",
+      "id": "00000000-0000-0ed3-0000-021474837418",
+      "type": "AccessPolicy"
+     }
+    }
+   },
+   {
+    "id": "00000000-0000-0ed3-0000-000000000c01",
+    "type": "Category",
+    "name": "mcp-w6-cat-corp",
+    "metadata": {
+     "section": "Mandatory",
+     "startIndex": -1,
+     "endIndex": -1,
+     "accessPolicy": {
+      "name": "mcp-test-acp",
+      "id": "00000000-0000-0ed3-0000-021474837418",
+      "type": "AccessPolicy"
+     }
+    }
+   }
+  ],
+  "paging": {
+   "offset": 0,
+   "limit": 25,
+   "count": 2,
+   "pages": 1
+  }
+ }
+}
