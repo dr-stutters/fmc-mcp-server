@@ -657,9 +657,18 @@ def register(reg: ToolRegistrar) -> None:
         async def apply() -> Any:
             if group is None:
                 return await put(rows[0][0], rows[0][3])
-            done = []
+            done: list[dict[str, Any]] = []
             for path, cur, _, want in changing:
-                await put(path, want)
+                try:
+                    await put(path, want)
+                except Exception as e:  # say which members already changed (one PUT per member)
+                    rest = [str(c.get("name")) for _, c, _, _ in changing][len(done) :]
+                    applied_names = [str(d["device"]) for d in done] or "none"
+                    raise UpstreamError(
+                        f"Licences of {cur.get('name')!r} failed ({e}). Applied: {applied_names}; not "
+                        f"applied: {rest}. Check with fmc_license_status, then repeat the call.",
+                        getattr(e, "status_code", None),
+                    ) from e
                 done.append({"device": cur.get("name"), "license_caps": want})
             return {"group": group, "updated": done}
 

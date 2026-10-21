@@ -13,7 +13,7 @@ runs a single-device read on every member of a group.
 import asyncio
 import difflib
 from collections.abc import Awaitable, Callable
-from dataclasses import dataclass, field
+from dataclasses import dataclass, field, replace
 from typing import Annotated, Any
 
 from fastmcp import Context
@@ -131,6 +131,12 @@ async def with_members(app: FmcApp, group: dict[str, Any], domain: str | None) -
         return group
     full: dict[str, Any] = await app.api.get(await app.config_path(f"{DEVICE_GROUPS}/{group['id']}", domain))
     return full
+
+
+async def all_with_members(app: FmcApp, domain: str | None) -> list[dict[str, Any]]:
+    """Every device group with its members (for the 'in another group' check of create/update: a list
+    row without `members` would otherwise hide a move). Free when the expanded list carries members."""
+    return [await with_members(app, g, domain) for g in await device_groups(app, domain)]
 
 
 async def resolve_group(app: FmcApp, ref: str, domain: str | None) -> dict[str, Any]:
@@ -442,9 +448,11 @@ def register(reg: ToolRegistrar) -> None:
         if group:
             g = await resolve_group(app, group, domain)
             return object_reply({**group_row(g), "members": member_refs(g)}, fmt=response_format)
-        groups = [await with_members(app, g, domain) for g in await device_groups(app, domain)]
-        rows = sorted((group_row(g) for g in groups), key=lambda r: str(r.get("name", "")).lower())
-        return list_result(page_of(rows, limit=limit, offset=offset), fmt=response_format)
+        groups = sorted(await device_groups(app, domain), key=lambda g: str(g.get("name", "")).lower())
+        page = page_of(groups, limit=limit, offset=offset)
+        # members of the page's groups only (a list row without them costs a read of that group)
+        rows = [group_row(await with_members(app, g, domain)) for g in page.items]
+        return list_result(replace(page, items=rows), fmt=response_format)
 
     @reg.write(title="Create device group")
     async def fmc_create_device_group(
@@ -462,7 +470,7 @@ def register(reg: ToolRegistrar) -> None:
         the other fleet tools."""
         app: FmcApp = get_client(ctx)
         name = name.strip()
-        groups = await device_groups(app, domain)
+        groups = await all_with_members(app, domain)
         members, notes = await resolve_members(app, devices or [], domain)
         blockers = []
         if _lookup(groups, name) is not None:
@@ -479,7 +487,11 @@ def register(reg: ToolRegistrar) -> None:
             confirm=confirm,
             plan=Plan(
                 f"Create device group {name!r} with {len(members)} member(s)",
-                details={"members": _names(members), **({"notes": notes} if notes else {})},
+                details={
+                    "members": _names(members),
+                    **({"description": description} if description else {}),
+                    **({"notes": notes} if notes else {}),
+                },
                 fingerprint={"members": [m["id"] for m in members], "moves": moves},
                 blockers=blockers,
                 side_effects=moves,
@@ -505,7 +517,7 @@ def register(reg: ToolRegistrar) -> None:
         devices stay registered, outside any group. The preview lists the members before and after."""
         app: FmcApp = get_client(ctx)
         g = await resolve_group(app, group, domain)
-        groups = await device_groups(app, domain)
+        groups = await all_with_members(app, domain)
         before = member_refs(g)
         added, notes = await resolve_members(app, add or [], domain) if add else ([], [])
         dropped: list[dict[str, Any]] = []
@@ -526,9 +538,9 @@ def register(reg: ToolRegistrar) -> None:
         after += new
         name = (new_name or str(g.get("name"))).strip()
         desc = g.get("description") if description is None else description
-        changed = (
-            bool(new or dropped) or name != g.get("name") or (desc or "") != (g.get("description") or "")
-        )
+        renamed = name != g.get("name")
+        redescribed = (desc or "") != (g.get("description") or "")
+        changed = bool(new or dropped) or renamed or redescribed
         if not changed and not blockers:
             blockers.append("Nothing to change.")
         if new_name and name.lower() != str(g.get("name", "")).lower() and _lookup(groups, name) is not None:
@@ -551,14 +563,25 @@ def register(reg: ToolRegistrar) -> None:
             confirm=confirm,
             plan=Plan(
                 f"Change device group {g.get('name')!r}: +{len(new)} / -{len(dropped)} member(s)"
-                + (f", renamed to {name!r}" if name != g.get("name") else ""),
+                + (f", renamed to {name!r}" if renamed else "")
+                + (", description changed" if redescribed else ""),
                 details={
                     "added": _names(new),
                     "removed": _names(dropped),
                     "members_after": _names(after),
+                    **({"name": {"from": g.get("name"), "to": name}} if renamed else {}),
+                    **(
+                        {"description": {"from": g.get("description") or "", "to": desc or ""}}
+                        if redescribed
+                        else {}
+                    ),
                     **({"notes": notes} if notes else {}),
                 },
-                fingerprint={"members": sorted(m["id"].lower() for m in before), "name": g.get("name")},
+                fingerprint={
+                    "members": sorted(m["id"].lower() for m in before),
+                    "name": g.get("name"),
+                    "description": g.get("description") or "",
+                },
                 blockers=blockers,
                 side_effects=moves
                 + (

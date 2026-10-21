@@ -432,3 +432,85 @@ def test_health_review_takes_a_group_and_uses_fleet_calls() -> None:
     assert "command='show crypto ikev2 sa'" in text and "command='show failover state'" in text
     plain = _health_review_text(None, None, 24)
     assert "group:" not in plain and "one fleet call" in plain
+
+
+# --- review fixes ---------------------------------------------------------------------------------------
+
+
+async def test_moves_are_found_when_the_group_list_has_no_members(fleet: respx.MockRouter) -> None:
+    """The spec's list example has no `members` (only name/id/type): the 'in another group' warning must
+    read each group instead of finding nothing."""
+    bare = {k: GROUP[k] for k in ("id", "type", "name")}
+    fleet.get(f"{CFG}/devicegroups/devicegrouprecords").mock(return_value=items([bare]))
+    one = fleet.get(f"{CFG}/devicegroups/devicegrouprecords/{GROUP_ID}").mock(
+        return_value=httpx.Response(200, json=GROUP)
+    )
+    async with Client(server()) as c:
+        preview = await run(c, "fmc_create_device_group", {"name": "t1", "devices": ["ftd-a", "ftd-c"]})
+        listed = await run(c, "fmc_list_device_groups", {"response_format": "json"})
+    assert any("ftd-a is in device group 'branches'" in s for s in preview["side_effects"])
+    assert not any("ftd-c" in s for s in preview["side_effects"])
+    assert listed["results"][0]["member_count"] == 3 and one.called
+
+
+async def test_list_device_groups_reads_members_for_the_page_only(fleet: respx.MockRouter) -> None:
+    bare = [
+        {"id": f"c0000000-0000-4000-8000-00000000010{i}", "type": "DeviceGroup", "name": f"g{i}"}
+        for i in range(3)
+    ]
+    fleet.get(f"{CFG}/devicegroups/devicegrouprecords").mock(return_value=items(bare))
+    reads = [
+        fleet.get(f"{CFG}/devicegroups/devicegrouprecords/{g['id']}").mock(
+            return_value=httpx.Response(
+                200, json={**g, "members": [{"id": A, "type": "Device", "name": "ftd-a"}]}
+            )
+        )
+        for g in bare
+    ]
+    async with Client(server()) as c:
+        out = await run(c, "fmc_list_device_groups", {"limit": 1, "offset": 1, "response_format": "json"})
+    assert [r["name"] for r in out["results"]] == ["g1"] and out["results"][0]["members"] == ["ftd-a"]
+    assert [r.call_count for r in reads] == [0, 1, 0]
+
+
+async def test_update_group_preview_shows_rename_and_description(fleet: respx.MockRouter) -> None:
+    fleet.get(f"{CFG}/devicegroups/devicegrouprecords/{GROUP_ID}").mock(
+        return_value=httpx.Response(200, json={**GROUP, "description": "old text"})
+    )
+    fleet.get(f"{CFG}/devicegroups/devicegrouprecords").mock(
+        return_value=items([{**GROUP, "description": "old text"}])
+    )
+    put = fleet.put(f"{CFG}/devicegroups/devicegrouprecords/{GROUP_ID}").mock(
+        return_value=httpx.Response(200, json=GROUP)
+    )
+    args = {"group": "branches", "description": "new text", "new_name": "spokes"}
+    async with Client(server()) as c:
+        preview = await run(c, "fmc_update_device_group", args)
+        only_desc = await run(c, "fmc_update_device_group", {"group": "branches", "description": "new text"})
+        await run(c, "fmc_update_device_group", {**args, "confirm": preview["confirm"]})
+    p = preview["preview"]
+    assert p["name"] == {"from": "branches", "to": "spokes"}
+    assert p["description"] == {"from": "old text", "to": "new text"}
+    assert "description changed" in only_desc["action"] and only_desc["status"] == "preview"
+    body = json.loads(put.calls.last.request.content)
+    assert body["name"] == "spokes" and body["description"] == "new text" and len(body["members"]) == 3
+
+
+async def test_licences_by_group_say_what_was_applied_when_one_fails(fleet: respx.MockRouter) -> None:
+    fleet.put(f"{CFG}/devices/devicerecords/{A}").mock(return_value=httpx.Response(200, json={}))
+    fleet.put(f"{CFG}/devices/devicerecords/{B}").mock(
+        return_value=httpx.Response(400, json={"error": {"messages": [{"description": "Invalid licence"}]}})
+    )
+    later = [
+        fleet.put(f"{CFG}/devices/devicerecords/{i}").mock(return_value=httpx.Response(200, json={}))
+        for i in (HA_A, HA_B)
+    ]
+    args = {"device": "group:branches", "add": ["IPS"]}
+    async with Client(server()) as c:
+        preview = await run(c, "fmc_set_device_licenses", args)
+        with pytest.raises(ToolError) as err:
+            await run(c, "fmc_set_device_licenses", {**args, "confirm": preview["confirm"]})
+    msg = str(err.value)
+    assert "'ftd-b' failed" in msg and "Applied: ['ftd-a']" in msg
+    assert "not applied: ['ftd-b', 'fw-ha-a', 'fw-ha-b']" in msg
+    assert all(r.call_count == 0 for r in later)
