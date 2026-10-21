@@ -336,6 +336,22 @@ async def test_user_lookup_with_history(fmc: respx.MockRouter, monkeypatch: pyte
     assert "time" not in hist.calls.last.request.url.params  # FMC 10.0.1: 422 "Invalid time field."
 
 
+async def test_ip_lookup_survives_a_history_failure(fmc: respx.MockRouter) -> None:
+    """#199: `history=true` failed the whole lookup when FMC refused the user activity (FMC 10.0.1 answered
+    422 'Invalid time field.'); now the sessions and identities come back with `history_error`."""
+    mock_sessions(fmc, FX["activesessions"]["items"])
+    mock_realm_lookups(fmc)
+    fmc.get(f"{CFG}/analysis/useractivity").mock(
+        return_value=httpx.Response(
+            422, json={"error": {"messages": [{"description": "Invalid time field."}]}}
+        )
+    )
+    async with Client(server()) as c:
+        out = await run(c, "fmc_user_ip_lookup", {"ip": "192.0.2.57", "history": True})
+    assert out["identities"] == ["corp\\alice", "corp\\employees"]
+    assert "Invalid time field" in out["history_error"] and "history" not in out
+
+
 async def test_user_lookup_keeps_groups_when_sessions_are_refused(fmc: respx.MockRouter) -> None:
     mock_sessions(fmc, None)
     mock_realm_lookups(fmc)
