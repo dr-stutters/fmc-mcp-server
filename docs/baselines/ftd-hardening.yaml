@@ -1,0 +1,264 @@
+# FTD hardening baseline for fmc_hardening_check (F80).
+#
+# This file ships with the server (fmc_mcp/baselines/) and is copied to docs/baselines/ftd-hardening.yaml;
+# a unit test keeps the two identical. To use your own checklist, copy it, give the copy its own `name`,
+# put it in the server's FMC_BUNDLE_DIR as <file>.yaml and call fmc_hardening_check(baseline='<file>.yaml')
+# (or the file name without .yaml). Per check you can change `severity` (high | medium | low | info),
+# set `enabled: false`, and tune `params`. `id` selects the evaluator built into the server: a check with
+# an id the server doesn't know is reported under `not_evaluated`, never as passed. `scope` says what a
+# check looks at: fmc (once per call), platform_settings (the policy's sections) or device (each device).
+# `fix_tool` is the tool each finding's fix calls (empty: FMC UI only; the finding names the page).
+#
+# `source` names where each expectation comes from. FTD has no CIS benchmark of its own; the CIS Cisco
+# ASA benchmark's management-plane items are cited where FTD's platform settings configure the same
+# ASA (lina) features. Check every reference against the edition your auditors use.
+name: ftd-hardening-v1
+version: 1
+description: >-
+  Management-plane hardening of FTDs managed by FMC: platform settings (SSH/HTTPS/ICMP access, SNMP,
+  syslog, NTP, banner, external authentication, DNS) and per-device posture (platform settings
+  assigned, HA interface monitoring, rule/VDB content age, licences, backups, pending deployments).
+
+checks:
+  # --- FMC itself (once per call) ------------------------------------------------------------------
+  - id: smart-licensing
+    scope: fmc
+    title: FMC is registered to Smart Licensing and authorized
+    severity: high
+    params:
+      allow_evaluation: false    # true: evaluation mode with days left passes
+    fix_tool:
+    source:
+      - "Cisco Secure Firewall Management Center Administration Guide: Licenses (Smart Licensing registration and authorization)"
+
+  - id: fmc-backup-recent
+    scope: fmc
+    title: FMC has a recent configuration backup
+    severity: medium
+    params:
+      max_age_days: 7
+    fix_tool:
+    source:
+      - "NIST SP 800-53 Rev. 5 CP-9 (System Backup); https://csrc.nist.gov/pubs/sp/800/53/r5/upd1/final"
+      - "Cisco Secure Firewall Management Center Administration Guide: Backup/Restore (scheduled backups)"
+
+  - id: fmc-content-current
+    scope: fmc
+    title: FMC's intrusion rules (SRU/LSP) and VDB are recent
+    severity: medium
+    params:
+      sru_max_age_days: 30
+      lsp_max_age_days: 30
+      vdb_max_age_days: 90
+    fix_tool:
+    source:
+      - "NIST SP 800-53 Rev. 5 SI-3 (Malicious Code Protection: update when new releases are available), SI-2 (Flaw Remediation)"
+      - "Cisco Secure Firewall Management Center Administration Guide: System Updates (recurring rule and VDB updates)"
+
+  # --- platform settings policy ----------------------------------------------------------------------
+  - id: ssh-access-restricted
+    scope: platform_settings
+    title: SSH to the data interfaces is allowed only from management networks
+    severity: high
+    params:
+      open_sources: [any, any-ipv4, any-ipv6, 0.0.0.0/0, "::/0"]
+      min_prefix_v4: 8           # a source wider than this prefix counts as open
+      min_prefix_v6: 32
+    fix_tool: fmc_configure_ssh_access
+    source:
+      - "NIST SP 800-53 Rev. 5 AC-17 (Remote Access), SC-7 (Boundary Protection)"
+      - "CIS Cisco ASA Benchmark: SSH source restriction set to authorized addresses"
+      - "Cisco Secure Firewall Threat Defense hardening guidance: restrict management access to trusted hosts"
+
+  - id: https-access-restricted
+    scope: platform_settings
+    title: HTTPS (device manager) access is off or allowed only from management networks
+    severity: high
+    params:
+      open_sources: [any, any-ipv4, any-ipv6, 0.0.0.0/0, "::/0"]
+      min_prefix_v4: 8
+      min_prefix_v6: 32
+    fix_tool: fmc_configure_mgmt_access
+    source:
+      - "NIST SP 800-53 Rev. 5 AC-17 (Remote Access), SC-7 (Boundary Protection)"
+      - "CIS Cisco ASA Benchmark: HTTP source restriction set to authorized addresses"
+
+  - id: snmp-v3-only
+    scope: platform_settings
+    title: SNMP is off, or SNMPv3 only (no v1/v2c community, no v3 user without authentication)
+    severity: high
+    params:
+      allowed_versions: [SNMPv3]
+      allow_noauth: false        # SNMPv3 users with securityLevel NoAuth
+    fix_tool: fmc_configure_snmp
+    source:
+      - "RFC 3414 (User-based Security Model for SNMPv3); https://www.rfc-editor.org/rfc/rfc3414"
+      - "NIST SP 800-53 Rev. 5 IA-3 (Device Identification and Authentication), SC-8 (Transmission Confidentiality and Integrity)"
+      - "CIS Cisco ASA Benchmark: SNMP v3 with authentication and privacy; no community strings"
+
+  - id: snmp-hosts-restricted
+    scope: platform_settings
+    title: SNMP managers are named hosts, not any address
+    severity: medium
+    params:
+      open_sources: [any, any-ipv4, any-ipv6, 0.0.0.0/0, "::/0"]
+      min_prefix_v4: 8
+      min_prefix_v6: 32
+    fix_tool: fmc_configure_snmp
+    source:
+      - "NIST SP 800-53 Rev. 5 AC-3 (Access Enforcement), SC-7 (Boundary Protection)"
+      - "CIS Cisco ASA Benchmark: snmp-server host restricted to management stations"
+
+  - id: syslog-servers
+    scope: platform_settings
+    title: Logging is on and sent to at least one syslog server
+    severity: medium
+    params:
+      min_servers: 1
+    fix_tool: fmc_configure_syslog
+    source:
+      - "NIST SP 800-53 Rev. 5 AU-4 (Audit Log Storage Capacity), AU-6 (Audit Record Review), AU-9(2) (Store on Separate Physical Systems or Components)"
+      - "NIST SP 800-92 (Guide to Computer Security Log Management); https://csrc.nist.gov/pubs/sp/800/92/final"
+      - "CIS Cisco ASA Benchmark: logging enabled, syslog server configured"
+
+  - id: syslog-rfc5424
+    scope: platform_settings
+    title: Syslog timestamps use RFC 5424 (year and time zone)
+    severity: low
+    params: {}
+    fix_tool: fmc_configure_syslog
+    source:
+      - "RFC 5424 (The Syslog Protocol), section 6.2.3 TIMESTAMP; https://www.rfc-editor.org/rfc/rfc5424"
+      - "NIST SP 800-53 Rev. 5 AU-8 (Time Stamps)"
+
+  - id: syslog-tls
+    scope: platform_settings
+    title: Syslog servers are reached over TCP with TLS
+    severity: low
+    enabled: false               # most SIEMs take UDP syslog; turn on where the policy requires TLS
+    params: {}
+    fix_tool: fmc_configure_syslog
+    source:
+      - "RFC 5425 (TLS Transport Mapping for Syslog); https://www.rfc-editor.org/rfc/rfc5425"
+      - "NIST SP 800-53 Rev. 5 SC-8 (Transmission Confidentiality and Integrity)"
+
+  - id: ntp-servers
+    scope: platform_settings
+    title: Time comes from NTP (named servers, or FMC when accepted)
+    severity: medium
+    params:
+      accept_fmc_sync: true      # false: the devices must use their own NTP servers
+      min_servers: 1
+    fix_tool: fmc_configure_ntp
+    source:
+      - "NIST SP 800-53 Rev. 5 AU-8 (Time Stamps), SC-45 (System Time Synchronization)"
+      - "CIS Cisco ASA Benchmark: NTP configured"
+
+  - id: login-banner
+    scope: platform_settings
+    title: A login banner states that access is for authorized users
+    severity: low
+    params:
+      must_contain_any: [authori]  # case-insensitive substrings; [] accepts any banner
+    fix_tool: fmc_set_banner
+    source:
+      - "NIST SP 800-53 Rev. 5 AC-8 (System Use Notification)"
+      - "CIS Cisco ASA Benchmark: login banner set"
+
+  - id: external-authentication
+    scope: platform_settings
+    title: CLI users authenticate against an external directory (LDAP/RADIUS)
+    severity: medium
+    params: {}
+    fix_tool:
+    source:
+      - "NIST SP 800-53 Rev. 5 AC-2 (Account Management), IA-2 (Identification and Authentication)"
+      - "Cisco Secure Firewall Management Center Device Configuration Guide: Platform Settings > External Authentication"
+
+  - id: icmp-restricted
+    scope: platform_settings
+    title: ICMP to the device's interfaces is limited by ICMP access rules
+    severity: low
+    params:
+      require_rules: true        # no ICMP access rules: every host may ICMP the interfaces
+      open_sources: [any, any-ipv4, any-ipv6, 0.0.0.0/0, "::/0"]
+      min_prefix_v4: 8
+      min_prefix_v6: 32
+    fix_tool: fmc_configure_mgmt_access
+    source:
+      - "NIST SP 800-53 Rev. 5 CM-7 (Least Functionality), SC-7 (Boundary Protection)"
+      - "CIS Cisco ASA Benchmark: ICMP restricted on untrusted interfaces"
+
+  - id: dns-configured
+    scope: platform_settings
+    title: The devices have a DNS server group (FQDN objects resolve)
+    severity: low
+    params: {}
+    fix_tool: fmc_configure_dns
+    source:
+      - "Cisco Secure Firewall Management Center Device Configuration Guide: Platform Settings > DNS (FQDN objects in rules need a DNS server group)"
+
+  # --- each device -----------------------------------------------------------------------------------
+  - id: platform-settings-assigned
+    scope: device
+    title: The device has a platform settings policy
+    severity: high
+    params: {}
+    fix_tool: fmc_assign_policy
+    source:
+      - "NIST SP 800-53 Rev. 5 CM-2 (Baseline Configuration), CM-6 (Configuration Settings)"
+      - "Cisco Secure Firewall Management Center Device Configuration Guide: Platform Settings for Threat Defense"
+
+  - id: ha-interface-monitoring
+    scope: device
+    title: HA data interfaces are monitored and have a standby address
+    severity: medium
+    params:
+      require_monitoring: true
+      require_standby_ip: true
+    fix_tool: fmc_configure_ha_monitoring
+    source:
+      - "Cisco Secure Firewall Management Center Device Configuration Guide: High Availability (interface monitoring, standby IP addresses)"
+
+  - id: device-content-current
+    scope: device
+    title: The device runs FMC's intrusion rules and VDB, and they are recent
+    severity: medium
+    params:
+      lsp_max_age_days: 30
+      vdb_max_age_days: 90
+    fix_tool: fmc_deploy
+    source:
+      - "NIST SP 800-53 Rev. 5 SI-3 (Malicious Code Protection), SI-2 (Flaw Remediation)"
+      - "Cisco Secure Firewall Management Center Administration Guide: System Updates (rule and VDB updates reach devices with a deployment)"
+
+  - id: device-licences
+    scope: device
+    title: The device holds the licences its access policy needs
+    severity: high
+    params:
+      required: []               # licences every device must hold besides what its policy needs, e.g. [IPS]
+    fix_tool: fmc_set_device_licenses
+    source:
+      - "Cisco Secure Firewall Management Center Administration Guide: Licenses (IPS for intrusion policies, Malware Defense for file policies, URL for URL categories)"
+
+  - id: device-backup-recent
+    scope: device
+    title: The device has a recent backup on FMC
+    severity: medium
+    params:
+      max_age_days: 7
+      skip_virtual: true         # Threat Defense Virtual has no device backup (FMC answers 'File not found')
+    fix_tool: fmc_backup_devices
+    source:
+      - "NIST SP 800-53 Rev. 5 CP-9 (System Backup)"
+      - "Cisco Secure Firewall Management Center Administration Guide: Backup/Restore (device backups)"
+
+  - id: no-pending-deployment
+    scope: device
+    title: The device runs what FMC holds (no pending deployment)
+    severity: medium
+    params: {}
+    fix_tool: fmc_deploy
+    source:
+      - "NIST SP 800-53 Rev. 5 CM-3 (Configuration Change Control), CM-2 (Baseline Configuration)"

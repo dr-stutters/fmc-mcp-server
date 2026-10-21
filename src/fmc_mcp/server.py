@@ -22,6 +22,7 @@ from fmc_mcp.tools import (
     bundle,
     bundle_import,
     certificates,
+    compliance,
     conditions,
     containment,
     dangerous,
@@ -39,6 +40,7 @@ from fmc_mcp.tools import (
     find_address,
     fleet,
     ha,
+    hardening,
     hygiene,
     identity,
     identity_sources,
@@ -116,7 +118,9 @@ Workflows:
   fmc_set_access_logging sends connection/intrusion events there too. NetFlow to a collector:
   fmc_configure_netflow; DNS (FQDN objects in rules only match once the device has a DNS server group;
   rule and FQDN object previews warn): fmc_configure_dns; ICMP/HTTPS access and the login banner:
-  fmc_configure_mgmt_access, fmc_set_banner.
+  fmc_configure_mgmt_access, fmc_set_banner. Hardening against a baseline (each finding with its source and
+  fix tool): fmc_hardening_check; an auditor's evidence pack: the fmc_compliance_evidence prompt
+  (fmc_export_access_rules evidence=true: hits, logging, last change and user, deployment, ticket per rule).
 - Dynamic routing: fmc_get_routing (BGP, OSPF, ECMP, PBR, VRFs) -> fmc_configure_bgp /
   fmc_configure_ospf / fmc_create_vrf -> fmc_deploy -> fmc_run_show_command('show route').
 - SD-WAN (hub and spoke over VTIs): zone the WAN and inside interfaces (fmc_update_interface) ->
@@ -302,6 +306,7 @@ REGISTER: list[Callable[[ToolRegistrar], None]] = [
     platform_settings.register,
     platform_access.register,
     platform_services.register,
+    hardening.register,
     routing.register,
     app_routing.register,
     intrusion.register,
@@ -322,6 +327,7 @@ REGISTER: list[Callable[[ToolRegistrar], None]] = [
     identity.register,
     identity_sources.register,
     prompts.register,
+    compliance.register,
 ]
 
 

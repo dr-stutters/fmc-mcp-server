@@ -127,7 +127,8 @@ There are 202 tools when every tier is enabled (86 read, 103 write, 13 dangerous
 | File / malware, network analysis | `fmc_get_file_policy` (settings and file rules; `catalog=true` lists file categories and types), `fmc_get_network_analysis_policy` (base, mode, access policies using it, inspector overrides) |
 | Change management | `fmc_change_tickets` (status, tickets, a ticket's changes and validation) |
 | Admin | `fmc_upgrade_status` (versions, upgrade history, packages), `fmc_list_backups`, `fmc_get_health_policy`, `fmc_list_users`, `fmc_list_object_overrides` |
-| Analysis | `fmc_rule_lookup`, `fmc_shadowed_rules`, `fmc_policy_audit` (ranked hygiene findings with a fix each), `fmc_threat_posture` (intrusion and file policies and modes, TRUST/fastpath bypasses, SI and DNS coverage, decryption, device licences; findings with a fix each), `fmc_export_access_rules` (rows or CSV, re-importable) |
+| Analysis | `fmc_rule_lookup`, `fmc_shadowed_rules`, `fmc_policy_audit` (ranked hygiene findings with a fix each), `fmc_threat_posture` (intrusion and file policies and modes, TRUST/fastpath bypasses, SI and DNS coverage, decryption, device licences; findings with a fix each), `fmc_export_access_rules` (rows or CSV, re-importable; `evidence=true`: per rule its hits per device with first/last hit, logging, intrusion/file policy, last change and user from FMC's audit log, the deployment that pushed it, comments, the change ticket when change management is on, plus the policy's SI/DNS state) |
+| Compliance | `fmc_hardening_check` (a device or platform settings policy against a YAML baseline, default `ftd-hardening-v1` = [docs/baselines/ftd-hardening.yaml](docs/baselines/ftd-hardening.yaml), editable, each check with its source: SSH/HTTPS/ICMP access, SNMPv3, syslog and RFC 5424, NTP, banner, external authentication, DNS, HA interface monitoring, rule/VDB age, licences, backups, pending deployments; ranked findings, each with the existing tool that fixes it); prompt `fmc_compliance_evidence` (the auditor's evidence pack for one access policy) |
 | Device configuration | `fmc_export_device_config` (one FTD or HA pair by section: interfaces, routing, assigned policies, NAT rules, platform settings, VPN memberships, object overrides, out-of-band changes, versions and licences; versioned YAML, secrets masked), `fmc_diff_device_config` (two devices, a device and a template, or an export against the device now; field by field per section; with state sections: routes lost, tunnels down, interface changes, new alerts, hit-count deltas), `fmc_device_snapshot` (what up to 25 FTDs run now, for before/after evidence: routing table, interface state, failover, IKEv2/IPsec SAs, tunnels, hit counts, health alerts, deployed version, masked running-config sections; about ten requests per device) |
 | Policy bundles | `fmc_export_policy_bundle` (an access policy with everything it references, as versioned YAML), `fmc_diff_policy_bundle` (two bundles, or a bundle against live FMC), `fmc_plan_policy_bundle_import` (what an import would create, reuse, update or need first) |
 | Deployment | `fmc_list_deployable_devices`, `fmc_pending_changes`, `fmc_list_deployments` |
@@ -366,6 +367,20 @@ MD5 password, because FMC returns it masked and a PUT would replace it, unless y
   FTD exports too. With `FMC_BUNDLE_DIR` set, exports are written there (`device-<name>-<time>.yaml`) and
   both tools take the file name. The `fmc_firewall_health_review` prompt's `compare_with` adds this as
   a drift check.
+- **Hardening and audit evidence (F80):** `fmc_hardening_check(device=...)` (or `platform_settings=...`) checks
+  the device's platform settings policy and the device against a baseline: SSH, HTTPS and ICMP access not
+  open to any address, SNMP off or v3 only, syslog servers and RFC 5424 timestamps, NTP, the login banner,
+  external authentication, DNS, and per device platform settings assigned, HA interface monitoring, intrusion
+  rule and VDB age, licences, a recent backup and nothing pending, plus FMC's Smart Licensing, backup and
+  content. The checklist is [docs/baselines/ftd-hardening.yaml](docs/baselines/ftd-hardening.yaml): each check
+  has a severity, params, the tool that fixes it and its source (NIST SP 800-53 controls, RFCs, the CIS ASA
+  benchmark's management-plane items, Cisco's guides). To change it, copy the file, give it its own `name`,
+  put it in `FMC_BUNDLE_DIR` and pass `baseline='<file>.yaml'`. Findings come ranked, each with the fix as
+  the existing tool call to preview. `fmc_export_access_rules(policy, evidence=true, since_days=30)` adds per
+  rule what an auditor asks for: hits per device (first/last hit), logging, intrusion and file policy, the
+  last change (FMC's 'Save Policy' audit record and its user), the deployment that put it on each device,
+  rule comments, and the change ticket when FMC change management is on; the `fmc_compliance_evidence`
+  prompt turns both into an evidence pack.
 - **Before/after evidence for a change window:** `fmc_device_snapshot(devices, label='before CHG42')`
   captures what each FTD runs right now, as the same `fmc-device-config` document with state sections:
   the routing table (`show route`), interface status (`show interface ip brief`), failover state (HA
@@ -453,7 +468,7 @@ including nested groups, to ranges, then walk the rules in order. The results ar
 | `FMC_DEPLOY_WINDOW` | off | Maintenance window for changes that reach devices (deploy, rollback, register, delete device, HA). Same syntax as `MCP_CHANGE_WINDOW`. See "Deploy safety rails". |
 | `FMC_TICKET` | | Change-management ticket id sent with every request (FMC 7.6+ change management; `fmc_ticket` sets it at run time) |
 | `FMC_UI_USERNAME`, `FMC_UI_PASSWORD` | | Optional FMC web-UI user for `fmc_test_realm` / `fmc_download_realm` (role with Integrations > Realms modify). Must differ from `FMC_USERNAME`: a UI login ends the same user's REST session. |
-| `FMC_BUNDLE_DIR` | off | Directory `fmc_export_policy_bundle`, `fmc_export_device_config` and `fmc_device_snapshot` also write bundles, device exports and snapshots to (and `fmc_diff_policy_bundle` / `fmc_diff_device_config` read their file names from). Off: both are only returned inline. |
+| `FMC_BUNDLE_DIR` | off | Directory `fmc_export_policy_bundle`, `fmc_export_device_config` and `fmc_device_snapshot` also write bundles, device exports and snapshots to (and `fmc_diff_policy_bundle` / `fmc_diff_device_config` read their file names from); `fmc_hardening_check` reads edited baselines from it (`baseline='<file>.yaml'`). Off: both are only returned inline. |
 | `FMC_PKI_DIR` | off | Directory on the server host that `fmc_import_certificate_files` reads PEM certificate, key and passphrase files from (keys never pass through MCP). Off: file imports are refused; `fmc_create_internal_ca` still works (FMC generates the key). In Docker, bind-mount it read-only (see `docker-compose.yml`). |
 | `FMC_TOOLSETS` | every area | Load only some areas of the tool surface, e.g. `troubleshoot,objects,deploy` or `all,-sdwan,-tls` (see "Toolsets"). The tiers still apply on top. |
 | `FMC_ALLOW_IGNORE_WARNING` | `false` | Allow `fmc_deploy(ignore_warning=true)` (the preview must then list the FMC warnings being ignored) |
@@ -520,9 +535,9 @@ checks it against the registered tools.
 | `ha` | 5 (2/1/2) | FTD high-availability pairs: status, forming, switch/break, monitored interfaces | `fmc_ha_failover_check` |
 | `identity` | 13 (6/7/0) | users in rules: realms (AD/LDAP), identity policies, ISE identity source, user-IP sessions | `fmc_prove_user_policy` |
 | `intel` | 12 (2/10/0) | blocking by reputation: Security Intelligence feeds and lists, DNS policy, host containment |  |
-| `migrate` | 6 (4/1/1) | move policy between FMCs or files: policy bundles, access-rule CSV import/export |  |
+| `migrate` | 6 (4/1/1) | move policy between FMCs or files: policy bundles, access-rule CSV import/export | `fmc_compliance_evidence` |
 | `objects` | 24 (9/14/1) | network/port/URL objects and groups, zones, dynamic objects, overrides, where an address is used |  |
-| `platform` | 11 (1/10/0) | platform settings: syslog, connection logging, NTP, SNMP, DNS, NetFlow, SSH/HTTPS/ICMP, banner |  |
+| `platform` | 12 (2/10/0) | platform settings: syslog, connection logging, NTP, SNMP, DNS, NetFlow, SSH/HTTPS/ICMP, banner, hardening | `fmc_compliance_evidence` |
 | `policy` | 26 (9/16/1) | access control, NAT and prefilter policies and rules, assignments, rule hygiene | `fmc_policy_cleanup`, `fmc_rule_change_review`, `fmc_why_blocked` |
 | `routing` | 8 (2/6/0) | static routes, BGP, OSPF, VRFs |  |
 | `sdwan` | 7 (1/6/0) | SD-WAN hub and spoke topologies, WAN interfaces, application-aware routing, branch health | `fmc_onboard_branch`, `fmc_sdwan_troubleshoot` |
