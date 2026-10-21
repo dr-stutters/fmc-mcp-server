@@ -265,11 +265,16 @@ async def test_rule_into_category(lab: respx.MockRouter) -> None:
     rid = "00000000-0000-0ed3-0000-000268434440"
     moved = copy.deepcopy(next(r for r in fixture("accessrules")["items"] if r["id"] == rid))
     moved["metadata"].update(category="mcp-w6-cat-web", ruleIndex=3)
-    lab.get(f"{CFG}/policy/accesspolicies/{ACP_ID}/accessrules/{rid}").mock(
+    by_id = lab.get(f"{CFG}/policy/accesspolicies/{ACP_ID}/accessrules/{rid}").mock(
         return_value=httpx.Response(200, json=moved)
     )
     put = lab.put(f"{CFG}/policy/accesspolicies/{ACP_ID}/accessrules").mock(
         return_value=httpx.Response(200, json={"items": [moved]})
+    )
+    # after the move the rule is found again by name in the list (FMC re-creates it there: new id)
+    after = {**fixture("accessrules"), "items": [moved]}
+    lab.get(f"{CFG}/policy/accesspolicies/{ACP_ID}/accessrules").mock(
+        side_effect=lambda _req: httpx.Response(200, json=after if put.called else fixture("accessrules"))
     )
     preview, done = await preview_apply(
         "fmc_update_access_rule",
@@ -281,6 +286,7 @@ async def test_rule_into_category(lab: respx.MockRouter) -> None:
     assert dict(req.url.params) == {"bulk": "true", "category": "mcp-w6-cat-web"}
     assert json.loads(req.content)[0]["id"] == rid
     assert done["result"]["now_at"]["category"] == "mcp-w6-cat-web" and done["result"]["now_at"]["index"] == 3
+    assert by_id.call_count == 0 and "id_changed" not in done["result"]  # same id here: no note
     # a Mandatory category: the preview says the rule changes section
     out = await preview_only(
         "fmc_update_access_rule", {"policy": "mcp-test-acp", "rule": rid, "category": "mcp-w6-cat-corp"}

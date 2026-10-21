@@ -1,0 +1,367 @@
+{
+ "_about": "FMC 10.0.1 (build 1), Global/mcp-test-leaf, 2026-10-21 (W6N live-A, F76 #171): moving rule mcp-w6-child-icmp of mcp-w6-child-acp into a category re-creates it. links dropped.",
+ "child_acp": {
+  "_source": "GET policy/accesspolicies/<child> (live)",
+  "metadata": {
+   "inherit": true,
+   "parentPolicy": {
+    "name": "mcp-w6-acp",
+    "id": "00000000-0000-0ed3-0000-021474963108",
+    "type": "AccessPolicy"
+   },
+   "lockingStatus": {
+    "status": "UNLOCKED"
+   },
+   "timestamp": 1792604277943,
+   "lastUser": {
+    "name": "mcp-api-svc"
+   },
+   "domain": {
+    "name": "Global \\ mcp-test-leaf",
+    "id": "a1c73df0-8353-8db7-1097-000000000000",
+    "type": "Domain"
+   }
+  },
+  "type": "AccessPolicy",
+  "rules": {
+   "refType": "list",
+   "type": "AccessRule"
+  },
+  "securityIntelligence": {
+   "id": "00000000-0000-0ed3-0000-021475055891",
+   "type": "SecurityIntelligencePolicy"
+  },
+  "advancedLoggingSetting": {
+   "type": "AdvancedLoggingSetting",
+   "id": "00000000-0000-0ed3-0000-021475055845"
+  },
+  "eveSetting": {
+   "id": "00000000-0000-0ed3-0000-021475055847",
+   "type": "EVESetting",
+   "enabled": false,
+   "inheritFromParent": false,
+   "isLockedForChild": false
+  },
+  "prefilterPolicySetting": {
+   "type": "PrefilterPolicy",
+   "name": "Default Prefilter Policy",
+   "id": "4897c8f4-e211-4661-b0a4-25b0826cded9"
+  },
+  "loggingPolicySetting": {
+   "isLockedForChild": false,
+   "syslogConfigFromPlatformSetting": false,
+   "enableFileAndMalwareSyslog": false,
+   "inheritFromParent": false,
+   "enableipsSyslog": false,
+   "enableSplunk": true,
+   "type": "LoggingSetting",
+   "id": "00000000-0000-0ed3-0000-021475055867"
+  },
+  "defaultAction": {
+   "sendEventsToFMC": false,
+   "enableSyslog": false,
+   "logBegin": false,
+   "logEnd": false,
+   "action": "BLOCK",
+   "type": "AccessPolicyDefaultAction",
+   "id": "00000000-0000-0ed3-0000-000268434567"
+  },
+  "name": "mcp-w6-child-acp",
+  "description": "W6N live-A F76 child of mcp-w6-acp",
+  "id": "00000000-0000-0ed3-0000-021475055837"
+ },
+ "categories": {
+  "_source": "GET .../categories?expanded=true after creating mcp-w6-cat-m, -b (aboveCategory=mcp-w6-cat-a), -a (live; empty categories read startIndex/endIndex 0)",
+  "items": [
+   {
+    "metadata": {
+     "section": "Mandatory",
+     "startIndex": 0,
+     "endIndex": 0
+    },
+    "type": "Category",
+    "name": "mcp-w6-cat-m",
+    "id": "00000000-0000-0ed3-0000-000268434569"
+   },
+   {
+    "metadata": {
+     "section": "Default",
+     "startIndex": 0,
+     "endIndex": 0
+    },
+    "type": "Category",
+    "name": "mcp-w6-cat-b",
+    "id": "00000000-0000-0ed3-0000-000268434570"
+   },
+   {
+    "metadata": {
+     "section": "Default",
+     "startIndex": 0,
+     "endIndex": 0
+    },
+    "type": "Category",
+    "name": "mcp-w6-cat-a",
+    "id": "00000000-0000-0ed3-0000-000268434568"
+   }
+  ],
+  "paging": {
+   "offset": 0,
+   "limit": 25,
+   "count": 3,
+   "pages": 1
+  }
+ },
+ "rule_before_move": {
+  "_source": "the rule in mcp-w6-cat-a before fmc_update_access_rule(category='mcp-w6-cat-b'): rule_after_move with the id and category it had (FMC changed nothing else; comment history kept)",
+  "metadata": {
+   "ruleIndex": 1,
+   "section": "Default",
+   "category": "mcp-w6-cat-a",
+   "accessPolicy": {
+    "name": "mcp-w6-child-acp",
+    "id": "00000000-0000-0ed3-0000-021475055837",
+    "type": "AccessPolicy"
+   },
+   "timestamp": 1792604411164
+  },
+  "enabled": true,
+  "sendEventsToFMC": true,
+  "logEnd": true,
+  "commentHistoryList": [
+   {
+    "date": "2026-10-21T17:40:00.000+0000",
+    "comment": "W6N live-A F76 child rule",
+    "user": {
+     "name": "mcp-api-svc",
+     "type": "User"
+    }
+   }
+  ],
+  "destinationZones": {
+   "objects": [
+    {
+     "name": "mcp-test-ftd-out",
+     "id": "d1686144-c9d6-11f1-a4e0-98786f180443",
+     "type": "SecurityZone",
+     "subType": "Routed"
+    }
+   ]
+  },
+  "sourceZones": {
+   "objects": [
+    {
+     "name": "mcp-test-ftd-in",
+     "id": "d06d930e-c9d6-11f1-a4e0-98786f180443",
+     "type": "SecurityZone",
+     "subType": "Routed"
+    }
+   ]
+  },
+  "destinationPorts": {
+   "literals": [
+    {
+     "type": "ICMPv4PortLiteral",
+     "protocol": "1",
+     "icmpType": "Any"
+    }
+   ]
+  },
+  "action": "ALLOW",
+  "type": "AccessRule",
+  "name": "mcp-w6-child-icmp",
+  "id": "00000000-0000-0ed3-0000-000268434571"
+ },
+ "old_id_after_move": {
+  "_source": "the tool's GET of the old id after the move (live): FMC answered 404",
+  "status": 404,
+  "error": "Not found (404)"
+ },
+ "rule_after_move": {
+  "_source": "GET .../accessrules/<new id> after the move into mcp-w6-cat-b (live, trimmed: empty blocks dropped)",
+  "metadata": {
+   "ruleIndex": 1,
+   "section": "Default",
+   "category": "mcp-w6-cat-b",
+   "accessPolicy": {
+    "name": "mcp-w6-child-acp",
+    "id": "00000000-0000-0ed3-0000-021475055837",
+    "type": "AccessPolicy"
+   },
+   "timestamp": 1792604411164
+  },
+  "enabled": true,
+  "sendEventsToFMC": true,
+  "logEnd": true,
+  "commentHistoryList": [
+   {
+    "date": "2026-10-21T17:40:00.000+0000",
+    "comment": "W6N live-A F76 child rule",
+    "user": {
+     "name": "mcp-api-svc",
+     "type": "User"
+    }
+   }
+  ],
+  "destinationZones": {
+   "objects": [
+    {
+     "name": "mcp-test-ftd-out",
+     "id": "d1686144-c9d6-11f1-a4e0-98786f180443",
+     "type": "SecurityZone",
+     "subType": "Routed"
+    }
+   ]
+  },
+  "sourceZones": {
+   "objects": [
+    {
+     "name": "mcp-test-ftd-in",
+     "id": "d06d930e-c9d6-11f1-a4e0-98786f180443",
+     "type": "SecurityZone",
+     "subType": "Routed"
+    }
+   ]
+  },
+  "destinationPorts": {
+   "literals": [
+    {
+     "type": "ICMPv4PortLiteral",
+     "protocol": "1",
+     "icmpType": "Any"
+    }
+   ]
+  },
+  "action": "ALLOW",
+  "type": "AccessRule",
+  "name": "mcp-w6-child-icmp",
+  "id": "00000000-0000-0ed3-0000-000268434572"
+ },
+ "bulk_put_into_category": {
+  "_source": "PUT .../accessrules?bulk=true&category=mcp-w6-cat-a, the tool's request shape (live capture; the rule was uncategorized then, id ...572). The answer's id (0001-792202030173) is not the stored id.",
+  "params": {
+   "bulk": "true",
+   "category": "mcp-w6-cat-a"
+  },
+  "request": [
+   {
+    "enabled": true,
+    "sendEventsToFMC": true,
+    "enableSyslog": false,
+    "logBegin": false,
+    "logEnd": true,
+    "logFiles": false,
+    "destinationZones": {
+     "objects": [
+      {
+       "name": "mcp-test-ftd-out",
+       "id": "d1686144-c9d6-11f1-a4e0-98786f180443",
+       "type": "SecurityZone"
+      }
+     ]
+    },
+    "sourceZones": {
+     "objects": [
+      {
+       "name": "mcp-test-ftd-in",
+       "id": "d06d930e-c9d6-11f1-a4e0-98786f180443",
+       "type": "SecurityZone"
+      }
+     ]
+    },
+    "destinationPorts": {
+     "literals": [
+      {
+       "type": "ICMPv4PortLiteral",
+       "protocol": "1",
+       "icmpType": "Any"
+      }
+     ]
+    },
+    "action": "ALLOW",
+    "variableSet": {
+     "name": "Default-Set",
+     "id": "76fa83ea-c972-11e2-8be8-8e45bb1343c0",
+     "type": "VariableSet"
+    },
+    "type": "AccessRule",
+    "name": "mcp-w6-child-icmp",
+    "id": "00000000-0000-0ed3-0000-000268434572"
+   }
+  ],
+  "response": {
+   "items": [
+    {
+     "metadata": {
+      "ruleIndex": 1,
+      "section": "Default",
+      "category": "mcp-w6-cat-a",
+      "accessPolicy": {
+       "name": "mcp-w6-child-acp",
+       "id": "00000000-0000-0ed3-0000-021475055837",
+       "type": "AccessPolicy"
+      }
+     },
+     "enabled": true,
+     "sendEventsToFMC": true,
+     "logEnd": true,
+     "commentHistoryList": [
+      {
+       "date": "2026-10-21T17:40:00.000+0000",
+       "comment": "W6N live-A F76 child rule",
+       "user": {
+        "name": "mcp-api-svc",
+        "type": "User"
+       }
+      }
+     ],
+     "destinationPorts": {
+      "literals": [
+       {
+        "type": "ICMPv4PortLiteral",
+        "protocol": "1",
+        "icmpType": "Any"
+       }
+      ]
+     },
+     "action": "ALLOW",
+     "type": "AccessRule",
+     "name": "mcp-w6-child-icmp",
+     "id": "00000000-0000-0ed3-0001-792202030173"
+    }
+   ]
+  }
+ },
+ "list_after_bulk_put": {
+  "_source": "GET .../accessrules?limit=1 right after that PUT (live): the stored id is ...573",
+  "items": [
+   {
+    "type": "AccessRule",
+    "name": "mcp-w6-child-icmp",
+    "id": "00000000-0000-0ed3-0000-000268434573"
+   }
+  ],
+  "paging": {
+   "offset": 0,
+   "limit": 1,
+   "count": 13,
+   "pages": 13
+  }
+ },
+ "inherited_rule_row": {
+  "_source": "a row of the child's rule list owned by its base policy mcp-w6-acp (live, trimmed)",
+  "metadata": {
+   "ruleIndex": 2,
+   "section": "Default",
+   "category": "--Undefined--",
+   "accessPolicy": {
+    "name": "mcp-w6-acp",
+    "id": "00000000-0000-0ed3-0000-021474963108",
+    "type": "AccessPolicy"
+   },
+   "timestamp": 1792586658709
+  },
+  "name": "mcp-w6-quarantine-block",
+  "id": "00000000-0000-0ed3-0000-000268434506",
+  "type": "AccessRule"
+ }
+}
