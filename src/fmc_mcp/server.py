@@ -55,6 +55,7 @@ from fmc_mcp.tools import (
     platform_services,
     platform_settings,
     policies,
+    policy_structure,
     policy_writes,
     prefilter,
     prompts,
@@ -174,6 +175,11 @@ Workflows:
   (BLOCK_WITH_RESET with tls_versions=['sslv3','tls10','tls11'], another with cipher_suite_lists; above any
   DECRYPT_RESIGN rule) -> fmc_update_decryption_policy undecryptable={'unsupported_cipher_suite':
   'BLOCK_WITH_RESET'} (else RC4 passes a resign rule undecrypted) -> fmc_deploy.
+- One corporate policy, a child per site: fmc_create_access_policy(base_policy=<parent>) or
+  fmc_set_base_policy (the parent's Mandatory rules run first, its Default rules last) -> fmc_assign_policy
+  -> fmc_pending_changes -> fmc_deploy. Rule categories: fmc_create_category / fmc_rename_category /
+  fmc_delete_category, fmc_update_access_rule(category=...). Change windows: fmc_policy_lock; another
+  user's lock blocks a write preview with their name (fmc_get_access_policy shows the holder).
 - PoC to production / domain to domain: fmc_export_policy_bundle -> fmc_plan_policy_bundle_import (target
   domain) -> fmc_import_policy_bundle -> fmc_diff_policy_bundle against live -> assign + fmc_deploy.
 - "Where does 10.1.2.3 appear?": fmc_find_address (objects and groups, dynamic-object mappings, access,
@@ -279,6 +285,7 @@ REGISTER: list[Callable[[ToolRegistrar], None]] = [
     object_import.register,
     object_lifecycle.register,
     policy_writes.register,
+    policy_structure.register,
     bulk_rules.register,
     dangerous.register,
     registration.register,
