@@ -1,0 +1,193 @@
+{
+ "_about": "FMC 10.0.1 (build 1), Global/mcp-test-leaf, 2026-10-21: inheritance of mcp-w6-child-acp (...055837, base mcp-w6-acp ...963108) as W6N live-A recorded it (notes/w6n-fixtures/f76-live-structure.json); the base's own setting from the W6N probe. links dropped.",
+ "child_acp": {
+  "_source": "GET policy/accesspolicies/<child>: metadata.inherit true and metadata.parentPolicy {name, id, type}",
+  "metadata": {
+   "inherit": true,
+   "parentPolicy": {
+    "name": "mcp-w6-acp",
+    "id": "00000000-0000-0ed3-0000-021474963108",
+    "type": "AccessPolicy"
+   },
+   "lockingStatus": {
+    "status": "UNLOCKED"
+   },
+   "timestamp": 1792604277943,
+   "lastUser": {
+    "name": "mcp-api-svc"
+   },
+   "domain": {
+    "name": "Global \\ mcp-test-leaf",
+    "id": "a1c73df0-8353-8db7-1097-000000000000",
+    "type": "Domain"
+   }
+  },
+  "type": "AccessPolicy",
+  "rules": {
+   "refType": "list",
+   "type": "AccessRule"
+  },
+  "securityIntelligence": {
+   "id": "00000000-0000-0ed3-0000-021475055891",
+   "type": "SecurityIntelligencePolicy"
+  },
+  "advancedLoggingSetting": {
+   "type": "AdvancedLoggingSetting",
+   "id": "00000000-0000-0ed3-0000-021475055845"
+  },
+  "eveSetting": {
+   "id": "00000000-0000-0ed3-0000-021475055847",
+   "type": "EVESetting",
+   "enabled": false,
+   "inheritFromParent": false,
+   "isLockedForChild": false
+  },
+  "prefilterPolicySetting": {
+   "type": "PrefilterPolicy",
+   "name": "Default Prefilter Policy",
+   "id": "4897c8f4-e211-4661-b0a4-25b0826cded9"
+  },
+  "loggingPolicySetting": {
+   "isLockedForChild": false,
+   "syslogConfigFromPlatformSetting": false,
+   "enableFileAndMalwareSyslog": false,
+   "inheritFromParent": false,
+   "enableipsSyslog": false,
+   "enableSplunk": true,
+   "type": "LoggingSetting",
+   "id": "00000000-0000-0ed3-0000-021475055867"
+  },
+  "defaultAction": {
+   "sendEventsToFMC": false,
+   "enableSyslog": false,
+   "logBegin": false,
+   "logEnd": false,
+   "action": "BLOCK",
+   "type": "AccessPolicyDefaultAction",
+   "id": "00000000-0000-0ed3-0000-000268434567"
+  },
+  "name": "mcp-w6-child-acp",
+  "description": "W6N live-A F76 child of mcp-w6-acp",
+  "id": "00000000-0000-0ed3-0000-021475055837"
+ },
+ "child_inheritance": {
+  "_source": "GET .../<child>/inheritancesettings?expanded=true: basePolicy carries the name on GET",
+  "items": [
+   {
+    "metadata": {
+     "timestamp": 1792604277943
+    },
+    "basePolicy": {
+     "name": "mcp-w6-acp",
+     "id": "00000000-0000-0ed3-0000-021474963108",
+     "type": "AccessPolicy"
+    },
+    "id": "00000000-0000-0ed3-0000-021475055837",
+    "type": "AccessPolicyInheritanceSetting"
+   }
+  ],
+  "paging": {
+   "offset": 0,
+   "limit": 25,
+   "count": 1,
+   "pages": 1
+  }
+ },
+ "base_inheritance": {
+  "_source": "GET .../<base>/inheritancesettings?expanded=true (the probe): no base, no basePolicy key",
+  "items": [
+   {
+    "metadata": {
+     "timestamp": 1792574677626
+    },
+    "id": "00000000-0000-0ed3-0000-021474963108",
+    "type": "AccessPolicyInheritanceSetting"
+   }
+  ],
+  "paging": {
+   "offset": 0,
+   "limit": 25,
+   "count": 1,
+   "pages": 1
+  }
+ },
+ "child_rules": {
+  "_source": "GET .../<child>/accessrules?expanded=true&limit=2 (trimmed): the child's own rule and an inherited one, whose metadata.accessPolicy is the base",
+  "items": [
+   {
+    "metadata": {
+     "ruleIndex": 1,
+     "section": "Default",
+     "category": "--Undefined--",
+     "accessPolicy": {
+      "name": "mcp-w6-child-acp",
+      "id": "00000000-0000-0ed3-0000-021475055837",
+      "type": "AccessPolicy"
+     },
+     "timestamp": 1792604411164
+    },
+    "name": "mcp-w6-child-icmp",
+    "id": "00000000-0000-0ed3-0000-000268434572",
+    "type": "AccessRule"
+   },
+   {
+    "metadata": {
+     "ruleIndex": 2,
+     "section": "Default",
+     "category": "--Undefined--",
+     "accessPolicy": {
+      "name": "mcp-w6-acp",
+      "id": "00000000-0000-0ed3-0000-021474963108",
+      "type": "AccessPolicy"
+     },
+     "timestamp": 1792586658709
+    },
+    "name": "mcp-w6-quarantine-block",
+    "id": "00000000-0000-0ed3-0000-000268434506",
+    "type": "AccessRule"
+   }
+  ],
+  "paging": {
+   "offset": 0,
+   "limit": 2,
+   "count": 13,
+   "pages": 7
+  }
+ },
+ "clear_base_put": {
+  "_source": "PUT .../<child>/inheritancesettings/<child> without basePolicy: FMC clears the base",
+  "request": {
+   "type": "AccessPolicyInheritanceSetting",
+   "id": "00000000-0000-0ed3-0000-021475055837"
+  },
+  "response": {
+   "metadata": {
+    "timestamp": 1792604631241
+   },
+   "id": "00000000-0000-0ed3-0000-021475055837",
+   "type": "AccessPolicyInheritanceSetting"
+  }
+ },
+ "base_back_put": {
+  "_source": "PUT .../<child>/inheritancesettings/<child> with basePolicy: the answer's basePolicy has no name",
+  "request": {
+   "type": "AccessPolicyInheritanceSetting",
+   "id": "00000000-0000-0ed3-0000-021475055837",
+   "basePolicy": {
+    "id": "00000000-0000-0ed3-0000-021474963108",
+    "type": "AccessPolicy"
+   }
+  },
+  "response": {
+   "metadata": {
+    "timestamp": 1792604879035
+   },
+   "basePolicy": {
+    "id": "00000000-0000-0ed3-0000-021474963108",
+    "type": "AccessPolicy"
+   },
+   "id": "00000000-0000-0ed3-0000-021475055837",
+   "type": "AccessPolicyInheritanceSetting"
+  }
+ }
+}
