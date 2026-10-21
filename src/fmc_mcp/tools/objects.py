@@ -8,6 +8,7 @@ from fastmcp.tools import ToolResult
 from pydantic import Field
 
 from fmc_mcp._core import (
+    AuthError,
     InvalidRequest,
     NotFound,
     ResponseFormat,
@@ -79,6 +80,13 @@ def _no_usage(t: ObjType, obj: dict[str, Any], e: Exception) -> InvalidRequest:
     )
 
 
+# Reading a referencing policy's rules: FMC can't say which domain holds a policy (usage items carry no
+# domain), so its rules are tried domain by domain. Bounded: at most DOMAIN_TRIES domains per policy (the one
+# that last worked first) and MISS_BUDGET 404s per call, so 40 tenants x 20 policies stays a few dozen GETs.
+DOMAIN_TRIES = 5
+MISS_BUDGET = 30
+
+
 def _policy_domains(app: FmcApp, here: str, usage_in: str) -> list[str]:
     """Where to read a referencing policy's rules, in order: the requested domain (it sees its own
     policies and its ancestors'), then the domains below the one usage was reported in (a policy of a
@@ -92,15 +100,28 @@ def _policy_domains(app: FmcApp, here: str, usage_in: str) -> list[str]:
     return [here] + [d["uuid"] for d in below if d["uuid"].lower() != here.lower()]
 
 
-async def _rules_anywhere(app: FmcApp, path: str, domains: list[str]) -> list[dict[str, Any]] | None:
-    """A policy's rules from the first of `domains` that can see the policy; None if none can."""
-    for dom in domains:
-        try:
-            page = await app.all(await app.config_path(path, dom), cap=10_000)
-        except NotFound:
-            continue
-        return page.items
-    return None
+class _RuleReader:
+    """Reads each policy's rules from the first domain that sees the policy, trying the domain that last
+    worked first, within DOMAIN_TRIES per policy and MISS_BUDGET 404s per call."""
+
+    def __init__(self, app: FmcApp, domains: list[str]) -> None:
+        self.app = app
+        self.domains = list(domains)
+        self.misses = 0
+
+    async def rules(self, path: str) -> list[dict[str, Any]] | None:
+        for dom in self.domains[:DOMAIN_TRIES]:
+            if self.misses >= MISS_BUDGET:
+                return None
+            try:
+                page = await self.app.all(await self.app.config_path(path, dom), cap=10_000)
+            except NotFound:
+                self.misses += 1
+                continue
+            self.domains.remove(dom)
+            self.domains.insert(0, dom)
+            return page.items
+        return None
 
 
 async def _rules_domain(app: FmcApp, rules: list[dict[str, Any]]) -> str | None:
@@ -235,14 +256,17 @@ def register(reg: ToolRegistrar) -> None:
             usage = await _usage(app, obj, t, here)
         except ValidationFailed as e:
             # FMC 10.0.1 answers 400 "API not supported for object ... in current domain" for an object
-            # the domain only inherits; the owner domain answers, for every domain below it (#210).
-            if not owner or str(owner["id"]).lower() == here.lower():
+            # the domain only inherits; the owner domain answers, for every domain below it (#210). A login
+            # scoped to the child domain doesn't list (or see) the owner: then there's nothing to ask.
+            known = {d["uuid"].lower() for d in app.domains}
+            owner_id = str((owner or {}).get("id") or "").lower()
+            if not owner_id or owner_id == here.lower() or owner_id not in known:
                 raise _no_usage(t, obj, e) from None
-            usage_in = str(owner["id"])
             try:
-                usage = await _usage(app, obj, t, usage_in)
-            except ValidationFailed as e2:
-                raise _no_usage(t, obj, e2) from None
+                usage = await _usage(app, obj, t, owner_id)
+            except (ValidationFailed, AuthError, NotFound):
+                raise _no_usage(t, obj, e) from None
+            usage_in = owner_id
         multi = len(app.domains) > 1
         used_by = [{"type": u.get("type"), "name": u.get("name"), "id": u.get("id")} for u in usage.items]
         out: dict[str, Any] = {
@@ -264,12 +288,13 @@ def register(reg: ToolRegistrar) -> None:
             rules: list[dict[str, Any]] = []
             unread: list[str] = []
             where = _policy_domains(app, here, usage_in)
+            reader = _RuleReader(app, where)
             for u in used_by[:20]:
                 src = RULE_SOURCES.get(str(u.get("type", "")).lower())
                 if not src:
                     continue
                 path_t, flatten = src
-                found = await _rules_anywhere(app, path_t.format(id=u["id"]), where)
+                found = await reader.rules(path_t.format(id=u["id"]))
                 if found is None:
                     unread.append(str(u.get("name")))
                     continue
@@ -284,8 +309,13 @@ def register(reg: ToolRegistrar) -> None:
                         rules.append(row)
             out["rules"] = rules
             if unread:
+                every = len(where) <= DOMAIN_TRIES and reader.misses < MISS_BUDGET
                 out["warnings"] = [
                     f"Couldn't read the rules of {', '.join(unread)} in any domain this login sees."
+                    if every
+                    else f"Couldn't find the rules of {', '.join(unread)} in the domains tried (up to "
+                    f"{DOMAIN_TRIES} per policy of {len(where)}, {reader.misses} misses): list them with "
+                    "fmc_list_access_rules / fmc_list_nat_rules and the policy's domain."
                 ]
         return out
 
