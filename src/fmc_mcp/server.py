@@ -169,6 +169,11 @@ Workflows:
   DECRYPT_RESIGN with internal_ca) -> fmc_set_decryption_policy -> fmc_deploy; fmc_tls_decryption_check
   says what a flow gets and what is missing. Existing CA or server keys: fmc_import_certificate_files
   (read from FMC_PKI_DIR on the server host; keys never pass through MCP).
+- Block old TLS and weak ciphers (no decryption needed; FTD logs the version and suite once a decryption
+  policy is linked): fmc_create_cipher_suite_list (preset='weak') -> fmc_create_decryption_rule
+  (BLOCK_WITH_RESET with tls_versions=['sslv3','tls10','tls11'], another with cipher_suite_lists; above any
+  DECRYPT_RESIGN rule) -> fmc_update_decryption_policy undecryptable={'unsupported_cipher_suite':
+  'BLOCK_WITH_RESET'} (else RC4 passes a resign rule undecrypted) -> fmc_deploy.
 - PoC to production / domain to domain: fmc_export_policy_bundle -> fmc_plan_policy_bundle_import (target
   domain) -> fmc_import_policy_bundle -> fmc_diff_policy_bundle against live -> assign + fmc_deploy.
 - "Where does 10.1.2.3 appear?": fmc_find_address (objects and groups, dynamic-object mappings, access,
