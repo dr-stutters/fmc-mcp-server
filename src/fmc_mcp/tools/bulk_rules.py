@@ -42,7 +42,7 @@ from fmc_mcp.tools.hygiene import unused
 from fmc_mcp.tools.object_writes import editable
 from fmc_mcp.tools.policies import ACCESS, PREFILTER, all_rules, resolve_policy
 from fmc_mcp.tools.policy_writes import BLOCKING, LogMode, RuleAction, _log_fields
-from fmc_mcp.tools.troubleshoot import HIT_ID_CHUNK, rule_hits, to_utc
+from fmc_mcp.tools.troubleshoot import HIT_ID_CHUNK, is_default_action, rule_hits, to_utc
 
 CHUNK = 50  # rules per bulk PUT
 MOVE_NOTE = (
@@ -470,6 +470,9 @@ def register(reg: ToolRegistrar) -> None:
         hits: dict[str, dict[str, Any]] = {}
         notes: list[str] = []
         last = None
+        # Without rule ids FMC clears "every rule of the policy on that device": the default action's
+        # counter may go too (not recorded on 10.0.1 yet), so the preview shows it as well.
+        every_rule = kind == "access" and not rules
         if targets:
             hits, last, notes = await rule_hits(
                 ctx,
@@ -479,7 +482,8 @@ def register(reg: ToolRegistrar) -> None:
                 dev["id"],
                 domain,
                 refresh=True,
-                include_default=False,
+                include_default=every_rule,
+                default_action_id=(p.get("defaultAction") or {}).get("id"),
             )
         flatten = flatten_access_rule if kind == "access" else flatten_prefilter_rule
         offset = app.local_offset
@@ -519,6 +523,14 @@ def register(reg: ToolRegistrar) -> None:
             "counters": lost,
             "counters_fetched": to_utc(last, offset),
         }
+        default = next((h for h in hits.values() if is_default_action(h)), None) if every_rule else None
+        if default is not None:
+            details["default_action"] = {
+                "hits": int(default.get("hitCount") or 0),
+                "last_hit": to_utc(default.get("lastHitTimeStamp"), offset),
+                "note": "Clearing every rule may reset the default action's counter too (FMC doesn't say; "
+                "not counted in hits_lost). Pass rules=[...] to keep it.",
+            }
         if notes:
             details["notes"] = notes
         return await fmc_preview(

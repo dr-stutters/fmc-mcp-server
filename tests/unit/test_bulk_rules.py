@@ -381,6 +381,49 @@ async def test_clear_hit_counts_previews_what_is_lost(probe: respx.MockRouter) -
     assert delete.calls.last.request.url.params["filter"] == f"deviceId:{DEV['id']}"  # every rule
 
 
+async def test_clear_every_rule_shows_the_default_action_counter(probe: respx.MockRouter) -> None:
+    """Without rule ids FMC clears every rule on the device; the default action's counter may go too, so
+    the preview shows it (apart from hits_lost)."""
+    probe.put(HC).mock(return_value=httpx.Response(200, json={}))
+    rows = [
+        {"rule": {"id": P1, "name": "mcp-w6-probe-1"}, "hitCount": 4},
+        {
+            "rule": {"id": "da-1", "name": "Default Action", "type": "AccessPolicyDefaultAction"},
+            "hitCount": 30,
+            "lastHitTimeStamp": "2026-10-20T11:00:00Z",
+        },
+    ]
+    probe.get(HC).mock(return_value=items(rows))
+    async with Client(server()) as c:
+        every = await run(c, "fmc_clear_hit_counts", {"policy": "mcp-test-acp", "device": DEV["name"]})
+        some = await run(
+            c, "fmc_clear_hit_counts", {"policy": "mcp-test-acp", "device": DEV["name"], "rules": ["1"]}
+        )
+    shown = every["preview"]
+    assert shown["hits_lost"] == 4 and shown["default_action"]["hits"] == 30
+    assert "may reset the default action" in shown["default_action"]["note"]
+    assert "default_action" not in some["preview"]  # ids given: only those rules are cleared
+
+
+async def test_clear_prefilter_hit_counts(probe: respx.MockRouter) -> None:
+    pf = {"id": "00000000-0000-0ed3-0000-021474960101", "type": "PrefilterPolicy", "name": "mcp-w6-pf"}
+    probe.get(f"{CFG}/policy/prefilterpolicies").mock(return_value=items([pf]))
+    pf_hc = f"{CFG}/policy/prefilterpolicies/{pf['id']}/operational/hitcounts"
+    pf_rules = f"{CFG}/policy/prefilterpolicies/{pf['id']}/prefilterrules"
+    rule = {"id": "pf-r1", "name": "mcp-w6-fastpath", "type": "PrefilterRule", "metadata": {"ruleIndex": 1}}
+    probe.get(pf_rules).mock(return_value=items([rule]))
+    probe.put(pf_hc).mock(return_value=httpx.Response(200, json={}))
+    probe.get(pf_hc).mock(return_value=items([{"rule": {"id": "pf-r1"}, "hitCount": 7}]))
+    delete = probe.delete(pf_hc).mock(return_value=httpx.Response(200, json={}))
+    preview, done = await preview_apply(
+        "fmc_clear_hit_counts",
+        {"policy": pf["name"], "device": DEV["name"], "kind": "prefilter", "rules": ["mcp-w6-fastpath"]},
+    )
+    assert preview["preview"]["hits_lost"] == 7 and "default_action" not in preview["preview"]
+    assert delete.calls.last.request.url.params["filter"] == f"deviceId:{DEV['id']};ids:pf-r1"
+    assert done["result"]["cleared"] == 1
+
+
 async def test_clear_hit_counts_unknown_rule(probe: respx.MockRouter) -> None:
     probe.put(HC).mock(return_value=httpx.Response(200, json={}))
     probe.get(HC).mock(return_value=items([]))
