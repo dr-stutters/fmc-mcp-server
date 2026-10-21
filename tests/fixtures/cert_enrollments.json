@@ -1,5 +1,5 @@
 {
- "_source": "FMC 10.0.1, Global/mcp-test-leaf, 2026-10-21 (W6N probe, notes/w6n-fixtures/f75-probe-certenrollments.json): self_signed_request, self_signed_post (the POST answer: metadata.timestamp 0), self_signed_get (GET by id: FMC filled validationUsage, revocation NONE + ignoreRevocation, key.ignoreIpsecKeyusage) and enrollments_empty / device_certificates_empty (no 'items' key) are real (links dropped, the leaf domain id replaced with the test domain's). pkcs12_get follows FMC 10.0.1's spec GET example 1 (base64Certificate returned in full, passPhrase masked; bundle truncated, renamed mcp-w6-enr-p12). managecertificates has no example in the spec: manage_response and the task_* shapes are built from its schema (ManageDeviceCertificatesRequestModel + TaskMetadata.task) and F74's live TaskStatus answers, pending Stage 2. device_enrolled follows the spec's devices/certificates example 2 (inline form, epoch dates).",
+ "_source": "FMC 10.0.1, Global/mcp-test-leaf, 2026-10-21 (W6N probe, notes/w6n-fixtures/f75-probe-certenrollments.json): self_signed_request, self_signed_post (the POST answer: metadata.timestamp 0), self_signed_get (GET by id: FMC filled validationUsage, revocation NONE + ignoreRevocation, key.ignoreIpsecKeyusage) and enrollments_empty / device_certificates_empty (no 'items' key) are real (links dropped, the leaf domain id replaced with the test domain's). pkcs12_get follows FMC 10.0.1's spec GET example 1 (base64Certificate returned in full, passPhrase masked; bundle truncated, renamed mcp-w6-enr-p12). manage_response, task_running, task_success and device_enrolled are FMC 10.0.1's answers to the W6N live-A ENROLL of mcp-w6-enr-self on mcp-ftd1 (notes/w6n-fixtures/f75-live-enrollment.json, 2026-10-21): the task id under metadata.task (status the string '200'), the task RUNNING then COMPLETED with a SUCCESS subtask, the devices/certificates row with the enrollment nested under `certificate` and ISO dates without seconds ('-' for no CA certificate); links dropped, the device id, enrollment id and name mapped to the test device and the probe's mcp-w6-enr-probe. task_failed is still built from the schema (no failure was recorded).",
  "self_signed_request": {
   "type": "CertEnrollment",
   "name": "mcp-w6-enr-probe",
@@ -173,6 +173,13 @@
   "id": "00000000-0000-0ed3-0000-150323855619"
  },
  "manage_response": {
+  "metadata": {
+   "task": {
+    "id": "21475054592",
+    "taskType": "DEVICE_CERTIFICATE_MANAGEMENT",
+    "status": "200"
+   }
+  },
   "action": "ENROLL",
   "deviceCertificates": [
    {
@@ -187,25 +194,43 @@
     ]
    }
   ],
-  "metadata": {
-   "task": {
-    "id": "21475099999",
-    "name": "CERTIFICATE_ENROLLMENT",
-    "type": "TaskStatus"
-   }
-  }
+  "type": "ManageDeviceCertificate"
  },
  "task_running": {
-  "id": "21475099999",
+  "id": "21475054592",
   "type": "TaskStatus",
+  "taskType": "DEVICE_CERTIFICATE_MANAGEMENT",
+  "message": "RUNNING subtasks:1",
   "status": "RUNNING",
-  "message": "Certificate enrollment in progress"
+  "subTasks": [
+   {
+    "id": "21475054593",
+    "target": {
+     "id": "d9b0ef62-3921-11ef-b2a5-e9c9e2e20bd3",
+     "type": "Device"
+    },
+    "status": "RUNNING",
+    "message": "Enrolling the certificate on the target device"
+   }
+  ]
  },
  "task_success": {
-  "id": "21475099999",
+  "id": "21475054592",
   "type": "TaskStatus",
-  "status": "SUCCESS",
-  "message": "Certificate enrollment completed"
+  "taskType": "DEVICE_CERTIFICATE_MANAGEMENT",
+  "message": "SUCCESS subtasks:1",
+  "status": "COMPLETED",
+  "subTasks": [
+   {
+    "id": "21475054593",
+    "target": {
+     "id": "d9b0ef62-3921-11ef-b2a5-e9c9e2e20bd3",
+     "type": "Device"
+    },
+    "status": "SUCCESS",
+    "message": "The certificate is successfully enrolled on the target device."
+   }
+  ]
  },
  "task_failed": {
   "id": "21475099999",
@@ -235,18 +260,21 @@
    {
     "id": "d9b0ef62-3921-11ef-b2a5-e9c9e2e20bd3",
     "type": "DeviceCertificate",
-    "weakCryptoEnabled": false,
+    "weakCryptoEnabled": true,
     "enrolledCertificates": [
      {
-      "id": "00000000-0000-0ed3-0000-021475016663",
-      "name": "mcp-w6-enr-probe",
+      "certificate": {
+       "name": "mcp-w6-enr-probe",
+       "id": "00000000-0000-0ed3-0000-021475016663",
+       "type": "CertEnrollment"
+      },
       "enrollmentType": "SELF_SIGNED_CERTFICATE",
       "deploymentStatus": "SUCCESS",
       "caCertificateStatus": "NOT_APPLICABLE",
-      "identityCertificateStatus": "AVAILABLE",
       "isOutdated": false,
-      "caCertExpiryDate": 0,
-      "identityCertExpiryDate": 2044513874
+      "caCertExpiryDate": "-",
+      "identityCertificateStatus": "AVAILABLE",
+      "identityCertExpiryDate": "2036-10-18T17:32Z"
      }
     ]
    }
