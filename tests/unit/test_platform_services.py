@@ -619,6 +619,10 @@ async def test_banner_set_and_clear(fmc: respx.MockRouter) -> None:
     assert json.loads(puts["bannersettings"].calls.last.request.content)["bannerText"] == []
     # live-B2: FMC 10.0.1 then stores no lines (GET answers {type, id}, BANNER_DEFAULT) and the deploy sends
     # no 'no banner': the FTD kept the old banner. The preview and the result say so.
+    assert p["action"].endswith(
+        ": cleared (policy only; the devices keep their banner until new text is deployed)"
+    )
+    assert "removed" not in p["action"]
     (warning,) = p["preview"]["warnings"]
     assert "doesn't remove a deployed banner" in warning and "'show banner'" in warning
     assert done["result"]["warning"] == warning

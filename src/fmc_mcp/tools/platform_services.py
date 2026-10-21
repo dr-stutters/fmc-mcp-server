@@ -62,6 +62,7 @@ BANNER_CLEAR_WARNING = (
     "the devices keep the old one (check with 'show banner'). To change what they show, set new text "
     "instead (e.g. one line); clearing only empties the policy."
 )
+BANNER_CLEARED = "cleared (policy only; the devices keep their banner until new text is deployed)"
 FlowEvent = Literal["ALL", "CREATED", "DENIED", "UPDATED", "TORN_DOWN"]
 DEPLOY_NOTE = "Takes effect on the assigned devices after the next deployment."
 
@@ -742,7 +743,8 @@ def register(reg: ToolRegistrar) -> None:
             args={"policy": policy, "text": text, "domain": domain},
             confirm=confirm,
             plan=Plan(
-                f"Login banner in platform settings {pol.get('name')!r}: " + ("set" if lines else "removed"),
+                f"Login banner in platform settings {pol.get('name')!r}: "
+                + ("set" if lines else BANNER_CLEARED),
                 details={
                     "before": before,
                     "after": after,
