@@ -69,14 +69,18 @@ def split_command(command: str, supported: Supported | None = None) -> tuple[str
     return check_command(command, supported)
 
 
-# 'Key version : A' in show version is no secret (F68: it masked a line on every device of a fleet run).
-# The value is the word after the qualifiers that may sit between keyword and secret: key ids and
-# encryption types, hashes and formats, EIGRP's AS ('message-digest-key 1 md5 x',
-# 'authentication-key 1 md5 x', 'failover key hex x', 'authentication key eigrp 100 x').
+# 'Key version : A' in show version is no secret (F68: it masked a line on every device of a fleet run),
+# nor are the key labels of 'show crypto ca certificates' / 'show crypto key mypubkey rsa' ('Public Key
+# Type: RSA (2048 bits)', 'Key name: <trustpoint>', 'Key pair was generated at', 'Key Data:'; W6N live-A
+# saw 'Public Key ******** RSA (2048 bits)'). A public key is never a secret. The value is the word after
+# the qualifiers that may sit between keyword and secret: key ids and encryption types, hashes and
+# formats, EIGRP's AS ('message-digest-key 1 md5 x', 'authentication-key 1 md5 x', 'failover key hex x',
+# 'authentication key eigrp 100 x'), on the same line ('... General Purpose Key' ends a line).
 SECRET = re.compile(
-    r"(?i)\b(password|passwd|secret|key|pre-shared-key|community|key-string|authentication-key|"
-    r"auth-key|priv(?:\s+(?:aes\s+\d+|3des|des))?|auth\s+(?:md5|sha\S*))(?!\s+version\b)"
-    r"(\s+(?:(?:\d+|encrypted|ascii|hex|md5|sha\d*|eigrp\s+\d+)\s+)*)(\S+)"
+    r"(?i)(?<!public )\b(password|passwd|secret|key|pre-shared-key|community|key-string|authentication-key|"
+    r"auth-key|priv(?:\s+(?:aes\s+\d+|3des|des))?|auth\s+(?:md5|sha\S*))"
+    r"(?![ \t]+(?:version|type|name|data|pair|usage)\b)"
+    r"([ \t]+(?:(?:\d+|encrypted|ascii|hex|md5|sha\d*|eigrp[ \t]+\d+)[ \t]+)*)(\S+)"
 )
 
 
