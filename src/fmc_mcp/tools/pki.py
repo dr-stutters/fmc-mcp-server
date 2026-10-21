@@ -288,14 +288,20 @@ class PkiFile:
     group_or_world_readable: bool
 
 
-def read_pki_file(pki_dir: Path | None, name: str, what: str) -> PkiFile:
-    """A file inside FMC_PKI_DIR (no paths outside it, also not through symlinks), read as text."""
+PKI_DIR_OFF = (
+    "Certificate file import is off: set FMC_PKI_DIR to a directory on the MCP server host that "
+    "holds the certificate and key files (read there and sent to FMC only, never through MCP). "
+    "Or let FMC generate the key with fmc_create_internal_ca."
+)
+
+
+def pki_path(
+    pki_dir: Path | None, name: str, what: str, off: str = PKI_DIR_OFF
+) -> tuple[Path, os.stat_result]:
+    """A regular file inside FMC_PKI_DIR (no paths outside it, also not through symlinks) and its stat,
+    at most MAX_PKI_FILE bytes. `off`: the message when FMC_PKI_DIR is not set."""
     if not pki_dir:
-        raise InvalidRequest(
-            "Certificate file import is off: set FMC_PKI_DIR to a directory on the MCP server host that "
-            "holds the certificate and key files (read there and sent to FMC only, never through MCP). "
-            "Or let FMC generate the key with fmc_create_internal_ca."
-        )
+        raise InvalidRequest(off)
     try:
         root = Path(os.path.expanduser(str(pki_dir))).resolve()
         if not root.is_dir():
@@ -310,7 +316,13 @@ def read_pki_file(pki_dir: Path | None, name: str, what: str) -> PkiFile:
     if st is None or not stat.S_ISREG(st.st_mode):
         raise InvalidRequest(f"No file {name!r} in FMC_PKI_DIR ({what})")
     if st.st_size > MAX_PKI_FILE:
-        raise InvalidRequest(f"{what} {name!r} is {st.st_size} bytes; a PEM file is a few KB")
+        raise InvalidRequest(f"{what} {name!r} is {st.st_size} bytes; a certificate file is a few KB")
+    return candidate, st
+
+
+def read_pki_file(pki_dir: Path | None, name: str, what: str, off: str = PKI_DIR_OFF) -> PkiFile:
+    """A file inside FMC_PKI_DIR (no paths outside it, also not through symlinks), read as text."""
+    candidate, st = pki_path(pki_dir, name, what, off)
     try:
         text = candidate.read_text(encoding="ascii")
     except (OSError, UnicodeDecodeError):

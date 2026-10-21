@@ -203,7 +203,7 @@ Notes on some read tools:
 | Intrusion tuning | `fmc_set_intrusion_rule_state` (ALERT/BLOCK/DROP/REJECT/PASS/DISABLE/DEFAULT per policy), `fmc_create_intrusion_policy`, `fmc_create_intrusion_rule` / `fmc_delete_intrusion_rule` (custom Snort 3 rules); `fmc_update_access_rule(intrusion_policy=...)` |
 | Change management | `fmc_ticket` (open / submit / discard / release; an open ticket is sent as `ticket-id` with every change) |
 | Decryption | `fmc_create_decryption_policy` / `fmc_update_decryption_policy` (default action and its logging, trusted CAs, TLS 1.3 decryption, untrusted issuers, undecryptable actions such as Unsupported Cipher Suite), `fmc_create_decryption_rule` (DECRYPT_RESIGN with an internal CA, DECRYPT_KNOWN_KEY, DO_NOT_DECRYPT, BLOCK, MONITOR; `tls_versions` and `cipher_suite_lists` on Block and Monitor rules; `insert_before`; warns when a decrypt rule would sit above a TLS Block rule), `fmc_create_cipher_suite_list` (IANA names or codes checked against FMC's predefined suites; `preset='weak'`), `fmc_delete_decryption_rule`, `fmc_set_decryption_policy` |
-| TLS certificates | `fmc_create_internal_ca` (FMC generates the key: self-signed, or a CSR for your CA), `fmc_install_internal_ca_cert` (the signed certificate for that CSR), `fmc_import_certificate_files` (an existing CA or server certificate + key read from `FMC_PKI_DIR` on the server host; only file names pass through MCP), `fmc_delete_certificate` |
+| TLS certificates | `fmc_create_internal_ca` (FMC generates the key: self-signed, or a CSR for your CA), `fmc_install_internal_ca_cert` (the signed certificate for that CSR), `fmc_import_certificate_files` (an existing CA or server certificate + key read from `FMC_PKI_DIR` on the server host; only file names pass through MCP), `fmc_delete_certificate`, `fmc_create_cert_enrollment` (a device certificate enrollment: self-signed, PKCS12 read from `FMC_PKI_DIR` with its passphrase from a file there or `FMC_PKI_PASSPHRASE`, CA certificate only, SCEP or EST; the preview shows the certificate's subject, expiry and fingerprint, never the key or a password) |
 | Identity (AD/LDAP) | `fmc_create_trusted_ca` (CA for LDAPS), `fmc_create_realm` (bind password write-only), `fmc_download_realm` (users and groups now; needs `FMC_UI_USERNAME`), `fmc_delete_realm`, `fmc_create_identity_policy`, `fmc_create_identity_rule` (PASSIVE / ACTIVE / NO), `fmc_delete_identity_rule`; access rules on users and groups: `fmc_create_access_rule` / `fmc_update_access_rule` `users=[...]` |
 | DNS | `fmc_create_dns_policy`, `fmc_set_dns_policy`, `fmc_dns_block` (block/unblock domains via custom SI DNS lists; NXDOMAIN or drop) |
 | Licences | `fmc_set_device_licenses` (IPS, MALWARE_DEFENSE, URL, ...; a device or a device group in one preview) |
@@ -241,6 +241,7 @@ MD5 password, because FMC returns it masked and a PUT would replace it, unless y
 | `fmc_delete_policy` | Deletes a whole policy. |
 | `fmc_delete_objects` | Deletes many objects in one preview: by names, a name prefix or every unused object, across value objects and groups, zones, dynamic objects and policies; refuses built-ins, objects an ancestor domain owns and anything still in use (naming what uses it), deletes in dependency order with FMC's bulk DELETE. |
 | `fmc_backup_devices` | Backs up device configurations to FMC (not supported on FTDv). |
+| `fmc_enroll_certificate` | Enrols a certificate enrollment on a device, or re-enrols, refreshes or deletes it there (at once, no deployment) and waits for FMC's task; the preview shows the device's current enrolment and the RA VPN, S2S and decryption policies that reference the enrollment (delete is blocked while anything does). |
 | `fmc_apply_device_template` | Applies a device template to one standalone FTD with its variable values and object overrides (replaces its interface, routing, policy and VPN/SD-WAN configuration); the preview lists every variable and override. |
 
 ### Workflows
@@ -454,7 +455,8 @@ including nested groups, to ranges, then walk the rules in order. The results ar
 | `FMC_TICKET` | | Change-management ticket id sent with every request (FMC 7.6+ change management; `fmc_ticket` sets it at run time) |
 | `FMC_UI_USERNAME`, `FMC_UI_PASSWORD` | | Optional FMC web-UI user for `fmc_test_realm` / `fmc_download_realm` (role with Integrations > Realms modify). Must differ from `FMC_USERNAME`: a UI login ends the same user's REST session. |
 | `FMC_BUNDLE_DIR` | off | Directory `fmc_export_policy_bundle`, `fmc_export_device_config` and `fmc_device_snapshot` also write bundles, device exports and snapshots to (and `fmc_diff_policy_bundle` / `fmc_diff_device_config` read their file names from). Off: both are only returned inline. |
-| `FMC_PKI_DIR` | off | Directory on the server host that `fmc_import_certificate_files` reads PEM certificate, key and passphrase files from (keys never pass through MCP). Off: file imports are refused; `fmc_create_internal_ca` still works (FMC generates the key). In Docker, bind-mount it read-only (see `docker-compose.yml`). |
+| `FMC_PKI_DIR` | off | Directory on the server host that `fmc_import_certificate_files` reads PEM certificate, key and passphrase files from, and `fmc_create_cert_enrollment` PKCS12, CA certificate and SCEP/EST password files (keys and passwords never pass through MCP). Off: file imports are refused; `fmc_create_internal_ca` and self-signed enrollments still work (FMC or the device generates the key). In Docker, bind-mount it read-only (see `docker-compose.yml`). |
+| `FMC_PKI_PASSPHRASE` | | Passphrase of the PKCS12 files `fmc_create_cert_enrollment` reads from `FMC_PKI_DIR` when the call names no `passphrase_file` (also `_FILE` / `_REF`) |
 | `FMC_TOOLSETS` | every area | Load only some areas of the tool surface, e.g. `troubleshoot,objects,deploy` or `all,-sdwan,-tls` (see "Toolsets"). The tiers still apply on top. |
 | `FMC_ALLOW_IGNORE_WARNING` | `false` | Allow `fmc_deploy(ignore_warning=true)` (the preview must then list the FMC warnings being ignored) |
 | `MCP_TRANSPORT` | `stdio` | `stdio` or `http` |
@@ -527,7 +529,7 @@ checks it against the registered tools.
 | `routing` | 8 (2/6/0) | static routes, BGP, OSPF, VRFs |  |
 | `sdwan` | 7 (1/6/0) | SD-WAN hub and spoke topologies, WAN interfaces, application-aware routing, branch health | `fmc_onboard_branch`, `fmc_sdwan_troubleshoot` |
 | `threat` | 13 (5/8/0) | intrusion (IPS), file/malware and network analysis policies, an ACP's threat posture | `fmc_threat_defense_review` |
-| `tls` | 15 (5/10/0) | TLS decryption policies and rules, cipher suite lists, certificates (all kinds, days left), readiness check |  |
+| `tls` | 17 (5/11/1) | TLS decryption policies and rules, cipher suite lists, certificates (days left, enrolment), readiness check |  |
 | `troubleshoot` | 10 (10/0/0) | why is traffic blocked: packet tracer, rule lookup, hit counts, show commands, live state | `fmc_firewall_health_review`, `fmc_prove_user_policy`, `fmc_why_blocked` |
 | `vpn` | 7 (5/2/0) | site-to-site VPN topologies, tunnel status and troubleshooting, remote access VPN (read) | `fmc_vpn_troubleshoot` |
 

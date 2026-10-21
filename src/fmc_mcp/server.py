@@ -35,6 +35,7 @@ from fmc_mcp.tools import (
     devices,
     dns,
     dynamic_objects,
+    enrollment,
     file_policy,
     find_address,
     fleet,
@@ -175,6 +176,10 @@ Workflows:
   (BLOCK_WITH_RESET with tls_versions=['sslv3','tls10','tls11'], another with cipher_suite_lists; above any
   DECRYPT_RESIGN rule) -> fmc_update_decryption_policy undecryptable={'unsupported_cipher_suite':
   'BLOCK_WITH_RESET'} (else RC4 passes a resign rule undecrypted) -> fmc_deploy.
+- Device certificates (RA VPN, certificate-authenticated S2S): fmc_create_cert_enrollment (self_signed;
+  pkcs12 read from FMC_PKI_DIR; manual_ca_only; scep; est) -> fmc_enroll_certificate(device, enrollment)
+  (reaches the device at once, no deploy; also re_enroll, refresh, delete) ->
+  fmc_list_certificates(device=...).
 - PoC to production / domain to domain: fmc_export_policy_bundle -> fmc_plan_policy_bundle_import (target
   domain) -> fmc_import_policy_bundle -> fmc_diff_policy_bundle against live -> assign + fmc_deploy.
 - "Where does 10.1.2.3 appear?": fmc_find_address (objects and groups, dynamic-object mappings, access,
@@ -317,6 +322,7 @@ REGISTER: list[Callable[[ToolRegistrar], None]] = [
     tickets.register,
     pki.register,
     certificates.register,
+    enrollment.register,
     decryption.register,
     decryption_check.register,
     dns.register,
