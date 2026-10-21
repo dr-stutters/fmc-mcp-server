@@ -6,10 +6,12 @@ transmitted), and fmc_get_hit_counts can ask FMC to pull fresh counters from the
 """
 
 # No `from __future__ import annotations`: FastMCP inspects signatures at runtime.
+import asyncio
 import ipaddress
 import json
 import re
 import time
+import weakref
 from datetime import UTC, datetime
 from typing import Annotated, Any, Literal
 
@@ -303,6 +305,32 @@ def _json(resp: Any) -> Any:
         return None
 
 
+# FMC 10.0.1 answers operational/commands requests that run at the same time, even for different devices,
+# with each other's output: six concurrent 'show version' all came back with one device's banner and UUID
+# (Wave 6 live proof; the spec promises one request per device and ten devices at once). So this server
+# sends one show command at a time (every tool, every session), and a 'show version' whose UUID line names
+# another device (FMC answered a request another API client had running) is sent once more.
+_show_gates: weakref.WeakKeyDictionary[FmcApp, asyncio.Lock] = weakref.WeakKeyDictionary()
+SHOW_UUID = re.compile(
+    r"^\s*UUID\s*:\s*([0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12})\s*$", re.I | re.M
+)
+
+
+def show_gate(app: FmcApp) -> asyncio.Lock:
+    """The lock every show command of this FMC connection runs under (one at a time)."""
+    gate = _show_gates.get(app)
+    if gate is None:
+        gate = _show_gates[app] = asyncio.Lock()
+    return gate
+
+
+def answered_for(text: str) -> str | None:
+    """The device UUID an output names ('show version' prints 'UUID : <device id>'), lower case; None when
+    it names none (most commands print nothing that identifies the device)."""
+    m = SHOW_UUID.search(text)
+    return m.group(1).lower() if m else None
+
+
 async def run_show(
     app: FmcApp,
     device_id: str,
@@ -314,12 +342,32 @@ async def run_show(
 ) -> str:
     """Run one show command through FMC. `supported` is FMC's allowlist (show_commands.supported_commands;
     the built-in FMC 10.0.1 list when None): an unsupported command is refused before any call.
-    retry=False sends it once (fleet runs: an unreachable device's HTTP 500 is not retried)."""
+    retry=False sends it once (fleet runs: an unreachable device's HTTP 500 is not retried). Show commands
+    run one at a time (show_gate): FMC 10.0.1 mixes up the outputs of concurrent ones. An output that names
+    another device is asked for once more, then refused (UpstreamError) rather than returned."""
     head, rest = split_command(command, supported)
     params: dict[str, Any] = {"command": head}
     if rest:
         params["parameters"] = rest
     path = await app.config_path(f"devices/devicerecords/{device_id}/operational/commands", domain)
+    async with show_gate(app):
+        text = await _show(app, path, params, command, retry)
+        other = answered_for(text)
+        if other and other != device_id.lower():
+            text = await _show(app, path, params, command, retry)
+            other = answered_for(text)
+    if other and other != device_id.lower():
+        raise UpstreamError(
+            f"FMC answered {command!r} for device {device_id} twice with the output of device {other}: FMC "
+            "10.0.1 mixes up show commands that run at the same time (another API client may be running "
+            "some). Not shown; run it again.",
+            502,
+        )
+    return text
+
+
+async def _show(app: FmcApp, path: str, params: dict[str, Any], command: str, retry: bool | None) -> str:
+    """One operational/commands GET: the output, or InvalidRequest/NotFound for FMC's 404s."""
     resp = await app.api.request(
         "GET", path, params=params, timeout=120, expect="response", ok_status={404}, retry=retry
     )

@@ -2,6 +2,7 @@
 (CRUD, and group names in the fleet tools), against the live-recorded shapes in tests/fixtures/fleet_show.json
 (the bulk task shape is built from the 10.0.1 schema, see its _source)."""
 
+import asyncio
 import json
 from typing import Any
 
@@ -94,9 +95,47 @@ def fleet(fmc: respx.MockRouter) -> respx.MockRouter:
     return fmc
 
 
-def show_ok(name: str, text: str | None = None) -> httpx.Response:
+def version_text(name: str, uid: str | None = None) -> str:
+    """The recorded 'show version' as device `name` prints it: its banner and its own UUID line."""
     out = FX["show_version_200"]["items"][0]["commandOutput"].replace("ftd-a", name)
-    return items([{"commandInput": "show version", "commandOutput": text or out, "type": "command"}])
+    return out.replace(A, uid or next((d["id"] for d in DEVICES if d["name"] == name), A))
+
+
+def show_ok(name: str, text: str | None = None) -> httpx.Response:
+    return items(
+        [{"commandInput": "show version", "commandOutput": text or version_text(name), "type": "command"}]
+    )
+
+
+class ConcurrentFmc:
+    """FMC 10.0.1's operational/commands as recorded live (fleet_show.json `concurrent_mixup`): a request
+    that overlaps another one, for any device, is answered with the output of the newest request in
+    flight. Requests that don't overlap get their own device's output. `peak`: most requests at once."""
+
+    def __init__(self, outputs: dict[str, str] | dict[str, dict[str, str]]) -> None:
+        self.outputs = outputs  # device id -> its output, or {command: output}
+        self.inflight: list[str] = []
+        self.peak = 0
+        self.calls: list[str] = []
+
+    async def __call__(self, request: httpx.Request) -> httpx.Response:
+        dev = request.url.path.split("/")[-3]
+        self.calls.append(dev)
+        self.inflight.append(dev)
+        self.peak = max(self.peak, len(self.inflight))
+        await asyncio.sleep(0.01)
+        source = self.inflight[-1]
+        self.inflight.remove(dev)
+        q = request.url.params
+        cmd = q["command"] + (f" {q['parameters']}" if "parameters" in q else "")
+        out = self.outputs[source]
+        text = out if isinstance(out, str) else out[cmd]
+        return items([{"commandInput": cmd, "commandOutput": text, "type": "command"}])
+
+    def mount(self, router: respx.MockRouter) -> "ConcurrentFmc":
+        for i in self.outputs:
+            router.get(cmd_path(i)).mock(side_effect=self)
+        return self
 
 
 # --- fleet show commands ------------------------------------------------------------------------------
@@ -130,6 +169,71 @@ async def test_feature_flag_403_falls_back_per_device_and_is_remembered(fleet: r
     assert "disconnected" in rows["ftd-d"]["error"]
     assert again["path"] == "per-device" and bulk.call_count == 1
     assert ga.calls.last.request.url.params["command"] == "show version"
+
+
+async def test_fmc_mixing_concurrent_answers_cannot_mix_up_rows(fleet: respx.MockRouter) -> None:
+    """Live 2026-10-21 (concurrent_mixup, run 1): eight requests at once gave all six rows one device's
+    'UUID : ...' line. The per-device path now sends one request at a time, so each row is its own."""
+    rec = FX["concurrent_mixup"]["runs"][0]
+    assert set(rec["answered_with"].values()) == {"spoke2"}  # what FMC did with concurrent requests
+    fleet.post(BULK).mock(return_value=httpx.Response(403, json=FX["bulk_refused_403"]))
+    names = {A: "ftd-a", B: "ftd-b", C: "ftd-c", HA_A: "fw-ha-a", HA_B: "fw-ha-b"}
+    fmc = ConcurrentFmc({i: version_text(n) for i, n in names.items()}).mount(fleet)
+    args = {"devices": ["ftd-a", "ftd-b", "ftd-c", "fw-ha"], "command": rec["command"], "match": rec["match"]}
+    async with Client(server()) as c:
+        out = await run(c, "fmc_run_show_command", args)
+    assert fmc.peak == 1 and len(fmc.calls) == 5
+    assert {r["device"]: r["output"] for r in out["results"]} == {
+        n: f"UUID                      : {i}" for i, n in names.items()
+    }
+
+
+async def test_fleet_ip_brief_rows_carry_each_devices_addresses(fleet: respx.MockRouter) -> None:
+    """Live (concurrent_mixup, run 3): a group's 'show interface ip brief' gave every member the hub's
+    addresses. Recorded outputs on two devices: each row has its own."""
+    rec = FX["concurrent_mixup"]
+    assert set(rec["runs"][2]["answered_with"].values()) == {"hub"}
+    hub, spoke = rec["show_interface_ip_brief"]["hub"], rec["show_interface_ip_brief"]["spoke1"]
+    fleet.post(BULK).mock(return_value=httpx.Response(403, json=FX["bulk_refused_403"]))
+    fmc = ConcurrentFmc({A: hub, B: spoke}).mount(fleet)
+    async with Client(server()) as c:
+        out = await run(
+            c,
+            "fmc_run_show_command",
+            {"devices": ["ftd-a", "ftd-b"], "command": "show interface ip brief", "match": "Ethernet0/0"},
+        )
+    rows = {r["device"]: r["output"] for r in out["results"]}
+    assert fmc.peak == 1
+    assert "192.0.2.66" in rows["ftd-a"] and "192.0.2.2 " in rows["ftd-b"]
+
+
+async def test_concurrent_tool_calls_share_one_show_lock(fleet: respx.MockRouter) -> None:
+    """Two sessions' show commands at the same moment still reach FMC one after the other."""
+    fmc = ConcurrentFmc({A: version_text("ftd-a"), B: version_text("ftd-b")}).mount(fleet)
+    async with Client(server()) as c:
+        a, b = await asyncio.gather(
+            run(c, "fmc_run_show_command", {"device": "ftd-a", "command": "show version", "match": "UUID"}),
+            run(c, "fmc_run_show_command", {"device": "ftd-b", "command": "show version", "match": "UUID"}),
+        )
+    assert fmc.peak == 1
+    assert A in a["output"] and B in b["output"]
+
+
+async def test_an_answer_naming_another_device_is_asked_again(fleet: respx.MockRouter) -> None:
+    """An answer whose UUID line names another device (another API client's request ran at the same
+    time) is sent once more; a second wrong answer is that device's failure, never its output."""
+    fleet.post(BULK).mock(return_value=httpx.Response(403, json=FX["bulk_refused_403"]))
+    ga = fleet.get(cmd_path(A)).mock(side_effect=[show_ok("ftd-b"), show_ok("ftd-a")])
+    gb = fleet.get(cmd_path(B)).mock(return_value=show_ok("ftd-c"))
+    async with Client(server()) as c:
+        out = await run(c, "fmc_run_show_command", {"devices": ["ftd-a", "ftd-b"], "command": "show version"})
+        with pytest.raises(ToolError, match=rf"twice with the output of device {C}"):
+            await run(c, "fmc_run_show_command", {"device": "ftd-b", "command": "show version"})
+    assert ga.call_count == 2 and gb.call_count == 4
+    rows = {r["device"]: r for r in out["results"]}
+    assert rows["ftd-a"]["ok"] and f"UUID                      : {A}" in rows["ftd-a"]["output"]
+    assert not rows["ftd-b"]["ok"] and "mixes up show commands" in rows["ftd-b"]["error"]
+    assert out["failed"] == ["ftd-b"]
 
 
 async def test_bulk_task_shape_from_the_schema(fleet: respx.MockRouter) -> None:

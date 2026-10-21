@@ -4,8 +4,10 @@ FMC 10.0.1's `devices/devicerecords/operational/bulkcommands` (one command on up
 task) sits behind the feature flag `bulk_device_command_execution`, off by default: FMC answers 403 "Feature
 Flag ... is disabled" before contacting any device (live probe, Wave 6). So `run_fleet` tries bulkcommands
 once per process and, when FMC refuses it (403/404/405/501), runs the per-device `operational/commands`
-instead: a bounded fan-out (FANOUT devices at a time, one command per device at a time, as the spec asks)
-that costs one request per device and command. Devices FMC reports disconnected are reported without a
+instead, one request per device and command, one at a time: FMC 10.0.1 answers concurrent requests with
+each other's output (Wave 6 live proof: six devices queried eight at a time all got one device's 'show
+version'), so troubleshoot.run_show sends every show command of this server alone and re-asks a 'show
+version' that names another device's UUID. Devices FMC reports disconnected are reported without a
 request; a device FMC can't reach answers HTTP 500 with an SFTunnelException, which becomes that device's
 failure row. The bulk answer's per-device shape (`metadata.task` -> TaskStatus `subTasks` with target and
 message, by the 10.0.1 schema) is unit-tested from the schema only until an FMC with the flag on records it.
@@ -16,7 +18,6 @@ device records with one device listing.
 """
 
 # No `from __future__ import annotations`: FastMCP inspects signatures at runtime.
-import asyncio
 import difflib
 import re
 import weakref
@@ -38,7 +39,6 @@ from fmc_mcp.tools.troubleshoot import ROUTE_LEGEND, filter_lines, redact, run_s
 
 BULK = "devices/devicerecords/operational/bulkcommands"
 MAX_FLEET = 25  # FMC's bulkcommands cap per request, and this tool's per call
-FANOUT = 8  # devices queried at once on the per-device path (spec: at most ten; the client's max_concurrency)
 SINGLE_LINES = 200
 FLEET_LINES = 25
 BULK_REFUSED = {403, 404, 405, 501}  # FMC doesn't offer bulkcommands here: remember and go per device
@@ -222,9 +222,10 @@ async def run_fleet(
 ) -> FleetRun:
     """Run show commands on device records (from resolve_fleet): every command is checked against FMC's
     allowlist first (InvalidRequest before any call), then bulkcommands is tried per command unless FMC
-    refused it before in this process; whatever it doesn't answer runs per device, FANOUT devices at a
-    time and each device's commands one after another. One row per device and command; a failure is a row
-    with ok=False, never an exception."""
+    refused it before in this process; whatever it doesn't answer runs per device, one request at a time
+    (device by device, each device's commands in order: FMC 10.0.1 mixes up the outputs of concurrent
+    show commands). One row per device and command; a failure is a row with ok=False, never an
+    exception."""
     for c in commands:
         check_command(c, supported)
     texts = [" ".join(c.split()) for c in commands]
@@ -263,20 +264,14 @@ async def run_fleet(
         notes.append(f"FMC refused bulkcommands ({_bulk_off[app]}); ran per device.")
     todo = [(d, [c for c in texts if (d["id"], c) not in done]) for d in live]
     todo = [(d, cs) for d, cs in todo if cs]
-    gate = asyncio.Semaphore(FANOUT)
-
-    async def one_device(d: dict[str, Any], cs: list[str]) -> None:
-        async with gate:
-            for c in cs:  # FMC handles one request per device at a time
-                try:
-                    done[(d["id"], c)] = (
-                        True,
-                        await run_show(app, d["id"], c, domain, supported, retry=False),
-                    )
-                except (InvalidRequest, UpstreamError) as e:
-                    done[(d["id"], c)] = (False, explain(e))
-
-    await asyncio.gather(*(one_device(d, cs) for d, cs in todo))
+    # One at a time, never gathered: FMC 10.0.1 answers concurrent operational/commands requests with each
+    # other's output (run_show also holds the server-wide show lock).
+    for d, cs in todo:
+        for c in cs:
+            try:
+                done[(d["id"], c)] = (True, await run_show(app, d["id"], c, domain, supported, retry=False))
+            except (InvalidRequest, UpstreamError) as e:
+                done[(d["id"], c)] = (False, explain(e))
     rows = []
     for d in devices:
         for c in texts:
@@ -349,7 +344,8 @@ def register(reg: ToolRegistrar) -> None:
         second go to FMC as parameters ('show route bgp' = 'show route' + 'bgp'). `match` filters each
         device's lines. Several devices: one row per device with its output or why it failed (disconnected
         devices are not sent the command); FMC's bulkcommands is used where FMC enables it (FMC 10.0.1 keeps
-        it behind a feature flag), else one request per device, eight at a time; `path` says which ran."""
+        it behind a feature flag), else one request per device, one at a time (FMC 10.0.1 mixes up the
+        outputs of concurrent show commands; about 1-3 s per device); `path` says which ran."""
         app: FmcApp = get_client(ctx)
         supported = await supported_commands(ctx)
         check_command(command, supported)  # refuse an unsupported command before resolving any device
