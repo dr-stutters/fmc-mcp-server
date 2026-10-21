@@ -5,6 +5,7 @@ fmc_deploy. The syslog, NTP, SNMP and SSH writers are in platform_settings.py / 
 
 # No `from __future__ import annotations`: FastMCP inspects signatures at runtime.
 import ipaddress
+import json
 from collections.abc import Awaitable, Callable
 from typing import Annotated, Any, Literal
 
@@ -24,7 +25,7 @@ from fmc_mcp._core import (
 from fmc_mcp.client import FmcApp
 from fmc_mcp.preview import fmc_preview
 from fmc_mcp.refs import NETWORK_TYPES, RefResolver, network_literal
-from fmc_mcp.tools.common import Domain, pick_by_name, ref_label
+from fmc_mcp.tools.common import Domain, pick_by_name, ref_label, ref_of, resolve_object
 from fmc_mcp.tools.device_config import network_by_value
 from fmc_mcp.tools.object_writes import editable
 from fmc_mcp.tools.platform_settings import (
@@ -64,6 +65,10 @@ BANNER_CLEAR_WARNING = (
 )
 BANNER_CLEARED = "cleared (policy only; the devices keep their banner until new text is deployed)"
 FlowEvent = Literal["ALL", "CREATED", "DENIED", "UPDATED", "TORN_DOWN"]
+# FMC 10.0.1 takes only interface groups for a NetFlow collector's interfaces (a security zone: 400 "Invalid
+# selection for Interface group. Only Interface Group object of type Management/ Routed/ Switched is
+# allowed.", recorded live 2026-10-21), and of these modes only.
+NETFLOW_GROUP_MODES = ("ROUTED", "SWITCHED", "MANAGEMENT")
 DEPLOY_NOTE = "Takes effect on the assigned devices after the next deployment."
 
 
@@ -331,8 +336,8 @@ def register(reg: ToolRegistrar) -> None:
         interfaces: Annotated[
             list[str] | None,
             Field(
-                description="Security zones / interface groups the collector is reached through (needed for "
-                "a new collector)"
+                description="Interface groups (routed, switched or management; FMC takes no security zone "
+                "here) the collector is reached through (needed for a new collector)"
             ),
         ] = None,
         traffic_classes: Annotated[
@@ -361,10 +366,12 @@ def register(reg: ToolRegistrar) -> None:
         confirm: Confirm = None,
     ) -> dict[str, Any]:
         """NetFlow (NSEL) export from the FTDs using a platform settings policy: flow collectors (host,
-        UDP port, the interfaces it is reached through; at most five), the traffic classes that export
-        flow events to them (class-default = all traffic, or an extended access list) and on/off. The
-        preview shows every field that changes. Deploy afterwards; verify with
-        fmc_run_show_command('show running-config flow-export') and the collector's own counters."""
+        UDP port, the interface groups it is reached through; at most five), the traffic classes that
+        export flow events to them (class-default = all traffic, or an extended access list) and on/off.
+        FMC takes interface groups here, not security zones (the preview refuses a zone and shows the
+        interface group to create from its interfaces). The preview shows every field that changes. Deploy
+        afterwards; verify with fmc_run_show_command('show running-config flow-export') and the collector's
+        own counters."""
         app: FmcApp = get_client(ctx)
         if collector and remove_collector:
             raise InvalidRequest("Add or remove a collector per call, not both.")
@@ -383,18 +390,30 @@ def register(reg: ToolRegistrar) -> None:
                 return bool(str(a["id"]).lower() == str(b["id"]).lower())
             return str(a.get("name", "")).lower() == str(b.get("name", "")).lower()
 
+        notes: list[str] = []
         if collector:
             target, create_host = await _collector_ref(app, resolver, collector, collector_name, domain)
+            if collector_name and create_host is None:
+                notes.append(
+                    f"{collector!r} is the existing object {target.get('name')!r}, used as the collector; "
+                    f"collector_name {collector_name!r} is not used."
+                )
             existing = next((c for c in collectors if same(c.get("collectorHost") or {}, target)), None)
-            block = await resolver.block(interfaces, "zone") if interfaces else None
+            block: dict[str, Any] | None = None
+            refused: list[str] = []
+            if interfaces:
+                block, refused = await _netflow_interfaces(app, interfaces, domain)
+                blockers += refused
             if existing is not None:
                 if port is not None:
                     existing["port"] = port
                 if block:
                     existing["interfaces"] = _zones(block)
             else:
-                if not block:
-                    raise InvalidRequest("Give the interfaces (zones) the new collector is reached through.")
+                if not block and not refused:  # none given, or only blank names
+                    raise InvalidRequest(
+                        "Give the interfaces (interface groups) the new collector is reached through."
+                    )
                 if len(collectors) >= MAX_COLLECTORS:
                     blockers.append(f"FMC allows at most {MAX_COLLECTORS} NetFlow collectors.")
                 collectors.append(
@@ -500,6 +519,7 @@ def register(reg: ToolRegistrar) -> None:
                     "after": netflow_summary(desired),
                     "creates_host_object": create_host,
                     "assigned_to": await assigned_devices(app, pol["id"], domain),
+                    **({"notes": notes} if notes else {}),
                 },
                 fingerprint=editable(cur),
                 blockers=blockers,
@@ -839,6 +859,43 @@ async def _collector_ref(
         host = {"name": name or f"nf-collector-{ip.replace(':', '_')}", "type": "Host", "value": ip}
         return {"type": "Host", "name": host["name"]}, None if lookup_only else host
     return await resolver.single(v, ["host", "network"], "collector host object"), None
+
+
+async def _netflow_interfaces(
+    app: FmcApp, names: list[str], domain: str | None
+) -> tuple[dict[str, Any] | None, list[str]]:
+    """({"objects": [interface groups]} or None, blockers) for a NetFlow collector's `interfaces`. A security
+    zone is refused (FMC 10.0.1 rejects it on the PUT) with the interface group to create from its
+    interfaces; so is an interface group of a mode FMC doesn't take here."""
+    objects: list[dict[str, Any]] = []
+    blockers: list[str] = []
+    for raw in dict.fromkeys(n.strip() for n in names if n.strip()):
+        t, obj = await resolve_object(app, raw, domain, ["interface_group", "security_zone"])
+        mode = str(obj.get("interfaceMode") or "ROUTED").upper()
+        if t.key == "security_zone":
+            ifs = [{k: i[k] for k in ("type", "id", "name") if i.get(k)} for i in obj.get("interfaces") or []]
+            body = {"type": "InterfaceGroup", "name": f"{obj.get('name')}-ifg", "interfaceMode": mode}
+            path = await app.config_path("object/interfacegroups", domain)
+            blockers.append(
+                f"{obj.get('name')!r} is a security zone; FMC takes only interface groups for a NetFlow "
+                "collector ('Only Interface Group object of type Management/ Routed/ Switched is allowed'). "
+                + (
+                    f"Create one with the zone's interfaces: fmc_api_call(method='POST', path='{path}', "
+                    f"body={json.dumps({**body, 'interfaces': ifs})}) (no 'device' key in the interface "
+                    "entries), then pass its name."
+                    if ifs
+                    else "The zone has no interfaces: create an interface group with the collector-side "
+                    f"interfaces (fmc_api_call POST {path}) and pass its name."
+                )
+            )
+            continue
+        if mode not in NETFLOW_GROUP_MODES:
+            blockers.append(
+                f"Interface group {obj.get('name')!r} is {mode}; NetFlow takes "
+                f"{', '.join(m.lower() for m in NETFLOW_GROUP_MODES)} interface groups."
+            )
+        objects.append(ref_of(obj))
+    return ({"objects": objects} if objects else None), blockers
 
 
 async def _network_object(
