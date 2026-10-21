@@ -39,6 +39,7 @@ from pydantic import Field
 from fmc_mcp._core import InvalidRequest, ToolRegistrar, UpstreamError, get_client
 from fmc_mcp._core.formatting import max_chars
 from fmc_mcp.client import FmcApp
+from fmc_mcp.tools.activity import clean_details
 from fmc_mcp.tools.bundle import field_delta, finish, write_file
 from fmc_mcp.tools.common import Domain
 from fmc_mcp.tools.deploy import DEPLOYABLE, JOBS, deployable_row
@@ -83,6 +84,10 @@ SNAPSHOT_DEFAULT = ("device", "policies")  # the cheap config sections a snapsho
 _READING = re.compile(
     r"(?<![\w/.:])(?:\d+:\d{2}(?::\d{2})?|\d+(?:\.\d+)?\s?(?:%|[KMGT]i?B?\b)|\d+\.\d+)(?![\w/.:]*\d)"
 )
+# FMC joins a module's items with '<br>' ("Interface 'Ethernet0/2' is not receiving any packets<br>Interface
+# 'Ethernet0/0' is ...", live Wave 6), in any order.
+_BREAK = re.compile(r"\s*<br\s*/?>\s*", re.I)
+_ITEM_SEP = re.compile(r"\s*;\s*")
 
 
 # --- show output, per unit ------------------------------------------------------------------------
@@ -326,24 +331,50 @@ def without_readings(text: Any) -> str:
     return _READING.sub("#", str(text or ""))
 
 
+def alert_text(details: Any) -> str:
+    """A health message as plain text: the items FMC joins with '<br>' (one per interface, say) separated by
+    '; ', any other HTML and empty items (a leading or trailing '<br>') dropped. The items are sorted (by
+    their text without readings): FMC lists them in any order, and a snapshot (and its digest) shouldn't
+    change with that order alone."""
+    parts = (clean_details(p) for p in _BREAK.split(str(details or "")))
+    return "; ".join(sorted((p for p in parts if p), key=lambda p: (without_readings(p), p)))
+
+
+def _items(details: Any, *, keep_readings: bool = False) -> list[str]:
+    """A message's ';'-separated items, sorted (FMC lists them in any order), empty ones (a separator at
+    either end) dropped; readings blanked unless keep_readings."""
+    text = alert_text(details)
+    return sorted(p for p in _ITEM_SEP.split(text if keep_readings else without_readings(text)) if p)
+
+
+def _plain_alert(value: Any) -> Any:
+    """An alert as a snapshot stores it now (snapshots taken before kept FMC's '<br>')."""
+    if isinstance(value, dict) and "details" in value:
+        return {**value, "details": alert_text(value["details"])}
+    return value
+
+
 def diff_alerts(section: str, a: dict[str, Any], b: dict[str, Any]) -> list[dict[str, Any]]:
     """Modules that turned non-green or green again and status changes are changes, and so is a message
     that says something else (another interface); a message whose only change is a reading (CPU 85.1% ->
-    86.4% while YELLOW) is a delta (op 'delta': from, to), never a difference."""
+    86.4% while YELLOW) is a delta (op 'delta': from, to), never a difference, and one that lists the same
+    items in another order is no change."""
     out: list[dict[str, Any]] = []
     for key in sorted(set(a) | set(b), key=str):
         if key not in b:
-            out.append({"section": section, "op": "removed", "key": key, "value": a[key]})
+            out.append({"section": section, "op": "removed", "key": key, "value": _plain_alert(a[key])})
         elif key not in a:
-            out.append({"section": section, "op": "added", "key": key, "value": b[key]})
-        elif a[key] != b[key]:
-            va, vb = a[key], b[key]
-            if (
-                isinstance(va, dict)
-                and isinstance(vb, dict)
-                and va.get("status") == vb.get("status")
-                and without_readings(va.get("details")) == without_readings(vb.get("details"))
+            out.append({"section": section, "op": "added", "key": key, "value": _plain_alert(b[key])})
+        else:
+            va, vb = _plain_alert(a[key]), _plain_alert(b[key])
+            if va == vb:
+                continue
+            same = isinstance(va, dict) and isinstance(vb, dict) and va.get("status") == vb.get("status")
+            if same and _items(va.get("details"), keep_readings=True) == _items(
+                vb.get("details"), keep_readings=True
             ):
+                continue  # the same items in another order
+            if same and _items(va.get("details")) == _items(vb.get("details")):
                 change = {"from": va.get("details"), "to": vb.get("details")}
                 out.append({"section": section, "op": "delta", "key": key, **change})
             else:
@@ -559,7 +590,11 @@ async def _health_alerts(ctx: ExportContext) -> dict[str, Any]:
     for unit in units(ctx):
         rows = await ctx.items(ALERTS, {"filter": f"deviceUUIDs:{unit['id']}"}, cap=2000)
         bad = [
-            (str(a.get("moduleID") or "?"), str(a.get("status") or "UNKNOWN").upper(), a.get("details"))
+            (
+                str(a.get("moduleID") or "?"),
+                str(a.get("status") or "UNKNOWN").upper(),
+                alert_text(a.get("details")),
+            )
             for a in rows
             if str(a.get("status") or "").upper() != "GREEN"
         ]
