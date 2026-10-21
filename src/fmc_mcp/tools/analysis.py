@@ -17,6 +17,7 @@ from fmc_mcp.lookup_conditions import (
     given_sgt,
     session_sgt,
     sgt_check,
+    stamp,
     time_range_catalog,
     time_range_check,
     uses_time_ranges,
@@ -38,11 +39,13 @@ LIMITS = (
     "security intelligence, decryption and inherited parent-policy rules are not evaluated. "
     "Applications, URLs, destination SGTs and VLAN tags can't be known from addresses and ports, so "
     "rules using them are reported as 'conditional' (they may match). Time ranges are checked against "
-    "their absolute window: a rule whose range has ended (or not started) in every time zone is left out "
-    "(listed in not_in_effect); one in effect everywhere without recurring windows counts as matching; "
-    "others stay conditional (the device reads the times in its own zone). Source SGTs are matched "
-    "against `source_sgt`, else the SGT of the source IP's ISE login in FMC's user activity (shown under "
-    "`source_sgt`); without one, SGT rules stay conditional. Users too stay conditional unless you pass "
+    "their absolute window at `evaluated_at` (now, UTC): a rule whose range has ended (or not started) "
+    "in every time zone is left out (listed in not_in_effect); one in effect everywhere without "
+    "recurring windows counts as matching; others stay conditional (the device reads the times in its "
+    "own zone). Source SGTs are matched against `source_sgt`, else the SGT of the source IP's newest ISE "
+    "login in FMC's user activity (shown under `source_sgt`, not cross-checked with an active session); "
+    "without one, or when a rule's SGTs can't be compared with it, SGT rules stay conditional. Users "
+    "too stay conditional unless you pass "
     "`identities` (the flow's user and its groups), and URL categories unless you pass `url_category` "
     "(a category rule below ANY_AND_UNKNOWN still depends on the site's reputation). Dynamic objects are "
     "checked against their current IP mappings. FQDN objects can't be resolved offline. Zones are "
@@ -261,8 +264,10 @@ def register(reg: ToolRegistrar) -> None:
         has on the source IP and their realm groups (shown under `identity`; fmc_user_ip_lookup), or with
         the `identities` you pass (the user and its groups, e.g. from ISE or AD). URL category rules (with
         their reputation, in each row's `urls`) are evaluated when you pass `url_category`. Source SGT
-        rules use the SGT of the source IP's ISE login (FMC user activity, under `source_sgt`) or the
-        `source_sgt` you pass; rules whose time range has ended are left out (`not_in_effect`)."""
+        rules use the SGT of the source IP's newest ISE login (FMC user activity, under `source_sgt` with
+        a caveat) or the `source_sgt` you pass; an SGT that can't be compared (not in FMC's catalogue, or
+        no tag numbers) leaves them conditional. Rules whose time range has ended are left out
+        (`not_in_effect`; `evaluated_at` is the moment the verdict holds for)."""
         app: FmcApp = get_client(ctx)
         src, dst = _ip(source, "source"), _ip(destination, "destination")
         dev = await resolve_device(app, device, domain) if device else None
@@ -303,8 +308,9 @@ def register(reg: ToolRegistrar) -> None:
         )
         live_rules = [r for r in rules.items if r.get("enabled", True) or include_disabled]
         tags: dict[str, Any] | None = None
-        sgts: list[dict[str, Any]] = []
-        if any(has_value(r.get(f)) for r in rules.items for f in SGT_FIELDS):
+        sgts: list[dict[str, Any]] | None = None  # None: not read, or FMC refused it
+        uses_sgts = any(has_value(r.get(f)) for r in rules.items for f in SGT_FIELDS)
+        if uses_sgts:
             try:  # SGT labels with their tag numbers ('Employees (SGT 4)')
                 sgts = (await sgt_catalog(app, domain))[0]
                 tags = sgt_tags(sgts)
@@ -315,11 +321,14 @@ def register(reg: ToolRegistrar) -> None:
             identities, identity = await _resolve_identities(app, source.strip(), identities, domain)
         flow_sgt: FlowSgt | None = None
         if source_sgt is not None and source_sgt.strip():
-            flow_sgt = with_catalog(given_sgt(source_sgt), sgts)
+            flow_sgt = given_sgt(source_sgt)
         elif resolve_user and any(has_value(r.get("sourceSecurityGroupTags")) for r in live_rules):
             user = (identity or {}).get("user")
-            flow_sgt = with_catalog(await session_sgt(app, source.strip(), user, domain), sgts)
+            flow_sgt = await session_sgt(app, source.strip(), user, domain)
+        if flow_sgt is not None and uses_sgts:  # names <-> numbers, and a note when it isn't there
+            flow_sgt = with_catalog(flow_sgt, sgts)
         at = lookup_conditions.now()
+        time_decided = False  # a rule's time range was ruled in effect or out at `at`
         time_ranges = await time_range_catalog(app, domain) if uses_time_ranges(live_rules) else None
         not_in_effect: list[dict[str, Any]] = []
 
@@ -355,10 +364,13 @@ def register(reg: ToolRegistrar) -> None:
                 continue
             in_effect, why = time_range_check(r, time_ranges, at)
             if in_effect is False:
+                time_decided = True
                 brief = flatten_access_rule(r, tags)
-                not_in_effect.append({k: brief.get(k) for k in ("index", "name", "action")} | (why or {}))
+                row_out = {k: brief.get(k) for k in ("index", "name", "action")} | (why or {})
+                not_in_effect.append({**row_out, "evaluated_at": stamp(at)})
                 continue
             if in_effect:
+                time_decided = time_decided or uses_time_ranges([r])
                 skip += ("timeRangeObjects",)
             unknown = [k for k, v in checks.items() if v is None] + _opaque(r, skip)
             if reputation_open and checks.get("url_category"):
@@ -410,6 +422,8 @@ def register(reg: ToolRegistrar) -> None:
             )
         if not_in_effect:
             out["not_in_effect"] = not_in_effect[:20]
+        if time_decided:  # the verdict holds at this moment; a window opening or closing changes it
+            out["evaluated_at"] = stamp(at)
         if not rules.complete or not cat.complete:
             out["warning"] = (
                 "Policy or object collections were larger than the scan cap; result may be wrong."

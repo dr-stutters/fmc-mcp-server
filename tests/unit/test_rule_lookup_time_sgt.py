@@ -78,8 +78,10 @@ async def test_an_ended_time_range_rule_is_left_out(at_six: respx.MockRouter) ->
             "action": "ALLOW",
             "time_range": "mcp-w6-tr-expired",
             "reason": "ended 2026-10-02T23:59",
+            "evaluated_at": "2026-10-21T06:00:00Z",
         }
     ]
+    assert out["evaluated_at"] == "2026-10-21T06:00:00Z"  # the verdict holds at this moment
     assert at_six.routes["timeranges"].call_count == 1
 
 
@@ -90,6 +92,7 @@ async def test_a_recurring_range_stays_conditional(at_six: respx.MockRouter) -> 
     assert out["verdict"] == "Rule 7 'mcp-w6-allow-out' → ALLOW"
     (first,) = out["may_match_first"]
     assert first["name"] == "mcp-w6-time-now" and first["depends_on"] == ["timeRangeObjects"]
+    assert "evaluated_at" not in out  # no time range decided anything
 
 
 async def test_a_range_fmc_wont_list_stays_conditional(at_six: respx.MockRouter) -> None:
@@ -144,10 +147,15 @@ async def test_bobs_session_sgt_decides_the_sgt_rule(at_six: respx.MockRouter) -
     )
     assert out["verdict"] == "Rule 1 'mcp-w6-sgt-block' → BLOCK"
     assert "may_match_first" not in out
+    caveat = out["source_sgt"].pop("caveat")
     assert out["source_sgt"] == {
         "sgt": "Contractors (SGT 5)",
         "from": "FMC user activity: User Login mcp-bob at 2026-10-21T05:53:11Z",
     }
+    # the newest login within 30 days, not checked against an active session: the tool says so
+    assert (
+        "newest ISE login for 10.10.34.100" in caveat and "not cross-checked with an active session" in caveat
+    )
     assert activity.calls.last.request.url.params["ipAddress"] == "10.10.34.100"
 
 
@@ -241,5 +249,40 @@ def test_sgt_check_by_name_or_tag() -> None:
     assert sgt_check(rule, FlowSgt(note="unknown"), tags) is None
     assert sgt_check(rule, FlowSgt(name="contractors"), None) is True
     assert sgt_check(rule, FlowSgt(tag=5), tags) is True
-    assert sgt_check(rule, FlowSgt(tag=5), None) is False  # no tag numbers to compare
-    assert sgt_check(rule, FlowSgt(name="Employees", tag=4), tags) is False
+    # can't compare: the rule's SGT has no tag number (no catalogue) and the flow's has no name
+    assert sgt_check(rule, FlowSgt(tag=5), None) is None
+    assert sgt_check(rule, FlowSgt(tag=4), None) is None
+    assert sgt_check(rule, FlowSgt(name="Employees", tag=4), tags) is False  # another tag number
+    assert sgt_check(rule, FlowSgt(tag=4), tags) is False
+    # a name: ruled out only when it is FMC's (in the catalogue), never by an unchecked one (a typo)
+    assert sgt_check(rule, FlowSgt(name="Contractor"), tags) is None
+    assert sgt_check(rule, FlowSgt(name="Employees"), None) is None
+    assert sgt_check(rule, FlowSgt(name="Employees", verified=True), None) is False
+    # several SGTs: one match is enough; ruled out only when every one is certainly another
+    two = {"objects": [*rule["objects"], {"id": "x", "type": "ISESecurityGroupTag", "name": "Guests"}]}
+    assert sgt_check(two, FlowSgt(name="guests"), None) is True
+    assert sgt_check(two, FlowSgt(tag=4), tags) is None  # Guests has no number here
+    assert sgt_check(two, FlowSgt(name="Employees", tag=4, verified=True), tags) is False
+
+
+@pytest.mark.parametrize(
+    ("given", "fail_catalogue", "note"),
+    [
+        ("5", True, "SGT catalogue could not be read"),
+        ("Contractor", False, "'Contractor' is not in FMC's SGT catalogue"),
+    ],
+)
+async def test_an_sgt_that_cant_be_compared_keeps_the_sgt_rule_conditional(
+    at_six: respx.MockRouter, given: str, fail_catalogue: bool, note: str
+) -> None:
+    """A failed SGT catalogue read (the rule's SGT has no tag number to compare with '5') or a typo'd SGT
+    name: the SGT BLOCK rule stays conditional, with a note, instead of being skipped so that the later
+    ALLOW reads as the definite verdict."""
+    at_six.get(RULES).mock(return_value=items(FX["threat_rules"]))
+    if fail_catalogue:
+        at_six.get(f"{CFG}/object/isesecuritygrouptags").mock(return_value=httpx.Response(500, json={}))
+    args = {"source": "10.10.34.100", "destination": "192.0.2.10", "port": 23, "identities": []}
+    out = await lookup({**args, "source_sgt": given})
+    (first,) = out["may_match_first"]
+    assert first["name"] == "mcp-w6-sgt-block" and first["depends_on"] == ["sourceSecurityGroupTags"]
+    assert note in out["source_sgt"]["note"]

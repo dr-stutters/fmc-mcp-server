@@ -81,6 +81,11 @@ def uses_time_ranges(rules: list[dict[str, Any]]) -> bool:
     return any(_time_refs(r) for r in rules)
 
 
+def stamp(at: datetime) -> str:
+    """The moment time ranges were evaluated at, in UTC ('2026-10-21T06:00:00Z')."""
+    return at.astimezone(UTC).strftime("%Y-%m-%dT%H:%M:%SZ")
+
+
 async def time_range_catalog(app: FmcApp, domain: str | None) -> dict[str, dict[str, Any]] | None:
     """Time range objects by id (lower case), or None when FMC doesn't answer the list."""
     try:
@@ -122,12 +127,16 @@ def time_range_check(
 
 @dataclass
 class FlowSgt:
-    """The SGT the device sees on the flow's source: given, or from the source IP's ISE login."""
+    """The SGT the device sees on the flow's source: given, or from the source IP's ISE login. `verified`:
+    found in FMC's SGT catalogue (so its name and tag number are FMC's own); `caveat`: how far to trust a
+    session-derived SGT."""
 
     name: str | None = None
     tag: int | None = None
     origin: str | None = None
     note: str | None = None
+    caveat: str | None = None
+    verified: bool = False
 
     @property
     def known(self) -> bool:
@@ -141,19 +150,36 @@ class FlowSgt:
         return f"SGT {self.tag}" if self.tag is not None else None
 
     def as_dict(self) -> dict[str, Any]:
-        out = {"sgt": self.label(), "from": self.origin, "note": self.note}
+        out = {"sgt": self.label(), "from": self.origin, "note": self.note, "caveat": self.caveat}
         return {k: v for k, v in out.items() if v is not None}
 
+    def add_note(self, text: str) -> None:
+        self.note = f"{self.note} {text}" if self.note else text
 
-def with_catalog(sgt: FlowSgt, catalog: list[dict[str, Any]]) -> FlowSgt:
-    """Fill in the tag number for a name, or the name for a tag number, from the SGT catalogue."""
-    for s in catalog:
+
+def with_catalog(sgt: FlowSgt, catalog: list[dict[str, Any]] | None) -> FlowSgt:
+    """Fill in the tag number for a name, or the name for a tag number, from the SGT catalogue (None: it
+    could not be read), and say when a known SGT isn't in it: its rules can then match by the same name or
+    number, never be ruled out by a name (a typo would otherwise skip an SGT rule silently)."""
+    if not sgt.known:
+        return sgt
+    for s in catalog or []:
         if sgt.name and sgt.tag is None and str(s.get("name", "")).lower() == sgt.name.lower():
-            sgt.name, sgt.tag = str(s.get("name")), _int(s.get("tag"))
+            sgt.name, sgt.tag, sgt.verified = str(s.get("name")), _int(s.get("tag")), True
             break
         if sgt.tag is not None and sgt.name is None and _int(s.get("tag")) == sgt.tag:
-            sgt.name = str(s.get("name"))
+            sgt.name, sgt.verified = str(s.get("name")), True
             break
+    if catalog is None:
+        sgt.add_note(
+            "FMC's SGT catalogue could not be read, so SGT names can't be checked: rules on other SGTs stay "
+            "conditional (only a different tag number rules one out)."
+        )
+    elif not sgt.verified:
+        sgt.add_note(
+            f"{sgt.label()!r} is not in FMC's SGT catalogue (ISE and custom SGTs): check the name or number. "
+            "Rules on SGTs it can't be compared with by number stay conditional."
+        )
     return sgt
 
 
@@ -204,25 +230,38 @@ async def session_sgt(app: FmcApp, ip: str, user: str | None, domain: str | None
     if not tag:
         return FlowSgt(origin=origin, note="That login carries no SGT: SGT rules stay conditional.")
     return FlowSgt(
-        name=None if tag.isdigit() else tag, tag=int(tag) if tag.isdigit() else None, origin=origin
+        name=None if tag.isdigit() else tag,
+        tag=int(tag) if tag.isdigit() else None,
+        origin=origin,
+        caveat=f"The SGT of the newest ISE login for {ip} in FMC's user activity (last 30 days), not "
+        "cross-checked with an active session: if that user logged off or the address moved since, the "
+        "device sees another SGT. Pass source_sgt to evaluate a known one.",
     )
 
 
 def sgt_check(block: Any, sgt: FlowSgt | None, tags: dict[str, Any] | None) -> bool | None:
-    """A rule's source SGT condition against the flow's SGT: True/False, None when the rule has SGTs and
-    the flow's SGT is unknown."""
+    """A rule's source SGT condition against the flow's SGT: True when an SGT of the rule is the flow's (by
+    name or tag number), False only when every SGT of the rule is certainly another one, None (conditional)
+    otherwise. Certainly another: a different tag number (what the device matches on), or a different name
+    when the flow's SGT is in FMC's catalogue (`verified`). A rule SGT without a tag number (no catalogue)
+    against a bare number, or an unverified name (a typo, a failed catalogue read), proves nothing."""
     refs = [] if not isinstance(block, dict) else (block.get("objects") or []) + (block.get("literals") or [])
     refs = [r for r in refs if isinstance(r, dict)]
     if not refs:
         return True
     if sgt is None or not sgt.known:
         return None
+    unknown = False
     for r in refs:
         tag = _int(r.get("tag"))
         if tag is None and tags:
             tag = _int((tags.get(str(r.get("id"))) or (None, None))[0])
-        if sgt.name and str(r.get("name", "")).lower() == sgt.name.lower():
+        name = str(r.get("name") or "").lower()
+        if (sgt.name and name == sgt.name.lower()) or (sgt.tag is not None and tag == sgt.tag):
             return True
-        if sgt.tag is not None and tag == sgt.tag:
-            return True
-    return False
+        if sgt.tag is not None and tag is not None:
+            continue  # different numbers: another SGT
+        if sgt.name and name and sgt.verified:
+            continue  # different catalogue names: another SGT
+        unknown = True
+    return None if unknown else False
