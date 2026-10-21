@@ -1,12 +1,13 @@
 # fmc_firewall_health_review
 
 title: Firewall health review
-arguments: {"device": "mcp-ftd", "domain": "Global", "lookback_hours": "24"}
+arguments: {"compare_with": "example", "device": "mcp-ftd", "domain": "Global", "lookback_hours": "24"}
 
 Is the firewall estate healthy? Reviews device health and connectivity (with CPU, memory,
 throughput and drops over the review window for the devices that need it), HA pairs and
 clusters, the deployment backlog and failed deployments, licences, software and VDB/SRU/LSP
-content age, backups, VPN tunnels and recent health alerts with the aggregate tools, and
+content age, backups, VPN tunnels and recent health alerts with the aggregate tools, optionally
+configuration drift against a reference device, template or stored export (compare_with), and
 writes one ranked report (critical, warning, info), each finding with its evidence and a
 concrete next step. Read-only.
 
@@ -77,7 +78,15 @@ note it and carry on.
    changed just before it: `fmc_recent_activity` with since_minutes=1440,
    device=<name>, domain="Global" (audit records and deployments around it).
 
-9. Report: one list, critical first, then warning, then info; within a level, what affects
+9. Configuration drift against "example": `fmc_diff_device_config` with a=<device>, b="example", domain="Global"
+   for each device in scope, at most three (each call reads both sides, about 30 requests per device).
+   `b` may be another device or HA pair, a stored export or a device template. A difference in
+   assigned policies, routing, NAT, VPN membership or interface zones is a warning (the device
+   doesn't run what its reference does); addresses, VTI peers and object overrides that differ per
+   site are info. Give each difference with its section, key and from/to values; `identical: true`
+   is an info finding of its own. Sections under `not_compared` weren't checked: say which.
+
+10. Report: one list, critical first, then warning, then info; within a level, what affects
    traffic (devices, HA, VPN) comes before what affects management (licences, content, backups).
    Merge findings with one cause (a red device and its INTERFACE alerts). Each finding gives:
    - its level and a one-line title naming the device or the FMC;
