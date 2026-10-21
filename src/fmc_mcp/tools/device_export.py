@@ -27,7 +27,7 @@ and whether it is in the default set. A section that is empty is left out of the
 document but still listed in meta.sections, so a diff knows it was read. Mappings are sorted by key,
 set-like lists sorted, and secret values masked (core's key patterns, FMC's registration keys and
 pre-shared keys, and secrets on the CLI lines of out-of-band diffs), so re-exporting an unchanged device
-gives the same meta.digest.
+gives the same meta.digest (which leaves out meta.exported_at and a snapshot's meta.label).
 """
 
 # No `from __future__ import annotations`: FastMCP inspects signatures at runtime.
@@ -1104,7 +1104,9 @@ async def _side(
     mcp: Context | None = None,
 ) -> tuple[dict[str, Any], list[str]]:
     """One side of a diff: a stored export, a live device / HA pair, or (b only) a device template.
-    Live sides are stamped exported_at 'live' (their digest compares with a stored export's)."""
+    Live sides are stamped exported_at 'live' and carry the read settings the stored side was taken with
+    (a snapshot's running-config sections and hit-count refresh), so their digest compares with a stored
+    export's or snapshot's: equal when nothing changed."""
     bundle_dir = app.settings.bundle_dir
     if kind == "export" or (kind == "auto" and looks_like_export(ref)):
         return await asyncio.to_thread(parse_export, ref, bundle_dir), []
@@ -1122,6 +1124,9 @@ async def _side(
             doc, warnings = await template_export(app, ref, domain, a)
         except NotFound:
             raise NotFound(f"No device, HA pair or device template named {ref!r}.", 404) from None
+    for key in LIVE_SETTINGS:  # read like the stored side (read_like): say so, as a snapshot does
+        if f"setting:{key}" in shared and doc["meta"].get("kind") != "template":
+            doc["meta"][key] = shared[f"setting:{key}"]
     finish(doc)
     doc["meta"]["exported_at"] = "live"
     return doc, warnings

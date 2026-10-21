@@ -290,6 +290,25 @@ async def test_wan_link_down_and_restore(fmc: respx.MockRouter) -> None:
     assert again["findings"] == ["hit count mcp-sdwan-allow-inside: 120 -> 180 (+60)"]
 
 
+async def test_digest_says_same_state_whatever_the_label(fmc: respx.MockRouter) -> None:
+    """Live (Wave 6): 'before-wan-down' and 'restored' snapshots of the same state compared identical but
+    had different digests (the label was part of it), and the live side of a diff had a third one. The
+    digest now leaves the label out, and the live side carries the snapshot's read settings."""
+    lab(fmc)
+    one, doc = await snapshot(label="before-wan-down", running_config=["route"])
+    two, _ = await snapshot(label="restored", running_config=["route"])
+    plain, _ = await snapshot(running_config=["route"])
+    assert doc["meta"]["label"] == "before-wan-down"
+    digests = {x["devices"][0]["digest"] for x in (one, two, plain)}
+    assert len(digests) == 1
+    diff = await call("fmc_diff_device_config", {"a": one["snapshots"]["mcp-sdwan-t1-spoke1"]})
+    assert diff["identical"] is True and diff["b"]["exported_at"] == "live"
+    assert diff["a"]["digest"] == diff["b"]["digest"] == next(iter(digests))
+    assert diff["a"]["label"] == "before-wan-down" and "label" not in diff["b"]
+    other, _ = await snapshot(label="restored", running_config=["route", "nat"])
+    assert other["devices"][0]["digest"] not in digests  # read differently: another document
+
+
 async def test_two_stored_snapshots_compare_offline(fmc: respx.MockRouter, tmp_path: Path) -> None:
     st = lab(fmc)
     before, _ = await snapshot(label="before", bundle_dir=tmp_path)
