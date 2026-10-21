@@ -18,6 +18,14 @@ from fmc_mcp.tools.object_writes import applied, editable
 from fmc_mcp.tools.platform_settings import PS, PolicyRef, resolve_ps, section
 
 MASK_CHARS = {"*"}
+# FMC 10.0.1 refuses anything else with a 400 that echoes the community back (recorded live, W6N live-A:
+# "Invalid Community String: <value>. The Community String is a case-sensitive alphanumeric string of up
+# to 32 characters; spaces and special characters are not permitted."), so it is checked before sending.
+COMMUNITY = re.compile(r"[A-Za-z0-9]{1,32}")
+BAD_COMMUNITY = (
+    "The SNMP community must be 1 to 32 letters and digits (case-sensitive): FMC refuses spaces and special "
+    "characters such as '-' or '_'. The value isn't shown here."
+)
 
 
 def masked(value: Any) -> bool:
@@ -95,9 +103,10 @@ def register(reg: ToolRegistrar) -> None:
         community: Annotated[
             SecretStr | None,
             Field(
-                description="SNMPv2c community for the server and the v2c hosts. FMC never shows it again, "
-                "so it must be given whenever SNMP has hosts or a community and anything changes "
-                "(a different community than previewed invalidates the confirm)"
+                description="SNMPv2c community for the server and the v2c hosts: 1-32 letters and digits "
+                "(FMC refuses spaces and special characters). FMC never shows it again, so it must be given "
+                "whenever SNMP has hosts or a community and anything changes (a different community than "
+                "previewed invalidates the confirm)"
             ),
         ] = None,
         location: Annotated[str | None, Field(description="sysLocation")] = None,
@@ -188,6 +197,8 @@ def register(reg: ToolRegistrar) -> None:
             and not cur.get("communityString")
         ):
             blockers.append("An enabled SNMP server needs a community.")
+        if secret is not None and not COMMUNITY.fullmatch(secret):
+            blockers.append(BAD_COMMUNITY)
 
         async def apply() -> Any:
             body = editable(await app.api.get(path))
