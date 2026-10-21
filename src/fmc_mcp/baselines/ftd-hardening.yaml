@@ -7,7 +7,8 @@
 # set `enabled: false`, and tune `params`. `id` selects the evaluator built into the server: a check with
 # an id the server doesn't know is reported under `not_evaluated`, never as passed. `scope` says what a
 # check looks at: fmc (once per call), platform_settings (the policy's sections) or device (each device).
-# `fix_tool` is the tool each finding's fix calls (empty: FMC UI only; the finding names the page).
+# `fix_tool` names the tool the check's findings propose (empty: FMC UI only; the finding names the page);
+# it documents the evaluator, which writes the fix call itself: editing it changes no finding.
 #
 # `source` names where each expectation comes from. FTD has no CIS benchmark of its own; the CIS Cisco
 # ASA benchmark's management-plane items are cited where FTD's platform settings configure the same

@@ -14,7 +14,8 @@ approved under. Each answer here comes from one FMC collection read once per cal
 - the deployment: the first successful job per device after that change (deployment/jobhistories), and
   `out_of_date_on` from FMC's deployable list when the device doesn't run the policy as saved;
 - the ticket: only when change management answers (FMC 7.6+ with the feature on and a role that may read
-  tickets); matched best-effort by the change's user and the ticket's history window. With change
+  tickets); matched best-effort by the change's user and the ticket's history window. The ticket list
+  has no history (FMC spec): each ticket updated in the window is read with ?history=true. With change
   management off, or tickets unreadable, the column is left out and `change_management` says why.
 """
 
@@ -24,7 +25,7 @@ from typing import Any
 
 from fastmcp import Context
 
-from fmc_mcp._core import AuthError, UpstreamError
+from fmc_mcp._core import AuthError, UpstreamError, ValidationFailed
 from fmc_mcp.audit import AUDIT_PAGE, contains, fetch_audit
 from fmc_mcp.client import FmcApp
 from fmc_mcp.tools.common import ref_label
@@ -42,6 +43,7 @@ SAVE_SLACK = 120  # seconds from a rule's timestamp to FMC's 'Save Policy' recor
 DEVICE_CAP = 10
 JOB_CAP = 500
 COMMENTS = 3
+TICKET_CAP = 25  # tickets whose history is read (one GET each)
 CLOSING = ("PENDING_APPROVAL", "APPROVED", "REJECTED", "DISCARD")
 EVIDENCE_COLUMNS = [
     "hits",
@@ -130,11 +132,16 @@ def comments_of(r: dict[str, Any]) -> list[dict[str, Any]] | None:
     return rows or None
 
 
-def last_change(r: dict[str, Any], saves: list[dict[str, Any]], start: float) -> dict[str, Any] | None:
-    """The rule's timestamp and the 'Save Policy' record that wrote it (closest within SAVE_SLACK)."""
+def last_change(
+    r: dict[str, Any], saves: list[dict[str, Any]], start: float, *, audited: bool = True
+) -> dict[str, Any] | None:
+    """The rule's timestamp and the 'Save Policy' record that wrote it (closest within SAVE_SLACK).
+    audited=False: the audit log could not be read, so only the time is known."""
     ts = epoch((r.get("metadata") or {}).get("timestamp"))
     if ts is None:
         return None
+    if not audited:
+        return {"at": iso(ts), "_ts": ts, "note": "audit records not read: no change record"}
     best: dict[str, Any] | None = None
     for rec in saves:
         t = epoch(rec.get("time"))
@@ -175,7 +182,9 @@ def deployed_on(
     start: float,
 ) -> list[dict[str, Any]] | None:
     """Per device: the first successful deployment after the change, or pending. `jobs` / `stale` are None
-    when the job history / deployable list could not be read (then nothing is claimed from them)."""
+    when the job history / deployable list could not be read (then nothing is claimed from them). A job is
+    named only for a change inside the window: for an older change (or a rule without a change time) the
+    first job in the window need not be the one that pushed it."""
     if not devices:
         return None
     ts = (change or {}).get("_ts")
@@ -185,13 +194,22 @@ def deployed_on(
         if stale is not None and dev_id.lower() in stale:
             out.append({"device": label, "pending": True})
             continue
+        if ts is None or ts < start:
+            why = (
+                "the rule has no change time to match a deployment"
+                if ts is None
+                else f"the change predates the evidence window ({iso(start)})"
+            )
+            state = "unknown" if stale is None else "yes (FMC lists it up to date)"
+            out.append({"device": label, "deployed": f"{state}; {why}"})
+            continue
         job = next(
             (
                 j
                 for j in ordered
                 if (e := _device_entry(j, dev_id)) is not None
                 and _succeeded(j, e)
-                and (ts is None or (epoch(j.get("startTime")) or 0) >= ts)
+                and (epoch(j.get("startTime")) or 0) >= ts
             ),
             None,
         )
@@ -204,8 +222,6 @@ def deployed_on(
                 "note": job.get("deploymentNote"),
             }
             out.append({k: v for k, v in row.items() if v is not None})
-        elif ts is not None and ts < start:
-            out.append({"device": label, "deployed": f"before the evidence window ({iso(start)})"})
         elif stale is None or jobs is None:
             out.append(
                 {"device": label, "deployed": "unknown (deployment history or deployable list not read)"}
@@ -271,17 +287,47 @@ def match_ticket(change: dict[str, Any] | None, tickets: list[dict[str, Any]], n
     return {k: v for k, v in row.items() if v is not None}
 
 
-async def read_tickets(app: FmcApp, domain: str | None) -> tuple[str, list[dict[str, Any]]]:
-    """('on', tickets) or ('off' / 'not readable ...', []): the ticket column only when 'on'."""
+async def read_tickets(
+    app: FmcApp, domain: str | None, start: float, notes: list[str]
+) -> tuple[str, list[dict[str, Any]]]:
+    """('on', tickets with their history) or ('off' / 'not readable ...', []): the ticket column only
+    when 'on'. FMC lists only the caller's tickets unless allUsers=true (needs the 'review tickets'
+    permission), and the list carries no history: GET tickets/{id}?history=true does (FMC spec), read
+    for the tickets updated since the window began (up to TICKET_CAP)."""
+    path = await app.config_path(TICKETS, domain)
+    own_only = False
     try:
-        page = await app.all(await app.config_path(TICKETS, domain))
+        try:
+            page = await app.all(path, {"allUsers": "true"})
+        except (AuthError, ValidationFailed):  # no 'review tickets' permission: the caller's own
+            own_only = True
+            page = await app.all(path)
     except AuthError as e:
         return f"not readable by this account ({e.status_code or 403}): no ticket column", []
     except UpstreamError as e:
         if "not enabled" in str(e).lower():
             return "off: no ticket column", []
         return f"not readable ({str(e)[:120]}): no ticket column", []
-    return "on", list(page.items)
+    if own_only:
+        notes.append("Tickets: only this account's own (allUsers needs the 'review tickets' permission).")
+    tickets: list[dict[str, Any]] = []
+    reads = 0
+    for t in page.items:
+        updated = epoch((t.get("metadata") or {}).get("lastUpdateTime"))
+        if updated is not None and updated < start - SAVE_SLACK:
+            continue  # closed before the window: it can't span a change in it
+        if t.get("ticketHistory") is None and t.get("id"):
+            if reads >= TICKET_CAP:
+                notes.append(f"Tickets: history read for the first {TICKET_CAP} changed in the window only.")
+                break
+            reads += 1
+            try:
+                t = {**t, **((await app.api.get(f"{path}/{t['id']}", {"history": "true"})) or {})}
+            except UpstreamError as e:
+                notes.append(f"Ticket {t.get('name')!r}: history not read ({str(e)[:120]}).")
+                continue
+        tickets.append(t)
+    return "on", tickets
 
 
 async def collect(
@@ -401,12 +447,12 @@ async def collect(
             stale = None
             notes.append(f"Deployable devices not read ({e}).")
 
-    cm, tickets = await read_tickets(app, domain)
+    cm, tickets = await read_tickets(app, domain, start, notes)
 
     per_rule: dict[str, dict[str, Any]] = {}
     for r in rules:
         rid = str(r.get("id"))
-        change = last_change(r, saves, start) if audit_ok else None
+        change = last_change(r, saves, start, audited=audit_ok)
         ev: dict[str, Any] = {
             "hits": hits.get(rid) or None,
             "logging": logging_of(r),

@@ -131,6 +131,7 @@ async def test_evidence_rows_on_recorded_lab_policy(fmc: respx.MockRouter) -> No
     assert pol["security_intelligence"]["dns_policy"] == "Default DNS Policy"
     assert pol["security_intelligence"]["logging"] is True
     assert pol["change_management"].startswith("not readable by this account (403)")
+    assert not any("Tickets" in n for n in pol.get("notes") or [])  # no own-tickets note when none are read
     assert pol["saves_in_window"] == 5  # the other policy's save and the assignment aren't counted
     created = {"at": "2026-10-20T23:56:12Z", "by": "mcp-api-svc", "audit": "Create Policy mcp-w6-acp"}
     assert pol["policy_events"] == [created]
@@ -188,18 +189,21 @@ async def test_hit_count_error_is_a_note(fmc: respx.MockRouter) -> None:
 
 
 async def test_ticket_column_only_when_change_management_answers(fmc: respx.MockRouter) -> None:
+    """FMC's ticket list has no history (spec: GET tickets/{id}?history=true has it), so each ticket
+    updated in the window is read by id; tickets closed before the window are not."""
     routes = mock_policy(fmc)
-    ticket = {
+    history = [
+        {"time": "2026-10-21T06:05Z", "state": "IN_PROGRESS", "user": "mcp-api-svc"},
+        {"time": "2026-10-21T06:20Z", "state": "PENDING_APPROVAL", "user": "mcp-api-svc"},
+        {"time": "2026-10-21T06:25Z", "state": "APPROVED", "user": "approver"},
+    ]
+    ticket = {  # the list's shape (spec example): no ticketHistory
         "id": "t-1",
         "name": "CHG042",
         "status": "APPROVED",
         "assignedTo": "mcp-api-svc",
         "metadata": {"creator": "mcp-api-svc", "lastUpdateTime": "2026-10-21T06:30Z"},
-        "ticketHistory": [
-            {"time": "2026-10-21T06:05Z", "state": "IN_PROGRESS", "user": "mcp-api-svc"},
-            {"time": "2026-10-21T06:20Z", "state": "PENDING_APPROVAL", "user": "mcp-api-svc"},
-            {"time": "2026-10-21T06:25Z", "state": "APPROVED", "user": "approver"},
-        ],
+        "type": "Ticket",
     }
     other = {
         **ticket,
@@ -208,8 +212,19 @@ async def test_ticket_column_only_when_change_management_answers(fmc: respx.Mock
         "assignedTo": "someone",
         "metadata": {"creator": "someone"},
     }
-    other["ticketHistory"] = [{**h, "user": "someone"} for h in ticket["ticketHistory"]]  # another user's
-    routes["tickets"].mock(return_value=items([other, ticket]))
+    old = {**ticket, "id": "t-3", "name": "CHG000", "metadata": {"lastUpdateTime": "2026-09-01T10:00Z"}}
+    routes["tickets"].mock(return_value=items([other, ticket, old]))
+    by_id = {
+        "t-1": fmc.get(f"{CFG}/changemanagement/tickets/t-1").mock(
+            return_value=httpx.Response(200, json={**ticket, "ticketHistory": history})
+        ),
+        "t-2": fmc.get(f"{CFG}/changemanagement/tickets/t-2").mock(
+            return_value=httpx.Response(
+                200, json={**other, "ticketHistory": [{**h, "user": "someone"} for h in history]}
+            )
+        ),
+        "t-3": fmc.get(f"{CFG}/changemanagement/tickets/t-3").mock(return_value=httpx.Response(404)),
+    }
     out = await export({"policy": "mcp-w6-acp", "evidence": True})
     assert out["evidence"]["change_management"] == "on"
     t = out["results"][1]["evidence"]["ticket"]
@@ -220,6 +235,21 @@ async def test_ticket_column_only_when_change_management_answers(fmc: respx.Mock
         "approved_at": "2026-10-21T06:25Z",
         "id": "t-1",
     }
+    assert routes["tickets"].calls.last.request.url.params["allUsers"] == "true"  # every user's tickets
+    assert by_id["t-1"].calls.last.request.url.params["history"] == "true" and by_id["t-2"].called
+    assert not by_id["t-3"].called  # closed before the window: can't span a change in it
+
+    # without the 'review tickets' permission: the account's own tickets
+    def own_only(request: httpx.Request) -> httpx.Response:
+        if request.url.params.get("allUsers"):
+            return httpx.Response(403, json={"error": {"messages": [{"description": "Not authorized"}]}})
+        return items([ticket])
+
+    routes["tickets"].mock(side_effect=own_only)
+    out = await export({"policy": "mcp-w6-acp", "evidence": True})
+    assert out["results"][1]["evidence"]["ticket"]["ticket"] == "CHG042"
+    assert any("only this account's own" in n for n in out["evidence"]["notes"])
+
     routes["tickets"].mock(
         return_value=httpx.Response(
             500, json={"error": {"messages": [{"description": "Change Management mode is not enabled"}]}}
@@ -228,6 +258,48 @@ async def test_ticket_column_only_when_change_management_answers(fmc: respx.Mock
     out = await export({"policy": "mcp-w6-acp", "evidence": True})
     assert out["evidence"]["change_management"] == "off: no ticket column"
     assert all("ticket" not in r["evidence"] for r in out["results"])
+
+
+async def test_audit_unreadable_keeps_the_change_time_for_the_deployment(fmc: respx.MockRouter) -> None:
+    """Without the audit log the rule's own timestamp still picks the deployment after it (Deploy_Job_146
+    at 06:11:32Z), not the first job of the window (Deploy_Job_143 at 05:45, before the change)."""
+    routes = mock_policy(fmc)
+    routes["audit"].mock(
+        return_value=httpx.Response(500, json={"error": {"messages": [{"description": "x"}]}})
+    )
+    out = await export({"policy": "mcp-w6-acp", "evidence": True})
+    ev = out["results"][1]["evidence"]
+    assert ev["last_change"] == {
+        "at": "2026-10-21T06:11:04Z",
+        "note": "audit records not read: no change record",
+    }
+    assert ev["deployed"][0]["job"] == "Deploy_Job_146"
+    assert any(n.startswith("Audit records not read") for n in out["evidence"]["notes"])
+    assert "saves_in_window" not in out["evidence"]
+
+
+async def test_change_before_the_window_names_no_job(fmc: respx.MockRouter) -> None:
+    """A rule last changed before the window: a job inside it need not be the one that pushed it."""
+    routes = mock_policy(fmc)
+    rules = json.loads(json.dumps(REC["rules"]))
+    for r in rules["items"]:
+        r["metadata"]["timestamp"] = 1790000000000  # 2026-09-21, before a 2-day window
+    fmc.get(f"{BASE}/accessrules").mock(return_value=httpx.Response(200, json=rules))
+    out = await export({"policy": "mcp-w6-acp", "evidence": True, "since_days": 2})
+    ev = out["results"][1]["evidence"]
+    assert ev["last_change"]["note"] == "before the evidence window"
+    assert ev["deployed"] == [
+        {
+            "device": "mcp-ftd1",
+            "deployed": "yes (FMC lists it up to date); the change predates the evidence window "
+            "(2026-10-19T12:00:00Z)",
+        }
+    ]
+    routes["deployable"].mock(
+        return_value=httpx.Response(500, json={"error": {"messages": [{"description": "x"}]}})
+    )
+    out = await export({"policy": "mcp-w6-acp", "evidence": True, "since_days": 2})
+    assert out["results"][1]["evidence"]["deployed"][0]["deployed"].startswith("unknown; the change predates")
 
 
 async def test_without_evidence_nothing_extra_is_read(fmc: respx.MockRouter) -> None:

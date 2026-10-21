@@ -295,7 +295,7 @@ async def ssh_access(c: Check, ps: PsRead, run: Run) -> Outcome:
         fix = (
             call(
                 "fmc_configure_ssh_access",
-                run.domain,
+                ps.domain,
                 policy=ps.name,
                 action="remove",
                 network=first["source"],
@@ -304,7 +304,7 @@ async def ssh_access(c: Check, ps: PsRead, run: Run) -> Outcome:
             + ", then allow only the management network: "
             + call(
                 "fmc_configure_ssh_access",
-                run.domain,
+                ps.domain,
                 policy=ps.name,
                 action="allow",
                 network="<management network>",
@@ -331,7 +331,7 @@ async def https_access(c: Check, ps: PsRead, run: Run) -> Outcome:
         fix = (
             call(
                 "fmc_configure_mgmt_access",
-                run.domain,
+                ps.domain,
                 policy=ps.name,
                 kind="http",
                 action="remove",
@@ -366,8 +366,12 @@ async def snmp_v3(c: Check, ps: PsRead, run: Run) -> Outcome:
     users = len(s.get("snmpv3Users") or [])
     if not problems:
         return passed(f"SNMPv3 only ({len(s.get('snmpMgmtHosts') or [])} manager(s), {users} user(s)).")
+    # FMC masks the community; fmc_configure_snmp refuses a change without it while one is set
+    kw: dict[str, Any] = {"enabled": False}
+    if s.get("communityString") or any(h.get("communityString") for h in s.get("snmpMgmtHosts") or []):
+        kw["community"] = "<the current community>"
     fix = (
-        call("fmc_configure_snmp", run.domain, policy=ps.name, enabled=False)
+        call("fmc_configure_snmp", ps.domain, policy=ps.name, **kw)
         + " when nothing polls the devices; SNMPv3 users and v3 managers are set in the FMC UI "
         "(fmc_configure_snmp sets v2c only)"
     )
@@ -391,7 +395,7 @@ async def snmp_hosts(c: Check, ps: PsRead, run: Run) -> Outcome:
     if opened:
         fix = call(
             "fmc_configure_snmp",
-            run.domain,
+            ps.domain,
             policy=ps.name,
             remove_hosts=[o["source"] for o in opened],
             add_hosts=["<NMS address>"],
@@ -435,7 +439,7 @@ async def syslog_servers(c: Check, ps: PsRead, run: Run) -> Outcome:
     level = ((dest or {}).get("allEventConfig") or {}).get("value")
     evidence = {"servers": [_server_label(s) for s in servers] or None, "level": level}
     if problems:
-        fix = call("fmc_configure_syslog", run.domain, policy=ps.name, **kw)
+        fix = call("fmc_configure_syslog", ps.domain, policy=ps.name, **kw)
         return failed("; ".join(problems).capitalize() + ".", fix, "fmc_configure_syslog", evidence)
     return passed(f"Logging on; syslog to {', '.join(evidence['servers'] or [])} at {level}.", evidence)
 
@@ -444,7 +448,7 @@ async def syslog_rfc5424(c: Check, ps: PsRead, run: Run) -> Outcome:
     fmt = ps.one("syslog_settings").get("timeStampFormat") or "LEGACY"
     if fmt == "RFC_5424":
         return passed("Syslog timestamps use RFC 5424.")
-    fix = call("fmc_configure_syslog", run.domain, policy=ps.name, timestamp_format="RFC_5424")
+    fix = call("fmc_configure_syslog", ps.domain, policy=ps.name, timestamp_format="RFC_5424")
     return failed(
         f"Syslog timestamps are {fmt} (no year, no time zone).", fix, "fmc_configure_syslog", {"format": fmt}
     )
@@ -462,7 +466,7 @@ async def syslog_tls(c: Check, ps: PsRead, run: Run) -> Outcome:
     first = plain[0]
     fix = call(
         "fmc_configure_syslog",
-        run.domain,
+        ps.domain,
         policy=ps.name,
         remove_servers=[net_label(first.get("ipAddress"))],
         add_servers=[net_label(first.get("ipAddress"))],
@@ -486,7 +490,7 @@ async def ntp_servers(c: Check, ps: PsRead, run: Run) -> Outcome:
         s if isinstance(s, str) else str(s.get("value") or s.get("name"))
         for s in n.get("ntpServerInfos") or []
     ]
-    fix = call("fmc_configure_ntp", run.domain, policy=ps.name, servers=["<NTP server>"])
+    fix = call("fmc_configure_ntp", ps.domain, policy=ps.name, servers=["<NTP server>"])
     if mode == "SYNC_VIA_NTP_SERVER":
         want = int(c.params.get("min_servers", 1))
         if len(servers) >= want:
@@ -507,7 +511,7 @@ async def login_banner(c: Check, ps: PsRead, run: Run) -> Outcome:
     text = banner_text(ps.one("banner"))
     fix = call(
         "fmc_set_banner",
-        run.domain,
+        ps.domain,
         policy=ps.name,
         text="Authorized use only. Activity on this device is monitored and logged.",
     )
@@ -542,7 +546,7 @@ async def icmp_access(c: Check, ps: PsRead, run: Run) -> Outcome:
     rules = ps.one("icmp").get("icmpConfigs") or []
     fix = call(
         "fmc_configure_mgmt_access",
-        run.domain,
+        ps.domain,
         policy=ps.name,
         kind="icmp",
         networks=["<management network>"],
@@ -577,7 +581,7 @@ async def dns_configured(c: Check, ps: PsRead, run: Run) -> Outcome:
             f"DNS server groups: {', '.join(ref_label(g.get('dnsServerGroup') or {}) for g in groups)}."
         )
     fix = call(
-        "fmc_configure_dns", run.domain, policy=ps.name, servers=["<DNS server>"], interfaces=["<zone>"]
+        "fmc_configure_dns", ps.domain, policy=ps.name, servers=["<DNS server>"], interfaces=["<zone>"]
     )
     return failed("No DNS server group: FQDN objects in rules never resolve.", fix, "fmc_configure_dns")
 

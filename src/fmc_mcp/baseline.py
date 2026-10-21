@@ -176,7 +176,13 @@ def load_baseline(ref: str, bundle_dir: Path | None) -> Baseline:
     for name in names:
         path = (root / name).resolve()
         if path.parent == root and path.is_file():
-            return parse_baseline(path.read_text(encoding="utf-8"), f"FMC_BUNDLE_DIR/{name}")
+            edited = parse_baseline(path.read_text(encoding="utf-8"), f"FMC_BUNDLE_DIR/{name}")
+            if edited.name in shipped:  # a report naming the bundled baseline must mean the bundled checks
+                raise InvalidRequest(
+                    f"Baseline FMC_BUNDLE_DIR/{name} is named {edited.name!r}, a bundled baseline's name: "
+                    "give the edited copy its own `name`."
+                )
+            return edited
     raise InvalidRequest(
         f"No baseline {ref!r}: not bundled ({', '.join(shipped)}) and no {' or '.join(names)} in "
         "FMC_BUNDLE_DIR."

@@ -105,6 +105,9 @@ def test_edited_baseline_from_bundle_dir(tmp_path: Path) -> None:
         tls = next(c for c in b.checks if c.id == "syslog-tls")
         assert tls.enabled and tls.severity == "high"
     assert load_baseline(DEFAULT_BASELINE, tmp_path).origin == "bundled"  # bundled names are reserved
+    (tmp_path / "copy.yaml").write_text(bundled_text("ftd-hardening.yaml"))  # edited, name unchanged
+    with pytest.raises(InvalidRequest, match="its own `name`"):
+        load_baseline("copy.yaml", tmp_path)
     with pytest.raises(InvalidRequest, match="FMC_BUNDLE_DIR is not set"):
         load_baseline("acme", None)
     with pytest.raises(InvalidRequest, match="give a bundled name"):
@@ -177,6 +180,8 @@ async def test_recorded_lab_policy_findings_ranked_with_fix_and_source(fmc: resp
         and "External Authentication" in found["external-authentication"]["ui"]
     )
     assert all(f["source"] for f in out["findings"])
+    documented = {c.id: c.fix_tool for c in bundled()[DEFAULT_BASELINE].checks}
+    assert all(f["fix_tool"] in (documented[f["check"]], None) for f in out["findings"])  # YAML = evaluator
     ok = by_check(out["passed"])
     assert {
         "ssh-access-restricted",
@@ -245,7 +250,10 @@ async def test_snmp_v2c_and_open_ssh_appear_then_clear(fmc: respx.MockRouter) ->
     )
     assert "a community string is set" in found["snmp-v3-only"]["detail"]
     assert "manager mcp-w6-nms uses SNMPv2c" in found["snmp-v3-only"]["detail"]
-    assert found["snmp-v3-only"]["fix"].startswith("fmc_configure_snmp(policy='mcp-w6-ps', enabled=False)")
+    # FMC masks the community and fmc_configure_snmp blocks a change without it: the fix says to give it
+    assert found["snmp-v3-only"]["fix"].startswith(
+        "fmc_configure_snmp(policy='mcp-w6-ps', enabled=False, community='<the current community>')"
+    )
     assert "*******" not in json.dumps(out)  # the masked community isn't echoed
     assert by_check(out["passed"])["snmp-hosts-restricted"]["detail"] == "SNMP managers: mcp-w6-nms."
 
@@ -372,6 +380,12 @@ async def test_device_checks_on_recorded_ftdv(fmc: respx.MockRouter) -> None:
     stale = found["no-pending-deployment"]
     assert stale["evidence"] == {"out_of_date": ["mcp-sdwan-acp", "lsp-rel-20261019-1844"]}
     assert stale["fix"] == "fmc_pending_changes(device='mcp-ftd1'), then fmc_deploy(devices=['mcp-ftd1'])"
+    # the platform settings policy belongs to Global: its fixes are written there, not in the leaf
+    out = await run({"device": DEV_ID, "checks": ["login-banner"], "domain": "Global/mcp-test-leaf"})
+    banner = by_check(out["findings"])["login-banner"]
+    assert banner["fix"].startswith("fmc_set_banner(policy='mcp-test-ps', text=") and banner["fix"].endswith(
+        "domain='Global')"
+    )
 
 
 async def test_device_behind_fmc_and_missing_licence(fmc: respx.MockRouter) -> None:
