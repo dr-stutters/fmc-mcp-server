@@ -1,0 +1,85 @@
+{
+ "_source": "Recorded 2026-10-20 from FMC 10.0.1 (build 1), domain Global/mcp-test-leaf (Wave 6 probe): POST devices/devicerecords/operational/bulkcommands -> 403 (feature flag off), and the per-device GET devicerecords/{id}/operational/commands?command=show version for a connected FTD (200) and an unreachable one (500). Device name, UUID, serial and MAC addresses replaced with documentation values; links dropped. `bulk_task_schema` is NOT recorded: it is built from the FMC 10.0.1 schema (BulkCommand metadata.task + TaskStatus subTasks) until an FMC with bulk_device_command_execution on answers.",
+ "bulk_refused_403": {
+  "error": {
+   "category": "FRAMEWORK",
+   "messages": [
+    {
+     "description": "Feature Flag : bulk_device_command_execution is disabled for the request. Request is forbidden."
+    }
+   ],
+   "severity": "ERROR"
+  }
+ },
+ "show_version_200": {
+  "items": [
+   {
+    "commandInput": "show version",
+    "commandOutput": "----------------[ ftd-a ]----------------\nModel                     : Cisco Secure Firewall Threat Defense for KVM (75) Version 10.0.0 (Build 140)\nUUID                      : a0000000-0000-4000-8000-00000000000a\nLSP version               : lsp-rel-20261016-1401\nVDB version               : 426\n----------------------------------------------------\n\nCisco Adaptive Security Appliance Software Version 9.24(1) \nSSP Operating System Version 2.18(0.520)\n\nCompiled on Mon 01-Dec-25 23:40 GMT by fpbesprd\nSystem image file is \"boot:/asa9241-smp-k8.bin\"\nConfig file at boot was \"startup-config\"\nGrub Platform is BIOS\nGRUB BIOS Version: 2.12\nSecure Boot is: NA\n\nftd-a up 2 days 9 hours\nStart-up time 8 secs\n\nHardware:   NGFWv, 8192 MB RAM, CPU Xeon 4100/6100/8100 series 2700 MHz, 1 CPU (4 cores)\nInternal ATA Compact Flash, 8192MB\nSlot 1: ATA Compact Flash, 8192MB\nBIOS Flash Firmware Hub @ 0x0, 0KB\n\n\n 0: Int: Internal-Data0/0    : address is 0000.5e00.5301, irq 11\n 1: Ext: Ethernet0/0         : address is 0000.5e00.5302, irq 11\n 2: Ext: Ethernet0/1         : address is 0000.5e00.5303, irq 10\n 3: Int: Internal-Control0/0 : address is 0000.5e00.5304, irq 0\n 4: Int: Internal-Data0/0    : address is 0000.5e00.5305, irq 0\n 5: Ext: Management0/0       : address is 0000.5e00.5306, irq 0\n 6: Int: Internal-Data0/1    : address is 0000.5e00.5307, irq 0\n 7: Int: Internal-Data0/2    : address is 0000.5e00.5308, irq 0\n 8: Int: Internal-Control0/1 : address is 0000.5e00.5309, irq 0\n\nActive Tier Model        : FTDv5\nActive Throughput        : 100 Mbps\nAnyConnect Premium Limit : 50\nCarrier License          : Disabled\n\nSerial Number: 9A0000000AA\n\nImage type          : Release\nKey version         : A\n\nConfiguration last modified by enable_1 at 05:00:36.144 UTC Mon Oct 19 2026\n",
+    "type": "command"
+   }
+  ],
+  "paging": {
+   "offset": 0,
+   "limit": 25,
+   "count": 1,
+   "pages": 1
+  }
+ },
+ "sftunnel_500": {
+  "error": {
+   "category": "FRAMEWORK",
+   "messages": [
+    {
+     "description": "External proxy invoked SFTunnelApi sendShowCommandsForDevice method and ran into an unexpected error com.cisco.nm.vms.sftunnel.SFTunnelException: Cannot establish a connection with the threat defense. Verify the connection between the management center and the threat defense.."
+    }
+   ],
+   "severity": "ERROR"
+  }
+ },
+ "bulk_task_schema": {
+  "response": {
+   "type": "BulkCommand",
+   "command": "show version",
+   "devices": [
+    "a0000000-0000-4000-8000-00000000000a",
+    "a0000000-0000-4000-8000-00000000000b"
+   ],
+   "metadata": {
+    "task": {
+     "id": "4294968000",
+     "type": "TaskStatus",
+     "status": "RUNNING"
+    },
+    "matches": []
+   }
+  },
+  "task": {
+   "id": "4294968000",
+   "type": "TaskStatus",
+   "taskType": "BULK_COMMAND",
+   "status": "SUCCESS",
+   "message": "Completed",
+   "subTasks": [
+    {
+     "target": {
+      "id": "a0000000-0000-4000-8000-00000000000a",
+      "type": "Device",
+      "name": "ftd-a"
+     },
+     "status": "SUCCESS",
+     "message": "Cisco Adaptive Security Appliance Software Version 9.24(1)\nftd-a up 2 days 9 hours"
+    },
+    {
+     "target": {
+      "id": "a0000000-0000-4000-8000-00000000000b",
+      "type": "Device",
+      "name": "ftd-b"
+     },
+     "status": "FAILED",
+     "message": "Cannot establish a connection with the threat defense"
+    }
+   ]
+  }
+ }
+}

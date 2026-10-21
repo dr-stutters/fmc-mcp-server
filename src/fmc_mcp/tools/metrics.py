@@ -40,7 +40,7 @@ from fmc_mcp._core.formatting import text_result
 from fmc_mcp.client import FmcApp
 from fmc_mcp.tools.common import Domain
 from fmc_mcp.tools.device_config import resolve_device
-from fmc_mcp.tools.devices import DeviceRef
+from fmc_mcp.tools.device_groups import DeviceOrGroup, members_markdown, per_member
 
 MAX_POINTS = 60  # raw samples asked per series (the step grows with the window)
 MIN_STEP = 60
@@ -782,7 +782,7 @@ def register(reg: ToolRegistrar) -> None:
     @reg.read(title="Device metrics over time")
     async def fmc_device_metrics(
         ctx: Context,
-        device: DeviceRef,
+        device: DeviceOrGroup,
         since: Annotated[
             str,
             Field(
@@ -828,6 +828,12 @@ def register(reg: ToolRegistrar) -> None:
         enabled in the device's health policy (fmc_get_health_policy)."""
         app: FmcApp = get_client(ctx)
         start, end, step = window(since, until, _now())
+        one = lambda d: fmc_device_metrics(ctx, d, since, until, metric, interface, points, domain, "json")  # noqa: E731
+        if (fleet := await per_member(app, device, domain, one, what="fmc_device_metrics")) is not None:
+            # a device group: every member's metrics (F68)
+            if response_format == "markdown":
+                return text_result(members_markdown(fleet, to_markdown))
+            return object_result(fleet, shape=False)
         dev = await resolve_device(app, device, domain)
         views = VIEWS[metric]
         families = sorted({f for v in views for f in NEEDS[v]})

@@ -38,6 +38,7 @@ from fmc_mcp.rails import (
 )
 from fmc_mcp.tools.common import Domain, ref_label, resolve_in, slim
 from fmc_mcp.tools.deploy import JOBS, deployable, deployable_row
+from fmc_mcp.tools.device_groups import expand_devices
 from fmc_mcp.tools.devices import DEVICES, HA_PAIRS, DeviceRef
 from fmc_mcp.tools.object_writes import applied, editable
 from fmc_mcp.tools.policies import POLICY_KINDS, PolicyKind, all_rules, policy_assignments
@@ -330,7 +331,10 @@ def register(reg: ToolRegistrar) -> None:
         ctx: Context,
         devices: Annotated[
             list[str] | None,
-            Field(description="Device names/UUIDs to deploy; default: every device with pending changes"),
+            Field(
+                description="Device names/UUIDs to deploy, or device groups ('group:<name>'; members without "
+                "pending changes are skipped); default: every device with pending changes"
+            ),
         ] = None,
         note: Annotated[
             str | None, Field(description="Deployment note shown in the deployment history")
@@ -347,9 +351,20 @@ def register(reg: ToolRegistrar) -> None:
         pending = await deployable(app, domain)
         by_id = {(d.get("device") or {}).get("id"): d for d in pending}
         targets: list[dict[str, Any]] = []
+        fleet = await expand_devices(app, devices, domain)
+        skipped: list[str] = []
         if devices:
-            for ref in devices:
-                targets.append(await _deploy_target(app, ref, pending, by_id, domain))
+            for ref in fleet.refs:
+                try:
+                    t = await _deploy_target(app, ref, pending, by_id, domain)
+                except (InvalidRequest, NotFound):
+                    if not fleet.from_group(ref):
+                        raise
+                    # a group member with nothing pending (an HA pair not pending is no device record)
+                    skipped.append(fleet.grouped[ref.lower()])
+                    continue
+                if all(t is not x for x in targets):  # an HA unit and its pair are one target
+                    targets.append(t)
         else:
             targets = [d for d in pending if d.get("canBeDeployed", True)]
         blockers = [] if targets else ["Nothing to deploy: no device has pending changes."]
@@ -404,6 +419,10 @@ def register(reg: ToolRegistrar) -> None:
         }
         if window:
             details["deploy_window"] = window
+        if fleet.groups:
+            details["groups"] = fleet.groups
+        if skipped:
+            details["skipped_no_pending_changes"] = skipped
         if ignored:
             details["warnings_ignored"] = ignored
         path = await app.config_path("deployment/deploymentrequests", domain)

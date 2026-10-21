@@ -73,6 +73,10 @@ def fmc() -> Iterator[respx.MockRouter]:
             return_value=items([{**d, "parentUUID": DOMAIN} for d in DOMAINS])
         )
         mock.get(f"{CFG}/devices/devicerecords").mock(return_value=items([], 0))
+        for dom in (DOMAIN, CHILD, TOP):  # no device groups (F68: tools taking devices look them up)
+            mock.get(f"/api/fmc_config/v1/domain/{dom}/devicegroups/devicegrouprecords").mock(
+                return_value=items([], 0)
+            )
         yield mock
 
 
