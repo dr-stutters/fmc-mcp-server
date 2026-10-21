@@ -1,5 +1,5 @@
 {
- "_source": "F73, recorded 2026-10-21 from FMC 10.0.1 (build 1), Global/mcp-test-leaf, mcp-sdwan-t1-spoke1 (connected, standalone): `show` = the operational/commands output of each command (as fmc_run_show_command returned it, route legend stripped); health/alerts and deployment/jobhistories as fmc_api_call GET (expanded) returned them, params of some green rows trimmed. Lab 10.x/24 addresses replaced with one 192.0.2.x/28 each and the carriers' 10.x/16 with 198.51.100.x/27 (inside .48/28, mpls .0/28, inet .16/28, lte .32/28); the FTD prints its internal management address as 203.0.113.130. `wan_down` is SYNTHESIZED from the recording for the F73 test plan (one WAN link down with cml_set_link_state): mpls (Ethernet0/0) down/down, its connected, local and static routes gone, the INTERFACE health module also naming Ethernet0/0. Re-record it in Stage 2.",
+ "_source": "F73, recorded 2026-10-21 from FMC 10.0.1 (build 1), Global/mcp-test-leaf, mcp-sdwan-t1-spoke1 (connected, standalone): `show` = the operational/commands output of each command (as fmc_run_show_command returned it, route legend stripped); health/alerts and deployment/jobhistories as fmc_api_call GET (expanded) returned them, params of some green rows trimmed. Lab 10.x/24 addresses replaced with one 192.0.2.x/28 each and the carriers' 10.x/16 with 198.51.100.x/27 (inside .48/28, mpls .0/28, inet .16/28, lte .32/28); the FTD prints its internal management address as 203.0.113.130. `wan_down` is SYNTHESIZED from the recording for the F73 test plan (one WAN link down with cml_set_link_state): mpls (Ethernet0/0) down/down, its connected, local and static routes gone, the INTERFACE health module also naming Ethernet0/0. `wan_down_live` is the Stage 2 recording of that test (2026-10-21, the same link stopped with cml_set_link_state for ~10 min): on FTDv in CML the link stop does NOT drop carrier, so 'show interface ip brief' kept Ethernet0/0 up/up and every route stayed (ping over it failed 0/5); only FMC's INTERFACE health module changed, on its first run more than ~5 min after the stop, joining the two interfaces' messages with '<br>'. The synthesized `wan_down` stays for the interface-down and lost-route logic.",
  "device": "1bcefc02-ca81-11f1-9c58-8639fcd7b26d",
  "show": {
   "show interface ip brief": "Interface                  IP-Address      OK? Method Status                Protocol\nEthernet0/0                192.0.2.2      YES CONFIG up                    up  \nEthernet0/1                192.0.2.18      YES CONFIG up                    up  \nEthernet0/2                192.0.2.34      YES CONFIG up                    up  \nEthernet0/3                192.0.2.49      YES CONFIG up                    up  \nInternal-Control0/0        127.0.1.1       YES unset  up                    up  \nInternal-Control0/1        unassigned      YES unset  up                    up  \nInternal-Data0/0           unassigned      YES unset  down                  down\nInternal-Data0/0           unassigned      YES unset  up                    up  \nInternal-Data0/1           169.254.1.1     YES unset  up                    up  \nInternal-Data0/2           unassigned      YES unset  up                    up  \nManagement0/0              203.0.113.130   YES unset  up                    up  \n",
@@ -657,5 +657,16 @@
     "pages": 1
    }
   }
+ },
+ "wan_down_live": {
+  "show": {},
+  "INTERFACE": {
+   "status": "RED",
+   "details": "Interface 'Ethernet0/2' is not receiving any packets<br>Interface 'Ethernet0/0' is not receiving any packets"
+  },
+  "ip_brief_Ethernet0/0": "Ethernet0/0                192.0.2.2      YES CONFIG up                    up  ",
+  "diff_findings_before_fix": [
+   "health alert INTERFACE: details Interface 'Ethernet0/2' is not receiving any packets -> Interface 'Ethernet0/2' is not receiving any packets<br>Interface 'Ethernet0/0' is not receiving any packets"
+  ]
  }
 }
