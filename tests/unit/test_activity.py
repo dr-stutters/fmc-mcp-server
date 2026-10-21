@@ -1,16 +1,21 @@
 """On-demand activity lookups (F5): health alerts over a window and the merged timeline."""
 
 import json
+import re
+import time
 from typing import Any
 
 import httpx
 import respx
 from fastmcp import Client
 
+from fmc_mcp import audit
+from fmc_mcp.audit import is_read
 from fmc_mcp.server import create_server
-from fmc_mcp.tools.activity import clean_details, collapse_alerts
+from fmc_mcp.tools import activity
+from fmc_mcp.tools.activity import clean_details, collapse_alerts, status_changes
 
-from .conftest import CFG, items, make_settings
+from .conftest import CFG, fixture, items, make_settings
 
 DEV = {"id": "2c11eaca-c7e3-11f1-a7ce-a8b537b1b4bb", "name": "mcp-ftd1", "type": "Device"}
 PLATFORM_AUDIT = "/api/fmc_platform/v1/domain/e276abec-e0f2-11e3-8169-6d9ed49b625f/audit/auditrecords"
@@ -109,14 +114,31 @@ async def test_recent_activity_merges_and_survives_a_failing_source(fmc: respx.M
     assert "deploy" in out["errors"]
 
 
-def _audit_route(fmc: respx.MockRouter, recs: list[dict[str, Any]]) -> respx.Route:
-    """FMC 10.0.1 behaviour: the newest 100 records in [starttime, endtime], nothing past offset 100."""
+def _like(pattern: str, value: str) -> bool:
+    """FMC 10.0.1's `subsystem` filter: SQL LIKE on the whole name, case-insensitive (checked live)."""
+    rx = "".join(".*" if ch == "%" else "." if ch == "_" else re.escape(ch) for ch in pattern)
+    return re.fullmatch(rx, value, re.I | re.S) is not None
+
+
+def _audit_route(fmc: respx.MockRouter, recs: list[dict[str, Any]], like: bool = True) -> respx.Route:
+    """FMC 10.0.1 behaviour: the newest 100 records in [starttime, endtime], nothing past offset 100;
+    `subsystem` filters (SQL LIKE; like=False: an FMC matching whole names only), `username` and
+    `source` are ignored."""
+
+    def match(sub: str | None, value: str) -> bool:
+        if sub is None:
+            return True
+        return _like(sub, value) if like else sub.lower() == value.lower()
 
     def handler(request: httpx.Request) -> httpx.Response:
         p = request.url.params
         lo = int(p["starttime"])
         hi = int(p.get("endtime", 10**12))
-        sel = sorted((r for r in recs if lo <= r["time"] <= hi), key=lambda r: -r["time"])[:100]
+        sub = p.get("subsystem")
+        sel = sorted(
+            (r for r in recs if lo <= r["time"] <= hi and match(sub, str(r.get("subSystem", "")))),
+            key=lambda r: -r["time"],
+        )[: min(100, int(p.get("limit", 100)))]
         if int(p.get("offset", 0)) >= 100:
             sel = []
         return httpx.Response(200, json={"items": sel, "paging": {"count": len(sel)}})
@@ -237,3 +259,370 @@ async def test_packet_tracer_runs_are_not_changes(fmc: respx.MockRouter) -> None
         out = r.structured_content or json.loads(r.content[0].text)  # type: ignore[union-attr]
     traced = [x for x in out["results"] if "packet-tracer" in x["summary"]]
     assert len(traced) == 1 and traced[0]["device"] == "mcp-ftd1"
+
+
+# --- #201: health repeats, #203: the audit window on a busy FMC ------------------------------------------
+
+
+AUDIT10 = fixture("audit_fmc10")
+TALOS = fixture("health_talosagent_flap")["items"]
+
+
+def _out(r: Any) -> Any:
+    return r.structured_content or json.loads(r.content[0].text)  # type: ignore[union-attr]
+
+
+def test_fmc10_reads_and_changes_are_told_apart() -> None:
+    """Recorded FMC 10.0.1 records: page views carry the page's UI path as subsystem ('Policies > Security
+    policies > Access Control > Policy Editor', message 'Page View'), so they are reads like API GETs,
+    logins, 'View ...' and packet-tracer runs; worded saves, creates, deletes and deployments are not."""
+    recs = AUDIT10["changes"] + AUDIT10["unfiltered"]
+    reads = {r["message"][:40] for r in recs if is_read(r)}
+    kept = {r["message"][:40] for r in recs if not is_read(r)}
+    assert "Page View" in reads and "Login Success" in reads and "View url filtering settings" in reads
+    assert any(m.startswith("Trace: packet-tracer") for m in reads)
+    assert any(m.startswith("GET ") for m in reads)
+    assert {
+        "Save Policy mcp-fw-threat-acp:587",
+        "create mcp-fw-demo-branch-wan:643",
+        "Delete Policy mcp-fw-nat",
+        "Save mcp-fw-file-av:595",
+        "Policy Deployment to mcp-ftd1 - SUCCESS",
+    } <= kept
+    assert "Page View" not in kept
+
+
+def test_hit_count_and_cli_subsystems_are_reads() -> None:
+    """#201: FMC's operational subsystems (troubleshooting anywhere in the path, hit counts, the CLI)."""
+    for sub in (
+        "Policies > Security policies > Access Control > Hit Count",
+        "Devices > Device Management > Troubleshoot > Threat Defense CLI",
+        "Devices > Troubleshoot > Packet Capture",
+    ):
+        assert is_read({"subSystem": sub, "message": "Refresh"}), sub
+    editor = "Policies > Security policies > Access Control > Policy Editor"
+    assert not is_read({"subSystem": editor, "message": "Save Policy acp:3"})
+
+
+def _busy_log(now: int) -> list[dict[str, Any]]:
+    """A busy FMC's last 24 hours: 3000 API reads in the newest ~3 hours (agents polling), the recorded
+    change records spread over the day (a 'Save Policy mcp-fw-threat-acp' 13 hours ago), page views and
+    a deployment."""
+    get = AUDIT10["unfiltered"][0]
+    recs = [{**get, "time": now - 60 - i * 3, "auditId": f"get{i}"} for i in range(3000)]
+    for i, r in enumerate(AUDIT10["changes"]):
+        recs.append({**r, "time": now - 3600 * (i + 1) - 13 * 60, "auditId": f"chg{i}"})
+    deploy = next(r for r in AUDIT10["unfiltered"] if r["subSystem"] == "Task Queue")
+    recs.append({**deploy, "time": now - 20 * 3600, "auditId": "dep"})
+    return recs
+
+
+async def test_who_changed_a_policy_reaches_the_whole_day(fmc: respx.MockRouter) -> None:
+    """#203: 3000 API GETs in the newest hours used to stop the read 4 hours back after 25 requests. Now the
+    newest 500 records are read in full and the rest of the day through FMC's change subsystems."""
+    now = int(time.time())
+    route = _audit_route(fmc, _busy_log(now))
+    async with Client(create_server(make_settings())) as c:
+        out = _out(
+            await c.call_tool(
+                "fmc_list_audit_records",
+                {"text": "mcp-fw-threat-acp", "since_minutes": 1440, "response_format": "json"},
+            )
+        )
+    assert [r["message"] for r in out["results"]] == [
+        "Save Policy mcp-fw-threat-acp:627",
+        "Save Policy mcp-fw-threat-acp:587",
+    ]
+    subs = [c.request.url.params.get("subsystem") for c in route.calls]
+    assert subs.count(None) == audit.CHANGE_SCAN_PAGES and {"%>%", "Task Queue"} <= set(subs)
+    assert len(route.calls) <= audit.CHANGE_SCAN_PAGES + 3
+    assert out["reads_skipped"] >= 400  # the 5 slices overlap by a second
+    assert "Every audit record was read back to" in out["note"] and "of them reads" in out["note"]
+
+
+async def test_changes_today_list_deployments_and_object_edits(fmc: respx.MockRouter) -> None:
+    now = int(time.time())
+    _audit_route(fmc, _busy_log(now))
+    async with Client(create_server(make_settings())) as c:
+        out = _out(
+            await c.call_tool(
+                "fmc_list_audit_records", {"since_minutes": 1440, "limit": 100, "response_format": "json"}
+            )
+        )
+    msgs = [r["message"] for r in out["results"]]
+    assert "Policy Deployment to mcp-ftd1 - SUCCESS" in msgs and "create mcp-fw-demo-branch-wan:643" in msgs
+    assert "Page View" not in msgs and not any(m.startswith("Trace:") for m in msgs)
+
+
+async def test_subsystem_is_filtered_by_fmc(fmc: respx.MockRouter) -> None:
+    """#203: `subsystem` goes to FMC as '%<text>%' (FMC 10.0.1: SQL LIKE, case-insensitive), so the whole
+    window is read in one request instead of every record."""
+    now = int(time.time())
+    route = _audit_route(fmc, _busy_log(now))
+    async with Client(create_server(make_settings())) as c:
+        out = _out(
+            await c.call_tool(
+                "fmc_list_audit_records",
+                {"subsystem": "nat policy editor", "since_minutes": 1440, "response_format": "json"},
+            )
+        )
+    assert [r["message"] for r in out["results"]] == ["Delete Policy mcp-fw-nat"]
+    assert [c.request.url.params["subsystem"] for c in route.calls] == ["%nat policy editor%"]
+    assert "note" not in out
+
+
+async def test_an_fmc_without_like_filters_is_read_as_before(fmc: respx.MockRouter) -> None:
+    """An FMC whose `subsystem` filter matches whole names only finds nothing for '%...%': the tools read
+    every record and filter here, as before (the coverage note then says how far back they got)."""
+    now = int(time.time())
+    recs = [{**r, "time": now - 600 - i, "auditId": f"c{i}"} for i, r in enumerate(AUDIT10["changes"])]
+    recs += [{**AUDIT10["unfiltered"][0], "time": now - 2000 - i, "auditId": f"g{i}"} for i in range(700)]
+    route = _audit_route(fmc, recs, like=False)
+    async with Client(create_server(make_settings())) as c:
+        out = _out(
+            await c.call_tool("fmc_list_audit_records", {"subsystem": "NAT", "response_format": "json"})
+        )
+        assert [r["message"] for r in out["results"]] == ["Delete Policy mcp-fw-nat"]
+        assert route.calls[0].request.url.params["subsystem"] == "%NAT%"
+        assert route.calls[1].request.url.params["subsystem"] == "%"  # like_works: no
+        assert "subsystem" not in route.calls[2].request.url.params
+        out = _out(
+            await c.call_tool("fmc_list_audit_records", {"text": "threat-acp", "response_format": "json"})
+        )
+    assert [r["message"] for r in out["results"]] == [
+        "Save Policy mcp-fw-threat-acp:627",
+        "Save Policy mcp-fw-threat-acp:587",
+    ]
+    assert out["records_read"] == len(recs) and "note" not in out
+
+
+async def test_a_user_filter_still_reads_here(fmc: respx.MockRouter) -> None:
+    """FMC 10.0.1 ignores `username` on audit/auditrecords (checked live), so the tool doesn't send it."""
+    now = int(time.time())
+    recs = [_rec(1, now - 30, "Save Policy acp:1", "Policies > x", "bob"), _rec(2, now - 20, "x")]
+    route = _audit_route(fmc, recs)
+    async with Client(create_server(make_settings())) as c:
+        out = _out(await c.call_tool("fmc_list_audit_records", {"user": "bob", "response_format": "json"}))
+    assert [r["user"] for r in out["results"]] == ["bob"]
+    assert all("username" not in c.request.url.params for c in route.calls)
+
+
+async def test_recent_activity_reads_changes_past_the_reads(fmc: respx.MockRouter) -> None:
+    """fmc_recent_activity shares the change reader: an object edit 50 minutes ago behind 2950 newer GETs."""
+    now = int(time.time())
+    get = AUDIT10["unfiltered"][0]
+    recs = [{**get, "time": now - 30 - i, "auditId": f"g{i}"} for i in range(2950)]
+    edit = next(r for r in AUDIT10["changes"] if r["message"].startswith("create"))
+    recs.append({**edit, "time": now - 3000, "username": "bob"})
+    _audit_route(fmc, recs)
+    _alerts_route(fmc, [])
+    fmc.get(f"{CFG}/deployment/jobhistories").mock(return_value=items([]))
+    async with Client(create_server(make_settings())) as c:
+        out = _out(await c.call_tool("fmc_recent_activity", {"response_format": "json"}))
+    assert [x["summary"] for x in out["results"]] == [
+        "Objects > Object Management > NetworkObject: create mcp-fw-demo-branch-wan:643"
+    ]
+    assert "Every audit record was read back to" in out["partial"]["audit"]
+
+
+def test_health_repeats_collapse_on_status_with_newest_details() -> None:
+    """#201 (recorded, FMC 10.0.1): HM_TALOSAGENT stays RED while its details alternate between '1 modules
+    failed' and '2 modules failed': one row, the newest details, the re-wordings counted, no changed_from."""
+    rows = collapse_alerts(TALOS, {})
+    assert len(rows) == 1
+    row = rows[0]
+    assert (row["device"], row["module"], row["status"], row["count"]) == ("FMC", "HM_TALOSAGENT", "RED", 16)
+    assert row["changed_from"] is None and row["details_changed"] == 12
+    assert row["details"].startswith("2 modules failed")  # the newest alert's
+
+
+def test_changed_from_only_on_a_status_change() -> None:
+    raw = [
+        alert(100, "YELLOW", "cpu 85%", module="CPU"),
+        alert(400, "RED", "cpu 95%", module="CPU"),
+        alert(700, "RED", "cpu 97%", module="CPU"),
+        alert(100, "RED", "Talos. Failed. ", module="THREAT_DATA_UPDATES"),
+        alert(400, "RED", "Failed. Talos. ", module="THREAT_DATA_UPDATES"),  # same sentences, other order
+    ]
+    rows = {(r["module"], r["status"]): r for r in collapse_alerts(raw, {})}
+    assert rows[("CPU", "YELLOW")]["changed_from"] is None
+    red = rows[("CPU", "RED")]
+    assert red["changed_from"] == "YELLOW" and red["count"] == 2 and red["details_changed"] == 1
+    assert red["details"] == "cpu 97%"
+    assert rows[("THREAT_DATA_UPDATES", "RED")]["details_changed"] == 0
+
+
+async def test_a_subsystem_without_records_costs_two_requests(fmc: respx.MockRouter) -> None:
+    """Review of #233: a `subsystem` that matches nothing must not fall back to the full 25-page read on an
+    FMC whose filter takes LIKE: like_works ('%' finds a record) tells the empty answer apart."""
+    now = int(time.time())
+    route = _audit_route(fmc, _busy_log(now))
+    async with Client(create_server(make_settings())) as c:
+        out = _out(
+            await c.call_tool(
+                "fmc_list_audit_records",
+                {"subsystem": "Umbrella", "since_minutes": 1440, "response_format": "json"},
+            )
+        )
+    assert out["results"] == [] and out["records_read"] == 0
+    assert [c.request.url.params["subsystem"] for c in route.calls] == ["%Umbrella%", "%"]
+
+
+def _gets(now: int, n: int) -> list[dict[str, Any]]:
+    get = AUDIT10["unfiltered"][0]
+    return [{**get, "time": now - 30 - i, "auditId": f"g{i}"} for i in range(n)]
+
+
+async def test_the_full_read_boundary(fmc: respx.MockRouter) -> None:
+    """Five slices of 100 overlap by a second each, so they hold 496 distinct records: a window of 495 is
+    read whole in 5 requests; one record more and the change subsystems (and the LIKE probe, as they find
+    nothing) are read for the rest."""
+    now = int(time.time())
+    route = _audit_route(fmc, _gets(now, 495))
+    async with Client(create_server(make_settings())) as c:
+        out = _out(await c.call_tool("fmc_list_audit_records", {"response_format": "json"}))
+        assert out["records_read"] == 495 and "note" not in out
+        assert len(route.calls) == audit.CHANGE_SCAN_PAGES
+        assert all("subsystem" not in c.request.url.params for c in route.calls)
+    route = _audit_route(fmc, _gets(now, 497))  # the same respx route, answering anew
+    before = len(route.calls)
+    async with Client(create_server(make_settings())) as c:
+        out = _out(await c.call_tool("fmc_list_audit_records", {"response_format": "json"}))
+    subs = [c.request.url.params.get("subsystem") for c in list(route.calls)[before:]]
+    assert subs == [None] * audit.CHANGE_SCAN_PAGES + ["%>%", "Task Queue", "%"]
+    assert out["records_read"] == 496 and out["reads_skipped"] == 496
+    assert "Every audit record was read back to" in out["note"] and "'Cloud Services'" in out["note"]
+
+
+async def test_the_change_subsystems_stop_at_their_page_budget(fmc: respx.MockRouter) -> None:
+    """More than CHANGE_SUBSYSTEM_PAGES slices of UI-path records (page views here) in the older part: the
+    read stops there and the note says how far back the changes were read."""
+    now = int(time.time())
+    view = next(r for r in AUDIT10["unfiltered"] if r["subSystem"].startswith("Integrations >"))
+    recs = _gets(now, 600) + [{**view, "time": now - 5000 - i, "auditId": f"v{i}"} for i in range(1200)]
+    recs.append({**AUDIT10["changes"][-2], "time": now - 20000, "auditId": "old-save"})
+    route = _audit_route(fmc, recs)
+    async with Client(create_server(make_settings())) as c:
+        out = _out(
+            await c.call_tool(
+                "fmc_list_audit_records",
+                {"text": "mcp-fw-threat-acp", "since_minutes": 1440, "response_format": "json"},
+            )
+        )
+    subs = [c.request.url.params.get("subsystem") for c in route.calls]
+    assert subs.count("%>%") == audit.CHANGE_SUBSYSTEM_PAGES
+    assert out["results"] == []  # the save behind 1200 page views was not reached
+    assert "Those were read back to" in out["note"] and "use a shorter window" in out["note"]
+
+
+# --- health: problems that began in the window vs before it (review of #233) -------------------------
+
+
+def _alert_filter_route(
+    fmc: respx.MockRouter, rows: list[dict[str, Any]], fail_before: int | None = None
+) -> respx.Route:
+    """health/alerts as FMC 10.0.1 filters it (startTime, endTime, deviceUUIDs, moduleIDs, status; oldest
+    first, offset/limit). fail_before: answer 500 to a query that starts before this time (the lookback)."""
+
+    def handler(request: httpx.Request) -> httpx.Response:
+        f = dict(part.split(":", 1) for part in request.url.params.get("filter", "").split(";") if part)
+        lo, hi = int(f.get("startTime", 0)), int(f.get("endTime", 10**12))
+        if fail_before is not None and lo < fail_before:
+            return httpx.Response(500, json={"error": {"messages": [{"description": "boom"}]}})
+        devs = set(f["deviceUUIDs"].split(",")) if "deviceUUIDs" in f else None
+        mods = set(f["moduleIDs"].split(",")) if "moduleIDs" in f else None
+        stats = set(f["status"].split(",")) if "status" in f else None
+        sel = sorted(
+            (
+                a
+                for a in rows
+                if lo <= a["timestamp"] <= hi
+                and (devs is None or a["deviceUUID"] in devs)
+                and (mods is None or a["moduleID"] in mods)
+                and (stats is None or a["status"] in stats)
+            ),
+            key=lambda a: a["timestamp"],
+        )
+        off = int(request.url.params.get("offset", 0))
+        lim = int(request.url.params.get("limit", 25))
+        return httpx.Response(200, json={"items": sel[off : off + lim], "paging": {"count": len(sel)}})
+
+    return fmc.get(f"{CFG}/health/alerts").mock(side_effect=handler)
+
+
+def test_status_changes_use_the_status_before_the_window() -> None:
+    start = TALOS[0]["timestamp"] - 100
+    dev = DEV["id"]
+    raw = (
+        TALOS
+        + [alert(start + 1800 + 300 * i, "RED", "no heartbeat") for i in range(4)]
+        + [
+            alert(start + 600, "RED", "down", module="INTERFACE"),
+            alert(start + 900, "RECOVERED", "up", module="INTERFACE"),
+        ]
+        + [alert(start + 1200, "RED", "cpu 95%", module="CPU")]
+    )
+    prior = {("0", "HM_TALOSAGENT"): "RED", (dev, "APPLIANCE_HEARTBEAT"): "GREEN", (dev, "CPU"): "YELLOW"}
+    changed, ongoing = status_changes(raw, {dev: "mcp-ftd1"}, prior)
+    assert [(r["module"], r["status"]) for r in ongoing] == [("HM_TALOSAGENT", "RED")]
+    assert {(r["module"], r["status"], r["changed_from"]) for r in changed} == {
+        ("APPLIANCE_HEARTBEAT", "RED", "GREEN"),
+        ("INTERFACE", "RED", None),  # nothing before the window: new
+        ("INTERFACE", "RECOVERED", "RED"),
+        ("CPU", "RED", "YELLOW"),
+    }
+    # the status before the window unknown (not read): everything is listed
+    changed, ongoing = status_changes(raw, {dev: "mcp-ftd1"}, None)
+    assert ongoing == [] and len(changed) == 5
+
+
+async def test_recent_activity_tells_new_problems_from_old_ones(fmc: respx.MockRouter) -> None:
+    """The zone the interval guess got wrong: a module checked every 30 minutes that went RED 40 minutes ago
+    (alerts at -40 and -10, GREEN at -70) is a change; an hourly module RED at -65 and -5 (one alert in the
+    window) is not; neither is HM_TALOSAGENT, RED for hours (recorded)."""
+    now = int(time.time())
+    m = 60
+    shift = now - 3 * 3600 - TALOS[0]["timestamp"]
+    talos = [{**a, "timestamp": a["timestamp"] + shift + k * 16 * 307} for k in range(3) for a in TALOS]
+    talos = [a for a in talos if a["timestamp"] < now]
+    rows = talos + [
+        alert(now - 70 * m, "GREEN", "ok", module="DISK_USAGE"),
+        alert(now - 40 * m, "RED", "/ 95% used", module="DISK_USAGE"),
+        alert(now - 10 * m, "RED", "/ 96% used", module="DISK_USAGE"),
+        alert(now - 65 * m, "RED", "expired", module="SMART_LICENSE"),
+        alert(now - 5 * m, "RED", "expired", module="SMART_LICENSE"),
+        alert(now - 20 * m, "YELLOW", "85%", module="CPU"),
+    ]
+    fmc.get(f"{CFG}/devices/devicerecords").mock(return_value=items([DEV]))
+    route = _alert_filter_route(fmc, rows)
+    fmc.get(PLATFORM_AUDIT).mock(return_value=items([]))
+    fmc.get(f"{CFG}/deployment/jobhistories").mock(return_value=items([]))
+    async with Client(create_server(make_settings())) as c:
+        out = _out(await c.call_tool("fmc_recent_activity", {"response_format": "json"}))
+    assert [x["summary"] for x in out["results"]] == [
+        "CPU YELLOW: 85%",
+        "DISK_USAGE GREEN -> RED: / 96% used",
+    ]
+    ongoing = out["health_ongoing"]
+    assert "HM_TALOSAGENT RED on FMC" in ongoing and "SMART_LICENSE RED on mcp-ftd1" in ongoing
+    lookback = [
+        dict(p.split(":", 1) for p in call.request.url.params["filter"].split(";"))
+        for call in route.calls
+        if "moduleIDs" in call.request.url.params["filter"]
+    ][-1]
+    assert int(lookback["endTime"]) - int(lookback["startTime"]) == activity.HEALTH_LOOKBACK - 1
+    assert set(lookback["moduleIDs"].split(",")) == {"HM_TALOSAGENT", "DISK_USAGE", "SMART_LICENSE", "CPU"}
+    assert "status" not in lookback  # GREEN too
+
+
+async def test_recent_activity_lists_problems_when_the_lookback_fails(fmc: respx.MockRouter) -> None:
+    now = int(time.time())
+    rows = [alert(now - 3000 + 300 * i, "RED", "x", module="HM_TALOSAGENT", dev="0") for i in range(9)]
+    fmc.get(f"{CFG}/devices/devicerecords").mock(return_value=items([DEV]))
+    _alert_filter_route(fmc, rows, fail_before=now - 3700)
+    fmc.get(PLATFORM_AUDIT).mock(return_value=items([]))
+    fmc.get(f"{CFG}/deployment/jobhistories").mock(return_value=items([]))
+    async with Client(create_server(make_settings())) as c:
+        out = _out(await c.call_tool("fmc_recent_activity", {"response_format": "json"}))
+    assert [x["summary"][:17] for x in out["results"]] == ["HM_TALOSAGENT RED"]
+    assert "alerts before the window not read" in out["partial"]["health_before"]

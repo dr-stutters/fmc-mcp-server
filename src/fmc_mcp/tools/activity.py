@@ -6,6 +6,7 @@ collected in the background."""
 import html
 import re
 import time
+from collections.abc import Callable
 from typing import Annotated, Any, Literal
 
 from fastmcp import Context
@@ -14,7 +15,15 @@ from pydantic import Field
 
 from fmc_mcp._core import ResponseFormat, ToolRegistrar, UpstreamError, get_client, list_result
 from fmc_mcp._core.http import page_of
-from fmc_mcp.audit import audit_time, compact_message, coverage_note, device_in, fetch_audit, is_read
+from fmc_mcp.audit import (
+    audit_time,
+    compact_message,
+    coverage_note,
+    device_in,
+    fetch_audit,
+    fetch_changes,
+    is_read,
+)
 from fmc_mcp.client import FmcApp
 from fmc_mcp.tools.common import Domain, resolve_in
 from fmc_mcp.tools.deploy import JOBS
@@ -23,6 +32,9 @@ from fmc_mcp.tools.system import iso
 
 ALERTS = "health/alerts"
 ALERT_FETCH = 1000  # newest raw alerts read per call (FMC re-reports each module every few minutes)
+# fmc_recent_activity reads the alerts of this long before the window, every level (GREEN too), to tell a
+# problem that began in the window from one that was already there (#201).
+HEALTH_LOOKBACK = 7200
 ACTIVITY_AUDIT_PAGES = 20  # up to 2000 audit records per timeline
 DEPLOY_FETCH = 100
 FMC_DEVICE = "0"  # health alerts about the FMC itself use deviceUUID "0"
@@ -38,9 +50,13 @@ def clean_details(text: Any) -> str:
     return re.sub(r"\s+", " ", t).strip()
 
 
+_PARTS = re.compile(r"\s*\*\s*|(?<=\.)\s+")
+
+
 def _same_details(text: str) -> tuple[str, ...]:
-    """Comparable form of alert details: FMC lists the failed items in a different order each run."""
-    return tuple(sorted(p.strip() for p in text.split("*")))
+    """Comparable form of alert details: FMC lists the failed items (and sentences) in a different order
+    each run."""
+    return tuple(sorted(p.strip() for p in _PARTS.split(text) if p.strip()))
 
 
 def _ts(a: dict[str, Any]) -> int:
@@ -50,9 +66,11 @@ def _ts(a: dict[str, Any]) -> int:
         return 0
 
 
-def collapse_alerts(raw: list[dict[str, Any]], names: dict[str, str]) -> list[dict[str, Any]]:
-    """FMC repeats every module's alert on each health run. Collapse runs of the same (device,
-    module, status, details) into one row with first/last seen and a count; newest first."""
+def _runs(raw: list[dict[str, Any]], names: dict[str, str]) -> list[dict[str, Any]]:
+    """Runs of one status per (device, module), oldest first, with numeric `_first`/`_last` and the
+    alert times (`_times`). Details don't split a run (#201): FMC re-words them between health runs
+    ('1 modules failed' / '2 modules failed' for the same failure), so a run keeps the newest details
+    and counts the changes in `details_changed`."""
     rows: list[dict[str, Any]] = []
     last: dict[tuple[str, str], dict[str, Any]] = {}
     for a in sorted(raw, key=_ts):
@@ -62,8 +80,12 @@ def collapse_alerts(raw: list[dict[str, Any]], names: dict[str, str]) -> list[di
         details = clean_details(a.get("details"))
         ts = _ts(a)
         prev = last.get((dev, module))
-        if prev and prev["status"] == status and _same_details(prev["details"]) == _same_details(details):
+        if prev and prev["status"] == status:
+            if _same_details(prev["details"]) != _same_details(details):
+                prev["details_changed"] += 1
+            prev["details"] = details
             prev["_last"] = ts
+            prev["_times"].append(ts)
             prev["count"] += 1
             continue
         row = {
@@ -72,16 +94,90 @@ def collapse_alerts(raw: list[dict[str, Any]], names: dict[str, str]) -> list[di
             "status": status,
             "details": details,
             "count": 1,
+            "details_changed": 0,
+            "_dev": dev,
             "_first": ts,
             "_last": ts,
+            "_times": [ts],
             "changed_from": prev["status"] if prev else None,
         }
         last[(dev, module)] = row
         rows.append(row)
-    for r in rows:
-        r["first_seen"], r["last_seen"] = iso(r.pop("_first")), iso(r.pop("_last"))
-    rows.sort(key=lambda r: str(r["last_seen"]), reverse=True)
     return rows
+
+
+def _finish(rows: list[dict[str, Any]]) -> list[dict[str, Any]]:
+    out = []
+    for r in rows:
+        row = {k: v for k, v in r.items() if not k.startswith("_")}
+        row["first_seen"], row["last_seen"] = iso(r["_first"]), iso(r["_last"])
+        out.append(row)
+    out.sort(key=lambda r: str(r["last_seen"]), reverse=True)
+    return out
+
+
+def collapse_alerts(raw: list[dict[str, Any]], names: dict[str, str]) -> list[dict[str, Any]]:
+    """FMC repeats every module's alert on each health run. Collapse runs of the same (device,
+    module, status) into one row with first/last seen, a count, the newest details and how often they
+    changed (`details_changed`); `changed_from` is the previous status when it differs. Newest first."""
+    return _finish(_runs(raw, names))
+
+
+def first_runs(raw: list[dict[str, Any]], names: dict[str, str]) -> list[dict[str, Any]]:
+    """The runs that open the window for their (device, module): whether they are changes depends on the
+    status before the window (prior_status)."""
+    return [r for r in _runs(raw, names) if not r["changed_from"]]
+
+
+async def prior_status(
+    app: FmcApp,
+    before: int,
+    runs: list[dict[str, Any]],
+    domain: str | None,
+    keep: Callable[[list[dict[str, Any]]], list[dict[str, Any]]] | None = None,
+) -> tuple[dict[tuple[str, str], str], bool]:
+    """The last status of each (device, module) of `runs` in the HEALTH_LOOKBACK before `before`, every
+    level (GREEN too), and whether all of those alerts were read. FMC filters by the runs' devices and
+    modules; when it holds more than ALERT_FETCH, the newest (those nearest the window) are read. `keep`
+    narrows them as the window's alerts were (for_device)."""
+    devs = sorted({str(r["_dev"]) for r in runs})
+    mods = sorted({str(r["module"]) for r in runs})
+    filters = [
+        f"startTime:{before - HEALTH_LOOKBACK}",
+        f"endTime:{before - 1}",
+        "deviceUUIDs:" + ",".join(devs),
+        "moduleIDs:" + ",".join(mods),
+    ]
+    items, total = await _read_tail(app, {"filter": ";".join(filters)}, domain)
+    whole = total <= len(items)
+    if keep:
+        items = keep(items)
+    latest: dict[tuple[str, str], str] = {}
+    for a in sorted(items, key=_ts):
+        if _ts(a) < before:
+            latest[(str(a.get("deviceUUID", "")), str(a.get("moduleID", "")))] = str(a.get("status", ""))
+    return latest, whole
+
+
+def status_changes(
+    raw: list[dict[str, Any]], names: dict[str, str], prior: dict[tuple[str, str], str] | None
+) -> tuple[list[dict[str, Any]], list[dict[str, Any]]]:
+    """Health for a 'what changed' timeline (#201): the runs where a (device, module) changed status in the
+    window, and separately the ones already in that status when the window began (ongoing, not changes).
+    A run that opens the window is ongoing when `prior` (prior_status: the last status before the window)
+    has the same status; with another status (GREEN included) it is a change from that one; with none
+    (nothing in the lookback, or prior=None when it could not be read) it counts as a change."""
+    changed: list[dict[str, Any]] = []
+    ongoing: list[dict[str, Any]] = []
+    for r in _runs(raw, names):
+        if not r["changed_from"] and prior is not None:
+            before = prior.get((r["_dev"], r["module"]))
+            if before == r["status"]:
+                ongoing.append(r)
+                continue
+            r["changed_from"] = before
+        changed.append(r)
+    return _finish(changed), _finish(ongoing)
 
 
 async def device_names(app: FmcApp, domain: str | None) -> dict[str, str]:
@@ -108,7 +204,14 @@ async def fetch_alerts(
         filters.append("status:" + ",".join(statuses))
     if module:
         filters.append(f"moduleIDs:{module.strip().upper()}")
-    params = {"filter": ";".join(filters)}
+    return await _read_tail(app, {"filter": ";".join(filters)}, domain)
+
+
+async def _read_tail(
+    app: FmcApp, params: dict[str, Any], domain: str | None
+) -> tuple[list[dict[str, Any]], int]:
+    """The newest ALERT_FETCH alerts FMC holds for `params`, and how many it holds. FMC returns them oldest
+    first, so read the count, then the tail."""
     path = await app.config_path(ALERTS, domain)
     head = await app.page(path, params, limit=1)
     total = head.total if head.total is not None else 0
@@ -191,9 +294,10 @@ def register(reg: ToolRegistrar) -> None:
         response_format: ResponseFormat = "markdown",
     ) -> ToolResult:
         """Health alerts across all managed devices and the FMC itself over a time window, newest
-        first. FMC re-reports each module on every health run, so repeats are collapsed into one row
-        with first/last seen and a count; `changed_from` marks a status change between the levels
-        requested (e.g. YELLOW -> RED; add RECOVERED to see recoveries).
+        first. FMC re-reports each module on every health run, so repeats of a status are collapsed into
+        one row with first/last seen, a count and the newest details (`details_changed` counts how often
+        FMC re-worded them, e.g. '1 modules failed' / '2 modules failed'); `changed_from` marks a status
+        change between the levels requested (e.g. YELLOW -> RED; add RECOVERED to see recoveries).
         'device disconnected' shows up as module APPLIANCE_HEARTBEAT. For one device's current state
         use fmc_device_health; for alerts together with audit and deployments use fmc_recent_activity."""
         app: FmcApp = get_client(ctx)
@@ -229,8 +333,12 @@ def register(reg: ToolRegistrar) -> None:
         """What changed or broke recently? One timeline, newest first, merged from three FMC sources
         queried now: health alerts (RED, YELLOW and RECOVERED), audit records (who
         changed what; logins and API writes) and deployments. Each row has time, source
-        (health/audit/deploy), device, summary and user; a health row's time is when that status
-        began (first seen). With `device`, health and deployments are
+        (health/audit/deploy), device, summary and user; a health row marks a module changing status in
+        the window, at the time it began (first seen). Problems already active when the window began
+        (the same status in FMC's alerts of the 2 hours before it) are not changes: `health_ongoing`
+        names them (fmc_list_health_alerts has the detail). Audit
+        reads, page views and packet-tracer runs are left out unless include_audit_reads. With `device`,
+        health and deployments are
         filtered to it (plus FMC's own alerts that name it, such as lost heartbeats) and audit records
         to messages that name it (a policy edit names the policy, not the device: drop `device` to
         see it). A failing source is reported in `errors` and the others are still returned."""
@@ -245,12 +353,34 @@ def register(reg: ToolRegistrar) -> None:
         errors: dict[str, str] = {}
         notes: dict[str, str] = {}
 
+        ongoing: list[dict[str, Any]] = []
         try:
             raw, total = await fetch_alerts(app, start, end, dev_id, ACTIVITY_STATUSES, None, domain)
             partial = total > len(raw)
             fetched = len(raw)
+            # with only the newest alerts read, the window effectively starts at the oldest one read
+            began = max(start, min((_ts(a) for a in raw), default=start)) if partial else start
             raw = for_device(raw, dev_id, dev_name)
-            for r in collapse_alerts(raw, names):
+            prior: dict[tuple[str, str], str] | None = {}
+            opening = first_runs(raw, names)
+            if opening:
+                try:
+                    prior, whole = await prior_status(
+                        app, began, opening, domain, keep=lambda a: for_device(a, dev_id, dev_name)
+                    )
+                    if not whole:
+                        notes["health_before"] = (
+                            f"partial: newest {ALERT_FETCH} alerts before the window read; a problem whose "
+                            "earlier alerts were not among them is listed as a change"
+                        )
+                except UpstreamError as e:
+                    prior = None
+                    notes["health_before"] = (
+                        f"alerts before the window not read ({e}); problems already active then are listed "
+                        "as changes"
+                    )
+            changed, ongoing = status_changes(raw, names, prior)
+            for r in changed:
                 change = f"{r['changed_from']} -> {r['status']}" if r["changed_from"] else r["status"]
                 rows.append(
                     {
@@ -269,15 +399,20 @@ def register(reg: ToolRegistrar) -> None:
 
         audit_rows: list[dict[str, Any]] = []
         try:
-            scan = await fetch_audit(app, start, domain, max_pages=ACTIVITY_AUDIT_PAGES)
+            if include_audit_reads:
+                scan = await fetch_audit(app, start, domain, max_pages=ACTIVITY_AUDIT_PAGES)
+            else:
+                scan = await fetch_changes(app, start, domain)
+            reads = 0
             for a in scan.items:
                 msg = str(a.get("message") or "")
                 if not include_audit_reads and is_read(a):
+                    reads += 1
                     continue
                 if dev_name and dev_id and dev_name.lower() not in msg.lower() and dev_id not in msg:
                     continue
                 audit_rows.append(a)
-            note = coverage_note(scan)
+            note = coverage_note(scan, reads)
             if note:
                 notes["audit"] = note
         except UpstreamError as e:
@@ -323,6 +458,13 @@ def register(reg: ToolRegistrar) -> None:
         extra: dict[str, Any] = {"window": f"{iso(start)} .. now"}
         if dev_name:
             extra["device"] = dev_name
+        if ongoing:
+            shown = ", ".join(f"{r['module']} {r['status']} on {r['device']}" for r in ongoing[:8])
+            more = f" and {len(ongoing) - 8} more" if len(ongoing) > 8 else ""
+            extra["health_ongoing"] = (
+                f"{len(ongoing)} health problem(s) already active when the window began, not listed as "
+                f"changes: {shown}{more}. fmc_list_health_alerts lists them."
+            )
         if errors:
             extra["errors"] = errors
         if notes:

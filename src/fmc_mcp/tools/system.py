@@ -18,7 +18,15 @@ from fmc_mcp._core import (
     object_result,
 )
 from fmc_mcp._core.http import page_of
-from fmc_mcp.audit import NOISE_SUBSYSTEMS, compact_message, coverage_note, fetch_audit, is_read
+from fmc_mcp.audit import (
+    NOISE_SUBSYSTEMS,
+    compact_message,
+    coverage_note,
+    fetch_audit,
+    fetch_changes,
+    fetch_subsystem,
+    is_read,
+)
 from fmc_mcp.client import FmcApp
 from fmc_mcp.tools.common import Domain, slim, smart_license_row
 
@@ -93,7 +101,8 @@ def register(reg: ToolRegistrar) -> None:
         subsystem: Annotated[
             str | None,
             Field(
-                description="Filter: subsystem contains, e.g. 'Access Control', 'Object Management', 'Login'"
+                description="Filter: subsystem contains (FMC filters it), e.g. 'Access Control', 'Object "
+                "Management', 'NAT', 'Task Queue', 'Login'"
             ),
         ] = None,
         text: Annotated[
@@ -114,21 +123,35 @@ def register(reg: ToolRegistrar) -> None:
     ) -> ToolResult:
         """List FMC audit-log records, newest first: who changed what and when (policy and object edits,
         API writes, deployments; logins and reads with changes_only=false). Use it to answer 'who changed
-        this object?' (text=<object name>) or 'what changed today?'. FMC logs an access or NAT rule edit
-        as 'Save Policy <policy>:<revision>' without the rule name, so search rules by their policy
-        name (fmc_pending_changes names the rules not yet deployed). FMC returns only 100 records per
-        request and logs every API read, so the window is read in slices (up to 2500 records); a note
-        says how far back it got when the window holds more. API URLs are shortened
-        ('PUT fmc_config/policy/...')."""
+        this object?' (text=<object name>) or 'what changed today?'. FMC logs a change in words under the
+        UI path it was made in, also for API changes ('Save Policy <policy>:<revision>' under 'Policies >
+        Security policies > Access Control > Policy Editor', 'create <object>:<revision>' under 'Objects >
+        Object Management > NetworkObject'); an access or NAT rule edit is a 'Save Policy' without the rule
+        name, so search rules by their policy name (fmc_pending_changes names the rules not yet deployed).
+        FMC returns only 100 records per request and logs every API read, so: `subsystem` is filtered by
+        FMC itself over the whole window; changes (the default) are read in full for the newest 500
+        records, and for the rest of the window only through FMC's UI-path and Task Queue subsystems
+        (policy, object and device changes, deployments), which leaves out changes FMC logs only under
+        another subsystem or as an API request (the note says when; use a shorter window or `subsystem`);
+        with changes_only=false every record is read in slices (up to 2500). A note says how far back the
+        read got and how many records were reads. `user` and `text` are matched here (FMC ignores a
+        username filter). API URLs are shortened ('PUT fmc_config/policy/...')."""
         app: FmcApp = get_client(ctx)
         start = int(time.time()) - since_minutes * 60
         if changes_only is None:
             want = (subsystem or "").strip().lower()
             changes_only = not (want and any(want in n for n in NOISE_SUBSYSTEMS))
-        scan = await fetch_audit(app, start, domain)
+        if subsystem and subsystem.strip():
+            scan = await fetch_subsystem(app, start, domain, subsystem)
+        elif changes_only:
+            scan = await fetch_changes(app, start, domain)
+        else:
+            scan = await fetch_audit(app, start, domain)
         rows = []
+        reads = 0
         for r in scan.items:
             if changes_only and is_read(r):
+                reads += 1
                 continue
             if user and user.lower() not in str(r.get("username", "")).lower():
                 continue
@@ -139,7 +162,9 @@ def register(reg: ToolRegistrar) -> None:
                 continue
             rows.append(_audit_row(r))
         extra: dict[str, Any] = {"records_read": len(scan.items)}
-        note = coverage_note(scan)
+        if reads:
+            extra["reads_skipped"] = reads
+        note = coverage_note(scan, reads)
         if note:
             extra["note"] = note
         return list_result(page_of(rows, limit=limit, offset=offset), fmt=response_format, extra=extra)
