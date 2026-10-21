@@ -73,9 +73,14 @@ def mount_rule(lab: respx.MockRouter, rule: dict[str, Any]) -> respx.Route:
 
 
 def test_labels_read_the_recorded_condition_shape() -> None:
-    """FMC's condition carries a `search` text next to the refs; the label is built from the refs."""
+    """The rule as FMC 10.0.1 stored it (recorded live): the condition holds the refs only. A `search` text
+    next to them (FMC adds one to a named filter's appConditions) doesn't change the label."""
+    (cond,) = RULE["applications"]["inlineApplicationFilters"]
+    assert set(cond) == {"risks"}  # no `type`, no `search`
     assert app_labels(RULE["applications"]) == ["inline-filter:risk High or Very High"]
     assert flatten_access_rule(RULE)["applications"] == ["inline-filter:risk High or Very High"]
+    searched = {"inlineApplicationFilters": [{**cond, "search": "Risks:High, Very High"}]}
+    assert app_labels(searched) == ["inline-filter:risk High or Very High"]
     spec = {"inlineApplicationFilters": [FX["spec_example_inline_filter"]]}
     assert app_labels(spec) == [
         "inline-filter:risk Very Low and business relevance Medium and category collaboration and tag "
@@ -106,6 +111,39 @@ async def test_create_sends_one_inline_condition(inline: respx.MockRouter) -> No
         "inlineApplicationFilters": [{"risks": [HIGH, VERY_HIGH], "categories": [FILE_SHARING]}]
     }
     assert sent["enabled"] is False
+
+
+async def test_create_sends_the_recorded_body(inline: respx.MockRouter) -> None:
+    """live-B's call (#272): the body FMC 10.0.1 accepted and stored as rule_with_inline_filter."""
+    post = inline.post(RULES).mock(return_value=httpx.Response(201, json=RULE))
+    args = {
+        "policy": "mcp-test-acp",
+        "name": "mcp-w6-inline-filter",
+        "action": "BLOCK",
+        "enabled": False,
+        "log": "none",
+        "comment": FX["create_request"]["newComments"][0],
+        "inline_app_filter": {"risks": ["High", "Very High"]},
+    }
+    async with Client(server()) as c:
+        preview, _ = await confirm(c, "fmc_create_access_rule", args)
+    assert json.loads(post.calls.last.request.content) == FX["create_request"]
+    assert post.calls.last.request.url.query == b""  # end of Default: no position parameters
+    stored = RULE["applications"]
+    assert (
+        stored["inlineApplicationFilters"] == FX["create_request"]["applications"]["inlineApplicationFilters"]
+    )
+    assert stored["applicationDefaultPort"] is False  # FMC adds it
+    assert preview["preview"]["rule"]["applications"] == FX["read_summary"]["applications"]
+
+
+async def test_get_access_rule_reads_the_recorded_rule(inline: respx.MockRouter) -> None:
+    mount_rule(inline, copy.deepcopy(RULE))
+    async with Client(server()) as c:
+        out = await run(c, "fmc_get_access_rule", {"policy": "mcp-test-acp", "rule": RULE["name"]})
+    summary = out["summary"]
+    for key, value in FX["read_summary"].items():  # what the session tool showed live
+        assert summary[key] == value, key
 
 
 async def test_create_with_applications_and_an_inline_filter(inline: respx.MockRouter) -> None:
@@ -218,7 +256,7 @@ async def test_rule_lookup_shows_the_inline_filter_rule_as_conditional(inline: r
             {"policy": "mcp-test-acp", "source": "192.0.2.10", "destination": "198.51.100.10", "port": 22},
         )
     first = out["may_match_first"][0]
-    assert first["name"] == "mcp-w6-inline-rule"
+    assert first["name"] == RULE["name"]
     assert first["applications"] == ["inline-filter:risk High or Very High"]
     assert "applications" in first["depends_on"]
 
