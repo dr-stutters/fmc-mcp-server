@@ -3,8 +3,9 @@ fmc_get_access_policy, fmc_pending_changes and the structure tools (tools/policy
 
 Locks: FMC (7.6+) lets a user lock an access policy so nobody else can change it
 (`policy/operational/policylocks`, access policies only). Every expanded access policy carries the state in
-`metadata.lockingStatus` ({status: LOCKED|UNLOCKED, userName, ticketId, ticketName}), so a preview names the
-holder without an extra request; the lock list is read only when a locked policy doesn't name its holder,
+`metadata.lockingStatus` (FMC 10.0.1, recorded live: {status: LOCKED, metadata: {lockedByUser: {name}}}; the
+spec documents {status, userName, ticketId, ticketName}), so a preview names the holder without an extra
+request; the lock list is read only when a locked policy doesn't name its holder,
 and by the tools that report locks (fmc_policy_lock, fmc_pending_changes). With nothing locked FMC 10.0.1
 answers the list with one empty item.
 
@@ -40,7 +41,12 @@ def lock_state(obj: dict[str, Any] | None) -> dict[str, Any] | None:
     if not isinstance(ls, dict) or not ls.get("status"):
         return None
     out: dict[str, Any] = {"status": str(ls["status"]).upper()}
-    user = ls.get("userName") or (ls.get("lockedByUser") or {}).get("name")
+    # FMC 10.0.1 nests the holder as lockingStatus.metadata.lockedByUser.name (live); the spec says userName
+    user = (
+        ls.get("userName")
+        or (ls.get("lockedByUser") or {}).get("name")
+        or ((ls.get("metadata") or {}).get("lockedByUser") or {}).get("name")
+    )
     if user:
         out["locked_by"] = str(user)
     ticket = ls.get("ticketName") or ls.get("ticketId")
