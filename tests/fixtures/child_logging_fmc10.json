@@ -1,0 +1,113 @@
+{
+ "_about": "FMC 10.0.1 (build 1), Global/mcp-test-leaf, 2026-10-21 (W6N live-A, F76 #171): Logging settings of a child access policy (mcp-w6-child-acp, ...055837) made with POST + PUT inheritancesettings, base mcp-w6-acp (...963108). links dropped.",
+ "first_deploy_error": {
+  "_source": "fmc_deploy(devices=[mcp-ftd1]) after assigning the child: FMC's 400 (nothing deployed)",
+  "status": 400,
+  "description": "Errors or warnings present in Device committed policies: | Access Control Policy Logging configuration is invalid. Access Control rules inherited from base policy 'mcp-w6-acp' have syslog configured to use Logging configuration. Configure a valid syslog destination to avoid syslogs not being sent."
+ },
+ "parent_loggingsettings": {
+  "_source": "GET policy/accesspolicies/<base>/loggingsettings?expanded=true",
+  "items": [
+   {
+    "metadata": {
+     "timestamp": 0
+    },
+    "isLockedForChild": false,
+    "syslogConfigFromPlatformSetting": true,
+    "severityForPlatformSettingSyslogConfig": "INFO",
+    "enableFileAndMalwareSyslog": false,
+    "inheritFromParent": false,
+    "enableipsSyslog": false,
+    "enableSplunk": true,
+    "type": "LoggingSetting",
+    "id": "00000000-0000-0ed3-0000-021474963138"
+   }
+  ],
+  "paging": {
+   "offset": 0,
+   "limit": 25,
+   "count": 1,
+   "pages": 1
+  }
+ },
+ "child_loggingsettings": {
+  "_source": "GET policy/accesspolicies/<child>/loggingsettings?expanded=true after the base was set (FMC's defaults: its own, no syslog destination)",
+  "items": [
+   {
+    "metadata": {
+     "timestamp": 0
+    },
+    "isLockedForChild": false,
+    "syslogConfigFromPlatformSetting": false,
+    "enableFileAndMalwareSyslog": false,
+    "inheritFromParent": false,
+    "enableipsSyslog": false,
+    "enableSplunk": true,
+    "type": "LoggingSetting",
+    "id": "00000000-0000-0ed3-0000-021475055867"
+   }
+  ],
+  "paging": {
+   "offset": 0,
+   "limit": 25,
+   "count": 1,
+   "pages": 1
+  }
+ },
+ "inherit_put": {
+  "_source": "PUT policy/accesspolicies/<child>/loggingsettings/<its id> with inheritFromParent true: FMC answers with the BASE's setting (its id, metadata.inheritedPolicy); the deployment then passed",
+  "request": {
+   "isLockedForChild": false,
+   "syslogConfigFromPlatformSetting": false,
+   "enableFileAndMalwareSyslog": false,
+   "inheritFromParent": true,
+   "enableipsSyslog": false,
+   "enableSplunk": true,
+   "type": "LoggingSetting",
+   "id": "00000000-0000-0ed3-0000-021475055867"
+  },
+  "response": {
+   "metadata": {
+    "inheritedPolicy": {
+     "name": "mcp-w6-acp",
+     "id": "00000000-0000-0ed3-0000-021474963108",
+     "type": "AccessPolicy"
+    },
+    "timestamp": 0
+   },
+   "isLockedForChild": false,
+   "syslogConfigFromPlatformSetting": true,
+   "severityForPlatformSettingSyslogConfig": "INFO",
+   "enableFileAndMalwareSyslog": false,
+   "inheritFromParent": true,
+   "enableipsSyslog": false,
+   "enableSplunk": true,
+   "type": "LoggingSetting",
+   "id": "00000000-0000-0ed3-0000-021474963138"
+  }
+ },
+ "child_loggingsettings_base_cleared": {
+  "_source": "GET .../loggingsettings after PUT inheritancesettings without basePolicy: the child's own setting is back",
+  "items": [
+   {
+    "metadata": {
+     "timestamp": 0
+    },
+    "isLockedForChild": false,
+    "syslogConfigFromPlatformSetting": false,
+    "enableFileAndMalwareSyslog": false,
+    "inheritFromParent": false,
+    "enableipsSyslog": false,
+    "enableSplunk": true,
+    "type": "LoggingSetting",
+    "id": "00000000-0000-0ed3-0000-021475055867"
+   }
+  ],
+  "paging": {
+   "offset": 0,
+   "limit": 25,
+   "count": 1,
+   "pages": 1
+  }
+ }
+}

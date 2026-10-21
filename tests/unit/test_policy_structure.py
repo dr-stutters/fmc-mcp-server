@@ -318,8 +318,31 @@ async def test_create_rule_needs_an_existing_category(lab: respx.MockRouter) -> 
 # --- inheritance --------------------------------------------------------------------------------------
 
 
+def own_logging(fmc: respx.MockRouter, policy_id: str) -> respx.Route:
+    """The policy's own Logging settings as FMC 10.0.1 has them for a new policy (child_logging_fmc10.json),
+    and the PUT that makes them inherit from the base (FMC answers with the base's)."""
+    live = fixture("child_logging_fmc10")
+    setting = live["child_loggingsettings"]["items"][0]
+    fmc.get(f"{CFG}/policy/accesspolicies/{policy_id}/loggingsettings").mock(return_value=items([setting]))
+    return fmc.put(f"{CFG}/policy/accesspolicies/{policy_id}/loggingsettings/{setting['id']}").mock(
+        return_value=httpx.Response(200, json=live["inherit_put"]["response"])
+    )
+
+
+def base_logging(fmc: respx.MockRouter, policy_id: str, setting: dict[str, Any] | None = None) -> respx.Route:
+    """A base policy's Logging settings: by default mcp-w6-acp's as recorded live (syslog to the platform
+    settings), which a child with FMC's defaults must inherit to deploy."""
+    live = fixture("child_logging_fmc10")
+    setting = setting or live["parent_loggingsettings"]["items"][0]
+    return fmc.get(f"{CFG}/policy/accesspolicies/{policy_id}/loggingsettings").mock(
+        return_value=items([setting])
+    )
+
+
 def child_and_parent(fmc: respx.MockRouter) -> None:
     acp_list(fmc, ACP, CHILD_ACP)
+    own_logging(fmc, CHILD)
+    base_logging(fmc, ACP_ID)
     fmc.get(f"{CFG}/policy/accesspolicies/{ACP_ID}/accessrules").mock(
         return_value=httpx.Response(200, json=fixture("accessrules"))
     )
@@ -372,6 +395,8 @@ async def test_set_base_policy_counts_the_devices_of_policies_below(fmc: respx.M
     corp_id = "00000000-0000-0ed3-0000-0000000000c0"
     corp = {**copy.deepcopy(ACP), "id": corp_id, "name": "mcp-w6-corp-acp"}
     acp_list(fmc, ACP, CHILD_ACP, corp)
+    own_logging(fmc, ACP_ID)
+    base_logging(fmc, corp_id)
     fmc.get(f"{CFG}/policy/accesspolicies/{corp_id}/accessrules").mock(return_value=empty())
     no_base(fmc, corp_id)
     no_base(fmc, ACP_ID)
@@ -450,6 +475,7 @@ async def test_create_access_policy_with_a_base(fmc: respx.MockRouter) -> None:
     path = f"{CFG}/policy/accesspolicies/{CHILD}/inheritancesettings/{CHILD}"
     put = fmc.put(path).mock(return_value=httpx.Response(200, json=FX["inheritance_with_base_spec"]))
     fmc.get(path).mock(return_value=httpx.Response(200, json=FX["inheritance_with_base_spec"]))
+    own_logging(fmc, CHILD)
     args = {"name": "mcp-w6-child-acp", "base_policy": "mcp-test-acp"}
     preview, done = await preview_apply("fmc_create_access_policy", args)
     assert preview["action"] == "Create access policy 'mcp-w6-child-acp' with base 'mcp-test-acp'"
