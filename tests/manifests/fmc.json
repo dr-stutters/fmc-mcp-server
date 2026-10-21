@@ -514,6 +514,10 @@
       "tier": "write",
       "title": "Create application filter"
     },
+    "fmc_create_cert_enrollment": {
+      "tier": "write",
+      "title": "Create certificate enrollment object"
+    },
     "fmc_create_cipher_suite_list": {
       "tier": "write",
       "title": "Create cipher suite list"
@@ -769,6 +773,10 @@
     "fmc_download_realm": {
       "tier": "write",
       "title": "Download realm users and groups"
+    },
+    "fmc_enroll_certificate": {
+      "tier": "dangerous",
+      "title": "Enrol, re-enrol, refresh or delete a device certificate"
     },
     "fmc_export_access_rules": {
       "tier": "read",
