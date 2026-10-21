@@ -190,7 +190,8 @@ async def test_assign_inherited_policy_keeps_its_other_targets(fmc: respx.MockRo
         return_value=items([assignment(LEAF_NAT, LEAF_DEV)])
     )
     fmc.get(f"{CFG}/assignment/policyassignments").mock(return_value=items([assignment(GLOBAL_NAT, SIBLING)]))
-    put = fmc.put(f"{CHILD_CFG}/assignment/policyassignments/{GLOBAL_NAT['id']}").mock(
+    # written where the assignment lives (Global): FMC refuses an ancestor policy's assignment below (#273)
+    put = fmc.put(f"{CFG}/assignment/policyassignments/{GLOBAL_NAT['id']}").mock(
         return_value=httpx.Response(200, json={})
     )
     args = {"kind": "nat", "policy": "global-nat", "devices": ["ftd-leaf"], "domain": "Branch"}
@@ -200,6 +201,7 @@ async def test_assign_inherited_policy_keeps_its_other_targets(fmc: respx.MockRo
             {"device": "ftd-leaf", "from": "leaf-nat", "to": "global-nat"}
         ]
         assert preview["preview"]["policy_domain"] == "Global"
+        assert preview["preview"]["assigned_in"] == "Global"
         assert any("keeps its 1 other target" in s for s in preview["side_effects"]), preview
         await run(c, "fmc_assign_policy", {**args, "confirm": preview["confirm"]})
     body = json.loads(put.calls.last.request.content)
