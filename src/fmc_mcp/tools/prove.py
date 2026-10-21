@@ -38,7 +38,14 @@ from fmc_mcp.client import FmcApp
 from fmc_mcp.flow import DeviceContext, all_interfaces, connected_net, device_context
 from fmc_mcp.tools.common import Domain
 from fmc_mcp.tools.device_config import device_interfaces
-from fmc_mcp.tools.devices import DEVICES, Membership, memberships, resolve_unit, traffic_unit
+from fmc_mcp.tools.devices import (
+    DEVICES,
+    Membership,
+    UnitDisconnected,
+    memberships,
+    resolve_unit,
+    traffic_unit,
+)
 from fmc_mcp.tools.identity_sources import user_ips
 from fmc_mcp.tools.troubleshoot import FO_STANDBY, packet_trace, standby_note
 
@@ -100,7 +107,8 @@ class Placer:
     app: FmcApp
     domain: str | None
     candidates: list[str] | None
-    devices: dict[str, dict[str, Any]] = field(default_factory=dict)  # ref -> device record
+    # (ref, traceable) -> device record / why it failed to resolve
+    devices: dict[tuple[str, bool], dict[str, Any]] = field(default_factory=dict)
     members: dict[str, Membership] = field(default_factory=dict)  # unit id -> its HA pair / cluster
     contexts: dict[str, DeviceContext] = field(default_factory=dict)
     scanned: dict[str, list[tuple[str, dict[str, Any]]]] = field(default_factory=dict)  # one read each
@@ -108,24 +116,27 @@ class Placer:
     pool: list[dict[str, Any]] | None = None
     catalog: Catalog | None = None
     left_out: list[str] = field(default_factory=list)
-    failed: dict[str, InvalidRequest | UpstreamError] = field(default_factory=dict)  # ref -> why
+    failed: dict[tuple[str, bool], InvalidRequest | UpstreamError] = field(default_factory=dict)
 
-    async def named(self, ref: str) -> dict[str, Any]:
+    async def named(self, ref: str, traceable: bool = True) -> dict[str, Any]:
         """A device by name or UUID; an HA pair's or cluster's name or UUID means its active unit / control
-        node (FMC's failover state; the primary when FMC knows no active unit). A ref that failed to
-        resolve fails the same way for the next flow, without reading FMC again."""
-        if ref in self.failed:
-            raise self.failed[ref]
-        if ref not in self.devices:
+        node (FMC's failover state; the primary when FMC knows no active unit). `traceable` (a flow's
+        device) refuses an HA unit / cluster node FMC lists as disconnected, naming its connected peers
+        (#248); candidates are resolved without it, so the pool leaves such a unit out instead. A ref
+        that failed to resolve fails the same way for the next flow, without reading FMC again."""
+        key = (ref, traceable)
+        if key in self.failed:
+            raise self.failed[key]
+        if key not in self.devices:
             try:
-                dev, member = await resolve_unit(self.app, ref, self.domain)
+                dev, member = await resolve_unit(self.app, ref, self.domain, traceable=traceable)
             except (InvalidRequest, UpstreamError) as e:
-                self.failed[ref] = e
+                self.failed[key] = e
                 raise
-            self.devices[ref] = dev
+            self.devices[key] = dev
             if member:
                 self.members[str(dev.get("id", "")).lower()] = member
-        return self.devices[ref]
+        return self.devices[key]
 
     def member(self, dev: dict[str, Any]) -> Membership | None:
         return self.members.get(str(dev.get("id", "")).lower())
@@ -163,7 +174,7 @@ class Placer:
         listing = (await self.app.all(await self.app.config_path(DEVICES, self.domain), cap=1000)).items
         members = await memberships(self.app, listing, self.domain)
         self.members.update(members)
-        chosen = [await self.named(c) for c in self.candidates] if self.candidates else listing
+        chosen = [await self.named(c, False) for c in self.candidates] if self.candidates else listing
         usable: list[dict[str, Any]] = []
         seen: set[str] = set()
         for dev in chosen:
@@ -362,19 +373,18 @@ def register(reg: ToolRegistrar) -> None:
         protocol, optional user and device) with the expected verdict (allow or block), and each one is
         run through FMC's packet tracer on the FTD it crosses (the flow's device, the call's device, or
         the candidate whose interfaces and static routes carry it; an HA pair or cluster is traced on its
-        active unit / control node, and the device column names pair and unit). Returns one row per flow: pass
-        (verdict as expected), fail (opposite verdict, with the drop reason), mismatch (right verdict
+        active unit / control node; the device column names pair and unit). Returns one row per flow:
+        pass (verdict as expected), fail (opposite verdict, with the drop reason), mismatch (right verdict
         for the wrong reason: another rule than `rule`, a non-policy drop such as no route or no ARP
-        entry, or not the expected user on the source IP), or error (could not trace, or traced on an HA
-        standby unit, which drops everything); with the
-        deciding rule, the user the device saw on the source, the device and ingress interface, and a
-        summary (all_passed). User rules are decided from the device's live user-to-IP mapping, so
+        entry, or not the expected user on the source IP), or error (could not trace: an HA standby unit
+        drops everything; a unit FMC lists as disconnected is skipped, its connected peer named);
+        with the deciding rule, the user the device saw on the source, the device and ingress interface,
+        and a summary (all_passed). User rules are decided from the device's live user-to-IP mapping, so
         a user flow is traced from the IP the user is logged in on: give `source`, or leave it out and
         the IP of the user's newest FMC identity session is used (fmc_user_ip_lookup; in a child domain
         Global's sessions when the child has none; the role needs Analysis > Users, else that flow is an
-        error row naming the permission). Packet tracer
-        simulates the packets (nothing is sent; packet-tracer runs count as rule hits). For one flow in
-        depth use fmc_packet_tracer; for the offline view fmc_rule_lookup."""
+        error row naming the permission). Packets are simulated (nothing is sent; runs count as rule
+        hits). One flow in depth: fmc_packet_tracer; offline fmc_rule_lookup."""
         app: FmcApp = get_client(ctx)
         placer = Placer(app, domain, candidates)
         rows: list[dict[str, Any]] = []
@@ -407,6 +417,8 @@ def register(reg: ToolRegistrar) -> None:
                 )
             except (InvalidRequest, UpstreamError) as e:
                 base.setdefault("flow", _flow_label(exp, exp.source))
+                if isinstance(e, UnitDisconnected):
+                    base.setdefault("device", e.device)
                 rows.append({**base, "result": "error", "expect": exp.expect, "note": str(e)})
                 continue
             traces = out.get("results") or []
