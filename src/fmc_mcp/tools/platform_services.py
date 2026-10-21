@@ -42,6 +42,7 @@ from fmc_mcp.tools.platform_settings import (
 )
 
 DNS_GROUPS = "object/dnsservergroups"
+ICMP_OBJECTS = "object/icmpv4objects"
 ACLS = "object/extendedaccesslists"
 MAX_DNS_SERVERS = 6  # an FTD DNS server group holds up to six servers
 MAX_COLLECTORS = 5  # FMC: at most five NetFlow collectors
@@ -506,7 +507,12 @@ def register(reg: ToolRegistrar) -> None:
             Literal["permit", "deny"], Field(description="icmp: permit or deny these hosts")
         ] = "permit",
         icmp_service: Annotated[
-            str | None, Field(description="icmp: ICMPv4 object (e.g. echo); omit for every ICMP type")
+            str | None,
+            Field(
+                description="icmp: ICMPv4 object (e.g. echo). FMC needs one on every entry; omitted (allow): "
+                "an ICMPv4 object with no type (every ICMP type) is used, or '<policy>-icmp-any' is created "
+                "on confirm; omitted (remove): entries of any service"
+            ),
         ] = None,
         http_server: Annotated[
             bool | None, Field(description="http: turn the HTTPS server on/off (allow entries turn it on)")
@@ -523,9 +529,11 @@ def register(reg: ToolRegistrar) -> None:
     ) -> dict[str, Any]:
         """Management access on the FTD data interfaces: ICMP (which hosts may ping or send ICMP to the
         device's interfaces, permit/deny, rate limit for unreachables) or the HTTPS server (on/off, port,
-        which networks may reach it through which zones). SSH: fmc_configure_ssh_access. The preview shows
-        the entries before and after. Deploy afterwards; verify with fmc_run_show_command('show
-        running-config icmp' / 'show running-config http')."""
+        which networks may reach it through which zones). SSH: fmc_configure_ssh_access. FMC 10.0.1 needs an
+        ICMP service object on every ICMP entry: without icmp_service an existing 'any' ICMPv4 object is
+        used or one is created (the preview names it). The preview shows the entries before and after.
+        Deploy afterwards; verify with fmc_run_show_command('show running-config icmp' / 'show
+        running-config http')."""
         app: FmcApp = get_client(ctx)
         pol = await resolve_ps(app, policy, domain)
         sub = "icmpsettings" if kind == "icmp" else "httpaccesssettings"
@@ -540,6 +548,12 @@ def register(reg: ToolRegistrar) -> None:
         zones = _zones(await resolver.block(interfaces, "zone")) if interfaces else {"objects": []}
         zone_names = wrapper_labels(zones)
         service = await resolver.single(icmp_service, ["icmpv4"], "ICMPv4 object") if icmp_service else None
+        create_icmp: dict[str, Any] | None = None
+        if kind == "icmp" and action == "allow" and networks and service is None:
+            # FMC 10.0.1: "'icmpService' configuration missing. ICMP Service configuration is mandatory for
+            # ICMP Access." (live 2026-10-21) -- an entry without a service is refused on the PUT
+            service, create_icmp = await _any_icmp_service(app, str(pol.get("name") or "policy"), domain)
+        any_service = kind == "icmp" and action == "remove" and not icmp_service
         for raw in dict.fromkeys(n.strip() for n in networks or [] if n.strip()):
             if kind == "icmp":
                 lit = network_literal(raw)
@@ -563,7 +577,9 @@ def register(reg: ToolRegistrar) -> None:
                     continue
                 row = {"ipAddress": obj, "interfaces": zones}
             any_zone = action == "remove" and not interfaces  # remove: without interfaces, from every zone
-            match = [e for e in entries if _same_entry(e, row, kind, any_zone=any_zone)]
+            match = [
+                e for e in entries if _same_entry(e, row, kind, any_zone=any_zone, any_service=any_service)
+            ]
             if action == "allow":
                 if match:
                     blockers.append(f"{raw} via {', '.join(zone_names)} is already allowed.")
@@ -592,6 +608,29 @@ def register(reg: ToolRegistrar) -> None:
         if not changes and not blockers:
             blockers.append("Nothing to change.")
         summary = icmp_summary if kind == "icmp" else http_summary
+        made: dict[str, Any] = {}  # the ICMPv4 'any' object created on confirm
+
+        async def put_access() -> Any:
+            body = dict(desired)
+            if "ref" in made:
+                body[list_key] = [
+                    {**e, "icmpService": made["ref"]}
+                    if not (e.get("icmpService") or {}).get("id")
+                    and (e.get("icmpService") or {}).get("name") == made["ref"]["name"]
+                    else e
+                    for e in body.get(list_key) or []
+                ]
+            return await app.api.put(path, body)
+
+        steps: list[tuple[str, Callable[[], Awaitable[Any]]]] = [(kind, put_access)]
+        if create_icmp is not None:
+            icmp_body: dict[str, Any] = create_icmp
+
+            async def create_service() -> None:
+                obj = await app.api.post(await app.config_path(ICMP_OBJECTS, domain), icmp_body)
+                made["ref"] = _ref({**obj, "name": obj.get("name") or icmp_body["name"]}, "ICMPV4Object")
+
+            steps.insert(0, (f"ICMPv4 object {icmp_body['name']}", create_service))
         return await fmc_preview(
             ctx,
             tool="fmc_configure_mgmt_access",
@@ -617,13 +656,14 @@ def register(reg: ToolRegistrar) -> None:
                     "before": summary(cur),
                     "after": summary(desired),
                     "changes": changes,
+                    **({"creates_icmp_object": create_icmp} if create_icmp else {}),
                     "assigned_to": await assigned_devices(app, pol["id"], domain),
                 },
-                fingerprint=editable(cur),
+                fingerprint={"section": editable(cur), "icmp_service": service},
                 blockers=blockers,
                 side_effects=[DEPLOY_NOTE],
             ),
-            apply=lambda: _apply_steps(app, [(kind, lambda: app.api.put(path, desired))]),
+            apply=lambda: _apply_steps(app, steps),
         )
 
     @reg.write(title="Set login banner (platform settings)")
@@ -772,9 +812,30 @@ async def _network_object(
     return await resolver.obj(value, NETWORK_TYPES)
 
 
-def _same_entry(a: dict[str, Any], b: dict[str, Any], kind: str, *, any_zone: bool = False) -> bool:
+async def _any_icmp_service(
+    app: FmcApp, policy_name: str, domain: str | None
+) -> tuple[dict[str, Any], dict[str, Any] | None]:
+    """(reference, object to create or None) for an ICMPv4 service matching every ICMP type: an existing
+    ICMPv4 object without a type ('<policy>-icmp-any' first, then by name), else a placeholder
+    {type, name} for '<policy>-icmp-any', created on confirm (FMC 10.0.1 ships no ICMP objects)."""
+    name = f"{policy_name}-icmp-any"[:64]
+    page = await app.all(await app.config_path(ICMP_OBJECTS, domain))
+    anys = [
+        o
+        for o in page.items
+        if o.get("id") and str(o.get("icmpType") if o.get("icmpType") is not None else "any").lower() == "any"
+    ]
+    anys.sort(key=lambda o: (str(o.get("name", "")).lower() != name.lower(), str(o.get("name", "")).lower()))
+    if anys:
+        return _ref(anys[0], "ICMPV4Object"), None
+    return {"type": "ICMPV4Object", "name": name}, {"name": name, "type": "ICMPV4Object"}
+
+
+def _same_entry(
+    a: dict[str, Any], b: dict[str, Any], kind: str, *, any_zone: bool = False, any_service: bool = False
+) -> bool:
     """Two ICMP / HTTP access entries for the same network, zones (unless any_zone) and ICMP action and
-    service."""
+    service (unless any_service)."""
     if not any_zone and wrapper_labels(a.get("interfaces")) != wrapper_labels(b.get("interfaces")):
         return False
     if kind == "http":
@@ -786,5 +847,5 @@ def _same_entry(a: dict[str, Any], b: dict[str, Any], kind: str, *, any_zone: bo
     return (
         net_label(a.get("network")) == net_label(b.get("network"))
         and str(a.get("icmpAction", "")).lower() == str(b.get("icmpAction", "")).lower()
-        and svc(a) == svc(b)
+        and (any_service or svc(a) == svc(b))
     )

@@ -496,6 +496,51 @@ async def test_icmp_allow_and_remove(fmc: respx.MockRouter) -> None:
     assert json.loads(puts["icmpsettings"].calls.last.request.content)["icmpConfigs"] == []
 
 
+async def test_icmp_without_a_service_uses_or_creates_an_any_object(fmc: respx.MockRouter) -> None:
+    """live-B2: without icmp_service the entry had no icmpService and FMC 10.0.1 refused the PUT
+    ("'icmpService' configuration missing. ICMP Service configuration is mandatory for ICMP Access."). Now an
+    ICMPv4 object with no type is used, or '<policy>-icmp-any' is created on confirm (the leaf had none)."""
+    puts = mock_ps(fmc)
+    icmp_objects = fmc.get(f"{CFG}/object/icmpv4objects").mock(
+        return_value=httpx.Response(200, json={"paging": {"offset": 0, "limit": 0, "count": 0, "pages": 0}})
+    )
+    made = {
+        "id": "00000000-0000-0ed3-0000-021474997906",
+        "name": "mcp-w6-ps-icmp-any",
+        "type": "ICMPV4Object",
+    }
+    post = fmc.post(f"{CFG}/object/icmpv4objects").mock(return_value=httpx.Response(201, json=made))
+    args = {"policy": "mcp-w6-ps", "kind": "icmp", "networks": ["192.0.2.0/24"], "interfaces": ["mcp-w6-in"]}
+    p, done = await preview_confirm("fmc_configure_mgmt_access", {**args, "networks": ["192.0.2.0/24"]})
+    assert p["preview"]["creates_icmp_object"] == {"name": "mcp-w6-ps-icmp-any", "type": "ICMPV4Object"}
+    assert p["preview"]["after"]["rules"][0]["service"] == "mcp-w6-ps-icmp-any"
+    assert json.loads(post.calls.last.request.content) == {
+        "name": "mcp-w6-ps-icmp-any",
+        "type": "ICMPV4Object",
+    }
+    body = json.loads(puts["icmpsettings"].calls.last.request.content)
+    assert body["icmpConfigs"][0]["icmpService"] == made
+    assert done["result"]["applied"] == ["ICMPv4 object mcp-w6-ps-icmp-any", "icmp"]
+    # an existing 'any' object (no icmpType) is used; an echo object is not
+    echo = {
+        "id": "11111111-0000-4000-8000-0000000000e8",
+        "name": "mcp-w6-echo",
+        "type": "ICMPV4Object",
+        "icmpType": "8",
+    }
+    any_obj = {**made, "name": "mcp-w6-icmp-any"}
+    icmp_objects.mock(return_value=items([echo, any_obj]))
+    p, _ = await preview_confirm("fmc_configure_mgmt_access", {**args, "networks": ["198.51.100.0/24"]})
+    assert "creates_icmp_object" not in p["preview"] and post.call_count == 1
+    entry = json.loads(puts["icmpsettings"].calls.last.request.content)["icmpConfigs"][0]
+    assert entry["icmpService"] == {"id": made["id"], "type": "ICMPV4Object", "name": "mcp-w6-icmp-any"}
+    # remove without icmp_service: the entry goes whatever its service
+    mock_ps(fmc, icmpsettings={**ICMP_DEFAULT, "icmpConfigs": [entry]})
+    rm = {"policy": "mcp-w6-ps", "kind": "icmp", "action": "remove", "networks": ["198.51.100.0/24"]}
+    p, _ = await preview_confirm("fmc_configure_mgmt_access", rm)
+    assert p["preview"]["changes"]["icmpConfigs"]["to"] == []
+
+
 async def test_http_access_needs_a_network_object(fmc: respx.MockRouter) -> None:
     puts = mock_ps(fmc)
     net = {
