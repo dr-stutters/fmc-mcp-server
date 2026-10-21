@@ -27,7 +27,7 @@ sessions, so never the GUI `admin` or another integration's user.
 has a wheel with stutters-mcp-core bundled in; it needs only PyPI dependencies.
 
 ```bash
-WHEEL=https://github.com/dr-stutters/fmc-mcp-server/releases/download/v0.14.2/fmc_mcp_server-0.14.2-py3-none-any.whl
+WHEEL=https://github.com/dr-stutters/fmc-mcp-server/releases/download/v0.15.0/fmc_mcp_server-0.15.0-py3-none-any.whl
 export FMC_URL=https://fmc.example.com FMC_USERNAME=mcp-api-ro FMC_PASSWORD='...'
 uvx --from "$WHEEL" fmc-mcp-server check            # preflight: TLS, token, domains, role, version, rate limit
 claude mcp add fmc -e FMC_URL=$FMC_URL -e FMC_USERNAME=$FMC_USERNAME -e FMC_PASSWORD="$FMC_PASSWORD" \
@@ -41,7 +41,7 @@ Claude Desktop (`claude_desktop_config.json`), same idea:
   "mcpServers": {
     "fmc": {
       "command": "uvx",
-      "args": ["--from", "https://github.com/dr-stutters/fmc-mcp-server/releases/download/v0.14.2/fmc_mcp_server-0.14.2-py3-none-any.whl", "fmc-mcp-server"],
+      "args": ["--from", "https://github.com/dr-stutters/fmc-mcp-server/releases/download/v0.15.0/fmc_mcp_server-0.15.0-py3-none-any.whl", "fmc-mcp-server"],
       "env": {"FMC_URL": "https://fmc.example.com", "FMC_USERNAME": "mcp-api-ro", "FMC_PASSWORD": "..."}
     }
   }
@@ -106,7 +106,7 @@ Changes made in FMC reach the firewalls only after a **deployment** (`fmc_deploy
 
 ## Tools
 
-There are 180 tools when every tier is enabled (79 read, 90 write, 11 dangerous; the dangerous tier turns `fmc_api_call` into a raw call), and eleven workflow prompts (`fmc_why_blocked`, `fmc_firewall_health_review`, `fmc_sdwan_troubleshoot`, `fmc_vpn_troubleshoot`, `fmc_threat_defense_review`, `fmc_prove_user_policy`; `fmc_rule_change_review` and `fmc_policy_cleanup`, write tier; `fmc_onboard_ftd`, `fmc_onboard_branch` and `fmc_ha_failover_check`, dangerous tier). `FMC_TOOLSETS` loads only some areas of them (see "Toolsets").
+There are 200 tools when every tier is enabled (85 read, 102 write, 13 dangerous; the dangerous tier turns `fmc_api_call` into a raw call), and eleven workflow prompts (`fmc_why_blocked`, `fmc_firewall_health_review`, `fmc_sdwan_troubleshoot`, `fmc_vpn_troubleshoot`, `fmc_threat_defense_review`, `fmc_prove_user_policy`; `fmc_rule_change_review` and `fmc_policy_cleanup`, write tier; `fmc_onboard_ftd`, `fmc_onboard_branch` and `fmc_ha_failover_check`, dangerous tier). `FMC_TOOLSETS` loads only some areas of them (see "Toolsets").
 
 **Read**
 
@@ -481,7 +481,7 @@ of the server, and FMC's 120 requests/minute are shared by every API user of tha
 
 ### Toolsets (`FMC_TOOLSETS`, F46)
 
-With every tier on, the server registers 180 tools, and a client sends all their descriptions to the
+With every tier on, the server registers 200 tools, and a client sends all their descriptions to the
 model on every turn. Some clients also cap the number of tools. `FMC_TOOLSETS` loads only the areas you
 name:
 
@@ -509,14 +509,14 @@ checks it against the registered tools.
 | `core` | 7 (6/0/1) | always loaded: status, the API spec search and raw API call, domains, devices, tasks |  |
 | `admin` | 8 (6/1/1) | FMC itself: backups, upgrades, health policy, users, audit log, Smart Licensing |  |
 | `deploy` | 7 (4/1/2) | pending changes, deployments, rollback, change-management tickets | `fmc_onboard_branch`, `fmc_onboard_ftd`, `fmc_rule_change_review` |
-| `devices` | 19 (6/10/3) | device records, registration, licences, interfaces, clusters, device groups, device templates | `fmc_onboard_branch`, `fmc_onboard_ftd` |
+| `devices` | 23 (9/10/4) | device records, registration, licences, interfaces, clusters, device groups, device templates | `fmc_onboard_branch`, `fmc_onboard_ftd` |
 | `ha` | 5 (2/1/2) | FTD high-availability pairs: status, forming, switch/break, monitored interfaces | `fmc_ha_failover_check` |
 | `identity` | 13 (6/7/0) | users in rules: realms (AD/LDAP), identity policies, ISE identity source, user-IP sessions | `fmc_prove_user_policy` |
 | `intel` | 12 (2/10/0) | blocking by reputation: Security Intelligence feeds and lists, DNS policy, host containment |  |
 | `migrate` | 6 (4/1/1) | move policy between FMCs or files: policy bundles, access-rule CSV import/export |  |
-| `objects` | 19 (8/11/0) | network/port/URL objects and groups, zones, dynamic objects, overrides, where an address is used |  |
+| `objects` | 24 (9/14/1) | network/port/URL objects and groups, zones, dynamic objects, overrides, where an address is used |  |
 | `platform` | 11 (1/10/0) | platform settings: syslog, connection logging, NTP, SNMP, DNS, NetFlow, SSH/HTTPS/ICMP, banner |  |
-| `policy` | 24 (9/14/1) | access control, NAT and prefilter policies and rules, assignments, rule hygiene | `fmc_policy_cleanup`, `fmc_rule_change_review`, `fmc_why_blocked` |
+| `policy` | 26 (9/16/1) | access control, NAT and prefilter policies and rules, assignments, rule hygiene | `fmc_policy_cleanup`, `fmc_rule_change_review`, `fmc_why_blocked` |
 | `routing` | 8 (2/6/0) | static routes, BGP, OSPF, VRFs |  |
 | `sdwan` | 7 (1/6/0) | SD-WAN hub and spoke topologies, WAN interfaces, application-aware routing, branch health | `fmc_onboard_branch`, `fmc_sdwan_troubleshoot` |
 | `threat` | 13 (5/8/0) | intrusion (IPS), file/malware and network analysis policies, an ACP's threat posture | `fmc_threat_defense_review` |
