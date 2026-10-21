@@ -9,7 +9,8 @@
         "device",
         "lookback_hours",
         "compare_with",
-        "group"
+        "group",
+        "baseline"
       ],
       "references": [
         "fmc_run_show_command",
@@ -32,6 +33,7 @@
         "fmc_list_health_alerts",
         "fmc_recent_activity",
         "fmc_diff_device_config",
+        "fmc_device_snapshot",
         "fmc_deploy",
         "fmc_backup_devices"
       ],
@@ -270,9 +272,11 @@
         "fmc_create_access_rule",
         "fmc_list_policy_assignments",
         "fmc_pending_changes",
+        "fmc_device_snapshot",
         "fmc_deploy",
         "fmc_packet_tracer",
         "fmc_get_hit_counts",
+        "fmc_diff_device_config",
         "fmc_rollback_deployment",
         "fmc_diff_policy_bundle",
         "fmc_import_policy_bundle"
@@ -741,6 +745,10 @@
     "fmc_device_metrics": {
       "tier": "read",
       "title": "Device metrics over time"
+    },
+    "fmc_device_snapshot": {
+      "tier": "read",
+      "title": "Snapshot device state"
     },
     "fmc_diff_device_config": {
       "tier": "read",
