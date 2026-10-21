@@ -1,0 +1,44 @@
+{
+  "_source": "FMC 10.0.1 audit/auditrecords, read-only probes for #201/#203, 2026-10-20 (records from 2026-10-19, Global/mcp-test-leaf and Global). Filters: subsystem is a case-insensitive SQL LIKE on the whole name ('Task Queue' = 'task queue'; 'Task' -> 0 records; 'Policies%' and '%>%' match as wildcards); username=admin and source=localhost are ignored (every record comes back). `changes` = the newest records of subsystem=%>% over ~8 h (expanded=false: time, auditId, subSystem, message); `unfiltered` = records from unfiltered slices (expanded): reads, logins, API writes, deployments. FMC address, client source address, domain UUID and the lab's 198.18.x addresses scrubbed.",
+  "filters": {
+    "subsystem=Task Queue": 91,
+    "subsystem=task queue": 91,
+    "subsystem=Task": 0,
+    "subsystem=Policies%": 3,
+    "subsystem=Policies*": 0,
+    "subsystem=Policies > Access Control > Policy Editor": 0,
+    "username=admin (24 h)": "34 records, users mcp-api-svc, csm_processes, Default User, System: ignored",
+    "source=localhost (24 h)": "37 records, sources 192.0.2.200 etc.: ignored"
+  },
+  "changes": [
+    {"time": 1792392140, "auditId": "00000000-0000-0ed3-0000-000000018912", "subSystem": "Devices > Troubleshoot > Packet Tracer", "message": "Trace: packet-tracer input inside TCP 10.10.34.100 40000 172.31.34.10 25 detailed xml (device: mcp-ftd-identity)"},
+    {"time": 1792387065, "auditId": "00000000-0000-0ed3-0000-000000018758", "subSystem": "Objects > Object Management > NetworkObject", "message": "delete mcp-fw-client:656"},
+    {"time": 1792387038, "auditId": "00000000-0000-0ed3-0000-000000018719", "subSystem": "Objects > Object Management > IPListObject", "message": "delete mcp-fw-ip-list-hit"},
+    {"time": 1792386991, "auditId": "00000000-0000-0ed3-0000-000000018635", "subSystem": "Policies > Network policies > NAT > NAT Policy Editor", "message": "Delete Policy mcp-fw-nat"},
+    {"time": 1792386989, "auditId": "00000000-0000-0ed3-0000-000000018629", "subSystem": "Policies > Access Control > Malware & File", "message": "Delete mcp-fw-file-av"},
+    {"time": 1792386786, "auditId": "00000000-0000-0ed3-0000-000000018472", "subSystem": "Devices > Device Management > Secure Firewall Interfaces", "message": "Save Policy mcp-sdwan-t1-hub:654"},
+    {"time": 1792386741, "auditId": "00000000-0000-0ed3-0000-000000018378", "subSystem": "Policies > Security policies > Access Control > Policy Editor", "message": "Save Policy mcp-fw-base-acp:649"},
+    {"time": 1792386703, "auditId": "00000000-0000-0ed3-0000-000000018300", "subSystem": "Devices > Device Management > Secure Firewall Routing", "message": "Save Policy mcp-sdwan-t1-hub:646"},
+    {"time": 1792386299, "auditId": "00000000-0000-0ed3-0000-000000018050", "subSystem": "Objects > Object Management > NetworkObject", "message": "create mcp-fw-demo-branch-wan:643"},
+    {"time": 1792385992, "auditId": "00000000-0000-0ed3-0000-000000017852", "subSystem": "Policies > Security policies > Access Control > Policy Editor", "message": "Save Policy mcp-fw-threat-acp:627"},
+    {"time": 1792381615, "auditId": "00000000-0000-0ed3-0000-000000016345", "subSystem": "Policies > Access Control > Malware & File", "message": "Save mcp-fw-file-av:595"},
+    {"time": 1792372789, "auditId": "00000000-0000-0ed3-0000-000000014465", "subSystem": "Policies > Security policies > Access Control > Policy Editor", "message": "Save Policy mcp-fw-threat-acp:587"},
+    {"time": 1792372789, "auditId": "00000000-0000-0ed3-0000-000000014466", "subSystem": "Policies > Security policies > Access Control > Policy Editor", "message": "Page View"}
+  ],
+  "unfiltered": [
+    {"time": 1792386827, "domain": "11111111222233334444555555555555", "auditId": "00000000-0000-0ed3-0000-000000018491", "subSystem": "API", "source": "192.0.2.200", "username": "mcp-api-svc", "message": "GET https://fmc.example/api/fmc_config/v1/domain/11111111-2222-3333-4444-555555555555/job/taskstatuses/21474956489 OK (200) - The request has succeeded"},
+    {"time": 1792386821, "domain": "11111111222233334444555555555555", "auditId": "00000000-0000-0ed3-0000-000000018488", "subSystem": "API", "source": "192.0.2.200", "username": "mcp-api-svc", "message": "POST https://fmc.example/api/fmc_config/v1/domain/11111111-2222-3333-4444-555555555555/deployment/deploymentrequests Accepted (202) - The request has been accepted for processing, but the processing has not been completed"},
+    {"time": 1792386786, "domain": "11111111222233334444555555555555", "auditId": "00000000-0000-0ed3-0000-000000018473", "subSystem": "API", "source": "192.0.2.200", "username": "mcp-api-svc", "message": "DELETE https://fmc.example/api/fmc_config/v1/domain/11111111-2222-3333-4444-555555555555/devices/devicerecords/4fc3908a-ca73-11f1-aef7-f44b5515d8ea/loopbackinterfaces/00000000-0000-0ed3-0000-021474952087 OK (200) - The request has succeeded"},
+    {"time": 1792386786, "domain": "11111111222233334444555555555555", "auditId": "00000000-0000-0ed3-0000-000000018472", "subSystem": "Devices > Device Management > Secure Firewall Interfaces", "source": "192.0.2.200", "snapshotId": "00000000-0000-0ed3-0000-000000000654", "username": "mcp-api-svc", "message": "Save Policy mcp-sdwan-t1-hub:654"},
+    {"time": 1792386890, "domain": "E276ABECE0F211E381696D9ED49B625F", "auditId": "00000000-0000-0ed3-0000-000000018512", "subSystem": "Task Queue", "source": "localhost", "username": "mcp-api-svc", "message": "Policy Deployment to mcp-ftd1 - SUCCESS"},
+    {"time": 1792386828, "domain": "E276ABECE0F211E381696D9ED49B625F", "auditId": "00000000-0000-0ed3-0000-000000018493", "subSystem": "Task Queue", "source": "localhost", "username": "mcp-api-svc", "message": "Successful task completion : Pre-deploy Global Configuration Generation"},
+    {"time": 1792373377, "domain": "E276ABECE0F211E381696D9ED49B625F", "auditId": "00000000-0000-0ed3-0000-000000014726", "subSystem": "Session Expiration", "source": "192.0.2.200", "username": "mcp-api-rw", "message": "New session source IP - 192.0.2.200"},
+    {"time": 1792373377, "domain": "E276ABECE0F211E381696D9ED49B625F", "auditId": "00000000-0000-0ed3-0000-000000014727", "subSystem": "Login", "source": "192.0.2.200", "username": "mcp-api-rw", "message": "Login Success"},
+    {"time": 1792372702, "domain": "E276ABECE0F211E381696D9ED49B625F", "auditId": "00000000-0000-0ed3-0000-000000014458", "subSystem": "API", "source": "192.0.2.200", "username": "admin", "message": "GET /api/fmc_identity/v1/integration/ise 404"},
+    {"time": 1792372702, "domain": "E276ABECE0F211E381696D9ED49B625F", "auditId": "00000000-0000-0ed3-0000-000000014459", "subSystem": "/ui/identity-sources/ise", "source": "192.0.2.200", "username": "admin", "message": "Page View"},
+    {"time": 1792372695, "domain": "E276ABECE0F211E381696D9ED49B625F", "auditId": "00000000-0000-0ed3-0000-000000014456", "subSystem": "Integrations > Identity > Identity Sources", "source": "192.0.2.200", "username": "admin", "message": "Page View"},
+    {"time": 1792372684, "domain": "E276ABECE0F211E381696D9ED49B625F", "auditId": "00000000-0000-0ed3-0000-000000014455", "subSystem": "Insights & Reports > Dashboard > Summary Dashboard", "source": "192.0.2.200", "username": "admin", "message": "Page View"},
+    {"time": 1792509013, "domain": "E276ABECE0F211E381696D9ED49B625F", "auditId": "00000000-0000-0ed3-0000-000000019040", "subSystem": "Cloud Services", "source": "Default User IP", "username": "Default User", "message": "View url filtering settings"},
+    {"time": 1792509038, "domain": "E276ABECE0F211E381696D9ED49B625F", "auditId": "00000000-0000-0ed3-0000-000000019047", "subSystem": "Login", "source": "Default User IP", "username": "csm_processes", "message": "Login Success"}
+  ]
+}

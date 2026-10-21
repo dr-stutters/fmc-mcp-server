@@ -5,6 +5,22 @@ caps at 100 and offset 100 is empty), and every API call - ours included - write
 plain query only reaches back a few minutes on a busy FMC. A past `endtime` is accepted (a future
 one is rejected), so the window is read newest first in slices: each query asks for the newest 100
 records up to the oldest time seen so far.
+
+FMC's own filters (FMC 10.0.1, read-only probes 2026-10-20): `subsystem` is a case-insensitive SQL LIKE
+on the whole subsystem name ('task queue' matches 'Task Queue', 'Task' matches nothing, 'Policies%' and
+'%>%' are wildcards). `username` and `source` are ignored: every record comes back. So user filters run
+here, and a subsystem filter goes to FMC as '%<text>%'.
+
+Most changes have their own subsystems. FMC logs a configuration change in words under the UI path it
+belongs to, also when it came through the API: 'Save Policy mcp-acp:12' under 'Policies > Security
+policies > Access Control > Policy Editor', 'create host1:34' under 'Objects > Object Management >
+NetworkObject', 'Save Policy ftd1:56' under 'Devices > Device Management > Secure Firewall Interfaces' (next
+to the API DELETE of the interface). Deployments are 'Task Queue' records. The API request of a change is
+an 'API' record among every API read, and those reads are the bulk of the log. fetch_changes therefore
+reads every record only for the newest few slices, and the rest of the window through those subsystems
+(CHANGE_SUBSYSTEMS), filtered by FMC. That older part is not complete: a change FMC logs under a subsystem
+without a UI path (such as 'Cloud Services') or only as its 'API' request is not in it, and coverage_note
+says so.
 """
 
 import re
@@ -16,9 +32,18 @@ from fmc_mcp.client import FmcApp
 AUDIT_PATH = "audit/auditrecords"
 AUDIT_PAGE = 100  # FMC's per-query maximum
 AUDIT_MAX_PAGES = 25  # 2500 records, ~25 requests (FMC allows ~120/min)
+# Changes over a long window: every record for the newest CHANGE_SCAN_PAGES slices, then only these
+# subsystems (FMC filters them: SQL LIKE), each up to CHANGE_SUBSYSTEM_PAGES slices. '%>%' is every
+# subsystem named by a UI path ('Policies > ...', 'Objects > ...', 'Devices > ...': FMC's worded change
+# records, plus page views and troubleshooting runs, dropped as reads); 'Task Queue' holds deployments.
+CHANGE_SUBSYSTEMS = ("%>%", "Task Queue")
+CHANGE_SCAN_PAGES = 5
+CHANGE_SUBSYSTEM_PAGES = 10
 
-# Reads and session housekeeping: not changes.
-_READ_MESSAGE = re.compile(r"^GET\b")
+# Reads and session housekeeping: not changes. A page view is logged under the page's UI path
+# ('Policies > Security policies > Access Control > Policy Editor', message 'Page View'), and some UI
+# reads in words ('View url filtering settings', subsystem 'Cloud Services').
+_READ_MESSAGE = re.compile(r"^(GET\b|Page View$|View )")
 NOISE_SUBSYSTEMS = ("page view", "login", "logout", "session expiration")
 _API_URL = re.compile(r"https?://[^/\s]+/api/(fmc_\w+)/v\d+/domain/[0-9a-fA-F-]+/")
 _API_URL_NODOMAIN = re.compile(r"https?://[^/\s]+/api/")
@@ -26,8 +51,9 @@ _STATUS_TAIL = re.compile(r"(\(\d{3}\))\s+-\s.*$")
 # Operational requests that change no configuration (hit-count refresh, packet tracer, show commands).
 _OPERATIONAL = re.compile(r"^(PUT|POST) \S*/(operational/hitcounts|packettracer|commands)\b", re.I)
 # FMC's own records of troubleshooting runs: 'Devices > Troubleshoot > Packet Tracer' ("Trace: packet-tracer
-# input inside TCP ... (device: ftd1)"), packet capture and the like: no configuration changes either.
-TROUBLESHOOT_SUBSYSTEM = "devices > troubleshoot"
+# input inside TCP ... (device: ftd1)"), packet capture, the threat defense CLI, and hit-count refreshes from
+# the UI: no configuration changes either (matched anywhere in the subsystem).
+OPERATIONAL_SUBSYSTEMS = ("troubleshoot", "hit count", "threat defense cli")
 _DEVICE_IN_MESSAGE = re.compile(r"\(device: ([^()]+)\)\s*$")
 
 
@@ -38,6 +64,9 @@ class AuditScan:
     pages: int = 0
     reached: int | None = None  # oldest record time read when incomplete
     skipped_same_second: bool = False
+    # fetch_changes: every record was read back to `all_to`; older ones only through `subsystems`
+    all_to: int | None = None
+    subsystems: tuple[str, ...] = ()
 
 
 def is_read(rec: dict[str, Any]) -> bool:
@@ -49,8 +78,13 @@ def is_read(rec: dict[str, Any]) -> bool:
         _READ_MESSAGE.match(msg)
         or sub in NOISE_SUBSYSTEMS
         or _OPERATIONAL.match(msg)
-        or sub.startswith(TROUBLESHOOT_SUBSYSTEM)
+        or any(o in sub for o in OPERATIONAL_SUBSYSTEMS)
     )
+
+
+def contains(text: str) -> str:
+    """FMC's `subsystem` filter (SQL LIKE) for 'subsystem contains <text>'."""
+    return f"%{text.strip()}%"
 
 
 def device_in(rec: dict[str, Any]) -> str | None:
@@ -75,6 +109,10 @@ def audit_time(rec: dict[str, Any]) -> int:
     return t // 1000 if t > 10**11 else t
 
 
+def _key(rec: dict[str, Any]) -> str:
+    return str(rec.get("auditId") or rec.get("id") or (rec.get("time"), rec.get("message")))
+
+
 async def fetch_audit(
     app: FmcApp,
     start: int,
@@ -82,14 +120,16 @@ async def fetch_audit(
     *,
     max_pages: int | None = None,
     subsystem: str | None = None,
+    end: int | None = None,
 ) -> AuditScan:
-    """Every audit record from `start` to now (up to max_pages slices), newest first.
-    `subsystem` is FMC's own exact-match filter."""
+    """Every audit record from `start` to now (or to `end`), up to max_pages slices, newest first.
+    `subsystem` is FMC's own filter (SQL LIKE on the whole name, case-insensitive; see contains)."""
     path = await app.platform_path(AUDIT_PATH, domain)
     max_pages = max_pages or AUDIT_MAX_PAGES
     scan = AuditScan()
     seen: set[str] = set()
-    end: int | None = None
+    if end is not None and end < start:
+        return scan
     while True:
         if scan.pages >= max_pages:
             scan.complete = False
@@ -105,7 +145,7 @@ async def fetch_audit(
         items = list((data or {}).get("items") or [])
         new = []
         for rec in items:
-            key = str(rec.get("auditId") or rec.get("id") or (rec.get("time"), rec.get("message")))
+            key = _key(rec)
             if key not in seen:
                 seen.add(key)
                 new.append(rec)
@@ -125,16 +165,124 @@ async def fetch_audit(
     return scan
 
 
-def coverage_note(scan: AuditScan) -> str | None:
-    """Plain-language note when the scan did not cover the whole window."""
+async def fetch_changes(
+    app: FmcApp,
+    start: int,
+    domain: str | None,
+    *,
+    scan_pages: int | None = None,
+    subsystem_pages: int | None = None,
+) -> AuditScan:
+    """The audit records that can be changes, from `start` to now, newest first: every record of the
+    newest `scan_pages` slices, and, when the window holds more, only FMC's change subsystems
+    (CHANGE_SUBSYSTEMS, filtered by FMC) for the older part. On a busy FMC this reaches a day back in a
+    few requests where reading every API GET could not (#203). The result still holds reads (page views,
+    packet-tracer runs): callers drop them with is_read."""
+    scan = await fetch_audit(app, start, domain, max_pages=scan_pages or CHANGE_SCAN_PAGES)
+    if scan.complete:
+        return scan
+    out = AuditScan(
+        items=list(scan.items),
+        pages=scan.pages,
+        skipped_same_second=scan.skipped_same_second,
+        all_to=scan.reached,
+        subsystems=CHANGE_SUBSYSTEMS,
+    )
+    seen = {_key(r) for r in out.items}
+
+    def merge(part: AuditScan) -> None:
+        out.pages += part.pages
+        out.skipped_same_second = out.skipped_same_second or part.skipped_same_second
+        for rec in part.items:
+            if _key(rec) not in seen:
+                seen.add(_key(rec))
+                out.items.append(rec)
+
+    found = 0
+    for sub in CHANGE_SUBSYSTEMS:
+        part = await fetch_audit(
+            app,
+            start,
+            domain,
+            max_pages=subsystem_pages or CHANGE_SUBSYSTEM_PAGES,
+            subsystem=sub,
+            end=scan.reached,
+        )
+        merge(part)
+        found += len(part.items)
+        if not part.complete:
+            out.complete = False
+            out.reached = max(out.reached or 0, part.reached or 0)
+    if not found:
+        out.pages += 1
+        if not await like_works(app, start, domain, scan.reached):
+            # An FMC whose subsystem filter matches whole names only: read on through every record, as
+            # before, within the usual page budget.
+            rest = await fetch_audit(
+                app, start, domain, max_pages=max(1, AUDIT_MAX_PAGES - out.pages), end=scan.reached
+            )
+            merge(rest)
+            out.all_to, out.subsystems = None, ()
+            out.complete, out.reached = rest.complete, rest.reached
+    out.items.sort(key=audit_time, reverse=True)
+    return out
+
+
+async def like_works(app: FmcApp, start: int, domain: str | None, end: int | None = None) -> bool:
+    """Whether FMC's `subsystem` filter takes SQL LIKE wildcards (FMC 10.0.1 does): one record for '%'
+    means it does. An FMC matching whole names only finds none (no subsystem is called '%'); so does an
+    empty window, where reading every record costs one request anyway."""
+    path = await app.platform_path(AUDIT_PATH, domain)
+    params: dict[str, Any] = {"starttime": start, "limit": 1, "subsystem": "%"}
+    if end is not None:
+        params["endtime"] = end
+    data = await app.api.get(path, params)
+    return bool((data or {}).get("items"))
+
+
+async def fetch_subsystem(app: FmcApp, start: int, domain: str | None, text: str) -> AuditScan:
+    """Every audit record whose subsystem contains `text`, from `start` to now: FMC filters them (SQL
+    LIKE), so the window is read in a request or two. When FMC finds nothing, like_works tells an empty
+    answer (one request more) from an FMC matching whole names only; only then is every record read, as
+    before, within the usual page budget, for the caller to filter."""
+    scan = await fetch_audit(app, start, domain, subsystem=contains(text))
+    if scan.items:
+        return scan
+    scan.pages += 1
+    if await like_works(app, start, domain):
+        return scan
+    rest = await fetch_audit(app, start, domain, max_pages=max(1, AUDIT_MAX_PAGES - scan.pages))
+    rest.pages += scan.pages
+    return rest
+
+
+def coverage_note(scan: AuditScan, reads: int | None = None) -> str | None:
+    """Plain-language note when the scan did not read every record of the window: how far back it got,
+    and how many of the records it read were reads (`reads`)."""
     from fmc_mcp.tools.system import iso
 
-    if not scan.complete:
-        return (
-            f"Audit log read back to {iso(scan.reached)} only ({len(scan.items)} records in "
-            f"{scan.pages} requests; FMC returns 100 per request). Older records in the window were not "
-            "read: use a shorter window."
+    counted = f"{len(scan.items)} records in {scan.pages} requests"
+    if reads:
+        counted += f", {reads} of them reads (API GETs, page views, logins, packet tracer)"
+    notes = []
+    if scan.all_to is not None:
+        notes.append(
+            f"Every audit record was read back to {iso(scan.all_to)} ({counted}). Before that, only the "
+            "records FMC files under a UI path ('Policies > ...', 'Objects > ...', 'Devices > ...': its "
+            "worded policy, object and device changes) or 'Task Queue' (deployments) were read, filtered "
+            "by FMC. Changes it logs under another subsystem (such as 'Cloud Services') or only as their "
+            "'API' request are not listed for that part: use a shorter window, or `subsystem`, to see them."
+        )
+        if not scan.complete:
+            notes.append(
+                f"Those were read back to {iso(scan.reached)} only: older changes in the window were not "
+                "read; use a shorter window."
+            )
+    elif not scan.complete:
+        notes.append(
+            f"Audit log read back to {iso(scan.reached)} only ({counted}; FMC returns 100 per request). "
+            "Older records in the window were not read: use a shorter window."
         )
     if scan.skipped_same_second:
-        return "More than 100 audit records shared one second; some of them may be missing."
-    return None
+        notes.append("More than 100 audit records shared one second; some of them may be missing.")
+    return " ".join(notes) or None
