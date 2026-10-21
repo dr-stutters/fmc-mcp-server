@@ -12,6 +12,7 @@ from pydantic import Field
 
 from fmc_mcp._core import ResponseFormat, ToolRegistrar, UpstreamError, get_client, list_result
 from fmc_mcp._core.http import page_of
+from fmc_mcp.acp_structure import base_chain, locked, read_locks
 from fmc_mcp.client import FmcApp
 from fmc_mcp.tools.common import Domain, ref_label, resolve_in
 from fmc_mcp.tools.devices import DEVICES, DeviceRef
@@ -28,6 +29,49 @@ NOT_DEPLOYABLE_NOTE = (
     "these pending entries: FMC decides 'deployable' from the device's out-of-date policies, and these "
     "entries (e.g. a certificate or object changed in an ancestor domain) have not made it out of date."
 )
+
+
+LOCKED_NOTE = (
+    "An access policy in this deployment is locked (policy_locks): its holder may be in the middle of a "
+    "change, and the deploy pushes what is saved now. Ask them, or wait for the unlock (fmc_policy_lock)."
+)
+ACP_ENTITY = re.compile(r"access(control)?policy", re.I)
+
+
+async def pending_locks(
+    app: FmcApp, device: dict[str, Any], rows: list[dict[str, Any]], domain: str | None
+) -> list[dict[str, Any]]:
+    """The locked access policies that matter to this deployment: the device's own access policy, its base
+    policies, and any access policy among the pending rows (by name), each such row marked with
+    `locked_by`. One read of FMC's lock list (plus the device policy's base chain when something is
+    locked); nothing when the list can't be read or nothing is locked."""
+    held = locked(await read_locks(app, domain))
+    if not held:
+        return []
+    acp = device.get("accessPolicy") or {}
+    by_name = {str(r.get("policy") or "").lower(): r for r in held if r.get("policy")}
+    by_id = {str(r.get("policy_id") or "").lower(): r for r in held}
+    out: dict[str, dict[str, Any]] = {}
+    if acp.get("id"):
+        mine = by_id.get(str(acp["id"]).lower())
+        if mine:
+            out[str(acp["id"]).lower()] = {**mine, "why": "the device's access policy"}
+        try:
+            chain = await base_chain(app, str(acp["id"]), domain)
+        except UpstreamError:
+            chain = []
+        for base in chain:
+            lock = by_id.get(str(base["id"]).lower())
+            if lock:
+                why = f"a base policy of the device's access policy {acp.get('name')!r}"
+                out.setdefault(str(base["id"]).lower(), {**lock, "why": why})
+    for row in rows:
+        lock = by_name.get(str(row.get("entity") or "").lower())
+        if lock is None or not ACP_ENTITY.search(str(row.get("type") or "").replace(" ", "")):
+            continue
+        row["locked_by"] = lock.get("locked_by") or "unknown"
+        out.setdefault(str(lock.get("policy_id")).lower(), {**lock, "why": "pending in this deployment"})
+    return [{k: v for k, v in r.items() if k != "policy_id" and v is not None} for r in out.values()]
 
 
 def deployable_row(d: dict[str, Any]) -> dict[str, Any]:
@@ -282,7 +326,8 @@ def register(reg: ToolRegistrar) -> None:
         """Show what the next deployment would push to one device: each changed entity (policy,
         rule, object) with the action (added/updated/deleted), who changed it and the changed
         values (long values cut, e.g. a Snort 3 policy's inspector data). Use before fmc_deploy to
-        review the blast radius."""
+        review the blast radius. A locked access policy (the device's, or one in the list) is named with
+        its holder (`policy_locks`): someone may be mid-change, and the deploy pushes what is saved now."""
         app: FmcApp = get_client(ctx)
         d = await resolve_in(app, DEVICES, device, "device", domain)
         path = await app.config_path(f"{DEPLOYABLE}/{d['id']}/pendingchanges", domain)
@@ -300,6 +345,11 @@ def register(reg: ToolRegistrar) -> None:
             notes.append(cut)
         if rows and not await is_deployable(app, str(d["id"]), domain):
             notes.append(NOT_DEPLOYABLE_NOTE)
+        if rows:
+            locks = await pending_locks(app, d, rows, domain)
+            if locks:
+                extra["policy_locks"] = locks
+                notes.append(LOCKED_NOTE)
         if notes:
             extra["note"] = " ".join(notes)
         return list_result(page_of(rows, limit=limit, offset=offset), fmt=response_format, extra=extra)

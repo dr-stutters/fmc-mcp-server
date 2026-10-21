@@ -111,6 +111,10 @@ def fmc() -> Iterator[respx.MockRouter]:
             mock.get(f"/api/fmc_config/v1/domain/{dom}/devicegroups/devicegrouprecords").mock(
                 return_value=items([], 0)
             )
+            # F76: nothing locked, as FMC 10.0.1 answers it (one empty item)
+            mock.get(f"/api/fmc_config/v1/domain/{dom}/policy/operational/policylocks").mock(
+                return_value=items([{}])
+            )
         yield mock
 
 
@@ -140,6 +144,11 @@ def lab(fmc: respx.MockRouter) -> respx.MockRouter:
     fmc.get(f"{CFG}/policy/accesspolicies/{ACP_ID}/accessrules").mock(
         return_value=httpx.Response(200, json=fixture("accessrules"))
     )
+    # F76: no base policy (the setting's id is the policy's own id), no categories
+    fmc.get(f"{CFG}/policy/accesspolicies/{ACP_ID}/inheritancesettings").mock(
+        return_value=items([{"id": ACP_ID, "type": "AccessPolicyInheritanceSetting"}])
+    )
+    fmc.get(f"{CFG}/policy/accesspolicies/{ACP_ID}/categories").mock(return_value=empty())
     fmc.get(f"{CFG}/policy/ftdnatpolicies").mock(
         return_value=items([{"name": "mcp-test-nat", "id": NAT_ID, "type": "FTDNatPolicy"}])
     )

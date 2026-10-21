@@ -735,6 +735,42 @@ async def test_replace_without_usage_searches_everything(fmc: respx.MockRouter) 
     assert p["preview"]["found_by"].startswith("a search of every policy")
 
 
+def held_by(policy_id: str, name: str, user: str) -> httpx.Response:
+    """FMC's lock list with one access policy locked (the 10.0.1 spec example's shape)."""
+    lock = {
+        "type": "PolicyLock",
+        "policy": {"name": name, "id": policy_id, "type": "AccessPolicy"},
+        "status": "LOCKED",
+        "metadata": {"lockedByUser": {"name": user}},
+    }
+    return httpx.Response(200, json={"items": [{"policies": [lock]}], "paging": {"count": 1}})
+
+
+async def test_replace_blocked_by_another_users_policy_lock(fmc: respx.MockRouter) -> None:
+    """F76: the rules' access policy locked by someone else blocks the preview (FMC would refuse the bulk PUT
+    part way through); the API user's own lock is a note. The rules carry no policy reference here, so the
+    policy comes from their collection path."""
+    lab_for_replace(fmc, None)
+    locks = fmc.get(f"{CFG}/policy/operational/policylocks").mock(
+        return_value=held_by(ACP, "mcp-w6-acp", "alice")
+    )
+    args = {"old": "mcp-w6-a", "new": "mcp-w6-b", "scope": ["access_rules"]}
+    async with Client(server()) as c:
+        p = await run(c, "fmc_replace_object", args)
+        assert p["status"] == "blocked"
+        assert p["blockers"] == [
+            "Access policy 'mcp-w6-acp' is locked by alice. FMC refuses changes to it until they unlock it "
+            "(in the FMC UI, or fmc_policy_lock action='unlock' as that user; break_lock=True takes the "
+            "lock away from them)."
+        ]
+        locks.mock(return_value=held_by(ACP, "mcp-w6-acp", "apiuser"))
+        p = await run(c, "fmc_replace_object", args)
+        assert p["status"] == "preview" and "locked by you" in p["preview"]["policy_lock"]
+        locks.reset()
+        p = await run(c, "fmc_replace_object", {**args, "scope": ["groups"]})  # no access rule changes
+        assert p["status"] == "preview" and locks.call_count == 0
+
+
 async def test_replace_blockers(fmc: respx.MockRouter) -> None:
     lab = lab_for_replace(fmc, None)
     net = obj("n1", "mcp-w6-net", "Network", value="192.0.2.0/24")

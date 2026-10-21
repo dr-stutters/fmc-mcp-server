@@ -593,6 +593,23 @@ class Site:
         }
 
 
+ACP_OF_PATH = re.compile(r"/policy/accesspolicies/([^/]+)/accessrules", re.IGNORECASE)
+
+
+def access_policies_of(sites: list[Site]) -> list[dict[str, Any]]:
+    """The access policies whose rules the sites change ({id, name}), for the preview's lock check (F76)."""
+    out: dict[str, dict[str, Any]] = {}
+    for s in sites:
+        if s.area != "access_rules":
+            continue
+        ref = (s.item.get("metadata") or {}).get("accessPolicy") or {}
+        m = ACP_OF_PATH.search(s.bulk or s.path)
+        pid = ref.get("id") or (m.group(1) if m else None)
+        if pid:
+            out.setdefault(str(pid).lower(), {"id": pid, "name": ref.get("name")})
+    return list(out.values())
+
+
 def make_site(
     area: str, where: str, path: str, item: dict[str, Any], old_id: str, new_ref: dict[str, Any], **kw: Any
 ) -> Site | None:
@@ -1235,6 +1252,7 @@ def register(reg: ToolRegistrar) -> None:
             ctx,
             tool="fmc_replace_object",
             owned=[cur_old] if delete_old else [],
+            lock_refs=access_policies_of(walk.sites),  # another user's lock on one of them blocks
             args={
                 "old": old,
                 "new": new,
