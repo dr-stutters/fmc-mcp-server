@@ -223,7 +223,9 @@ async def test_wave5_live_connections(client: Client[Any]) -> None:
 async def test_wave5_device_metrics(client: Client[Any]) -> None:
     """F57: CPU / throughput series of the FTD over the last 30 minutes."""
     device = need("FMC_LIVE_W5_DEVICE")
-    out = await call(client, "fmc_device_metrics", {"device": device, "since": "30m"})
+    out = await call(
+        client, "fmc_device_metrics", {"device": device, "since": "30m", "response_format": "json"}
+    )
     assert isinstance(out, dict) and out, out
 
 
