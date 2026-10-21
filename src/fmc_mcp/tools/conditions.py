@@ -29,6 +29,7 @@ from fmc_mcp.rule_conditions import (
     condition_text,
     facet,
     filter_row,
+    filters_used_by,
     get_application,
     name_matches,
     remember_filter,
@@ -38,6 +39,7 @@ from fmc_mcp.rule_conditions import (
 )
 from fmc_mcp.tools.common import Domain, pick_by_name
 from fmc_mcp.tools.object_writes import applied
+from fmc_mcp.tools.policies import ACCESS, all_rules
 
 DAYS = ("MON", "TUE", "WED", "THU", "FRI", "SAT", "SUN")
 DETAIL_CAP = 3  # exact-name matches read in full (one GET each)
@@ -51,11 +53,12 @@ INDEX_NOTE = (
 )
 FILTER_LIST_NOTE = (
     f"FMC lists no application filters in this domain. {UNLISTED_FILTERS} The ones this server created "
-    "since it started are listed with listed_by_fmc false; for others use the id from "
-    "fmc_create_application_filter's result or from fmc_get_access_rule of a rule using one "
-    "(application_filters=[id]). Remove them in the FMC UI (Objects > Object Management > Application "
-    "Filters)."
+    "since it started are listed with listed_by_fmc false; kind='filter' also lists the ones the access "
+    "policies' rules use (with used_by). For others use the id from fmc_create_application_filter's result "
+    "(application_filters=[id]), or inline_app_filter on the rule. Remove them in the FMC UI (Objects > "
+    "Object Management > Application Filters)."
 )
+FILTER_SCAN_POLICIES = 25  # access policies whose rules kind='filter' reads when FMC lists no filters
 CREATED_FILTER_NOTE = (
     f"{UNLISTED_FILTERS} Keep this filter's id: rules take application_filters=[id] (this server also "
     "finds it by name until it restarts). Delete it in the FMC UI (Objects > Object Management > "
@@ -173,6 +176,38 @@ def _contains(rows: list[dict[str, Any]] | tuple[tuple[str, str], ...], text: st
     return [n for n in names if t in n.lower()]
 
 
+async def _filters_in_rules(
+    app: FmcApp, text: str, known: set[str], domain: str | None
+) -> tuple[list[dict[str, Any]], str]:
+    """The named application filters the domain's access policies' rules use, matching `text` (name part or
+    id), each with the rules that use it: FMC 10.0.1 lists none it created over the API, and after a restart
+    this server remembers none, so the rules are where their names and ids are left. One list of the
+    policies plus one rule list per policy, at most FILTER_SCAN_POLICIES policies."""
+    policies = await app.all(await app.config_path(ACCESS, domain), expanded=False)
+    read = policies.items[:FILTER_SCAN_POLICIES]
+    found: dict[str, dict[str, Any]] = {}
+    for pol in read:
+        rules = await all_rules(app, await app.config_path(f"{ACCESS}/{pol['id']}/accessrules", domain))
+        for fid, hit in filters_used_by(rules.items, str(pol.get("name"))).items():
+            if fid in known:
+                continue
+            row = found.setdefault(fid, {**hit["ref"], "listed_by_fmc": False, "used_by": []})
+            row["used_by"] += hit["used_by"]
+    t = text.lower()
+    rows = [
+        {k: v for k, v in r.items() if k != "type"}
+        for r in found.values()
+        if t in str(r.get("name", "")).lower() or t == str(r["id"]).lower()
+    ]
+    total = len(policies.items) if policies.complete else f"{len(policies.items)}+"
+    note = (
+        f"FMC lists no application filters, so the rules of {len(read)} of {total} access policies were read"
+    )
+    if len(read) < len(policies.items) or not policies.complete:
+        note += f" (the first {FILTER_SCAN_POLICIES}; a filter only later policies use isn't listed)"
+    return rows, note + "."
+
+
 def register(reg: ToolRegistrar) -> None:
     @reg.read(title="Find applications and application filters")
     async def fmc_find_application(
@@ -202,8 +237,9 @@ def register(reg: ToolRegistrar) -> None:
         can use) and the attribute values fmc_create_application_filter takes. The rule writers take the
         names: fmc_create_access_rule(applications=[...], application_filters=[...]). FMC 10.0.1 doesn't
         list application filters created over its API: the ones this server created since it started are
-        remembered (per server process) and listed with listed_by_fmc false; others need their UUID (from
-        the create result or fmc_get_access_rule of a rule using one)."""
+        remembered (per server process) and listed with listed_by_fmc false, and kind='filter' also reads
+        the access policies' rules for the filters they use (used_by: policy / rule); inline_app_filter on
+        the rule writers needs no filter object at all."""
         app: FmcApp = get_client(ctx)
         t = text.strip()
         out: dict[str, Any] = {"query": t}
@@ -237,8 +273,13 @@ def register(reg: ToolRegistrar) -> None:
                 if r["id"].lower() not in listed
                 and (t.lower() in r["name"].lower() or t.lower() == r["id"].lower())
             ]
-            out["application_filters"] = ([filter_row(f) for f in hits] + mine)[:limit]
-            found += len(hits) + len(mine)
+            used: list[dict[str, Any]] = []
+            if not filters and kind == "filter":
+                known = listed | {str(r["id"]).lower() for r in mine}
+                used, scan_note = await _filters_in_rules(app, t, known, domain)
+                out["rules_scan"] = scan_note
+            out["application_filters"] = ([filter_row(f) for f in hits] + mine + used)[:limit]
+            found += len(hits) + len(mine) + len(used)
             if not filters:
                 out["filter_note"] = FILTER_LIST_NOTE
         if kind in ("any", "attribute"):
