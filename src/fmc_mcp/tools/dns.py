@@ -23,7 +23,6 @@ from fmc_mcp._core import (
     UpstreamError,
     get_client,
     list_result,
-    object_result,
 )
 from fmc_mcp._core.http import page_of
 from fmc_mcp.client import FmcApp
@@ -31,6 +30,7 @@ from fmc_mcp.preview import fmc_preview
 from fmc_mcp.tools.common import Domain, block_labels, resolve_in
 from fmc_mcp.tools.object_writes import applied, editable
 from fmc_mcp.tools.policies import ACCESS, all_rules
+from fmc_mcp.tools.render import object_reply
 
 DNS = "policy/dnspolicies"
 LISTS = "object/customsidnslists"
@@ -115,7 +115,7 @@ def register(reg: ToolRegistrar) -> None:
             return list_result(page_of(rows, limit=1000, offset=0), fmt=response_format)
         p = await resolve_in(app, DNS, policy, "DNS policy", domain)
         rules = await all_rules(app, await app.config_path(f"{DNS}/{p['id']}/dnsrules", domain))
-        return object_result(
+        return object_reply(
             {"name": p.get("name"), "rules": [rule_row(r) for r in rules.items], "id": p.get("id")},
             fmt=response_format,
         )

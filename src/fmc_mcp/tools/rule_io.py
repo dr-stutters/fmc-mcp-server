@@ -19,7 +19,6 @@ from fmc_mcp._core import (
     UpstreamError,
     get_client,
     list_result,
-    object_result,
 )
 from fmc_mcp._core.http import page_of
 from fmc_mcp.client import FmcApp
@@ -28,6 +27,7 @@ from fmc_mcp.refs import RefResolver
 from fmc_mcp.tools.common import Domain, proto_name, ref_label, resolve_in
 from fmc_mcp.tools.policies import ACCESS, all_rules, resolve_policy
 from fmc_mcp.tools.policy_writes import BLOCKING, LogMode, RuleAction, _conditions, _log_fields
+from fmc_mcp.tools.render import object_reply
 
 CHUNK = 100  # rules per bulk POST (FMC accepts up to 1000; smaller chunks fail smaller)
 MAX_IMPORT = 500
@@ -204,7 +204,7 @@ def register(reg: ToolRegistrar) -> None:
             p = await app.api.get(await app.config_path(f"{ACCESS}/{p['id']}", domain)) or p
         default = (p.get("defaultAction") or {}).get("action")
         if format == "csv":
-            return object_result(
+            return object_reply(
                 {
                     "policy": p.get("name"),
                     "default_action": default,
