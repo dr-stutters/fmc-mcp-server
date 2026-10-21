@@ -1,8 +1,8 @@
 """fmc_enroll_certificate(action='re_enroll') preview wording (F75 #170, W6N live-A finding).
 
 Recorded live on FMC 10.0.1 / mcp-ftd1 (notes/w6n-fixtures/f75-live-enrollment.json): RE_ENROLL of a
-self-signed enrollment re-issued the certificate on the same key (serial 6ad8b2ab -> 6ad8b2ac, new validity,
-SHA1 public key hash unchanged). The preview said "the device generates key pair ...".
+self-signed enrollment re-issued the certificate on the same key (a new serial and validity, the SHA1 public
+key hash unchanged). The preview said "the device generates key pair ...".
 """
 
 import copy
@@ -57,3 +57,20 @@ async def test_re_enroll_scep_makes_no_claim_about_the_key(fmc: respx.MockRouter
         "http://198.51.100.20/certsrv/mscep/mscep.dll" in first
     )
     assert "generates" not in first and "not regenerated" not in first
+
+
+async def test_re_enroll_after_a_failed_enrolment_makes_no_claim_about_the_key(fmc: respx.MockRouter) -> None:
+    """Review of #301: a failed earlier enrolment may have left no key pair on the device, so the re_enroll
+    preview doesn't say the device already holds it or that it isn't regenerated."""
+    device_and_enrollment(fmc)
+    no_users(fmc)
+    failed = copy.deepcopy(FX["device_enrolled"])
+    failed["items"][0]["enrolledCertificates"][0] |= {"deploymentStatus": "FAILED", "errorMessage": "boom"}
+    fmc.get(DEV_CERTS).mock(return_value=httpx.Response(200, json=failed))
+    async with Client(server()) as c:
+        out = await run(c, "fmc_enroll_certificate", {**ENROL, "action": "re_enroll"})
+    assert out["status"] == "preview", out
+    first = out["side_effects"][0]
+    assert "a self-signed identity certificate on key pair mcp-w6-enr-probe-key (RSA 2048)" in first
+    assert "the earlier enrolment FAILED, so the device may not hold that key pair yet" in first
+    assert "already holds" not in first and "not regenerated" not in first

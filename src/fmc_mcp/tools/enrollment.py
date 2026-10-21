@@ -995,10 +995,18 @@ def register(reg: ToolRegistrar) -> None:
         }.get(enr_type, f"FMC enrols the {enr_type or 'certificate'} enrollment")
         # RE_ENROLL re-issues the certificate, not the key (recorded on FMC 10.0.1: a self-signed enrollment
         # got a new serial and validity, the SHA1 public key hash stayed the same). SCEP/EST: not recorded.
+        # After a failed earlier enrolment the device may hold no key pair yet: no claim about the key then.
         named_pair = f"key pair {key_name} ({key_text})"
+        self_again = (
+            f"a self-signed identity certificate on {named_pair}: the earlier enrolment {state}, so the "
+            "device may not hold that key pair yet and then generates it (when it does, FMC 10.0.1 "
+            "re-issues the certificate on the existing key)"
+            if state in FAILED_STATES
+            else "a new self-signed identity certificate (new serial and validity) on "
+            f"the {named_pair} the device already holds: the key is not regenerated"
+        )
         how_again = {
-            "SELF_SIGNED_CERTFICATE": "a new self-signed identity certificate (new serial and validity) on "
-            f"the {named_pair} the device already holds: the key is not regenerated",
+            "SELF_SIGNED_CERTFICATE": self_again,
             "PKCS12": "the identity certificate, its private key and CA chain from the PKCS12 go to the "
             "device again",
             "MANUAL": "the CA certificate is installed again as a trustpoint (no identity certificate)",
