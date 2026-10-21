@@ -636,7 +636,7 @@ async def test_sync_creates_updates_groups_and_orphans(fmc: respx.MockRouter) ->
             ("ipam-b", "update"),
             ("ipam-e", "create"),
         ]
-        assert got["rows"][1]["from"] == "192.0.2.2"
+        assert got["rows"][1]["from"] == "192.0.2.2" and "description" not in got["rows"][1]
         assert got["groups"] == [
             {
                 "group": "ipam-web",
@@ -669,6 +669,41 @@ async def test_sync_creates_updates_groups_and_orphans(fmc: respx.MockRouter) ->
         "type": "NetworkGroup",
         "objects": [{"id": "he", "type": "Host", "name": "ipam-e"}],
     }
+
+
+async def test_sync_row_shows_a_description_only_change(fmc: respx.MockRouter) -> None:
+    """live-B2's third sync: only mcp-w6-sync-2's description changed, and the row read "value
+    192.0.2.112, from 192.0.2.112". The row now says what changes: the description, not the value."""
+    hosts = [
+        obj("h2", "mcp-w6-sync-2", "Host", value="192.0.2.112", description="W6 F70 sync"),
+        obj("h3", "mcp-w6-sync-3", "Host", value="192.0.2.103"),
+    ]
+    fmc.get(f"{CFG}/object/hosts").mock(side_effect=collection(hosts))
+    empty_collections(fmc, "networks", "ranges", "fqdns", "networkgroups")
+    put = fmc.put(f"{CFG}/object/hosts/h2").mock(return_value=httpx.Response(200, json={}))
+    rows = [
+        {"name": "mcp-w6-sync-2", "type": "host", "value": "192.0.2.112", "description": "W6 F70 sync 3"},
+        {"name": "mcp-w6-sync-3", "type": "host", "value": "192.0.2.103"},
+        {"name": "mcp-w6-sync-4", "type": "host", "value": "192.0.2.104", "description": "new"},
+    ]
+    fmc.post(f"{CFG}/object/hosts").mock(return_value=httpx.Response(201, json={"items": []}))
+    args = {"objects": rows, "mode": "sync", "prefix": "mcp-w6-sync-"}
+    async with Client(server(dangerous=False)) as c:
+        p = await run(c, "fmc_import_objects", args)
+        assert p["preview"]["rows"][:2] == [
+            {
+                "row": 1,
+                "name": "mcp-w6-sync-2",
+                "type": "host",
+                "action": "update",
+                "value": "192.0.2.112",
+                "description": {"from": "W6 F70 sync", "to": "W6 F70 sync 3"},
+            },
+            {"row": 2, "name": "mcp-w6-sync-3", "type": "host", "action": "unchanged"},
+        ]
+        await run(c, "fmc_import_objects", {**args, "confirm": p["confirm"]})
+    body = json.loads(put.calls.last.request.content)
+    assert body["value"] == "192.0.2.112" and body["description"] == "W6 F70 sync 3"
 
 
 async def test_sync_problems_and_modes(fmc: respx.MockRouter) -> None:
