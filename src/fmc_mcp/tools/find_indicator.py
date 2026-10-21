@@ -618,9 +618,11 @@ def register(reg: ToolRegistrar) -> None:
             s.used += 1
             acps = [await resolve_policy(app, "access", access_policy, domain)]
         elif dev is not None:
-            s.used += 2
+            s.used += 0 if dev.get("accessPolicy") else 1  # access_policy_of re-reads a bare record
             ref = await access_policy_of(app, dev, domain)
-            acps = [await resolve_policy(app, "access", str(ref["id"]), domain)] if ref else []
+            if ref:
+                s.used += 1
+                acps = [await resolve_policy(app, "access", str(ref["id"]), domain)]
         elif need_si or "access_rules" in wanted:
             if s.spend("access policies"):
                 acps = await _policies(s, "access", ACCESS, None, "access policies")

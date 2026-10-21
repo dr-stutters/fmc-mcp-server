@@ -251,6 +251,40 @@ async def test_access_policy_narrows_to_its_dns_and_decryption_policies(world: r
     assert data["by_area"]["decryption_rules"] == 1
 
 
+async def test_device_narrows_to_its_access_policy(world: respx.MockRouter) -> None:
+    """device=: the FTD's access policy (by id), its SI, its DNS policy and its decryption policy only;
+    searched.requests counts every read, the device lookup included."""
+    dev = {
+        **fixture("ftd_device"),
+        "accessPolicy": {"id": ACP["id"], "name": ACP["name"], "type": ACP["type"]},
+    }
+    devices = world.get(f"{CFG}/devices/devicerecords").mock(return_value=items([dev]))
+    other = "00000000-0000-0ed3-0000-021479000999"
+    world.routes["acps"].mock(
+        return_value=items([ACP, {"id": other, "name": "mcp-w6-other", "type": "AccessPolicy"}])
+    )
+    data = await call({"value": "bad.example.com", "device": dev["name"]})
+    assert devices.called and not world.routes["acps"].called  # the device names its policy's id
+    assert not world.routes["dnspolicies"].called and not world.routes["decpolicies"].called
+    assert world.routes["dnspolicy"].called
+    paths = [c.request.url.path for c in world.calls]
+    assert not any(other in p for p in paths)
+    assert {r["where"].split(" #")[0] for r in data["results"] if r["area"] == "access_rules"} == {
+        "mcp-w6-acp"
+    }
+    dns = [r["where"] for r in data["results"] if r["area"] == "dns_rules"]
+    assert dns == ["DNS policy mcp-w6-dns #5 mcp-dns-block (NXDOMAIN) [access policies: mcp-w6-acp]"]
+    assert data["by_area"]["decryption_rules"] == 1
+    searched = data["searched"]
+    assert (searched["access_policies"], searched["dns_policies"], searched["decryption_policies"]) == (
+        1,
+        1,
+        1,
+    )
+    # the device list is the tool's own read here (by name), on top of the reads config_calls counts
+    assert searched["requests"] == len(config_calls(world)) + 1
+
+
 async def test_markdown_reply(world: respx.MockRouter) -> None:
     out = await call_tool(
         create_server(make_settings()),
