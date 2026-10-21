@@ -84,7 +84,8 @@ LIMITS = (
     "Talos categories and of custom SI lists (FMC's REST API returns entry counts only; the one-domain lists "
     "fmc_dns_block makes are matched by their name); URL categories and reputation in rules; per-device "
     "object overrides. FMC's Global and Domain block/do-not-block lists are read when a searched policy uses "
-    "them. Live verdicts: fmc_packet_tracer."
+    "them. A child access policy lists its base policy's rules too: those rows say 'inherited from <base>'. "
+    "Live verdicts: fmc_packet_tracer."
 )
 
 
@@ -402,11 +403,15 @@ def _objects(s: Sweep, cat: Catalog) -> None:
     s.searched["objects"] = count
 
 
-def _rule_rows(s: Sweep, area: str, policy: str, rules: list[dict[str, Any]], action_key: str) -> None:
+def _rule_rows(s: Sweep, area: str, p: dict[str, Any], rules: list[dict[str, Any]], action_key: str) -> None:
+    policy = str(p.get("name"))
     for r in rules:
         meta = r.get("metadata") or {}
         idx = meta.get("ruleIndex", r.get("ruleIndex"))
-        where = _rule_where(policy, {**r, "metadata": {**meta, "ruleIndex": idx}}, r.get(action_key))
+        # a child policy's inherited rules are labelled with their base (FMC lists them under the child too)
+        where = _rule_where(
+            policy, {**r, "metadata": {**meta, "ruleIndex": idx}}, r.get(action_key), p.get("id")
+        )
         if (r.get("urls") or {}).get("urlCategoriesWithReputation"):
             s.category_rules += 1
         for side, key in SIDES:
@@ -429,7 +434,7 @@ async def _policy_rules(s: Sweep, area: str, base: str, sub: str, p: dict[str, A
         return 0
     if not rules.complete:
         s.warnings.append(f"{name!r} has more rules than were read.")
-    _rule_rows(s, area, name, rules.items, action_key)
+    _rule_rows(s, area, p, rules.items, action_key)
     return len(rules.items)
 
 

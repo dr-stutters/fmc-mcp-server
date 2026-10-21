@@ -1,0 +1,96 @@
+{
+ "_source": "FMC 10.0.1 (build 1), domain Global/mcp-test-leaf, 2026-10-21 (W6N live-A, F76; links dropped). mcp-w6-child-acp has base policy mcp-w6-acp. child_acp: the child's GET (metadata.inherit, parentPolicy; settings trimmed). child_rules_listing: GET <child>/accessrules?limit=3 (not expanded): the parent's rules with the parent's ids. child_rules_expanded: GET <child>/accessrules?limit=2&expanded=true after the child got a rule of its own (rule bodies trimmed by the recorder to metadata, name, id, type): the child's rule carries metadata.accessPolicy = the child, the inherited one = the parent (mcp-w6-acp), with the child's rule index.",
+ "child_acp": {
+  "metadata": {
+   "inherit": true,
+   "parentPolicy": {
+    "name": "mcp-w6-acp",
+    "id": "00000000-0000-0ed3-0000-021474963108",
+    "type": "AccessPolicy"
+   },
+   "lockingStatus": {
+    "status": "UNLOCKED"
+   },
+   "timestamp": 1792604277943,
+   "lastUser": {
+    "name": "mcp-api-svc"
+   },
+   "domain": {
+    "name": "Global \\ mcp-test-leaf",
+    "id": "a1c73df0-8353-8db7-1097-000000000000",
+    "type": "Domain"
+   }
+  },
+  "type": "AccessPolicy",
+  "name": "mcp-w6-child-acp",
+  "description": "W6N live-A F76 child of mcp-w6-acp",
+  "id": "00000000-0000-0ed3-0000-021475055837"
+ },
+ "child_rules_listing": {
+  "items": [
+   {
+    "type": "AccessRule",
+    "name": "mcp-w6-quarantine-block",
+    "id": "00000000-0000-0ed3-0000-000268434506"
+   },
+   {
+    "type": "AccessRule",
+    "name": "mcp-w6-ips-allow",
+    "id": "00000000-0000-0ed3-0000-000268434553"
+   },
+   {
+    "type": "AccessRule",
+    "name": "mcp-w6-fqdn-allow",
+    "id": "00000000-0000-0ed3-0000-000268434534"
+   }
+  ],
+  "paging": {
+   "offset": 0,
+   "limit": 3,
+   "count": 12,
+   "pages": 4
+  }
+ },
+ "child_rules_expanded": {
+  "items": [
+   {
+    "metadata": {
+     "ruleIndex": 1,
+     "section": "Default",
+     "category": "--Undefined--",
+     "accessPolicy": {
+      "name": "mcp-w6-child-acp",
+      "id": "00000000-0000-0ed3-0000-021475055837",
+      "type": "AccessPolicy"
+     },
+     "timestamp": 1792604411164
+    },
+    "name": "mcp-w6-child-icmp",
+    "id": "00000000-0000-0ed3-0000-000268434572",
+    "type": "AccessRule"
+   },
+   {
+    "metadata": {
+     "ruleIndex": 2,
+     "section": "Default",
+     "category": "--Undefined--",
+     "accessPolicy": {
+      "name": "mcp-w6-acp",
+      "id": "00000000-0000-0ed3-0000-021474963108",
+      "type": "AccessPolicy"
+     },
+     "timestamp": 1792586658709
+    },
+    "name": "mcp-w6-quarantine-block",
+    "id": "00000000-0000-0ed3-0000-000268434506",
+    "type": "AccessRule"
+   }
+  ],
+  "paging": {
+   "offset": 0,
+   "limit": 2,
+   "count": 13,
+   "pages": 7
+  }
+ }
+}
