@@ -428,6 +428,26 @@ def _names(members: list[dict[str, Any]]) -> list[str]:
     return [str(m.get("name") or m["id"]) for m in members]
 
 
+# FMC 10.0.1's DeviceGroup schema has a description, but FMC doesn't keep it: a PUT that sent one was
+# answered without it and a re-read had none (Wave 6 live proof). The tools still send it (another FMC
+# version may keep it) and say when the answer drops it.
+DESCRIPTION_NOTE = (
+    "FMC 10.0.1 doesn't store device-group descriptions (it accepts the field and drops it); the result says "
+    "whether FMC kept it."
+)
+DESCRIPTION_DROPPED = (
+    "FMC did not keep the description: its answer has none (FMC 10.0.1 doesn't store device-group "
+    "descriptions). Everything else was applied."
+)
+
+
+def kept_description(result: Any, description: str | None) -> Any:
+    """A create or update result, with a warning when FMC's answer lacks the description it was sent."""
+    if not description or not isinstance(result, dict) or result.get("description") == description:
+        return result
+    return {**result, "warning": DESCRIPTION_DROPPED}
+
+
 def register(reg: ToolRegistrar) -> None:
     @reg.read(title="List device groups")
     async def fmc_list_device_groups(
@@ -459,7 +479,12 @@ def register(reg: ToolRegistrar) -> None:
         ctx: Context,
         name: Annotated[str, Field(min_length=1, max_length=128, description="Name of the new device group")],
         devices: MemberRefs = None,
-        description: Annotated[str | None, Field(description="Description")] = None,
+        description: Annotated[
+            str | None,
+            Field(
+                description="Description (FMC 10.0.1 doesn't store it on device groups; the result says so)"
+            ),
+        ] = None,
         domain: Domain = None,
         confirm: Confirm = None,
     ) -> dict[str, Any]:
@@ -480,6 +505,12 @@ def register(reg: ToolRegistrar) -> None:
         moves = _moves(members, current_groups(groups))
         path = await app.config_path(DEVICE_GROUPS, domain)
         body = _body(name, members, description, None)
+        if description:
+            notes.append(DESCRIPTION_NOTE)
+
+        async def apply() -> Any:
+            return kept_description(await applied(app, lambda: app.api.post(path, body)), description)
+
         return await fmc_preview(
             ctx,
             tool="fmc_create_device_group",
@@ -496,7 +527,7 @@ def register(reg: ToolRegistrar) -> None:
                 blockers=blockers,
                 side_effects=moves,
             ),
-            apply=lambda: applied(app, lambda: app.api.post(path, body)),
+            apply=apply,
         )
 
     @reg.write(title="Change device group")
@@ -508,7 +539,13 @@ def register(reg: ToolRegistrar) -> None:
         new_name: Annotated[
             str | None, Field(min_length=1, max_length=128, description="Rename the group")
         ] = None,
-        description: Annotated[str | None, Field(description="New description ('' clears it)")] = None,
+        description: Annotated[
+            str | None,
+            Field(
+                description="New description ('' clears it; FMC 10.0.1 doesn't store it on device groups, "
+                "the result says so)"
+            ),
+        ] = None,
         domain: Domain = None,
         confirm: Confirm = None,
     ) -> dict[str, Any]:
@@ -548,6 +585,12 @@ def register(reg: ToolRegistrar) -> None:
         moves = _moves(new, current_groups(groups, skip=str(g.get("id"))))
         path = await app.config_path(f"{DEVICE_GROUPS}/{g['id']}", domain)
         body = _body(name, after, desc, str(g["id"]))
+        if redescribed and desc:
+            notes.append(DESCRIPTION_NOTE)
+
+        async def apply() -> Any:
+            return kept_description(await applied(app, lambda: app.api.put(path, body)), desc)
+
         return await fmc_preview(
             ctx,
             tool="fmc_update_device_group",
@@ -590,7 +633,7 @@ def register(reg: ToolRegistrar) -> None:
                     else []
                 ),
             ),
-            apply=lambda: applied(app, lambda: app.api.put(path, body)),
+            apply=apply,
         )
 
     @reg.write(title="Delete device group", destructive=True)
