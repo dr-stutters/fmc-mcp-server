@@ -1,7 +1,8 @@
 """F75: certificate enrollment objects (fmc_create_cert_enrollment) and device enrolment
 (fmc_enroll_certificate). FMC shapes: tests/fixtures/cert_enrollments.json (the W6N probe's recorded
-self-signed enrollment; PKCS12 and managecertificates from FMC 10.0.1's spec and schema). The PKI material is
-made here with throwaway keys, so no key or passphrase lives in the repo."""
+self-signed enrollment; managecertificates, its task and the device row from the W6N live-A enrolment; PKCS12
+from FMC 10.0.1's spec). The PKI material is made here with throwaway keys, so no key or passphrase lives in
+the repo."""
 
 import base64
 import json
@@ -430,9 +431,11 @@ async def test_enroll_self_signed_waits_for_the_task(fmc: respx.MockRouter) -> N
     }
     assert p["preview"]["body"] == sent  # the preview shows exactly what is POSTed
     result = out["result"]
-    assert task.called and result["task_id"] == TASK and result["task"]["status"] == "SUCCESS"
+    # FMC 10.0.1's task (live): COMPLETED with a SUCCESS subtask; the row's date has no seconds
+    assert task.called and result["task_id"] == TASK
+    assert result["task"] == {"status": "COMPLETED", "message": "SUCCESS subtasks:1"}
     assert result["outcome"] == "enrolled" and result["on_device"]["identity_status"] == "AVAILABLE"
-    assert result["on_device"]["identity_expires"].startswith("2034-") and certs.call_count == 3
+    assert result["on_device"]["identity_expires"].startswith("2036-10-18T17:32") and certs.call_count == 3
 
 
 async def test_enroll_blockers(fmc: respx.MockRouter) -> None:
