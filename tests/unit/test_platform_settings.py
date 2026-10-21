@@ -79,7 +79,14 @@ def ps(fmc: respx.MockRouter) -> respx.MockRouter:
             [{"type": "FTDSNMPPlatformSettings", "enableSNMPServers": True, "readCommunity": "s3cret"}]
         )
     )
-    for sub in ("httpaccesssettings", "bannersettings", "dnssettings"):
+    for sub in (
+        "httpaccesssettings",
+        "bannersettings",
+        "dnssettings",
+        "trusteddnssettings",
+        "netflowpolicies",
+        "icmpsettings",
+    ):
         fmc.get(f"{BASE}/{sub}").mock(return_value=items([{"type": "X", "id": PID}]))
     fmc.get(f"{CFG}/assignment/policyassignments").mock(
         return_value=items([{"policy": {"id": PID}, "targets": [{"id": "d", "name": "mcp-ftd1"}]}])

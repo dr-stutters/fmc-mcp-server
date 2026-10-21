@@ -1,0 +1,616 @@
+{
+  "_source": "FMC 10.0.1, 2026-10-20 (#197): GET object/networkaddresses and object/networkgroups?expanded=true in the child domain Global/mcp-test-leaf. FMC's built-ins (fixed ids) and Global's user objects (ids ...-0ed3-...) both say readOnly reason DOMAIN there; the leaf's own objects have no readOnly. lastUser scrubbed; trimmed to 20 of the 35 rows (10 of the leaf's own SD-WAN networks and 5 of Global's mcp-test-* objects left out).",
+  "networkaddresses": {
+    "items": [
+      {
+        "type": "Network",
+        "value": "0.0.0.0/0",
+        "overridable": false,
+        "name": "any-ipv4",
+        "id": "cb7116e8-66a6-480b-8f9b-295191a0940a",
+        "metadata": {
+          "readOnly": {
+            "state": true,
+            "reason": "DOMAIN"
+          },
+          "wildcard": false,
+          "timestamp": 1775157448949,
+          "lastUser": {
+            "name": "apiuser"
+          },
+          "domain": {
+            "name": "Global",
+            "id": "e276abec-e0f2-11e3-8169-6d9ed49b625f",
+            "type": "Domain"
+          },
+          "ipType": "V_4",
+          "parentType": "NetworkAddress"
+        }
+      },
+      {
+        "type": "Host",
+        "value": "::/0",
+        "overridable": false,
+        "name": "any-ipv6",
+        "id": "dde11d62-288b-4b4c-92e0-1dad0496f14b",
+        "metadata": {
+          "readOnly": {
+            "state": true,
+            "reason": "DOMAIN"
+          },
+          "timestamp": 1775157448949,
+          "lastUser": {
+            "name": "apiuser"
+          },
+          "domain": {
+            "name": "Global",
+            "id": "e276abec-e0f2-11e3-8169-6d9ed49b625f",
+            "type": "Domain"
+          },
+          "ipType": "V_6",
+          "parentType": "NetworkAddress"
+        }
+      },
+      {
+        "type": "Network",
+        "value": "198.18.0.0/15",
+        "overridable": false,
+        "name": "IPv4-Benchmark-Tests",
+        "id": "86caab8a-9bdd-420d-858b-5690fde8ce58",
+        "metadata": {
+          "readOnly": {
+            "state": true,
+            "reason": "DOMAIN"
+          },
+          "wildcard": false,
+          "timestamp": 1775157448949,
+          "lastUser": {
+            "name": "apiuser"
+          },
+          "domain": {
+            "name": "Global",
+            "id": "e276abec-e0f2-11e3-8169-6d9ed49b625f",
+            "type": "Domain"
+          },
+          "ipType": "V_4",
+          "parentType": "NetworkAddress"
+        }
+      },
+      {
+        "type": "Network",
+        "value": "169.254.0.0/16",
+        "overridable": false,
+        "name": "IPv4-Link-Local",
+        "id": "f0ce41ae-6ee9-4e00-8762-da9370c4fee5",
+        "metadata": {
+          "readOnly": {
+            "state": true,
+            "reason": "DOMAIN"
+          },
+          "wildcard": false,
+          "timestamp": 1775157448948,
+          "lastUser": {
+            "name": "apiuser"
+          },
+          "domain": {
+            "name": "Global",
+            "id": "e276abec-e0f2-11e3-8169-6d9ed49b625f",
+            "type": "Domain"
+          },
+          "ipType": "V_4",
+          "parentType": "NetworkAddress"
+        }
+      },
+      {
+        "type": "Network",
+        "value": "224.0.0.0/4",
+        "overridable": false,
+        "name": "IPv4-Multicast",
+        "id": "5622db1c-5cd5-4199-a4c8-d8f86dec3bd4",
+        "metadata": {
+          "readOnly": {
+            "state": true,
+            "reason": "DOMAIN"
+          },
+          "wildcard": false,
+          "timestamp": 1775157448948,
+          "lastUser": {
+            "name": "apiuser"
+          },
+          "domain": {
+            "name": "Global",
+            "id": "e276abec-e0f2-11e3-8169-6d9ed49b625f",
+            "type": "Domain"
+          },
+          "ipType": "V_4",
+          "parentType": "NetworkAddress"
+        }
+      },
+      {
+        "type": "Network",
+        "value": "10.0.0.0/8",
+        "overridable": false,
+        "name": "IPv4-Private-10.0.0.0-8",
+        "id": "95916354-5aa1-4057-8eea-b42a5a207abc",
+        "metadata": {
+          "readOnly": {
+            "state": true,
+            "reason": "DOMAIN"
+          },
+          "wildcard": false,
+          "timestamp": 1775157448947,
+          "lastUser": {
+            "name": "apiuser"
+          },
+          "domain": {
+            "name": "Global",
+            "id": "e276abec-e0f2-11e3-8169-6d9ed49b625f",
+            "type": "Domain"
+          },
+          "ipType": "V_4",
+          "parentType": "NetworkAddress"
+        }
+      },
+      {
+        "type": "Network",
+        "value": "172.16.0.0/12",
+        "overridable": false,
+        "name": "IPv4-Private-172.16.0.0-12",
+        "id": "b7a78a7d-20c5-47b2-b02f-86b4360112ac",
+        "metadata": {
+          "readOnly": {
+            "state": true,
+            "reason": "DOMAIN"
+          },
+          "wildcard": false,
+          "timestamp": 1775157448947,
+          "lastUser": {
+            "name": "apiuser"
+          },
+          "domain": {
+            "name": "Global",
+            "id": "e276abec-e0f2-11e3-8169-6d9ed49b625f",
+            "type": "Domain"
+          },
+          "ipType": "V_4",
+          "parentType": "NetworkAddress"
+        }
+      },
+      {
+        "type": "Network",
+        "value": "192.168.0.0/16",
+        "overridable": false,
+        "name": "IPv4-Private-192.168.0.0-16",
+        "id": "1dcefdd8-07f7-438a-9221-97d63710614e",
+        "metadata": {
+          "readOnly": {
+            "state": true,
+            "reason": "DOMAIN"
+          },
+          "wildcard": false,
+          "timestamp": 1775157448948,
+          "lastUser": {
+            "name": "apiuser"
+          },
+          "domain": {
+            "name": "Global",
+            "id": "e276abec-e0f2-11e3-8169-6d9ed49b625f",
+            "type": "Domain"
+          },
+          "ipType": "V_4",
+          "parentType": "NetworkAddress"
+        }
+      },
+      {
+        "type": "Network",
+        "value": "::ffff:0.0.0.0/96",
+        "overridable": false,
+        "name": "IPv6-IPv4-Mapped",
+        "id": "1047b91f-db3a-45b8-9c10-f48ed3f0c3d6",
+        "metadata": {
+          "readOnly": {
+            "state": true,
+            "reason": "DOMAIN"
+          },
+          "wildcard": false,
+          "timestamp": 1775157448949,
+          "lastUser": {
+            "name": "apiuser"
+          },
+          "domain": {
+            "name": "Global",
+            "id": "e276abec-e0f2-11e3-8169-6d9ed49b625f",
+            "type": "Domain"
+          },
+          "ipType": "V_6",
+          "parentType": "NetworkAddress"
+        }
+      },
+      {
+        "type": "Network",
+        "value": "fe80::/10",
+        "overridable": false,
+        "name": "IPv6-Link-Local",
+        "id": "192c14f2-39d9-409d-81e9-357793bdf1ec",
+        "metadata": {
+          "readOnly": {
+            "state": true,
+            "reason": "DOMAIN"
+          },
+          "wildcard": false,
+          "timestamp": 1775157448948,
+          "lastUser": {
+            "name": "apiuser"
+          },
+          "domain": {
+            "name": "Global",
+            "id": "e276abec-e0f2-11e3-8169-6d9ed49b625f",
+            "type": "Domain"
+          },
+          "ipType": "V_6",
+          "parentType": "NetworkAddress"
+        }
+      },
+      {
+        "type": "Network",
+        "value": "fc00::/7",
+        "overridable": false,
+        "name": "IPv6-Private-Unique-Local-Addresses",
+        "id": "0434674f-87f8-4e17-810e-97100407858b",
+        "metadata": {
+          "readOnly": {
+            "state": true,
+            "reason": "DOMAIN"
+          },
+          "wildcard": false,
+          "timestamp": 1775157448948,
+          "lastUser": {
+            "name": "apiuser"
+          },
+          "domain": {
+            "name": "Global",
+            "id": "e276abec-e0f2-11e3-8169-6d9ed49b625f",
+            "type": "Domain"
+          },
+          "ipType": "V_6",
+          "parentType": "NetworkAddress"
+        }
+      },
+      {
+        "type": "Network",
+        "value": "192.88.99.0/24",
+        "overridable": false,
+        "name": "IPv6-to-IPv4-Relay-Anycast",
+        "id": "04ea3f1f-f5a9-4eca-b051-487ebeb4c97f",
+        "metadata": {
+          "readOnly": {
+            "state": true,
+            "reason": "DOMAIN"
+          },
+          "wildcard": false,
+          "timestamp": 1775157448949,
+          "lastUser": {
+            "name": "apiuser"
+          },
+          "domain": {
+            "name": "Global",
+            "id": "e276abec-e0f2-11e3-8169-6d9ed49b625f",
+            "type": "Domain"
+          },
+          "ipType": "V_4",
+          "parentType": "NetworkAddress"
+        }
+      },
+      {
+        "type": "Network",
+        "value": "10.20.0.0/24",
+        "overridable": false,
+        "description": "FW run: mcp-fw-ha inside network",
+        "name": "mcp-fw-ha-inside-net",
+        "id": "00000000-0000-0ed3-0000-021474906755",
+        "metadata": {
+          "wildcard": false,
+          "timestamp": 1792332742553,
+          "lastUser": {
+            "name": "apiuser"
+          },
+          "domain": {
+            "name": "Global \\ mcp-test-leaf",
+            "id": "a1c73df0-8353-8db7-1097-000000000000",
+            "type": "Domain"
+          },
+          "ipType": "V_4",
+          "parentType": "NetworkAddress"
+        }
+      },
+      {
+        "type": "Network",
+        "value": "10.10.0.0/16",
+        "overridable": false,
+        "name": "mcp-sdwan-inside-net",
+        "id": "00000000-0000-0ed3-0000-021474871126",
+        "metadata": {
+          "wildcard": false,
+          "timestamp": 1792287274040,
+          "lastUser": {
+            "name": "apiuser"
+          },
+          "domain": {
+            "name": "Global \\ mcp-test-leaf",
+            "id": "a1c73df0-8353-8db7-1097-000000000000",
+            "type": "Domain"
+          },
+          "ipType": "V_4",
+          "parentType": "NetworkAddress"
+        }
+      },
+      {
+        "type": "Network",
+        "value": "10.10.20.0/24",
+        "overridable": false,
+        "name": "mcp-test-app-net",
+        "id": "00000000-0000-0ed3-0000-021474836604",
+        "metadata": {
+          "readOnly": {
+            "state": true,
+            "reason": "DOMAIN"
+          },
+          "wildcard": false,
+          "timestamp": 1792202016384,
+          "lastUser": {
+            "name": "apiuser"
+          },
+          "domain": {
+            "name": "Global",
+            "id": "e276abec-e0f2-11e3-8169-6d9ed49b625f",
+            "type": "Domain"
+          },
+          "ipType": "V_4",
+          "parentType": "NetworkAddress"
+        }
+      },
+      {
+        "type": "Host",
+        "value": "10.10.20.5",
+        "overridable": false,
+        "name": "mcp-test-db",
+        "id": "00000000-0000-0ed3-0000-021474836550",
+        "metadata": {
+          "readOnly": {
+            "state": true,
+            "reason": "DOMAIN"
+          },
+          "timestamp": 1792202012585,
+          "lastUser": {
+            "name": "apiuser"
+          },
+          "domain": {
+            "name": "Global",
+            "id": "e276abec-e0f2-11e3-8169-6d9ed49b625f",
+            "type": "Domain"
+          },
+          "ipType": "V_4",
+          "parentType": "NetworkAddress"
+        }
+      },
+      {
+        "type": "Network",
+        "value": "10.10.10.0/24",
+        "overridable": false,
+        "name": "mcp-test-dmz-net",
+        "id": "00000000-0000-0ed3-0000-021474836586",
+        "metadata": {
+          "readOnly": {
+            "state": true,
+            "reason": "DOMAIN"
+          },
+          "wildcard": false,
+          "timestamp": 1792202015485,
+          "lastUser": {
+            "name": "apiuser"
+          },
+          "domain": {
+            "name": "Global",
+            "id": "e276abec-e0f2-11e3-8169-6d9ed49b625f",
+            "type": "Domain"
+          },
+          "ipType": "V_4",
+          "parentType": "NetworkAddress"
+        }
+      },
+      {
+        "type": "Range",
+        "value": "10.10.30.10-10.10.30.20",
+        "overridable": false,
+        "name": "mcp-test-range",
+        "id": "00000000-0000-0ed3-0000-021474836622",
+        "metadata": {
+          "readOnly": {
+            "state": true,
+            "reason": "DOMAIN"
+          },
+          "timestamp": 1792202016883,
+          "lastUser": {
+            "name": "apiuser"
+          },
+          "domain": {
+            "name": "Global",
+            "id": "e276abec-e0f2-11e3-8169-6d9ed49b625f",
+            "type": "Domain"
+          },
+          "ipType": "V_4",
+          "parentType": "NetworkAddress"
+        }
+      },
+      {
+        "type": "Host",
+        "value": "10.99.99.99",
+        "overridable": false,
+        "name": "mcp-test-unused",
+        "id": "00000000-0000-0ed3-0000-021474836568",
+        "metadata": {
+          "readOnly": {
+            "state": true,
+            "reason": "DOMAIN"
+          },
+          "timestamp": 1792202013900,
+          "lastUser": {
+            "name": "apiuser"
+          },
+          "domain": {
+            "name": "Global",
+            "id": "e276abec-e0f2-11e3-8169-6d9ed49b625f",
+            "type": "Domain"
+          },
+          "ipType": "V_4",
+          "parentType": "NetworkAddress"
+        }
+      },
+      {
+        "type": "Host",
+        "value": "10.10.10.80",
+        "overridable": false,
+        "name": "mcp-test-web",
+        "id": "00000000-0000-0ed3-0000-021474836532",
+        "metadata": {
+          "readOnly": {
+            "state": true,
+            "reason": "DOMAIN"
+          },
+          "timestamp": 1792202009227,
+          "lastUser": {
+            "name": "apiuser"
+          },
+          "domain": {
+            "name": "Global",
+            "id": "e276abec-e0f2-11e3-8169-6d9ed49b625f",
+            "type": "Domain"
+          },
+          "ipType": "V_4",
+          "parentType": "NetworkAddress"
+        }
+      }
+    ],
+    "paging": {
+      "offset": 0,
+      "limit": 200,
+      "count": 20,
+      "pages": 1
+    }
+  },
+  "networkgroups": {
+    "items": [
+      {
+        "literals": [
+          {
+            "type": "Network",
+            "value": "0.0.0.0/0"
+          },
+          {
+            "type": "Network",
+            "value": "::/0"
+          }
+        ],
+        "type": "NetworkGroup",
+        "overridable": false,
+        "name": "any",
+        "id": "69fa2a3a-4487-4e3c-816f-4098f684826e",
+        "metadata": {
+          "readOnly": {
+            "state": true,
+            "reason": "DOMAIN"
+          },
+          "timestamp": 1775157448949,
+          "lastUser": {
+            "name": "apiuser"
+          },
+          "domain": {
+            "name": "Global",
+            "id": "e276abec-e0f2-11e3-8169-6d9ed49b625f",
+            "type": "Domain"
+          }
+        }
+      },
+      {
+        "literals": [
+          {
+            "type": "Network",
+            "value": "10.0.0.0/8"
+          },
+          {
+            "type": "Network",
+            "value": "172.16.0.0/12"
+          },
+          {
+            "type": "Network",
+            "value": "192.168.0.0/16"
+          }
+        ],
+        "type": "NetworkGroup",
+        "overridable": false,
+        "name": "IPv4-Private-All-RFC1918",
+        "id": "15b12b14-dace-4117-b9d9-a9a7dcfa356f",
+        "metadata": {
+          "readOnly": {
+            "state": true,
+            "reason": "DOMAIN"
+          },
+          "timestamp": 1775157448947,
+          "lastUser": {
+            "name": "apiuser"
+          },
+          "domain": {
+            "name": "Global",
+            "id": "e276abec-e0f2-11e3-8169-6d9ed49b625f",
+            "type": "Domain"
+          }
+        }
+      },
+      {
+        "literals": [
+          {
+            "type": "Network",
+            "value": "10.10.40.0/24"
+          }
+        ],
+        "objects": [
+          {
+            "type": "Host",
+            "name": "mcp-test-web",
+            "id": "00000000-0000-0ed3-0000-021474836532"
+          },
+          {
+            "type": "Network",
+            "name": "mcp-test-app-net",
+            "id": "00000000-0000-0ed3-0000-021474836604"
+          }
+        ],
+        "type": "NetworkGroup",
+        "overridable": false,
+        "name": "mcp-test-servers",
+        "id": "00000000-0000-0ed3-0000-021474836712",
+        "metadata": {
+          "readOnly": {
+            "state": true,
+            "reason": "DOMAIN"
+          },
+          "timestamp": 1792202023027,
+          "lastUser": {
+            "name": "apiuser"
+          },
+          "domain": {
+            "name": "Global",
+            "id": "e276abec-e0f2-11e3-8169-6d9ed49b625f",
+            "type": "Domain"
+          }
+        }
+      }
+    ],
+    "paging": {
+      "offset": 0,
+      "limit": 100,
+      "count": 3,
+      "pages": 1
+    }
+  }
+}

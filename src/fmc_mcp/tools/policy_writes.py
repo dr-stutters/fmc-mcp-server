@@ -22,6 +22,7 @@ from fmc_mcp.refs import NETWORK_TYPES, PORT_TYPES, RefResolver, network_literal
 from fmc_mcp.rule_conditions import VLAN_NOTE, ExtraConditions, relabel_changes
 from fmc_mcp.rules import flatten_access_rule, flatten_nat_rule, url_labels
 from fmc_mcp.tools.common import Domain, block_labels, ref_label, resolve_in, rule_changes
+from fmc_mcp.tools.fqdn_dns import fqdn_dns_check
 from fmc_mcp.tools.object_writes import applied, editable
 from fmc_mcp.tools.policies import ACCESS, NAT, all_rules, find_access_rule, resolve_policy
 from fmc_mcp.url_categories import (
@@ -408,6 +409,7 @@ def register(reg: ToolRegistrar) -> None:
         if cats:
             details["url_categories"] = category_details(cats, action)
         details.update(extra.details)
+        details.update(await fqdn_dns_check(app, body, domain, policy=p))
         plan = Plan(
             f"Add {action} rule {name!r} to {p.get('name')!r} {where}",
             details={**details, "body": body},
@@ -633,6 +635,7 @@ def register(reg: ToolRegistrar) -> None:
                 return await app.api.put(base, [desired], params=params)
             return await app.api.put(f"{base}/{current['id']}", desired)
 
+        details.update(await fqdn_dns_check(app, desired, domain, policy=p))
         return await fmc_preview(
             ctx,
             tool="fmc_update_access_rule",
