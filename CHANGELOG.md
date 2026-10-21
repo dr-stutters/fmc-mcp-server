@@ -1,5 +1,14 @@
 # Changelog
 
+## Unreleased
+
+### Fixed
+- **`fmc_find_object` read hyphenated names as ports**: `value='sdwan-single'` searched port objects for protocol
+  `SDWAN-SINGLE` on ports 0-65535 (query `SDWAN-SINGLE/0-65535`) and silently found nothing. A port query now needs a known
+  protocol (tcp, udp, icmp, ... or a number 0-255) and ports 0-65535; anything else (`sdwan-single`, `mcp-test-inside`,
+  `HTTPS`, `70000`) is a name/value text search. `443`, `tcp/443`, `udp/53` and `1000-2000` still search ports. The same
+  check applies to port values given to `fmc_create_object` and to port literals in rules.
+
 ## 0.15.0 (2026-10-21)
 
 Wave 6 Now: operate the fleet, not one device. Built and proven live in the fleet run of 2026-10-20/21 on FMC 10.0.1 with
