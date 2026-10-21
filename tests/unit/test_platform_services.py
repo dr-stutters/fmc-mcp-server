@@ -327,11 +327,22 @@ async def test_dns_blockers(fmc: respx.MockRouter) -> None:
             )
 
 
-async def test_dns_disable(fmc: respx.MockRouter) -> None:
+async def test_dns_disable_is_refused_in_the_preview(fmc: respx.MockRouter) -> None:
+    """live-B2: disable=True previewed dnsServerGroups -> [] and FMC 10.0.1 refused the PUT (and every raw
+    PUT without a group): "One DNS server group must be set as the default group. Default DNS server group
+    is not configured." The preview now says so instead of failing on confirm; nothing is sent."""
     puts = mock_ps(fmc, dnssettings=DNS_SET)
-    p, _ = await preview_confirm("fmc_configure_dns", {"policy": "mcp-w6-ps", "disable": True})
-    assert "dnsServerGroups" in p["preview"]["changes"]
-    assert json.loads(puts["dnssettings"].calls.last.request.content)["dnsServerGroups"] == []
+    async with Client(server()) as c:
+        p = await run(c, "fmc_configure_dns", {"policy": "mcp-w6-ps", "disable": True})
+        assert p["status"] == "blocked" and "confirm" not in p
+        (msg,) = p["blockers"]
+        assert "One DNS server group must be set as the default group" in msg
+        assert "fmc_assign_policy kind='platform_settings'" in msg
+        assert p["preview"]["changes"]["dnsServerGroups"]["to"] == []  # what it would have sent
+        mock_ps(fmc)  # a policy without DNS: nothing to remove
+        none = await run(c, "fmc_configure_dns", {"policy": "mcp-w6-ps", "disable": True})
+        assert none["status"] == "blocked" and none["blockers"] == ["Nothing to change."]
+    assert not puts["dnssettings"].called
 
 
 # --- NetFlow ------------------------------------------------------------------------------------------

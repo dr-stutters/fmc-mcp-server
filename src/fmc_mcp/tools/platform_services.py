@@ -151,7 +151,11 @@ def register(reg: ToolRegistrar) -> None:
             int | None, Field(ge=1, le=65535, description="Expire entry timer for unused resolutions")
         ] = None,
         disable: Annotated[
-            bool, Field(description="Remove the DNS server groups (the devices stop resolving FQDN objects)")
+            bool,
+            Field(
+                description="Remove the DNS server groups. FMC 10.0.1 refuses this once a group is set (a "
+                "default group is mandatory on every update): the preview says so and what to do instead"
+            ),
         ] = False,
         domain: Domain = None,
         confirm: Confirm = None,
@@ -160,8 +164,9 @@ def register(reg: ToolRegistrar) -> None:
         objects with (an FQDN rule deploys fine and never matches without one), the interfaces lookups use,
         lookups through management, and the poll/expiry timers. Give `servers` to create the group (or
         reuse the same-named one when it has the same servers) or `server_group` for an existing one; it
-        becomes the default group. Deploy afterwards; verify with
-        fmc_run_show_command('show running-config dns')."""
+        becomes the default group. FMC keeps a default group once one is set (removing DNS over the API is
+        refused: assign the devices another platform settings policy instead). Deploy afterwards; verify
+        with fmc_run_show_command('show running-config dns')."""
         app: FmcApp = get_client(ctx)
         if disable and (servers or server_group):
             raise InvalidRequest("Give servers / server_group, or disable=true, not both.")
@@ -216,6 +221,17 @@ def register(reg: ToolRegistrar) -> None:
             desired["dnsServerGroups"] = [*others, {"dnsServerGroup": group_ref, "isDefault": True}]
         if disable:
             _set_list(desired, cur, "dnsServerGroups", [])
+            if cur.get("dnsServerGroups"):
+                # FMC 10.0.1 (live 2026-10-21): every DNSSetting PUT without a default group is refused, with
+                # `dnsServerGroups: []`, without the field, with or without interfaces: 400 "One DNS server
+                # group must be set as the default group. Default DNS server group is not configured."
+                blockers.append(
+                    "FMC won't remove a platform settings policy's DNS server groups once one is set: every "
+                    'update needs a default group ("One DNS server group must be set as the default group"). '
+                    "To stop the devices resolving through it, assign them a platform settings policy "
+                    "without DNS (fmc_assign_policy kind='platform_settings'); to change the servers, pass "
+                    "server_group (or servers) for the new default group."
+                )
         if interfaces is not None:
             block = await RefResolver(app, domain).block(interfaces, "zone") if interfaces else None
             _set_list(desired, cur, "interfaceObjects", list((block or {}).get("objects") or []))
