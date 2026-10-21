@@ -376,7 +376,7 @@ async def snmp_v3(c: Check, ps: PsRead, run: Run) -> Outcome:
         "(fmc_configure_snmp sets v2c only)"
     )
     return failed(
-        "SNMP is on with " + "; ".join(problems) + ".",
+        "SNMP is on, but " + "; ".join(problems) + ".",
         fix,
         "fmc_configure_snmp",
         {"problems": problems},
