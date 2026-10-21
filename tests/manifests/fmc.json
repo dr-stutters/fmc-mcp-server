@@ -8,9 +8,12 @@
         "domain",
         "device",
         "lookback_hours",
-        "compare_with"
+        "compare_with",
+        "group"
       ],
       "references": [
+        "fmc_run_show_command",
+        "fmc_list_device_groups",
         "fmc_list_devices",
         "fmc_device_health",
         "fmc_device_metrics",
@@ -27,7 +30,6 @@
         "fmc_list_health_alerts",
         "fmc_recent_activity",
         "fmc_diff_device_config",
-        "fmc_run_show_command",
         "fmc_deploy",
         "fmc_backup_devices"
       ],
@@ -484,6 +486,10 @@
       "tier": "write",
       "title": "Create decryption rule"
     },
+    "fmc_create_device_group": {
+      "tier": "write",
+      "title": "Create device group"
+    },
     "fmc_create_device_template": {
       "tier": "write",
       "title": "Create device template"
@@ -619,6 +625,10 @@
     "fmc_delete_device": {
       "tier": "dangerous",
       "title": "Delete (unregister) device"
+    },
+    "fmc_delete_device_group": {
+      "tier": "write",
+      "title": "Delete device group"
     },
     "fmc_delete_device_template": {
       "tier": "write",
@@ -880,6 +890,10 @@
       "tier": "read",
       "title": "Deployment history"
     },
+    "fmc_list_device_groups": {
+      "tier": "read",
+      "title": "List device groups"
+    },
     "fmc_list_device_interfaces": {
       "tier": "read",
       "title": "List device interfaces"
@@ -998,7 +1012,7 @@
     },
     "fmc_run_show_command": {
       "tier": "read",
-      "title": "Run a show command on a device"
+      "title": "Run a show command on devices"
     },
     "fmc_sdwan_status": {
       "tier": "read",
@@ -1079,6 +1093,10 @@
     "fmc_update_decryption_policy": {
       "tier": "write",
       "title": "Update decryption policy settings"
+    },
+    "fmc_update_device_group": {
+      "tier": "write",
+      "title": "Change device group"
     },
     "fmc_update_group": {
       "tier": "write",

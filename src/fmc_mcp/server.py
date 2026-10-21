@@ -27,11 +27,13 @@ from fmc_mcp.tools import (
     deploy,
     device_config,
     device_export,
+    device_groups,
     devices,
     dns,
     dynamic_objects,
     file_policy,
     find_address,
+    fleet,
     ha,
     hygiene,
     identity,
@@ -87,6 +89,11 @@ Workflows:
   -> fmc_deploy (device and hubs) -> fmc_get_vpn_topology.
 - Change safely: make the change -> fmc_pending_changes (what the next deploy pushes) -> fmc_deploy
   -> fmc_run_show_command / fmc_list_deployments; undo a bad deployment with fmc_rollback_deployment.
+- Fleets and device groups: fmc_list_device_groups, fmc_create_device_group, fmc_update_device_group (add,
+  remove), fmc_delete_device_group. A group goes wherever devices do ('group:<name>', or its name):
+  fmc_run_show_command(group=... or devices=[...]: one command on up to 25 devices, a row per device),
+  fmc_deploy, fmc_assign_policy, fmc_backup_devices, fmc_set_device_licenses, fmc_device_metrics and
+  fmc_sdwan_status(branch=...).
 - HA: fmc_create_ha_pair (failover link; state_interface for a separate state link) ->
   fmc_configure_ha_monitoring (standby IPs) -> fmc_deploy the pair -> fmc_get_ha_status (each unit's own
   state, link status, last failover and why, ready_for_switch) -> fmc_ha_action switch. The
@@ -239,6 +246,8 @@ REGISTER: list[Callable[[ToolRegistrar], None]] = [
     policy_writes.register,
     dangerous.register,
     troubleshoot.register,
+    fleet.register,
+    device_groups.register,
     metrics.register,
     live.register,
     prove.register,

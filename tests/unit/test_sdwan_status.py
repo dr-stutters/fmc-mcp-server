@@ -8,6 +8,7 @@ import httpx
 import pytest
 import respx
 from fastmcp import Client
+from fastmcp.exceptions import ToolError
 
 from fmc_mcp._core import InvalidRequest
 from fmc_mcp.server import create_server
@@ -182,6 +183,27 @@ async def test_status_for_a_branch(fmc: respx.MockRouter) -> None:
     assert br[0]["evidence"]["show policy-route"][1].startswith("inside")
     deg = out["degraded"]
     assert deg[0]["severity"] == "critical" and {d["interface"] for d in deg} == {"outside2", "iBGP overlay"}
+
+
+async def test_status_for_a_device_group(fmc: respx.MockRouter) -> None:
+    """F68: branch= takes a device group; only its members' endpoints are reported."""
+    ran = lab(fmc)
+    group = {
+        "id": "c0000000-0000-4000-8000-000000000001",
+        "name": "t1-spokes",
+        "type": "DeviceGroup",
+        "members": [{"id": "d-sp1", "type": "Device"}, {"id": "d-sp2", "type": "Device"}],
+    }
+    fmc.get(f"{CFG}/devicegroups/devicegrouprecords").mock(return_value=items([group]))
+    async with Client(server()) as c:
+        out = await run(c, "fmc_sdwan_status", {"branch": "group:t1-spokes"})
+    elsewhere = {**group, "name": "elsewhere", "members": [{"id": "d-other", "type": "Device"}]}
+    fmc.get(f"{CFG}/devicegroups/devicegrouprecords").mock(return_value=items([elsewhere]))
+    async with Client(server()) as c:  # a new server: the group list is cached per server for a minute
+        with pytest.raises(ToolError, match="device group 'elsewhere' is in no SD-WAN topology"):
+            await run(c, "fmc_sdwan_status", {"branch": "elsewhere"})
+    assert sorted({r.split(" ", 1)[0] for r in ran}) == ["d-sp1", "d-sp2"]
+    assert len(out["topologies"][0]["branches"]) == 2
 
 
 async def test_status_ranks_every_branch_and_respects_budget(fmc: respx.MockRouter) -> None:

@@ -32,6 +32,7 @@ from pydantic import Field
 from fmc_mcp._core import InvalidRequest, NotFound, ToolRegistrar, UpstreamError, get_client, object_result
 from fmc_mcp.client import FmcApp
 from fmc_mcp.tools.common import Domain, ref_label
+from fmc_mcp.tools.device_groups import as_group, fleet_ids
 from fmc_mcp.tools.devices import DEVICES, HA_PAIRS
 from fmc_mcp.tools.show_commands import Supported, check_command, supported_commands
 from fmc_mcp.tools.troubleshoot import redact, run_show, tunnel_row
@@ -856,7 +857,10 @@ def register(reg: ToolRegistrar) -> None:
         topology: Annotated[
             str | None, Field(description="SD-WAN topology (name/UUID); default every SD-WAN topology")
         ] = None,
-        branch: Annotated[str | None, Field(description="Only this branch or hub device (name/UUID)")] = None,
+        branch: Annotated[
+            str | None,
+            Field(description="Only this branch or hub device (name/UUID), or the devices of a device group"),
+        ] = None,
         show_commands: Annotated[
             bool,
             Field(
@@ -912,9 +916,13 @@ def register(reg: ToolRegistrar) -> None:
             for p in pairs
         }
         if branch:
-            want, _ = await _peer_device(app, branch, domain)
+            if grp := await as_group(app, branch, domain):  # a device group: its members
+                want, picked = {"name": f"device group {grp.get('name')!r}"}, set(fleet_ids(grp))
+            else:
+                want, _ = await _peer_device(app, branch, domain)
+                picked = {str(want["id"])}
             # an HA member stands for its pair, which is the topology endpoint
-            want_ids = {str(want["id"])} | {pid for pid, ids in members.items() if str(want["id"]) in ids}
+            want_ids = picked | {pid for pid, ids in members.items() if picked & ids}
         pm_note = None
         try:
             pm_path = await app.config_path("health/pathmonitoredinterfaces", domain)

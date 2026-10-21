@@ -114,10 +114,10 @@ There are 180 tools when every tier is enabled (79 read, 90 write, 11 dangerous;
 |---|---|
 | System | `fmc_status`, `fmc_list_domains`, `fmc_list_audit_records`, `fmc_get_task`, `fmc_license_status` |
 | Activity (on demand) | `fmc_list_health_alerts`, `fmc_recent_activity` |
-| Devices | `fmc_list_devices`, `fmc_get_device`, `fmc_list_device_interfaces`, `fmc_list_routes`, `fmc_get_routing`, `fmc_get_platform_settings`, `fmc_list_ha_pairs`, `fmc_get_ha_status`, `fmc_list_clusters` |
+| Devices | `fmc_list_devices`, `fmc_get_device`, `fmc_list_device_interfaces`, `fmc_list_routes`, `fmc_get_routing`, `fmc_get_platform_settings`, `fmc_list_ha_pairs`, `fmc_get_ha_status`, `fmc_list_clusters`, `fmc_list_device_groups` (members; a group goes wherever devices do: `group:<name>`) |
 | VPN | `fmc_list_vpn_topologies` (incl. SD-WAN), `fmc_get_vpn_topology`, `fmc_get_ravpn`, `fmc_vpn_status` (every site-to-site topology's tunnels with each device's IKE and IPsec SAs, traffic each way, last rekey and the routes over the VTIs; degraded tunnels first), `fmc_sdwan_status` (per branch: WAN links with path metrics, the path each app route takes now and why, tunnels and iBGP, ranked degraded links) |
 | Device templates (FMC 7.6+) | `fmc_list_device_templates`, `fmc_get_device_template` (interfaces, variables, model mappings, VPN/SD-WAN settings, overridable objects, devices it was applied to; passwords masked) |
-| Troubleshooting | `fmc_packet_tracer`, `fmc_run_show_command`, `fmc_get_hit_counts`, `fmc_device_health`, `fmc_device_metrics` (CPU, memory, throughput, connections and drops over a window: min/avg/max, peaks, dips and a compact series), `fmc_list_vpn_tunnels`, `fmc_live_connections` (a host's or user's connections on one FTD: peers, state, bytes, duration, rule, user), `fmc_user_identity_sessions` (who is on an IP, where a user is logged in), `fmc_prove_policy` (a table of flows with expected verdicts, each packet-traced on the FTD it crosses: pass / fail / mismatch with the deciding rule and the user the device saw) |
+| Troubleshooting | `fmc_packet_tracer`, `fmc_run_show_command` (one device, or up to 25 at once: `devices`, HA pairs, a device `group`; a row per device), `fmc_get_hit_counts`, `fmc_device_health`, `fmc_device_metrics` (CPU, memory, throughput, connections and drops over a window: min/avg/max, peaks, dips and a compact series), `fmc_list_vpn_tunnels`, `fmc_live_connections` (a host's or user's connections on one FTD: peers, state, bytes, duration, rule, user), `fmc_user_identity_sessions` (who is on an IP, where a user is logged in), `fmc_prove_policy` (a table of flows with expected verdicts, each packet-traced on the FTD it crosses: pass / fail / mismatch with the deciding rule and the user the device saw) |
 | Policies | `fmc_list_policies`, `fmc_get_access_policy`, `fmc_list_access_rules`, `fmc_get_access_rule`, `fmc_list_nat_rules`, `fmc_list_prefilter_rules`, `fmc_list_policy_assignments` |
 | Objects | `fmc_list_objects`, `fmc_get_object`, `fmc_find_object`, `fmc_where_used`, `fmc_unused_objects`, `fmc_list_dynamic_objects`, `fmc_find_address` (one IP, network or range across objects and groups, dynamic-object mappings, access, prefilter and NAT rules, static routes and VPN endpoints, ranked) |
 | Security Intelligence | `fmc_get_security_intelligence` (block and do-not-block lists, the DNS policy's rules, and each feed's and custom list's entries, last update and status; without a policy: every SI feed and custom list) |
@@ -154,7 +154,10 @@ Notes on some read tools:
   the spec at run time, FMC 10.0.1's list built in): `show route [bgp|ospf|...]`, `show crypto ikev2 sa`,
   `show failover`, `show interface ip brief`, `show running-config <section>`... Words after the second go to
   FMC as parameters. Anything else (`show bgp`, `show ospf`, `show path-monitoring`, `show policy-route`,
-  `show conn`, `show nat`) is refused before FMC is called, with the alternatives.
+  `show conn`, `show nat`) is refused before FMC is called, with the alternatives. With `devices=[...]` or
+  `group=...` it runs on up to 25 devices in one call and returns a row per device (output, or why it failed;
+  disconnected devices are not sent the command). FMC's `bulkcommands` is used where FMC enables it; FMC 10.0.1
+  keeps it behind a feature flag (403), so the tool then asks each device, eight at a time, and `path` says so.
 - `fmc_get_hit_counts` refreshes the counters from the device first (packet-tracer packets count too).
 - `fmc_live_connections` answers "what is this host talking to right now?". FMC 10.0.1 refuses `show conn`
   over its API, so it reads the device's syslog buffer (`show logging`: connection built/teardown messages and
@@ -195,7 +198,8 @@ Notes on some read tools:
 | TLS certificates | `fmc_create_internal_ca` (FMC generates the key: self-signed, or a CSR for your CA), `fmc_install_internal_ca_cert` (the signed certificate for that CSR), `fmc_import_certificate_files` (an existing CA or server certificate + key read from `FMC_PKI_DIR` on the server host; only file names pass through MCP), `fmc_delete_certificate` |
 | Identity (AD/LDAP) | `fmc_create_trusted_ca` (CA for LDAPS), `fmc_create_realm` (bind password write-only), `fmc_download_realm` (users and groups now; needs `FMC_UI_USERNAME`), `fmc_delete_realm`, `fmc_create_identity_policy`, `fmc_create_identity_rule` (PASSIVE / ACTIVE / NO), `fmc_delete_identity_rule`; access rules on users and groups: `fmc_create_access_rule` / `fmc_update_access_rule` `users=[...]` |
 | DNS | `fmc_create_dns_policy`, `fmc_set_dns_policy`, `fmc_dns_block` (block/unblock domains via custom SI DNS lists; NXDOMAIN or drop) |
-| Licences | `fmc_set_device_licenses` (IPS, MALWARE_DEFENSE, URL, ...) |
+| Licences | `fmc_set_device_licenses` (IPS, MALWARE_DEFENSE, URL, ...; a device or a device group in one preview) |
+| Device groups | `fmc_create_device_group`, `fmc_update_device_group` (add, remove, rename), `fmc_delete_device_group`; `fmc_deploy`, `fmc_assign_policy`, `fmc_backup_devices`, `fmc_set_device_licenses`, `fmc_device_metrics` and `fmc_sdwan_status(branch=...)` take a group |
 | Admin | `fmc_update_health_policy` (module on/off, thresholds), `fmc_set_object_override` (per-device object values) |
 | Containment | `fmc_contain_host`, `fmc_release_host` (instant, no deploy); `fmc_si_block` (Security Intelligence block list for IPs, networks, URLs; logged; needs a deploy) |
 | Security Intelligence feeds and lists | `fmc_create_si_feed` (IP, URL or DNS feed FMC downloads on a schedule), `fmc_upload_si_list` (custom list from text, validated; replaces its own lists), `fmc_set_si_lists` (feeds, custom lists and Talos categories into an access policy's SI block or do-not-block list; DNS ones into its DNS policy as block, allow or monitor rules), `fmc_delete_si_object` |
@@ -476,7 +480,7 @@ checks it against the registered tools.
 | `core` | 7 (6/0/1) | always loaded: status, the API spec search and raw API call, domains, devices, tasks |  |
 | `admin` | 8 (6/1/1) | FMC itself: backups, upgrades, health policy, users, audit log, Smart Licensing |  |
 | `deploy` | 7 (4/1/2) | pending changes, deployments, rollback, change-management tickets | `fmc_onboard_branch`, `fmc_onboard_ftd`, `fmc_rule_change_review` |
-| `devices` | 15 (5/7/3) | device records, registration, licences, interfaces, clusters, device templates | `fmc_onboard_branch`, `fmc_onboard_ftd` |
+| `devices` | 19 (6/10/3) | device records, registration, licences, interfaces, clusters, device groups, device templates | `fmc_onboard_branch`, `fmc_onboard_ftd` |
 | `ha` | 5 (2/1/2) | FTD high-availability pairs: status, forming, switch/break, monitored interfaces | `fmc_ha_failover_check` |
 | `identity` | 13 (6/7/0) | users in rules: realms (AD/LDAP), identity policies, ISE identity source, user-IP sessions | `fmc_prove_user_policy` |
 | `intel` | 12 (2/10/0) | blocking by reputation: Security Intelligence feeds and lists, DNS policy, host containment |  |

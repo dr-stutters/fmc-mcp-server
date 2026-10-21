@@ -1,7 +1,7 @@
 # fmc_firewall_health_review
 
 title: Firewall health review
-arguments: {"compare_with": "example", "device": "mcp-ftd", "domain": "Global", "lookback_hours": "24"}
+arguments: {"compare_with": "example", "device": "mcp-ftd", "domain": "Global", "group": "example", "lookback_hours": "24"}
 
 Is the firewall estate healthy? Reviews device health and connectivity (with CPU, memory,
 throughput and drops over the review window for the devices that need it), HA pairs and
@@ -13,17 +13,19 @@ concrete next step. Read-only.
 
 ## user
 
-Review the health of the devices whose name contains "mcp-ftd" in domain "Global" and of the FMC itself over the last
+Review the health of the devices of device group "example" whose name contains "mcp-ftd" in domain "Global" and of the FMC itself over the last
 24 hours, and write one ranked report with next steps. Every step is read-only:
 change, deploy or back up nothing; the report only proposes next steps.
 
 FMC allows about 120 API requests per minute, and each tool call costs one or more. Call each
 aggregate tool below once and drill into single devices only where a finding needs it: at most
-10 per-device calls in all; report any further devices from the aggregate rows. A tool that
-fails or times out is a finding of its own (a warning when it hides a whole check, else info):
-note it and carry on.
+10 per-device calls in all; report any further devices from the aggregate rows. Where several
+devices need the same check, make it one fleet call (`fmc_run_show_command` with
+devices=[...] or group=..., up to 25 devices, one row per device) instead of one call per device.
+A tool that fails or times out is a finding of its own (a warning when it hides a whole check,
+else info): note it and carry on.
 
-1. Devices and connectivity: `fmc_list_devices` with name="mcp-ftd", domain="Global". Note each device's health, connected, deployment
+1. Devices and connectivity: `fmc_list_device_groups` with group="example", domain="Global" (its members), then `fmc_list_devices` with name="mcp-ftd", domain="Global" for their rows. Note each device's health, connected, deployment
    status, version and access policy. A disconnected device is critical. For each device that is
    not green or not connected, `fmc_device_health` with device=<name>, domain="Global": the failing
    modules, their details and since when, and CPU/memory (above 90 % is a warning). A RED module
@@ -34,19 +36,20 @@ note it and carry on.
    `fmc_device_metrics` with device=<name>, since="24h", domain="Global" shows its load
    over the review window: CPU and memory peaks with their times, throughput, connections and drops.
    A peak at the time of an alert ties them together; sustained CPU or memory above the limits the
-   result flags is a finding of its own. These calls count towards the per-device limit.
+   result flags is a finding of its own. These calls count towards the per-device limit; device="group:example" runs it on every device of the group (at most 10) in one call.
 
 2. HA and clusters: `fmc_list_ha_pairs` with domain="Global" and `fmc_list_clusters` with domain="Global". For
    each HA pair with a unit in scope, `fmc_get_ha_status` with ha_pair=<name>, domain="Global". One
    Active and one Standby unit is healthy; no active unit, two active units, or a failed or
    unknown standby is critical. Only the management interface monitored is info. A cluster with a
-   missing or disabled data node is critical.
+   missing or disabled data node is critical. Each unit's own view, for every pair in scope in one
+   call: `fmc_run_show_command` with devices=[the pairs], command='show failover state', domain="Global".
 
-3. Deployments: `fmc_list_deployable_devices` with domain="Global". Keep only the rows of the devices from step 1 (and, for alerts, the FMC's own). A device with pending changes
+3. Deployments: `fmc_list_deployable_devices` with domain="Global". Keep only the rows of the group's devices whose name contains "mcp-ftd" (and, for alerts, the FMC's own). A device with pending changes
    is a warning (it doesn't run what FMC holds). For up to three of them,
    `fmc_pending_changes` with device=<name>, domain="Global" says what is waiting and who changed it
    (a 'System' UPDATE with "Data not available" is FMC housekeeping: info).
-   Then `fmc_list_deployments` with since_hours=24, domain="Global". Keep only the rows of the devices from step 1 (and, for alerts, the FMC's own). A FAILED
+   Then `fmc_list_deployments` with since_hours=24, domain="Global". Keep only the rows of the group's devices whose name contains "mcp-ftd" (and, for alerts, the FMC's own). A FAILED
    job is critical while the device has had no successful deployment since; info once a later
    job succeeded.
 
@@ -66,10 +69,12 @@ note it and carry on.
 6. Backups: `fmc_list_backups` with domain="Global". No FMC backup, or none in the last 7 days, is a
    warning; the same for each device in scope. Give the newest date per device.
 
-7. VPN: `fmc_list_vpn_tunnels` with domain="Global". Keep only the rows of the devices from step 1 (and, for alerts, the FMC's own). TUNNEL_DOWN is critical and UNKNOWN a
-   warning; no tunnels at all is info.
+7. VPN: `fmc_list_vpn_tunnels` with domain="Global". Keep only the rows of the group's devices whose name contains "mcp-ftd" (and, for alerts, the FMC's own). TUNNEL_DOWN is critical and UNKNOWN a
+   warning; no tunnels at all is info. For the devices with such a tunnel, their own IKE view in
+   one call: `fmc_run_show_command` with devices=[those devices], command='show crypto ikev2 sa', domain="Global"
+   (a device that is not connected fails its row: that is the finding, not the tool).
 
-8. Health alerts: `fmc_list_health_alerts` with since_minutes=1440, domain="Global". Keep only the rows of the devices from step 1 (and, for alerts, the FMC's own).
+8. Health alerts: `fmc_list_health_alerts` with since_minutes=1440, domain="Global". Keep only the rows of the group's devices whose name contains "mcp-ftd" (and, for alerts, the FMC's own).
    Repeats are collapsed with first/last seen and a count. An alert last seen in the last hour is
    current and counts at its level; older ones are history (info, unless the same alert keeps
    coming back). Note what the FMC reports about itself (Security Intelligence and Talos feeds,
