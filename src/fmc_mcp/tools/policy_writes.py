@@ -40,7 +40,14 @@ from fmc_mcp.tools.common import Domain, block_labels, ref_label, resolve_in, ru
 from fmc_mcp.tools.fqdn_dns import fqdn_dns_check
 from fmc_mcp.tools.object_writes import applied, editable
 from fmc_mcp.tools.policies import ACCESS, NAT, all_rules, find_access_rule, resolve_policy
-from fmc_mcp.tools.policy_structure import base_body, inheritance_effect, put_base, rules_summary
+from fmc_mcp.tools.policy_structure import (
+    LOGGING_INHERIT_NOTE,
+    base_body,
+    inherit_base_logging,
+    inheritance_effect,
+    put_base,
+    rules_summary,
+)
 from fmc_mcp.url_categories import (
     UrlCategoryCondition,
     category_conditions,
@@ -320,8 +327,9 @@ def register(reg: ToolRegistrar) -> None:
         confirm: Confirm = None,
     ) -> dict[str, Any]:
         """Create an empty access control policy with a default action, optionally as a child of a base
-        policy (inheritance: the preview shows what the base hands down). Add rules with
-        fmc_create_access_rule; it affects devices only once assigned and deployed."""
+        policy (inheritance: the preview shows what the base hands down; the child's Logging settings
+        inherit from the base, as the FMC UI does). Add rules with fmc_create_access_rule; it affects
+        devices only once assigned and deployed."""
         app: FmcApp = get_client(ctx)
         body: dict[str, Any] = {
             "name": name,
@@ -349,7 +357,9 @@ def register(reg: ToolRegistrar) -> None:
                 details["base_policy"] = found.get("name")
                 details["inherited_from_base"] = await rules_summary(app, found, domain)
                 details["then"] = base_body("<the new policy's id>", base)
+                details["logging"] = f"inherited from {found.get('name')!r}"
                 side_effects.append(inheritance_effect(str(found.get("name"))))
+                side_effects.append(LOGGING_INHERIT_NOTE)
         path = await app.config_path(ACCESS, domain)
 
         async def apply() -> Any:
@@ -364,7 +374,11 @@ def register(reg: ToolRegistrar) -> None:
                     "warning": f"The policy was created, but FMC refused its base policy ({e}). Set it with "
                     f"fmc_set_base_policy(policy={name!r}, base={base.get('name')!r}).",
                 }
-            return {"policy": created, **inherited}
+            logging = await inherit_base_logging(app, str(created["id"]), domain)
+            out = {"policy": created, **inherited, "logging": logging["logging"]}
+            if logging.get("logging_warning"):
+                out["warning"] = " ".join(w for w in (out.get("warning"), logging["logging_warning"]) if w)
+            return out
 
         args: dict[str, Any] = {
             "name": name,
