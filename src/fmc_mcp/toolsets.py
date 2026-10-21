@@ -294,11 +294,14 @@ CATALOGUE: dict[str, tuple[str, tuple[str, ...]]] = {
         ),
     ),
     "troubleshoot": (
-        "why is traffic blocked: packet tracer, rule lookup, hit counts, show commands, live state",
+        "why is traffic blocked or slow: packet tracer, rule lookup, hit counts, show commands, live state, "
+        "profiling",
         (
+            "fmc_cpu_profile",
             "fmc_device_health",
             "fmc_device_metrics",
             "fmc_get_hit_counts",
+            "fmc_get_profiler_results",
             "fmc_list_health_alerts",
             "fmc_live_connections",
             "fmc_packet_tracer",
@@ -306,6 +309,7 @@ CATALOGUE: dict[str, tuple[str, tuple[str, ...]]] = {
             "fmc_recent_activity",
             "fmc_rule_lookup",
             "fmc_run_show_command",
+            "fmc_snort_profile",
         ),
     ),
     "vpn": (

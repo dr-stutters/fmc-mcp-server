@@ -1,0 +1,178 @@
+{
+ "_source": "F78 (fmc_snort_profile / fmc_cpu_profile / fmc_get_profiler_results). snort_latest, snort_file and cpu_latest are the FMC API spec's own examples for fmc_troubleshoot snortprofiler/cpuprofiler (the spec FMC 10.0.1 serves; examples from FMC 7.5). refused is FMC 10.0.1's live answer to every profiler call for a role without the Snort 3 profiling permission (W6N probe 2026-10-21, text recorded; FMC's standard error body). feature_flag is FMC 10.0.1's live feature-flag 403 as recorded on bulkcommands (W6 probe; no profiler flag was seen). empty_list is 10.0.1's live answer for an empty troubleshoot collection (packettracer/files).",
+ "snort_latest": {
+  "items": [
+   {
+    "type": "SnortProfiler",
+    "status": "DISABLED",
+    "startTime": "17:07:45 05-09-2023",
+    "endTime": "18:07:45 05-09-2023",
+    "accessPolicyName": "ACP1",
+    "accessPolicyExported": "10:47:35 04-19-2023",
+    "vdb": "361",
+    "lsp": "lsp-rel-20230417-1250",
+    "snortVersion": "3.1.53.0-15",
+    "swVersion": "7.5.0",
+    "swBuild": "1129",
+    "profilerFileName": "rule_profiling.1685458415.json",
+    "telemetryGid": 6,
+    "rules": [
+     {
+      "gid": 4,
+      "sid": 57,
+      "message": "PROTOCOL-ICMP Microsoft Windows IPv6 DNSSL option record denial of service attempt",
+      "ruleTimePercentage": 0.33,
+      "rev": 1,
+      "checks": 3385,
+      "matches": 3385,
+      "alerts": 0,
+      "timeUs": 15931,
+      "avgCheck": 4,
+      "avgMatch": 4,
+      "avgNonMatch": 0,
+      "timeouts": 0,
+      "suspends": 0,
+      "instanceId": 1
+     }
+    ]
+   }
+  ],
+  "paging": {
+   "offset": 0,
+   "limit": 0,
+   "count": 1,
+   "pages": 1
+  }
+ },
+ "snort_file": {
+  "type": "SnortProfiler",
+  "status": "DISABLED",
+  "startTime": "17:07:45 05-09-2023",
+  "endTime": "18:07:45 05-09-2023",
+  "accessPolicyName": "ACP1",
+  "accessPolicyExported": "10:47:35 04-19-2023",
+  "vdb": "361",
+  "lsp": "lsp-rel-20230417-1250",
+  "snortVersion": "3.1.53.0-15",
+  "swVersion": "7.5.0",
+  "swBuild": "1129",
+  "telemetryGid": 6,
+  "rules": [
+   {
+    "gid": 4,
+    "sid": 57,
+    "message": "PROTOCOL-ICMP Microsoft Windows IPv6 DNSSL option record denial of service attempt",
+    "ruleTimePercentage": 0.33,
+    "rev": 1,
+    "checks": 3385,
+    "matches": 3385,
+    "alerts": 0,
+    "timeUs": 15931,
+    "avgCheck": 4,
+    "avgMatch": 4,
+    "avgNonMatch": 0,
+    "timeouts": 0,
+    "suspends": 0,
+    "instanceId": 1
+   },
+   {
+    "gid": 4,
+    "sid": 15,
+    "message": "SERVER-OTHER TRUFFLEHUNTER TALOS-2023-1731 attack attempt",
+    "ruleTimePercentage": 0.3,
+    "rev": 1,
+    "checks": 1686,
+    "matches": 0,
+    "alerts": 0,
+    "timeUs": 5599,
+    "avgCheck": 3,
+    "avgMatch": 0,
+    "avgNonMatch": 3,
+    "timeouts": 0,
+    "suspends": 0,
+    "instanceId": 1
+   }
+  ]
+ },
+ "cpu_latest": {
+  "items": [
+   {
+    "type": "CPUProfiler",
+    "status": "DISABLED",
+    "startTime": "17:07:45 05-09-2023",
+    "endTime": "18:07:45 05-09-2023",
+    "accessPolicyName": "ACP1",
+    "accessPolicyExported": "10:47:35 04-19-2023",
+    "vdb": "361",
+    "lsp": "lsp-rel-20230417-1250",
+    "snortVersion": "3.1.53.0-15",
+    "swVersion": "7.5.0",
+    "swBuild": "1129",
+    "profilerFileName": "cpu_profiling.1778474701.json",
+    "modules": [
+     {
+      "name": "daq",
+      "layer": 1,
+      "number": 1,
+      "checks": 20,
+      "timeUs": 16015584,
+      "avgCheckUs": 800779,
+      "callerPercentage": 96.49,
+      "totalPercentage": 96.49,
+      "instanceId": 1
+     },
+     {
+      "name": "firewall",
+      "layer": 1,
+      "number": 3,
+      "checks": 16,
+      "timeUs": 51,
+      "avgCheckUs": 3,
+      "callerPercentage": 0.0,
+      "totalPercentage": 0.0,
+      "instanceId": 1
+     }
+    ]
+   }
+  ],
+  "paging": {
+   "offset": 0,
+   "limit": 0,
+   "count": 1,
+   "pages": 1
+  }
+ },
+ "refused": {
+  "error": {
+   "category": "FRAMEWORK",
+   "messages": [
+    {
+     "description": "The user is not authorized."
+    }
+   ],
+   "severity": "ERROR"
+  }
+ },
+ "feature_flag": {
+  "error": {
+   "category": "FRAMEWORK",
+   "messages": [
+    {
+     "description": "Feature Flag : bulk_device_command_execution is disabled for the request. Request is forbidden."
+    }
+   ],
+   "severity": "ERROR"
+  }
+ },
+ "empty_list": {
+  "items": [
+   {}
+  ],
+  "paging": {
+   "offset": 0,
+   "limit": 25,
+   "count": 1,
+   "pages": 1
+  }
+ }
+}
