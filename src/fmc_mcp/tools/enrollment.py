@@ -983,7 +983,8 @@ def register(reg: ToolRegistrar) -> None:
         url = (enr.get("scepContent") or {}).get("enrollmentUrl") or (enr.get("estContent") or {}).get(
             "enrollmentUrl"
         )
-        pair = f"the device generates key pair {key.get('keyName') or '?'} ({key_text})"
+        key_name = key.get("keyName") or "?"
+        pair = f"the device generates key pair {key_name} ({key_text})"
         how = {
             "SELF_SIGNED_CERTFICATE": f"{pair} and a self-signed identity certificate",
             "PKCS12": "the identity certificate, its private key and CA chain from the PKCS12 go to the "
@@ -992,10 +993,23 @@ def register(reg: ToolRegistrar) -> None:
             "SCEP": f"{pair} and requests a certificate from {url} (the device must reach it)",
             "EST": f"{pair} and requests a certificate from {url} (the device must reach it)",
         }.get(enr_type, f"FMC enrols the {enr_type or 'certificate'} enrollment")
+        # RE_ENROLL re-issues the certificate, not the key (recorded on FMC 10.0.1: a self-signed enrollment
+        # got a new serial and validity, the SHA1 public key hash stayed the same). SCEP/EST: not recorded.
+        named_pair = f"key pair {key_name} ({key_text})"
+        how_again = {
+            "SELF_SIGNED_CERTFICATE": "a new self-signed identity certificate (new serial and validity) on "
+            f"the {named_pair} the device already holds: the key is not regenerated",
+            "PKCS12": "the identity certificate, its private key and CA chain from the PKCS12 go to the "
+            "device again",
+            "MANUAL": "the CA certificate is installed again as a trustpoint (no identity certificate)",
+            "SCEP": f"the device requests a new certificate for {named_pair} from {url} (it must reach it)",
+            "EST": f"the device requests a new certificate for {named_pair} from {url} (it must reach it)",
+        }.get(enr_type, f"FMC enrols the {enr_type or 'certificate'} enrollment again")
         effects = {
             "enroll": [f"Installs {enr_name} on {dev_name} now, without a deployment: {how}."],
             "re_enroll": [
-                f"Enrols {enr_name} on {dev_name} again, replacing the device's certificate for it: {how}.",
+                f"Enrols {enr_name} on {dev_name} again, replacing the device's certificate for it: "
+                f"{how_again}.",
             ],
             "refresh": [f"Re-reads the status of {enr_name} from {dev_name}; nothing changes on the device."],
             "delete": [
