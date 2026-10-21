@@ -160,7 +160,9 @@ Notes on some read tools:
   `show conn`, `show nat`) is refused before FMC is called, with the alternatives. With `devices=[...]` or
   `group=...` it runs on up to 25 devices in one call and returns a row per device (output, or why it failed;
   disconnected devices are not sent the command). FMC's `bulkcommands` is used where FMC enables it; FMC 10.0.1
-  keeps it behind a feature flag (403), so the tool then asks each device, eight at a time, and `path` says so.
+  keeps it behind a feature flag (403), so the tool then asks each device, one at a time (FMC 10.0.1 answers
+  concurrent show commands with each other's output), and `path` says so. A row whose output names another
+  device (its `UUID` line, or a `show version` banner naming another device of the run) is a failure, not output.
 - `fmc_get_hit_counts` refreshes the counters from the device first (packet-tracer packets count too).
 - `fmc_live_connections` answers "what is this host talking to right now?". FMC 10.0.1 refuses `show conn`
   over its API, so it reads the device's syslog buffer (`show logging`: connection built/teardown messages

@@ -28,7 +28,7 @@ from fmc_mcp.tools.device_snapshot import (
 )
 from fmc_mcp.tools.prompts import _health_review_text, _rule_change_review_text
 
-from .conftest import CFG, fixture, items
+from .conftest import CFG, ConcurrentFmc, fixture, items
 from .test_device_export import SP1, SP2, recorded, server, t1
 
 FX = fixture("device_snapshot_t1")
@@ -57,11 +57,16 @@ def hit_row(rule: dict[str, Any], count: int, default: bool = False) -> dict[str
 
 
 def lab(
-    fmc: respx.MockRouter, *, connected: bool = True, more: dict[str, dict[str, str]] | None = None
+    fmc: respx.MockRouter,
+    *,
+    connected: bool = True,
+    more: dict[str, dict[str, str]] | None = None,
+    emulate: ConcurrentFmc | None = None,
 ) -> dict[str, Any]:
     """spoke1 as recorded (connected), bulkcommands refused like FMC 10.0.1. Edit the returned state
     (show, alerts, hits, tunnels, jobs, deployable) to change what FMC answers. `more`: other device ids
-    and their show outputs (registered before the recording's catch-all for device sub-paths)."""
+    and their show outputs (registered before the recording's catch-all for device sub-paths);
+    `emulate`: an FMC that answers the show commands of its devices instead."""
     st: dict[str, Any] = {
         "show": dict(FX["show"]),
         "alerts": copy.deepcopy(FX["health/alerts"]),
@@ -95,6 +100,8 @@ def lab(
             return httpx.Response(200, json={"items": [{"commandInput": text, "commandOutput": show[text]}]})
 
         fmc.get(f"{DEV}/{dev_id}/operational/commands").mock(side_effect=answer)
+    if emulate is not None:
+        emulate.mount(fmc)
     data = recorded()
     data[f"devices/devicerecords/{SP1}"].update(
         {"isConnected": connected, "deploymentStatus": "DEPLOYED", "healthStatus": "red"}
@@ -398,6 +405,35 @@ async def test_two_devices_share_one_bulk_request_per_command(fmc: respx.MockRou
     assert [d["device"] for d in out["devices"]] == ["mcp-sdwan-t1-spoke1", "mcp-sdwan-t1-spoke2"]
     docs = {k: yaml.safe_load(v) for k, v in out["snapshots"].items()}
     assert len(docs["mcp-sdwan-t1-spoke2"]["route_table"]) == 11
+
+
+async def test_fleet_snapshot_documents_hold_their_own_devices_state(fmc: respx.MockRouter) -> None:
+    """Live 2026-10-21: a two-device snapshot on the per-device path (eight requests at once) gave the
+    first device's document the second one's interfaces and routes, because FMC 10.0.1 answers
+    concurrent show commands with each other's output (fleet_show.json concurrent_mixup, emulated by
+    ConcurrentFmc). Show commands now go one at a time, so each document is its own device's."""
+    other = {k: v.replace("192.0.2.", "203.0.113.") for k, v in FX["show"].items()}
+    emu = ConcurrentFmc({SP1: dict(FX["show"]), SP2: other})
+    lab(fmc, emulate=emu)
+    fmc.get(f"{DEV}/{SP2}").mock(
+        return_value=httpx.Response(
+            200, json={**recorded()[f"devices/devicerecords/{SP2}"], "isConnected": True}
+        )
+    )
+    out = await call(
+        "fmc_device_snapshot",
+        {
+            "devices": ["mcp-sdwan-t1-spoke1", "mcp-sdwan-t1-spoke2"],
+            "sections": ["route_table", "interface_state", "vpn_sas"],
+        },
+    )
+    assert out["show_path"] == "per-device" and emu.peak == 1 and len(emu.calls) == 6
+    docs = {k: yaml.safe_load(v) for k, v in out["snapshots"].items()}
+    one, two = docs["mcp-sdwan-t1-spoke1"], docs["mcp-sdwan-t1-spoke2"]
+    assert one["interface_state"]["Ethernet0/0"]["ip"] == "192.0.2.2"
+    assert two["interface_state"]["Ethernet0/0"]["ip"] == "203.0.113.2"
+    assert all("203.0.113." not in k for k in one["route_table"])
+    assert all("192.0.2." not in k for k in two["route_table"])
 
 
 async def test_ha_pair_reads_both_units(fmc: respx.MockRouter) -> None:

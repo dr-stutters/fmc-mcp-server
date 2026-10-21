@@ -1,3 +1,4 @@
+import asyncio
 import json
 from collections.abc import Iterator
 from typing import Any
@@ -60,6 +61,39 @@ def items(rows: list[dict[str, Any]], total: int | None = None) -> httpx.Respons
     return httpx.Response(
         200, json={"items": rows, "paging": {"count": len(rows) if total is None else total}}
     )
+
+
+class ConcurrentFmc:
+    """FMC 10.0.1's operational/commands as recorded live (fleet_show.json `concurrent_mixup`; used by
+    test_fleet.py and test_device_snapshot.py): a request that overlaps another one, for any device, is
+    answered with the output of the newest request in flight. Requests that don't overlap get their own
+    device's output. `peak`: most requests at once."""
+
+    def __init__(self, outputs: dict[str, str] | dict[str, dict[str, str]]) -> None:
+        self.outputs = outputs  # device id -> its output, or {command: output}
+        self.inflight: list[str] = []
+        self.peak = 0
+        self.calls: list[str] = []
+
+    async def __call__(self, request: httpx.Request) -> httpx.Response:
+        dev = request.url.path.split("/")[-3]
+        self.calls.append(dev)
+        self.inflight.append(dev)
+        self.peak = max(self.peak, len(self.inflight))
+        await asyncio.sleep(0.01)
+        source = self.inflight[-1]
+        self.inflight.remove(dev)
+        q = request.url.params
+        cmd = q["command"] + (f" {q['parameters']}" if "parameters" in q else "")
+        out = self.outputs[source]
+        text = out if isinstance(out, str) else out[cmd]
+        return items([{"commandInput": cmd, "commandOutput": text, "type": "command"}])
+
+    def mount(self, router: respx.MockRouter, cfg: str = CFG) -> "ConcurrentFmc":
+        """Answer each device's operational/commands in domain path `cfg` (default: the test domain)."""
+        for i in self.outputs:
+            router.get(f"{cfg}/devices/devicerecords/{i}/operational/commands").mock(side_effect=self)
+        return self
 
 
 @pytest.fixture
