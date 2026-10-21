@@ -7,8 +7,11 @@ is not supported or entered command is an invalid command", checked live), and t
 - fmc_live_connections runs `show conn ... detail` when the FMC's API spec lists it (show_commands reads the
   allowlist at run time, so a newer FMC is picked up), and otherwise reads the device's syslog buffer with
   `show logging` (which FMC allows): LINA's connection built/teardown messages (302013-302021) and Snort's
-  connection events (430002/430003, with the access rule, user, application and bytes). That needs the
-  platform settings to log to the internal buffer; the tool says so when the buffer is off.
+  connection events (430002/430003, with the access rule, user, application and bytes) where a buffer holds
+  them. That needs the platform settings to log to the internal buffer; the tool says so when the buffer is
+  off. Recorded live on FTD 10.0.0 (2026-10-21): the 302013-302021 messages ship disabled, the buffer has no
+  timestamps by default ('Timestamp logging: disabled'), and Snort's 430002/430003 events go only to syslog
+  servers, never to the internal buffer, so buffer rows carry no access rule or application.
 - fmc_user_identity_sessions reads FMC's own identity view: analysis/activesessions (user, current IP,
   device, realm, login and last-seen times) and, with history, analysis/useractivity (logins and logoffs).
   Both are plain REST reads (no subscription, ADR-003); the account's role needs the Events & Logs >
@@ -60,15 +63,38 @@ ROLE_HINT = (
 )
 SESSIONS_WHAT = "its identity sessions (analysis/activesessions)"
 ACTIVITY_WHAT = "its user activity (analysis/useractivity)"
+CONN_IDS_HOW = (
+    "enable the connection messages 302013-302021 in the platform settings (FTD ships them disabled: "
+    "Syslog > Syslog Settings; REST ftdplatformsettingspolicies/{id}/syslog/syslogsettings/{id}/syslogids) "
+    "and deploy"
+)
+SNORT_ONLY_TO_SERVERS = (
+    "FTD sends Snort's connection events (430002/430003, which name the access rule and application) only "
+    "to syslog servers, never to the internal buffer (FTD 10.0.0, seen live): read them at the syslog "
+    "collector (fmc_set_access_logging + fmc_configure_syslog) or in FMC's connection events when the rules "
+    "log to FMC; for one flow's rule: fmc_packet_tracer or fmc_rule_lookup"
+)
 BUFFER_HINT = (
     "Its syslog buffer is off, and FMC's command API refuses 'show conn' (FMC 10.0.1). To see live "
     "connections here, turn on logging to the internal buffer at level informational in the device's "
     "platform settings (Syslog > Logging Destinations > Internal Buffer; REST: "
-    "ftdplatformsettingspolicies/{id}/syslog/loggingdestinations with loggingDestination INTERNAL_BUFFER) "
-    "and deploy; for the access rule, user and application, also send the rules' connection events to "
-    "syslog (fmc_set_access_logging). Meanwhile: fmc_packet_tracer for a verdict, or 'show conn' on the "
-    "device CLI."
+    "ftdplatformsettingspolicies/{id}/syslog/loggingdestinations with loggingDestination INTERNAL_BUFFER), "
+    f"{CONN_IDS_HOW}; turn on timestamps for syslog messages too, for started/last_seen. The buffer won't "
+    f"show the access rule or application: {SNORT_ONLY_TO_SERVERS}. Meanwhile: fmc_packet_tracer for a "
+    "verdict, or 'show conn' on the device CLI."
 )
+NO_CONN_MESSAGES = (
+    "The buffer holds no connection messages (302013-302021): no traffic since the buffer last wrapped, or "
+    f"the messages are off. If they are off, {CONN_IDS_HOW}."
+)
+NO_TIMESTAMPS = (
+    "The device doesn't timestamp its log messages ('Timestamp logging: disabled' in show logging), so "
+    "started, ended and last_seen stay empty: turn on timestamps for syslog messages in the platform "
+    "settings (Syslog > Syslog Settings) and deploy."
+)
+NO_RULE_IN_BUFFER = f"No row names an access rule or application: {SNORT_ONLY_TO_SERVERS}."
+CONN_MESSAGE = re.compile(r"%(?:FTD|ASA)-\d-3020(?:1[3-9]|2[01]):")
+TIMESTAMPS_OFF = re.compile(r"Timestamp logging:\s*disabled", re.I)
 
 # --- syslog buffer (show logging) -----------------------------------------------------------------
 
@@ -592,6 +618,18 @@ def role_error(e: AuthError, what: str = SESSIONS_WHAT) -> AuthError:
     return e
 
 
+def buffer_notes(text: str, conns: list[Conn]) -> list[str]:
+    """Why buffer rows are missing or bare: no connection messages, no timestamps, no Snort events."""
+    out: list[str] = []
+    if not CONN_MESSAGE.search(text):
+        out.append(NO_CONN_MESSAGES)
+    if conns and TIMESTAMPS_OFF.search(text):
+        out.append(NO_TIMESTAMPS)
+    if conns and not any(c.rule or c.application for c in conns):
+        out.append(NO_RULE_IN_BUFFER)
+    return out
+
+
 def _host_filter(host: str | None) -> ipaddress.IPv4Network | ipaddress.IPv6Network | None:
     if not host:
         return None
@@ -645,11 +683,13 @@ def register(reg: ToolRegistrar) -> None:
     ) -> ToolResult:
         """'What is this host (or user) talking to right now?' on one FTD: its connections with
         initiator and responder (interface, address, port), protocol, state (open/closed), bytes,
-        duration or idle time, teardown reason and, when the device logs them, the access rule, user
-        and application. FMC 10.0.1 refuses 'show conn' over its API, so the rows come from the
-        device's syslog buffer ('show logging': connection built/teardown messages and Snort
-        connection events); if the buffer is off the answer says how to turn it on. Where FMC's API
-        lists 'show conn' (read from its spec at run time) the live connection table is used instead.
+        duration or idle time, teardown reason and the identity user where LINA's messages name it.
+        FMC 10.0.1 refuses 'show conn' over its API, so the rows come from the device's syslog buffer
+        ('show logging': connection built/teardown messages); if the buffer is off the answer says how
+        to turn it on. The access rule and application come from Snort's connection events, which
+        FTD 10 sends only to syslog servers, not to the buffer: the note says where to read them.
+        Where FMC's API lists 'show conn' (read from its spec at run time) the live connection table is
+        used instead.
         From the buffer, open connections come first, then the most recently active, with `started` and
         `last_seen` (the newest log line about it; `ended` for a teardown) when the device timestamps
         its logs; packet-tracer flows are hidden and counted in `packet_tracer_flows` (include_simulated
@@ -696,6 +736,7 @@ def register(reg: ToolRegistrar) -> None:
             if not enabled:
                 off = {"device": dev.get("name"), "source": source, "available": False, "note": BUFFER_HINT}
                 return list_result(page_of([], limit=limit, offset=offset), fmt=response_format, extra=off)
+            notes += buffer_notes(text, conns)
 
         rows = []
         simulated: dict[str, int] = {}
