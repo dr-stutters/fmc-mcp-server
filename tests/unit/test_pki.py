@@ -100,6 +100,44 @@ async def test_list_hides_system_trusted_cas(fmc: respx.MockRouter) -> None:
         assert {r["name"] for r in both["results"]} == {"Cisco-Licensing-Root-CA", "mcp-test-server-ca"}
 
 
+async def test_global_certificates_in_a_child_domain_are_not_system(fmc: respx.MockRouter) -> None:
+    """live-B2: in Global/mcp-test-leaf fmc_get_certificate said `system: true` for a certificate somebody
+    imported in Global, because FMC 10.0.1 marks an ancestor's objects read-only with no reason there. The
+    recorded leaf answers (certificates.json): the internal certificate and the custom CA are not system
+    (they name their domain instead) and the custom CA stays listed; the bundled root is system and hidden."""
+    live = fixture("certificates")
+    internal = live["internal_certificates"]["items"][0]
+    cas = live["trusted_cas"]["items"]  # COMODO (bundled root), the lab's own CA, FNMT (bundled root)
+    fmc.get(CAS).mock(return_value=items([]))
+    fmc.get(CERTS).mock(return_value=items([internal]))
+    fmc.get(f"{CERTS}/{internal['id']}").mock(return_value=httpx.Response(200, json=internal))
+    fmc.get(EXT).mock(return_value=items(cas))
+    for t in cas:
+        fmc.get(f"{EXT}/{t['id']}").mock(return_value=httpx.Response(200, json=t))
+    fmc.get(DEC).mock(return_value=items([]))
+    fmc.get(f"{CFG}/object/realms").mock(return_value=items([]))
+    async with Client(server()) as c:
+        one = await run(
+            c, "fmc_get_certificate", {"certificate": internal["name"], "response_format": "json"}
+        )
+        assert "system" not in one and one["domain"] == "Global" and one["kind"] == "internal_cert"
+        listed = await run(c, "fmc_get_certificate", {"kind": "trusted_ca", "response_format": "json"})
+        assert [r["name"] for r in listed["results"]] == ["mcp-test-lab-CA"]
+        every = await run(
+            c,
+            "fmc_get_certificate",
+            {"kind": "trusted_ca", "include_system": True, "response_format": "json"},
+        )
+        assert {r["name"]: r.get("system") for r in every["results"]} == {
+            "COMODO-ECC-Certification-Authority": True,
+            "mcp-test-lab-CA": None,
+            "C_ES-O_FNMT-RCM-OU_AC-RAIZ-FNMT-RCM": True,
+        }
+        gone = await run(c, "fmc_delete_certificate", {"certificate": internal["name"]})
+    # not refused as a system certificate (in a child domain fmc_preview's owner-domain blocker names Global)
+    assert "Read-only system certificate." not in gone.get("blockers", [])
+
+
 async def test_show_internal_ca_with_pem_and_usage(fmc: respx.MockRouter) -> None:
     mock_catalog(fmc)
     async with Client(server()) as c:
