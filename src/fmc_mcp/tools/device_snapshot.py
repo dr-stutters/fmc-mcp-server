@@ -17,7 +17,7 @@ tools reads them too):
 
 An HA pair's per-unit sections key each item by unit ('mcp-fw-ha-a: 198.51.100.0/24'). Show commands go
 through F68's fleet runner: `fmc_device_snapshot` runs each command once for every device (FMC's
-bulkcommands where FMC enables it, else one request per device, eight at a time) before the per-device
+bulkcommands where FMC enables it, else one request per device, one at a time) before the per-device
 FMC reads. Volatile values are left out (route ages, SA lifetimes and SPIs, alert timestamps, tunnel
 change times), so two snapshots of an unchanged device compare identical; hit-count changes, and a
 health message whose only change is a reading (a CPU or memory percentage, a disk size), are reported

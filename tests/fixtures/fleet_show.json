@@ -81,5 +81,56 @@
     }
    ]
   }
+ },
+ "concurrent_mixup": {
+  "_source": "Recorded live 2026-10-21 (Wave 6 Stage 2), FMC 10.0.1 (build 1), Global/mcp-test-leaf: bulkcommands refused (403), so fmc_run_show_command ran per device with eight GET devicerecords/{id}/operational/commands at once. FMC answered concurrent requests with ANOTHER device's output: the 'show version' banner and its 'UUID : <id>' line named a different device than the request path, and every run gave a different mix; single, sequential requests were right. Devices renamed (the SD-WAN hub and spokes of lab t1, two standalone FTDs), UUIDs replaced with documentation values, addresses mapped to 192.0.2.x/28 like device_snapshot_t1.json (spoke1 = that recording's device). `answered_with` maps each requested device to the device whose output FMC returned.",
+  "ids": {
+   "hub": "e0000000-0000-4000-8000-00000000000a",
+   "spoke1": "e0000000-0000-4000-8000-00000000000b",
+   "spoke2": "e0000000-0000-4000-8000-00000000000c",
+   "spoke3": "e0000000-0000-4000-8000-00000000000d",
+   "ftd1": "e0000000-0000-4000-8000-00000000000e",
+   "ftd-identity": "e0000000-0000-4000-8000-00000000000f"
+  },
+  "runs": [
+   {
+    "command": "show version",
+    "match": "UUID",
+    "answered_with": {
+     "hub": "spoke2",
+     "spoke1": "spoke2",
+     "spoke2": "spoke2",
+     "spoke3": "spoke2",
+     "ftd1": "spoke2",
+     "ftd-identity": "spoke2"
+    }
+   },
+   {
+    "command": "show version",
+    "max_lines": 3,
+    "answered_with": {
+     "hub": "spoke1",
+     "spoke1": "ftd1",
+     "spoke2": "ftd1",
+     "spoke3": "ftd1",
+     "ftd1": "ftd1",
+     "ftd-identity": "ftd1"
+    }
+   },
+   {
+    "command": "show interface ip brief",
+    "group": "the four t1 devices",
+    "answered_with": {
+     "hub": "hub",
+     "spoke1": "hub",
+     "spoke2": "hub",
+     "spoke3": "hub"
+    }
+   }
+  ],
+  "show_interface_ip_brief": {
+   "hub": "Interface                  IP-Address      OK? Method Status                Protocol\nEthernet0/0                192.0.2.66      YES CONFIG up                    up  \nEthernet0/1                192.0.2.82      YES CONFIG up                    up  \nEthernet0/2                192.0.2.98      YES CONFIG up                    up  \nEthernet0/3                192.0.2.113     YES CONFIG up                    up  \nManagement0/0              203.0.113.130   YES unset  up                    up  \n",
+   "spoke1": "Interface                  IP-Address      OK? Method Status                Protocol\nEthernet0/0                192.0.2.2       YES CONFIG up                    up  \nEthernet0/1                192.0.2.18      YES CONFIG up                    up  \nEthernet0/2                192.0.2.34      YES CONFIG up                    up  \nEthernet0/3                192.0.2.49      YES CONFIG up                    up  \nManagement0/0              203.0.113.130   YES unset  up                    up  \n"
+  }
  }
 }

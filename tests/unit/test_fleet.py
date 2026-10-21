@@ -2,6 +2,7 @@
 (CRUD, and group names in the fleet tools), against the live-recorded shapes in tests/fixtures/fleet_show.json
 (the bulk task shape is built from the 10.0.1 schema, see its _source)."""
 
+import asyncio
 import json
 from typing import Any
 
@@ -13,7 +14,7 @@ from fastmcp.exceptions import ToolError
 
 from fmc_mcp.server import create_server
 
-from .conftest import CFG, fixture, items, make_settings
+from .conftest import CFG, ConcurrentFmc, fixture, items, make_settings
 
 FX = fixture("fleet_show")
 A, B, C, D = (f"a0000000-0000-4000-8000-00000000000{x}" for x in "abcd")
@@ -94,9 +95,16 @@ def fleet(fmc: respx.MockRouter) -> respx.MockRouter:
     return fmc
 
 
-def show_ok(name: str, text: str | None = None) -> httpx.Response:
+def version_text(name: str, uid: str | None = None) -> str:
+    """The recorded 'show version' as device `name` prints it: its banner and its own UUID line."""
     out = FX["show_version_200"]["items"][0]["commandOutput"].replace("ftd-a", name)
-    return items([{"commandInput": "show version", "commandOutput": text or out, "type": "command"}])
+    return out.replace(A, uid or next((d["id"] for d in DEVICES if d["name"] == name), A))
+
+
+def show_ok(name: str, text: str | None = None) -> httpx.Response:
+    return items(
+        [{"commandInput": "show version", "commandOutput": text or version_text(name), "type": "command"}]
+    )
 
 
 # --- fleet show commands ------------------------------------------------------------------------------
@@ -130,6 +138,149 @@ async def test_feature_flag_403_falls_back_per_device_and_is_remembered(fleet: r
     assert "disconnected" in rows["ftd-d"]["error"]
     assert again["path"] == "per-device" and bulk.call_count == 1
     assert ga.calls.last.request.url.params["command"] == "show version"
+
+
+async def test_fmc_mixing_concurrent_answers_cannot_mix_up_rows(fleet: respx.MockRouter) -> None:
+    """Live 2026-10-21 (concurrent_mixup, run 1): eight requests at once gave all six rows one device's
+    'UUID : ...' line. The per-device path now sends one request at a time, so each row is its own."""
+    rec = FX["concurrent_mixup"]["runs"][0]
+    assert set(rec["answered_with"].values()) == {"spoke2"}  # what FMC did with concurrent requests
+    fleet.post(BULK).mock(return_value=httpx.Response(403, json=FX["bulk_refused_403"]))
+    names = {A: "ftd-a", B: "ftd-b", C: "ftd-c", HA_A: "fw-ha-a", HA_B: "fw-ha-b"}
+    fmc = ConcurrentFmc({i: version_text(n) for i, n in names.items()}).mount(fleet)
+    args = {"devices": ["ftd-a", "ftd-b", "ftd-c", "fw-ha"], "command": rec["command"], "match": rec["match"]}
+    async with Client(server()) as c:
+        out = await run(c, "fmc_run_show_command", args)
+    assert fmc.peak == 1 and len(fmc.calls) == 5
+    assert {r["device"]: r["output"] for r in out["results"]} == {
+        n: f"UUID                      : {i}" for i, n in names.items()
+    }
+
+
+async def test_fleet_ip_brief_rows_carry_each_devices_addresses(fleet: respx.MockRouter) -> None:
+    """Live (concurrent_mixup, run 3): a group's 'show interface ip brief' gave every member the hub's
+    addresses. Recorded outputs on two devices: each row has its own."""
+    rec = FX["concurrent_mixup"]
+    assert set(rec["runs"][2]["answered_with"].values()) == {"hub"}
+    hub, spoke = rec["show_interface_ip_brief"]["hub"], rec["show_interface_ip_brief"]["spoke1"]
+    fleet.post(BULK).mock(return_value=httpx.Response(403, json=FX["bulk_refused_403"]))
+    fmc = ConcurrentFmc({A: hub, B: spoke}).mount(fleet)
+    async with Client(server()) as c:
+        out = await run(
+            c,
+            "fmc_run_show_command",
+            {"devices": ["ftd-a", "ftd-b"], "command": "show interface ip brief", "match": "Ethernet0/0"},
+        )
+    rows = {r["device"]: r["output"] for r in out["results"]}
+    assert fmc.peak == 1
+    assert "192.0.2.66" in rows["ftd-a"] and "192.0.2.2 " in rows["ftd-b"]
+
+
+async def test_concurrent_tool_calls_share_one_show_lock(fleet: respx.MockRouter) -> None:
+    """Two sessions' show commands at the same moment still reach FMC one after the other."""
+    fmc = ConcurrentFmc({A: version_text("ftd-a"), B: version_text("ftd-b")}).mount(fleet)
+    async with Client(server()) as c:
+        a, b = await asyncio.gather(
+            run(c, "fmc_run_show_command", {"device": "ftd-a", "command": "show version", "match": "UUID"}),
+            run(c, "fmc_run_show_command", {"device": "ftd-b", "command": "show version", "match": "UUID"}),
+        )
+    assert fmc.peak == 1
+    assert A in a["output"] and B in b["output"]
+
+
+async def test_an_answer_naming_another_device_is_asked_again(fleet: respx.MockRouter) -> None:
+    """An answer whose UUID line names another device (another API client's request ran at the same
+    time) is sent once more; a second wrong answer is that device's failure, never its output."""
+    fleet.post(BULK).mock(return_value=httpx.Response(403, json=FX["bulk_refused_403"]))
+    ga = fleet.get(cmd_path(A)).mock(side_effect=[show_ok("ftd-b"), show_ok("ftd-a")])
+    gb = fleet.get(cmd_path(B)).mock(return_value=show_ok("ftd-c"))
+    async with Client(server()) as c:
+        out = await run(c, "fmc_run_show_command", {"devices": ["ftd-a", "ftd-b"], "command": "show version"})
+        with pytest.raises(ToolError, match=rf"twice with the output of device {C}"):
+            await run(c, "fmc_run_show_command", {"device": "ftd-b", "command": "show version"})
+    assert ga.call_count == 2 and gb.call_count == 4
+    rows = {r["device"]: r for r in out["results"]}
+    assert rows["ftd-a"]["ok"] and f"UUID                      : {A}" in rows["ftd-a"]["output"]
+    assert not rows["ftd-b"]["ok"] and "mixes up show commands" in rows["ftd-b"]["error"]
+    assert out["failed"] == ["ftd-b"]
+
+
+async def test_a_wedged_device_holds_the_show_lock_for_one_request_not_its_retries(
+    fleet: respx.MockRouter, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    """A device whose show command times out is retried (retries=2) with the back-off spent outside the show
+    lock: another device's command goes in between, so a wedged but connected FTD delays the others by one
+    request (at most SHOW_TIMEOUT), not by every retry (~6 min with 120 s and two retries)."""
+    monkeypatch.setattr("fmc_mcp.tools.troubleshoot.SHOW_BACKOFF", 0.01)
+    order: list[str] = []
+    first = asyncio.Event()
+
+    async def wedged(request: httpx.Request) -> httpx.Response:
+        order.append("a")
+        if not first.is_set():
+            first.set()
+            await asyncio.sleep(0.3)  # holds the lock while ftd-b's call arrives and waits for it
+        raise httpx.ReadTimeout("no answer", request=request)
+
+    def fine(request: httpx.Request) -> httpx.Response:
+        order.append("b")
+        return show_ok("ftd-b")
+
+    fleet.get(cmd_path(A)).mock(side_effect=wedged)
+    fleet.get(cmd_path(B)).mock(side_effect=fine)
+    async with Client(server(retries=2)) as c:
+        slow = asyncio.create_task(
+            c.call_tool(
+                "fmc_run_show_command", {"device": "ftd-a", "command": "show version"}, raise_on_error=False
+            )
+        )
+        await first.wait()
+        b = await run(
+            c, "fmc_run_show_command", {"device": "ftd-b", "command": "show version", "match": "UUID"}
+        )
+        a = await slow
+    assert order == ["a", "b", "a", "a"]  # the lock held across retries gave a, a, a, b
+    assert a.is_error and "timed out" in a.content[0].text  # type: ignore[union-attr]
+    assert B in b["output"]
+
+
+def banner_only(name: str) -> str:
+    """'show version' as device `name` prints it, without its UUID line (only the banner names it)."""
+    return "\n".join(ln for ln in version_text(name).splitlines() if not ln.startswith("UUID"))
+
+
+async def test_an_answer_whose_banner_names_another_device_of_the_run_is_a_failure(
+    fleet: respx.MockRouter,
+) -> None:
+    """Identity canary at no cost: an answer whose 'show version' banner names another device of the run is
+    that row's failure, never its output. A hostname outside the run, or an HA peer's (units may print the
+    same hostname), is no evidence."""
+    fleet.post(BULK).mock(return_value=httpx.Response(403, json=FX["bulk_refused_403"]))
+    answers = {A: "ftd-b", B: "ftd-b", C: "firepower", HA_A: "fw-ha-b", HA_B: "fw-ha-b"}
+    for i, banner in answers.items():
+        fleet.get(cmd_path(i)).mock(return_value=show_ok(BY_ID[i]["name"], banner_only(banner)))
+    args = {"devices": ["ftd-a", "ftd-b", "ftd-c", "fw-ha"], "command": "show version"}
+    async with Client(server()) as c:
+        out = await run(c, "fmc_run_show_command", args)
+    rows = {r["device"]: r for r in out["results"]}
+    assert out["failed"] == ["ftd-a"]
+    assert "another device's output (its 'show version' banner names 'ftd-b')" in rows["ftd-a"]["error"]
+    assert all(rows[n]["ok"] for n in ("ftd-b", "ftd-c", "fw-ha-a", "fw-ha-b"))
+
+
+async def test_a_bulk_answer_naming_another_device_is_a_failure(fleet: respx.MockRouter) -> None:
+    """The same canary on bulkcommands answers (where FMC enables it): a device's row whose UUID line names
+    another device is a failure."""
+    rows = [
+        {"device": {"id": A}, "commandOutput": version_text("ftd-b")},
+        {"device": {"id": B}, "commandOutput": version_text("ftd-b")},
+    ]
+    fleet.post(BULK).mock(return_value=items(rows))
+    async with Client(server()) as c:
+        out = await run(c, "fmc_run_show_command", {"devices": [A, B], "command": "show version"})
+    got = {r["device"]: r for r in out["results"]}
+    assert out["path"] == "bulkcommands" and out["failed"] == ["ftd-a"]
+    assert f"its UUID line names device {B}" in got["ftd-a"]["error"] and got["ftd-b"]["ok"]
 
 
 async def test_bulk_task_shape_from_the_schema(fleet: respx.MockRouter) -> None:
