@@ -1,8 +1,9 @@
 """Decryption policy (F13 slice 2, F64, F82, F83): read decryption policies and their rules, create and
 tune a policy (trusted CAs, TLS 1.3 decryption, untrusted server certificates, undecryptable actions,
-default-action logging), add or delete rules (DECRYPT_RESIGN with an internal CA, DECRYPT_KNOWN_KEY with a
-server's own certificate, DO_NOT_DECRYPT exemptions for banking or health sites, BLOCK on old TLS versions
-or weak cipher suites), cipher suite list objects, and link a decryption policy to an access control policy.
+default-action logging), add, change, move or delete rules (DECRYPT_RESIGN with an internal CA,
+DECRYPT_KNOWN_KEY with a server's own certificate, DO_NOT_DECRYPT exemptions for banking or health sites,
+BLOCK on old TLS versions or weak cipher suites), cipher suite list objects, and link a decryption policy to
+an access control policy.
 
 The certificate objects live in fmc_mcp.tools.pki; fmc_tls_decryption_check (decryption_check.py) explains
 what happens to one flow; the cipher suite table is fmc_mcp.cipher_suites."""
@@ -275,8 +276,8 @@ def version_problem(r: dict[str, Any]) -> str | None:
     return (
         f"{action} rule {r.get('name')!r} selects TLS/SSL versions ({off}; FMC stores all off for a rule "
         "created without them): FMC 10 refuses the deploy ('Support for SSL Versions selection for "
-        f"{NO_VERSION_SELECTION[action]} rule is deprecated'). Turn every version on (fmc_api_call PUT of "
-        "the rule with tlsVersions all true) or re-create it with fmc_create_decryption_rule (sends them)."
+        f"{NO_VERSION_SELECTION[action]} rule is deprecated'). Turn every version on: "
+        f"fmc_update_decryption_rule rule={r.get('name')!r} tls_versions=[]."
     )
 
 
@@ -765,10 +766,7 @@ def register(reg: ToolRegistrar) -> None:
             if versions
             else dict(ALL_TLS_VERSIONS),
         }
-        lists = [
-            await resolve_in(app, CIPHER_LISTS, c, "cipher suite list", domain)
-            for c in cipher_suite_lists or []
-        ]
+        lists = [await cipher_list(app, c, domain) for c in cipher_suite_lists or []]
         if lists:
             body["cipherSuiteLists"] = {
                 "objects": [{"id": c["id"], "name": c.get("name"), "type": "CipherSuiteList"} for c in lists]
@@ -969,6 +967,196 @@ def register(reg: ToolRegistrar) -> None:
             apply=lambda: applied(app, create),
         )
 
+    @reg.write(title="Update decryption rule")
+    async def fmc_update_decryption_rule(
+        ctx: Context,
+        policy: PolicyRef,
+        rule: Annotated[str, Field(description="Rule name, UUID or 1-based index")],
+        tls_versions: Annotated[
+            list[TlsVersion] | None,
+            Field(
+                description="BLOCK, BLOCK_WITH_RESET or MONITOR rules: the versions to match, replacing the "
+                "rule's, e.g. ['sslv3', 'tls10', 'tls11']; [] or all five = every version (no condition)"
+            ),
+        ] = None,
+        cipher_suite_lists: Annotated[
+            list[str] | None,
+            Field(
+                description="BLOCK, BLOCK_WITH_RESET or MONITOR rules: cipher suite list objects (name or "
+                "UUID) replacing the rule's; [] removes the condition"
+            ),
+        ] = None,
+        enabled: Annotated[bool | None, Field(description="Enable or disable the rule")] = None,
+        log: Annotated[bool | None, Field(description="Log matching connections at their end to FMC")] = None,
+        insert_before: Annotated[
+            int | None,
+            Field(
+                ge=1,
+                description="Move the rule just above the rule now at this index (1 = first; the rule "
+                "count + 1 = the end)",
+            ),
+        ] = None,
+        domain: Domain = None,
+        confirm: Confirm = None,
+    ) -> dict[str, Any]:
+        """Change an existing decryption rule in place: its TLS versions and cipher suite lists (switch a
+        Block rule to another list, narrow or widen the versions), enable or disable it, its logging, or
+        move it (insert_before). Its action and other conditions stay; FMC's PUT gets the whole rule back.
+        The preview shows each field from/to and the index, and warns when the result leaves a decrypt rule
+        above an overlapping TLS version / cipher suite Block rule (decryptable weak suites then pass
+        decrypted). A Do-not-decrypt or Decrypt-Resign rule FMC stored with no version selected (FMC 10
+        refuses to deploy it) gets every version back. Current rules: fmc_get_decryption_policy. Takes
+        effect after a deploy of the devices whose access policy uses the decryption policy."""
+        app: FmcApp = get_client(ctx)
+        p = await resolve_in(app, DECRYPTION, policy, "decryption policy", domain)
+        base = await app.config_path(f"{DECRYPTION}/{p['id']}/decryptionpolicyrules", domain)
+        existing = await all_rules(app, base)
+        cur = find_rule(existing.items, rule, str(p.get("name")))
+        action = str(cur.get("ruleAction") or "")
+        versions = [v for v in ALL_TLS_VERSIONS if v in (tls_versions or [])]
+        if len(versions) == len(ALL_TLS_VERSIONS):
+            versions = []  # all five = every version, no condition
+        if (versions or cipher_suite_lists) and action not in TLS_CONDITION_ACTIONS:
+            given = " and ".join(
+                n for n, v in (("tls_versions", versions), ("cipher_suite_lists", cipher_suite_lists)) if v
+            )
+            raise InvalidRequest(
+                f"{given} only go on BLOCK, BLOCK_WITH_RESET or MONITOR rules; {cur.get('name')!r} is "
+                f"{action}: FMC 10 refuses to deploy a Do-not-decrypt or Decrypt-Resign rule that selects "
+                "TLS versions, and Cisco's guide warns that version and cipher suite conditions on decrypt "
+                "rules interfere with ClientHello processing. Put the condition on a BLOCK_WITH_RESET rule "
+                "above it (fmc_create_decryption_rule)."
+            )
+        desired = rule_body(cur)
+        changes: dict[str, Any] = {}
+        blockers: list[str] = []
+        warnings: list[str] = []
+        if tls_versions is not None:
+            desired["tlsVersions"] = (
+                {v: v in versions for v in ALL_TLS_VERSIONS} if versions else dict(ALL_TLS_VERSIONS)
+            )
+            if len(tls_versions) == len(ALL_TLS_VERSIONS):
+                warnings.append("tls_versions lists all five versions: that is every version, no condition.")
+        elif action in NO_VERSION_SELECTION and _versions_label(cur) == NONE_SELECTED:
+            # what FMC stores for a rule created without tlsVersions: every version, but sent back as is the
+            # deploy stays refused
+            desired["tlsVersions"] = dict(ALL_TLS_VERSIONS)
+            warnings.append(
+                f"{cur.get('name')!r} has no TLS version selected (FMC stores that for a rule created "
+                f"without versions, then refuses to deploy a {action} rule with it): the update sends every "
+                "version."
+            )
+        if _versions_label(desired) != _versions_label(cur):
+            changes["tls_versions"] = {"from": _versions_label(cur), "to": _versions_label(desired)}
+        warnings += [m for m in [version_problem(desired)] if m]
+        lists = [await cipher_list(app, c, domain) for c in cipher_suite_lists or []]
+        if cipher_suite_lists is not None:
+            if lists:
+                desired["cipherSuiteLists"] = {
+                    "objects": [
+                        {"id": c["id"], "name": c.get("name"), "type": "CipherSuiteList"} for c in lists
+                    ]
+                }
+            else:  # none = any suite: FMC's PUT replaces the rule, so omit the block
+                desired.pop("cipherSuiteLists", None)
+            before, after = _list_ids(cur), _list_ids(desired)
+            if before != after:
+                changes["cipher_suite_lists"] = {
+                    "from": block_labels(cur.get("cipherSuiteLists")),
+                    "to": [c.get("name") for c in lists],
+                }
+        if enabled is not None and bool(cur.get("enabled", True)) != enabled:
+            desired["enabled"] = enabled
+            changes["enabled"] = {"from": bool(cur.get("enabled", True)), "to": enabled}
+        logged = bool((cur.get("logging") or {}).get("logEnd"))
+        if log is not None and log != logged:
+            desired["logging"] = {**(cur.get("logging") or {}), "logEnd": log, "sendEvents": log}
+            changes["log"] = {"from": logged, "to": log}
+        count = len(existing.items)
+        index = _index(cur) or count
+        position = index
+        params: dict[str, Any] | None = None
+        if insert_before is not None:
+            if insert_before > count + 1:
+                blockers.append(
+                    f"insert_before={insert_before}, but {p.get('name')!r} has {count} rule(s); "
+                    f"insert_before={count + 1} moves the rule to the end."
+                )
+            elif insert_before < index:
+                position, params = insert_before, {"insertBefore": insert_before}
+            elif insert_before > index + 1:
+                # after the rule now just above `insert_before`: indexes as they are before the move
+                position, params = insert_before - 1, {"insertAfter": insert_before - 1}
+            if params:
+                changes["index"] = {"from": index, "to": position}
+        if changes and action != "DO_NOT_DECRYPT" and matches_all(desired):
+            blockers.append(
+                f"{cur.get('name')!r} ({action}) would have no condition left and match all TLS traffic."
+            )
+        if not changes and not blockers:
+            blockers.append("Nothing to change.")
+        after_rules = moved(existing.items, cur["id"], desired, position)
+        name_ref = repr(cur.get("name"))
+        warnings += [f"After this change: {m}" for m in order_problems(after_rules) if name_ref in m]
+        item = f"{base}/{cur['id']}"
+
+        async def apply() -> Any:
+            try:
+                res = await app.api.put(item, desired, params=params)
+            except UpstreamError as e:
+                if (e.status_code or 0) < 500:
+                    raise
+                res = await app.api.get(item)
+                if not same_rule(res, desired):
+                    raise
+                res = {
+                    **res,
+                    "warning": f"FMC answered {e.status_code} ({e}) but saved the change; check it with "
+                    "fmc_get_decryption_policy.",
+                }
+            if not params:
+                return res
+            rows = (await all_rules(app, base)).items
+            now: dict[str, Any] = next((r for r in rows if r.get("id") == cur["id"]), {})
+            res = {**(res if isinstance(res, dict) else {}), "index": _index(now)}
+            if _index(now) != position:
+                res["warning"] = (
+                    f"{res.get('warning', '')} FMC put the rule at index {_index(now)}, not {position}; "
+                    "check the order with fmc_get_decryption_policy."
+                ).strip()
+            return res
+
+        return await fmc_preview(
+            ctx,
+            tool="fmc_update_decryption_rule",
+            args={
+                "policy": policy,
+                "rule": rule,
+                "tls_versions": tls_versions,
+                "cipher_suite_lists": cipher_suite_lists,
+                "enabled": enabled,
+                "log": log,
+                "insert_before": insert_before,
+                "domain": domain,
+            },
+            confirm=confirm,
+            owned=[p],
+            plan=Plan(
+                f"Update decryption rule {cur.get('name')!r} ({action}) in {p.get('name')!r}",
+                details={"rule": rule_row(cur), "index": index, "changes": changes},
+                # the rule, the policy's order (FMC lists by creation, so with indexes) and the lists' suites
+                fingerprint={
+                    "policy": p["id"],
+                    "rule": rule_body(cur),
+                    "order": [(r.get("id"), _index(r)) for r in existing.items],
+                    "cipher_suite_lists": [(c["id"], c.get("literals")) for c in lists],
+                },
+                blockers=blockers,
+                side_effects=[*warnings, "Takes effect on devices after the next deployment."],
+            ),
+            apply=lambda: applied(app, apply),
+        )
+
     @reg.write(title="Delete decryption rule", destructive=True)
     async def fmc_delete_decryption_rule(
         ctx: Context,
@@ -1100,9 +1288,7 @@ def register(reg: ToolRegistrar) -> None:
             ]
             return list_result(page_of(rows, limit=limit, offset=offset), fmt=response_format)
         if name:
-            c = await resolve_in(app, CIPHER_LISTS, name, "cipher suite list", domain)
-            if "literals" not in c:  # a by-name listing isn't expanded
-                c = await app.api.get(f"{await app.config_path(CIPHER_LISTS, domain)}/{c['id']}")
+            c = await cipher_list(app, name, domain)
             suites = []
             for lit in c.get("literals") or []:
                 s = suite_of_literal(lit)
@@ -1258,6 +1444,88 @@ async def created_anyway(app: FmcApp, base: str, name: str, known: set[Any]) -> 
         if r.get("id") not in known and str(r.get("name", "")).lower() == name.strip().lower()
     ]
     return made[0] if len(made) == 1 else None
+
+
+NONE_SELECTED = "none selected"
+# Rule conditions besides the certificate and TLS ones (CERT_CONDITIONS).
+MATCH_FIELDS = (
+    "sourceZones",
+    "destinationZones",
+    "sourceNetworks",
+    "destinationNetworks",
+    "sourcePorts",
+    "destinationPorts",
+    "vlanTags",
+    "urls",
+    "users",
+    "applications",
+)
+
+
+def rule_body(r: dict[str, Any]) -> dict[str, Any]:
+    """A decryption rule as FMC takes it back in a PUT (no metadata or links)."""
+    return {k: v for k, v in r.items() if k not in ("metadata", "links")}
+
+
+def find_rule(rules: list[dict[str, Any]], ref: str, policy: str) -> dict[str, Any]:
+    """One rule of a policy by UUID, name (case-insensitive) or 1-based index."""
+    key = ref.strip()
+    hits = [r for r in rules if r.get("id") == key or str(r.get("name", "")).lower() == key.lower()]
+    if not hits and key.isdigit():
+        hits = [r for r in rules if _index(r) == int(key)]
+    if len(hits) != 1:
+        raise NotFound(f"No single rule {ref!r} in {policy!r} (fmc_get_decryption_policy lists them).", 404)
+    return hits[0]
+
+
+async def cipher_list(app: FmcApp, ref: str, domain: str | None) -> dict[str, Any]:
+    """A cipher suite list with its suites (`literals`)."""
+    c = await resolve_in(app, CIPHER_LISTS, ref, "cipher suite list", domain)
+    if "literals" not in c:  # a by-name listing isn't expanded
+        c = await app.api.get(f"{await app.config_path(CIPHER_LISTS, domain)}/{c['id']}")
+    return c
+
+
+def _list_ids(r: dict[str, Any]) -> list[str]:
+    return [str(o.get("id")) for o in (r.get("cipherSuiteLists") or {}).get("objects") or []]
+
+
+def _versions_label(r: dict[str, Any]) -> list[str] | str:
+    """The versions a rule matches: a list, 'all', or NONE_SELECTED (all five off: FMC's matching treats it
+    as every version, its deploy of a Do-not-decrypt or Decrypt-Resign rule refuses it)."""
+    v = r.get("tlsVersions")
+    if isinstance(v, dict) and v and not any(v.get(k) for k in ALL_TLS_VERSIONS):
+        return NONE_SELECTED
+    return versions_on(r) or "all"
+
+
+def matches_all(r: dict[str, Any]) -> bool:
+    """A rule with no condition at all: it matches every TLS session."""
+    return not any(has_value(r.get(f)) for f in MATCH_FIELDS) and not cert_conditions(r)
+
+
+def moved(rules: list[dict[str, Any]], rid: str, new: dict[str, Any], to: int) -> list[dict[str, Any]]:
+    """The policy's rules with rule `rid` replaced by `new` at index `to`, re-indexed."""
+    out = [r for r in sorted(rules, key=lambda x: _index(x) or 1_000_000) if r.get("id") != rid]
+    out.insert(to - 1, {**new, "id": rid})
+    return [{**r, "metadata": {**(r.get("metadata") or {}), "ruleIndex": i}} for i, r in enumerate(out, 1)]
+
+
+def same_rule(got: Any, want: dict[str, Any]) -> bool:
+    """Whether FMC holds what an update sent (the fields fmc_update_decryption_rule changes)."""
+    if not isinstance(got, dict):
+        return False
+
+    def key(r: dict[str, Any]) -> tuple[Any, ...]:
+        v = r.get("tlsVersions") or {}
+        return (
+            tuple(bool(v.get(k)) for k in ALL_TLS_VERSIONS),
+            sorted(_list_ids(r)),
+            r.get("enabled", True) is not False,
+            bool((r.get("logging") or {}).get("logEnd")),
+        )
+
+    return key(got) == key(want)
 
 
 def _index(r: dict[str, Any]) -> int | None:
