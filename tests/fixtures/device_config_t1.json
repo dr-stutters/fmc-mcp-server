@@ -1,0 +1,1376 @@
+{
+ "_source": "F72: FMC 10.0.1 (build 1), Global/mcp-test-leaf, 2026-10-20, fmc_api_call GET (expanded) of mcp-sdwan-t1-spoke1/spoke2 (both disconnected; config reads answer). Lab 10.x/24 addresses replaced with one 192.0.2.x/28 each (netmask 24 -> 28), management addresses with 198.51.100.x, serials REDACTED, links dropped. Keys are paths below the domain ('global:' = the Global ancestor of the leaf). Every other collection these exports read answered {paging count 0} on spoke1 (VTI, loopback, subinterfaces, BGP, BGP general settings, PBR, OSPFv2, ECMP zones, out-of-band changes; no VPN topologies in the leaf or Global).",
+ "devices/devicerecords/1bcefc02-ca81-11f1-9c58-8639fcd7b26d": {
+  "deploymentStatus": "DEPLOYED",
+  "id": "1bcefc02-ca81-11f1-9c58-8639fcd7b26d",
+  "type": "Device",
+  "name": "mcp-sdwan-t1-spoke1",
+  "description": "NOT SUPPORTED",
+  "model": "Cisco Secure Firewall Threat Defense for KVM",
+  "modelId": "B",
+  "modelNumber": "75",
+  "modelType": "Sensor",
+  "healthStatus": "disabled",
+  "healthMessage": "Appliance unreachable",
+  "sw_version": "10.0.0",
+  "healthPolicy": {
+   "id": "dcd1c26c-cabe-11f1-a5c2-b58d6f180443",
+   "name": "mcp-sdwan-health",
+   "type": "HealthPolicy"
+  },
+  "accessPolicy": {
+   "name": "mcp-sdwan-acp",
+   "id": "00000000-0000-0ed3-0000-021474856047",
+   "type": "AccessPolicy"
+  },
+  "advanced": {
+   "enableOGS": true
+  },
+  "hostName": "198.51.100.201",
+  "license_caps": [
+   "ESSENTIALS"
+  ],
+  "performanceTier": "FTDv5",
+  "keepLocalEvents": false,
+  "prohibitPacketTransfer": false,
+  "isConnected": false,
+  "ftdMode": "ROUTED",
+  "analyticsOnly": false,
+  "metadata": {
+   "readOnly": {
+    "state": false
+   },
+   "inventoryData": {
+    "cpuCores": "1 CPU (4 cores)",
+    "cpuType": "CPU Xeon 4100/6100/8100 series 2700 MHz",
+    "memoryInMB": "8192 MB RAM"
+   },
+   "deviceSerialNumber": "REDACTED",
+   "domain": {
+    "name": "mcp-test-leaf",
+    "id": "a1c73df0-8353-8db7-1097-000000000000",
+    "type": "Domain"
+   },
+   "isMultiInstance": false,
+   "snortVersion": "3.9.3.1-61",
+   "vdbVersion": "Build 426 - 2026-03-24 09:29:08.0",
+   "lspVersion": "lsp-rel-20261016-1401",
+   "clusterBootstrapSupported": true,
+   "universalZeroTrustSupported": false,
+   "coreProfile": "Default"
+  },
+  "snortEngine": "SNORT3",
+  "isMCDManaged": false,
+  "managementState": "MANAGED"
+ },
+ "devices/devicerecords/1bcefc02-ca81-11f1-9c58-8639fcd7b26d/physicalinterfaces": {
+  "items": [
+   {
+    "metadata": {
+     "timestamp": 1792285840641,
+     "domain": {
+      "name": "Global \\ mcp-test-leaf",
+      "id": "a1c73df0-8353-8db7-1097-000000000000",
+      "type": "Domain"
+     },
+     "state": "COMMITTED",
+     "virtualRouter": {
+      "name": "Global",
+      "id": "42e95fbf-fd5a-42bf-a95f-bffd5a42bfd6",
+      "type": "VirtualRouter"
+     }
+    },
+    "type": "PhysicalInterface",
+    "nveOnly": false,
+    "MTU": 1500,
+    "mode": "NONE",
+    "enabled": true,
+    "name": "Ethernet0/0",
+    "id": "00000000-0000-0ed3-0000-021474859791",
+    "enableSGTPropagate": false,
+    "pathMonitoring": {
+     "enable": true,
+     "monitoredIp": "192.0.2.33",
+     "type": "PEER_IPV4"
+    },
+    "applicationMonitoring": {
+     "enable": true
+    },
+    "ifname": "mpls",
+    "managementOnly": false,
+    "securityZone": {
+     "id": "6d81c482-ca8e-11f1-bd2d-f6e16f180443",
+     "type": "SecurityZone"
+    },
+    "ipv4": {
+     "static": {
+      "address": "192.0.2.34",
+      "netmask": "28"
+     }
+    },
+    "ipv6": {
+     "enableIPV6": false
+    },
+    "priority": 1
+   },
+   {
+    "metadata": {
+     "timestamp": 1792285852288,
+     "domain": {
+      "name": "Global \\ mcp-test-leaf",
+      "id": "a1c73df0-8353-8db7-1097-000000000000",
+      "type": "Domain"
+     },
+     "state": "COMMITTED",
+     "virtualRouter": {
+      "name": "Global",
+      "id": "42e95fbf-fd5a-42bf-a95f-bffd5a42bfd6",
+      "type": "VirtualRouter"
+     }
+    },
+    "type": "PhysicalInterface",
+    "nveOnly": false,
+    "MTU": 1500,
+    "mode": "NONE",
+    "enabled": true,
+    "name": "Ethernet0/1",
+    "id": "00000000-0000-0ed3-0000-021474859792",
+    "enableSGTPropagate": false,
+    "pathMonitoring": {
+     "enable": true,
+     "monitoredIp": "192.0.2.65",
+     "type": "PEER_IPV4"
+    },
+    "applicationMonitoring": {
+     "enable": true
+    },
+    "ifname": "inet",
+    "managementOnly": false,
+    "securityZone": {
+     "id": "6d81c482-ca8e-11f1-bd2d-f6e16f180443",
+     "type": "SecurityZone"
+    },
+    "ipv4": {
+     "static": {
+      "address": "192.0.2.66",
+      "netmask": "28"
+     }
+    },
+    "ipv6": {
+     "enableIPV6": false
+    },
+    "priority": 2
+   },
+   {
+    "metadata": {
+     "timestamp": 1792284971638,
+     "domain": {
+      "name": "Global \\ mcp-test-leaf",
+      "id": "a1c73df0-8353-8db7-1097-000000000000",
+      "type": "Domain"
+     },
+     "state": "COMMITTED",
+     "virtualRouter": {
+      "name": "Global",
+      "id": "42e95fbf-fd5a-42bf-a95f-bffd5a42bfd6",
+      "type": "VirtualRouter"
+     }
+    },
+    "type": "PhysicalInterface",
+    "nveOnly": false,
+    "MTU": 1500,
+    "mode": "NONE",
+    "enabled": true,
+    "name": "Ethernet0/2",
+    "id": "00000000-0000-0ed3-0000-021474859793",
+    "enableSGTPropagate": false,
+    "pathMonitoring": {
+     "enable": false
+    },
+    "applicationMonitoring": {
+     "enable": true
+    },
+    "ifname": "lte",
+    "managementOnly": false,
+    "securityZone": {
+     "id": "6d81c482-ca8e-11f1-bd2d-f6e16f180443",
+     "type": "SecurityZone"
+    },
+    "ipv4": {
+     "static": {
+      "address": "192.0.2.98",
+      "netmask": "28"
+     }
+    },
+    "ipv6": {
+     "enableIPV6": false
+    },
+    "priority": 0
+   },
+   {
+    "metadata": {
+     "timestamp": 1792284986725,
+     "domain": {
+      "name": "Global \\ mcp-test-leaf",
+      "id": "a1c73df0-8353-8db7-1097-000000000000",
+      "type": "Domain"
+     },
+     "state": "COMMITTED",
+     "virtualRouter": {
+      "name": "Global",
+      "id": "42e95fbf-fd5a-42bf-a95f-bffd5a42bfd6",
+      "type": "VirtualRouter"
+     }
+    },
+    "type": "PhysicalInterface",
+    "nveOnly": false,
+    "MTU": 1500,
+    "mode": "NONE",
+    "enabled": true,
+    "name": "Ethernet0/3",
+    "id": "00000000-0000-0ed3-0000-021474859794",
+    "enableSGTPropagate": false,
+    "pathMonitoring": {
+     "enable": false
+    },
+    "applicationMonitoring": {
+     "enable": true
+    },
+    "ifname": "inside",
+    "managementOnly": false,
+    "securityZone": {
+     "id": "6e21a6e6-ca8e-11f1-bd2d-f6e16f180443",
+     "type": "SecurityZone"
+    },
+    "ipv4": {
+     "static": {
+      "address": "192.0.2.1",
+      "netmask": "28"
+     }
+    },
+    "ipv6": {
+     "enableIPV6": false
+    },
+    "priority": 0
+   },
+   {
+    "metadata": {
+     "readOnly": {
+      "state": true,
+      "reason": "SYSTEM"
+     },
+     "timestamp": 1792279579848,
+     "domain": {
+      "name": "Global \\ mcp-test-leaf",
+      "id": "a1c73df0-8353-8db7-1097-000000000000",
+      "type": "Domain"
+     },
+     "state": "COMMITTED",
+     "virtualRouter": {
+      "name": "Global",
+      "id": "42e95fbf-fd5a-42bf-a95f-bffd5a42bfd6",
+      "type": "VirtualRouter"
+     }
+    },
+    "type": "PhysicalInterface",
+    "nveOnly": false,
+    "MTU": 1500,
+    "mode": "NONE",
+    "enabled": true,
+    "name": "Management0/0",
+    "id": "00000000-0000-0ed3-0000-021474859795",
+    "enableSGTPropagate": true,
+    "ifname": "management",
+    "managementOnly": true,
+    "ipv6": {},
+    "priority": 0
+   }
+  ],
+  "paging": {
+   "offset": 0,
+   "limit": 1000,
+   "count": 5,
+   "pages": 1
+  }
+ },
+ "devices/devicerecords/1bcefc02-ca81-11f1-9c58-8639fcd7b26d/routing/ipv4staticroutes": {
+  "items": [
+   {
+    "metadata": {
+     "egressInterfaceVirtualRouter": "Global",
+     "timestamp": 1792285210803,
+     "domain": {
+      "name": "Global \\ mcp-test-leaf",
+      "id": "a1c73df0-8353-8db7-1097-000000000000",
+      "type": "Domain"
+     }
+    },
+    "interfaceName": "lte",
+    "selectedNetworks": [
+     {
+      "type": "Network",
+      "overridable": false,
+      "name": "mcp-sdwan-lte-net",
+      "id": "00000000-0000-0ed3-0000-021474864568"
+     }
+    ],
+    "gateway": {
+     "literal": {
+      "type": "Host",
+      "value": "192.0.2.97"
+     }
+    },
+    "metricValue": 1,
+    "type": "IPv4StaticRoute",
+    "isTunneled": false,
+    "id": "00000000-0000-0ed3-0000-021474864726"
+   },
+   {
+    "metadata": {
+     "egressInterfaceVirtualRouter": "Global",
+     "timestamp": 1792285182875,
+     "domain": {
+      "name": "Global \\ mcp-test-leaf",
+      "id": "a1c73df0-8353-8db7-1097-000000000000",
+      "type": "Domain"
+     }
+    },
+    "interfaceName": "mpls",
+    "selectedNetworks": [
+     {
+      "type": "Network",
+      "overridable": false,
+      "name": "mcp-sdwan-mpls-net",
+      "id": "00000000-0000-0ed3-0000-021474864532"
+     }
+    ],
+    "gateway": {
+     "literal": {
+      "type": "Host",
+      "value": "192.0.2.33"
+     }
+    },
+    "metricValue": 1,
+    "type": "IPv4StaticRoute",
+    "isTunneled": false,
+    "id": "00000000-0000-0ed3-0000-021474864672"
+   },
+   {
+    "metadata": {
+     "egressInterfaceVirtualRouter": "Global",
+     "timestamp": 1792285199216,
+     "domain": {
+      "name": "Global \\ mcp-test-leaf",
+      "id": "a1c73df0-8353-8db7-1097-000000000000",
+      "type": "Domain"
+     }
+    },
+    "interfaceName": "inet",
+    "selectedNetworks": [
+     {
+      "type": "Network",
+      "overridable": false,
+      "name": "mcp-sdwan-inet-net",
+      "id": "00000000-0000-0ed3-0000-021474864550"
+     }
+    ],
+    "gateway": {
+     "literal": {
+      "type": "Host",
+      "value": "192.0.2.65"
+     }
+    },
+    "metricValue": 1,
+    "type": "IPv4StaticRoute",
+    "isTunneled": false,
+    "id": "00000000-0000-0ed3-0000-021474864699"
+   }
+  ],
+  "paging": {
+   "offset": 0,
+   "limit": 1000,
+   "count": 3,
+   "pages": 1
+  }
+ },
+ "devices/devicerecords/1bcefc02-ca81-11f1-9c58-8639fcd7b26d/routing/virtualrouters": {
+  "items": [
+   {
+    "metadata": {
+     "readOnly": {
+      "state": true,
+      "reason": "SYSTEM"
+     },
+     "timestamp": 0,
+     "domain": {
+      "name": "Global \\ mcp-test-leaf",
+      "id": "a1c73df0-8353-8db7-1097-000000000000",
+      "type": "Domain"
+     }
+    },
+    "interfaces": [
+     {
+      "ifname": "lte",
+      "type": "PhysicalInterface",
+      "id": "00000000-0000-0ed3-0000-021474859793",
+      "name": "Ethernet0/2"
+     },
+     {
+      "ifname": "inet",
+      "type": "PhysicalInterface",
+      "id": "00000000-0000-0ed3-0000-021474859792",
+      "name": "Ethernet0/1"
+     },
+     {
+      "ifname": "management",
+      "type": "PhysicalInterface",
+      "id": "00000000-0000-0ed3-0000-021474859795",
+      "name": "Management0/0"
+     },
+     {
+      "ifname": "inside",
+      "type": "PhysicalInterface",
+      "id": "00000000-0000-0ed3-0000-021474859794",
+      "name": "Ethernet0/3"
+     },
+     {
+      "ifname": "mpls",
+      "type": "PhysicalInterface",
+      "id": "00000000-0000-0ed3-0000-021474859791",
+      "name": "Ethernet0/0"
+     }
+    ],
+    "description": "This is a Global Virtual Router",
+    "name": "Global",
+    "id": "42e95fbf-fd5a-42bf-a95f-bffd5a42bfd6",
+    "type": "VirtualRouter"
+   }
+  ],
+  "paging": {
+   "offset": 0,
+   "limit": 1000,
+   "count": 1,
+   "pages": 1
+  }
+ },
+ "devices/devicerecords/1e6635ca-ca81-11f1-8e8d-ed7d3abe955e": {
+  "deploymentStatus": "DEPLOYMENT_PENDING",
+  "id": "1e6635ca-ca81-11f1-8e8d-ed7d3abe955e",
+  "type": "Device",
+  "name": "mcp-sdwan-t1-spoke2",
+  "description": "NOT SUPPORTED",
+  "model": "Cisco Secure Firewall Threat Defense for KVM",
+  "modelId": "B",
+  "modelNumber": "75",
+  "modelType": "Sensor",
+  "healthStatus": "disabled",
+  "healthMessage": "Appliance unreachable",
+  "sw_version": "10.0.0",
+  "healthPolicy": {
+   "id": "dcd1c26c-cabe-11f1-a5c2-b58d6f180443",
+   "name": "mcp-sdwan-health",
+   "type": "HealthPolicy"
+  },
+  "accessPolicy": {
+   "name": "mcp-sdwan-acp",
+   "id": "00000000-0000-0ed3-0000-021474856047",
+   "type": "AccessPolicy"
+  },
+  "advanced": {
+   "enableOGS": true
+  },
+  "hostName": "198.51.100.202",
+  "license_caps": [
+   "ESSENTIALS"
+  ],
+  "performanceTier": "FTDv5",
+  "keepLocalEvents": false,
+  "prohibitPacketTransfer": false,
+  "isConnected": false,
+  "ftdMode": "ROUTED",
+  "analyticsOnly": false,
+  "metadata": {
+   "readOnly": {
+    "state": false
+   },
+   "inventoryData": {
+    "cpuCores": "1 CPU (4 cores)",
+    "cpuType": "CPU Xeon 4100/6100/8100 series 2700 MHz",
+    "memoryInMB": "8192 MB RAM"
+   },
+   "deviceSerialNumber": "REDACTED",
+   "domain": {
+    "name": "mcp-test-leaf",
+    "id": "a1c73df0-8353-8db7-1097-000000000000",
+    "type": "Domain"
+   },
+   "isMultiInstance": false,
+   "snortVersion": "3.9.3.1-61",
+   "vdbVersion": "Build 426 - 2026-03-24 09:29:08.0",
+   "lspVersion": "lsp-rel-20261016-1401",
+   "clusterBootstrapSupported": true,
+   "universalZeroTrustSupported": false,
+   "coreProfile": "Default"
+  },
+  "snortEngine": "SNORT3",
+  "isMCDManaged": false,
+  "managementState": "MANAGED"
+ },
+ "devices/devicerecords/1e6635ca-ca81-11f1-8e8d-ed7d3abe955e/physicalinterfaces": {
+  "items": [
+   {
+    "metadata": {
+     "timestamp": 1792285001547,
+     "domain": {
+      "name": "Global \\ mcp-test-leaf",
+      "id": "a1c73df0-8353-8db7-1097-000000000000",
+      "type": "Domain"
+     },
+     "state": "COMMITTED",
+     "virtualRouter": {
+      "name": "Global",
+      "id": "42e95fbf-fd5a-42bf-a95f-bffd5a42bfd6",
+      "type": "VirtualRouter"
+     }
+    },
+    "type": "PhysicalInterface",
+    "nveOnly": false,
+    "MTU": 1500,
+    "mode": "NONE",
+    "enabled": true,
+    "name": "Ethernet0/0",
+    "id": "00000000-0000-0ed3-0000-021474860409",
+    "enableSGTPropagate": false,
+    "pathMonitoring": {
+     "enable": false
+    },
+    "applicationMonitoring": {
+     "enable": true
+    },
+    "ifname": "mpls",
+    "managementOnly": false,
+    "securityZone": {
+     "id": "6d81c482-ca8e-11f1-bd2d-f6e16f180443",
+     "type": "SecurityZone"
+    },
+    "ipv4": {
+     "static": {
+      "address": "192.0.2.50",
+      "netmask": "28"
+     }
+    },
+    "ipv6": {
+     "enableIPV6": false
+    },
+    "priority": 0
+   },
+   {
+    "metadata": {
+     "timestamp": 1792285016242,
+     "domain": {
+      "name": "Global \\ mcp-test-leaf",
+      "id": "a1c73df0-8353-8db7-1097-000000000000",
+      "type": "Domain"
+     },
+     "state": "COMMITTED",
+     "virtualRouter": {
+      "name": "Global",
+      "id": "42e95fbf-fd5a-42bf-a95f-bffd5a42bfd6",
+      "type": "VirtualRouter"
+     }
+    },
+    "type": "PhysicalInterface",
+    "nveOnly": false,
+    "MTU": 1500,
+    "mode": "NONE",
+    "enabled": true,
+    "name": "Ethernet0/1",
+    "id": "00000000-0000-0ed3-0000-021474860410",
+    "enableSGTPropagate": false,
+    "pathMonitoring": {
+     "enable": false
+    },
+    "applicationMonitoring": {
+     "enable": true
+    },
+    "ifname": "inet",
+    "managementOnly": false,
+    "securityZone": {
+     "id": "6d81c482-ca8e-11f1-bd2d-f6e16f180443",
+     "type": "SecurityZone"
+    },
+    "ipv4": {
+     "static": {
+      "address": "192.0.2.82",
+      "netmask": "28"
+     }
+    },
+    "ipv6": {
+     "enableIPV6": false
+    },
+    "priority": 0
+   },
+   {
+    "metadata": {
+     "timestamp": 1792285033093,
+     "domain": {
+      "name": "Global \\ mcp-test-leaf",
+      "id": "a1c73df0-8353-8db7-1097-000000000000",
+      "type": "Domain"
+     },
+     "state": "COMMITTED",
+     "virtualRouter": {
+      "name": "Global",
+      "id": "42e95fbf-fd5a-42bf-a95f-bffd5a42bfd6",
+      "type": "VirtualRouter"
+     }
+    },
+    "type": "PhysicalInterface",
+    "nveOnly": false,
+    "MTU": 1500,
+    "mode": "NONE",
+    "enabled": true,
+    "name": "Ethernet0/2",
+    "id": "00000000-0000-0ed3-0000-021474860411",
+    "enableSGTPropagate": false,
+    "pathMonitoring": {
+     "enable": false
+    },
+    "applicationMonitoring": {
+     "enable": true
+    },
+    "ifname": "lte",
+    "managementOnly": false,
+    "securityZone": {
+     "id": "6d81c482-ca8e-11f1-bd2d-f6e16f180443",
+     "type": "SecurityZone"
+    },
+    "ipv4": {
+     "static": {
+      "address": "192.0.2.114",
+      "netmask": "28"
+     }
+    },
+    "ipv6": {
+     "enableIPV6": false
+    },
+    "priority": 0
+   },
+   {
+    "metadata": {
+     "timestamp": 1792285047816,
+     "domain": {
+      "name": "Global \\ mcp-test-leaf",
+      "id": "a1c73df0-8353-8db7-1097-000000000000",
+      "type": "Domain"
+     },
+     "state": "COMMITTED",
+     "virtualRouter": {
+      "name": "Global",
+      "id": "42e95fbf-fd5a-42bf-a95f-bffd5a42bfd6",
+      "type": "VirtualRouter"
+     }
+    },
+    "type": "PhysicalInterface",
+    "nveOnly": false,
+    "MTU": 1500,
+    "mode": "NONE",
+    "enabled": true,
+    "name": "Ethernet0/3",
+    "id": "00000000-0000-0ed3-0000-021474860412",
+    "enableSGTPropagate": false,
+    "pathMonitoring": {
+     "enable": false
+    },
+    "applicationMonitoring": {
+     "enable": true
+    },
+    "ifname": "inside",
+    "managementOnly": false,
+    "securityZone": {
+     "id": "6e21a6e6-ca8e-11f1-bd2d-f6e16f180443",
+     "type": "SecurityZone"
+    },
+    "ipv4": {
+     "static": {
+      "address": "192.0.2.17",
+      "netmask": "28"
+     }
+    },
+    "ipv6": {
+     "enableIPV6": false
+    },
+    "priority": 0
+   },
+   {
+    "metadata": {
+     "readOnly": {
+      "state": true,
+      "reason": "SYSTEM"
+     },
+     "timestamp": 1792280298718,
+     "domain": {
+      "name": "Global \\ mcp-test-leaf",
+      "id": "a1c73df0-8353-8db7-1097-000000000000",
+      "type": "Domain"
+     },
+     "state": "COMMITTED",
+     "virtualRouter": {
+      "name": "Global",
+      "id": "42e95fbf-fd5a-42bf-a95f-bffd5a42bfd6",
+      "type": "VirtualRouter"
+     }
+    },
+    "type": "PhysicalInterface",
+    "nveOnly": false,
+    "MTU": 1500,
+    "mode": "NONE",
+    "enabled": true,
+    "name": "Management0/0",
+    "id": "00000000-0000-0ed3-0000-021474860413",
+    "enableSGTPropagate": true,
+    "ifname": "management",
+    "managementOnly": true,
+    "ipv6": {},
+    "priority": 0
+   }
+  ],
+  "paging": {
+   "offset": 0,
+   "limit": 1000,
+   "count": 5,
+   "pages": 1
+  }
+ },
+ "devices/devicerecords/1e6635ca-ca81-11f1-8e8d-ed7d3abe955e/routing/ipv4staticroutes": {
+  "items": [
+   {
+    "metadata": {
+     "egressInterfaceVirtualRouter": "Global",
+     "timestamp": 1792285248957,
+     "domain": {
+      "name": "Global \\ mcp-test-leaf",
+      "id": "a1c73df0-8353-8db7-1097-000000000000",
+      "type": "Domain"
+     }
+    },
+    "interfaceName": "lte",
+    "selectedNetworks": [
+     {
+      "type": "Network",
+      "overridable": false,
+      "name": "mcp-sdwan-lte-net",
+      "id": "00000000-0000-0ed3-0000-021474864568"
+     }
+    ],
+    "gateway": {
+     "literal": {
+      "type": "Host",
+      "value": "192.0.2.113"
+     }
+    },
+    "metricValue": 1,
+    "type": "IPv4StaticRoute",
+    "isTunneled": false,
+    "id": "00000000-0000-0ed3-0000-021474864807"
+   },
+   {
+    "metadata": {
+     "egressInterfaceVirtualRouter": "Global",
+     "timestamp": 1792285235666,
+     "domain": {
+      "name": "Global \\ mcp-test-leaf",
+      "id": "a1c73df0-8353-8db7-1097-000000000000",
+      "type": "Domain"
+     }
+    },
+    "interfaceName": "inet",
+    "selectedNetworks": [
+     {
+      "type": "Network",
+      "overridable": false,
+      "name": "mcp-sdwan-inet-net",
+      "id": "00000000-0000-0ed3-0000-021474864550"
+     }
+    ],
+    "gateway": {
+     "literal": {
+      "type": "Host",
+      "value": "192.0.2.81"
+     }
+    },
+    "metricValue": 1,
+    "type": "IPv4StaticRoute",
+    "isTunneled": false,
+    "id": "00000000-0000-0ed3-0000-021474864780"
+   },
+   {
+    "metadata": {
+     "egressInterfaceVirtualRouter": "Global",
+     "timestamp": 1792285223825,
+     "domain": {
+      "name": "Global \\ mcp-test-leaf",
+      "id": "a1c73df0-8353-8db7-1097-000000000000",
+      "type": "Domain"
+     }
+    },
+    "interfaceName": "mpls",
+    "selectedNetworks": [
+     {
+      "type": "Network",
+      "overridable": false,
+      "name": "mcp-sdwan-mpls-net",
+      "id": "00000000-0000-0ed3-0000-021474864532"
+     }
+    ],
+    "gateway": {
+     "literal": {
+      "type": "Host",
+      "value": "192.0.2.49"
+     }
+    },
+    "metricValue": 1,
+    "type": "IPv4StaticRoute",
+    "isTunneled": false,
+    "id": "00000000-0000-0ed3-0000-021474864753"
+   }
+  ],
+  "paging": {
+   "offset": 0,
+   "limit": 1000,
+   "count": 3,
+   "pages": 1
+  }
+ },
+ "object/securityzones": {
+  "items": [
+   {
+    "name": "mcp-test-identity-inside",
+    "id": "20d5bbce-c9d6-11f1-8e93-9a786f180443",
+    "type": "SecurityZone"
+   },
+   {
+    "name": "mcp-test-identity-outside",
+    "id": "2481a77e-c9d6-11f1-8e93-9a786f180443",
+    "type": "SecurityZone"
+   },
+   {
+    "name": "mcp-test-ftd-dmz",
+    "id": "30ea0d2a-c9d7-11f1-8ee6-9b786f180443",
+    "type": "SecurityZone"
+   },
+   {
+    "name": "mcp-sdwan-wan",
+    "id": "6d81c482-ca8e-11f1-bd2d-f6e16f180443",
+    "type": "SecurityZone"
+   },
+   {
+    "name": "mcp-sdwan-inside",
+    "id": "6e21a6e6-ca8e-11f1-bd2d-f6e16f180443",
+    "type": "SecurityZone"
+   },
+   {
+    "name": "mcp-sdwan-overlay",
+    "id": "6efb856e-ca8e-11f1-bd2d-f6e16f180443",
+    "type": "SecurityZone"
+   },
+   {
+    "name": "mcp-test-inside",
+    "id": "937c914c-c9cd-11f1-8ee6-9b786f180443",
+    "type": "SecurityZone"
+   },
+   {
+    "name": "mcp-test-outside",
+    "id": "944bd36c-c9cd-11f1-8ee6-9b786f180443",
+    "type": "SecurityZone"
+   },
+   {
+    "name": "mcp-test-ftd-in",
+    "id": "d06d930e-c9d6-11f1-a4e0-98786f180443",
+    "type": "SecurityZone"
+   },
+   {
+    "name": "mcp-test-ftd-out",
+    "id": "d1686144-c9d6-11f1-a4e0-98786f180443",
+    "type": "SecurityZone"
+   },
+   {
+    "name": "mcp-fw-inside",
+    "id": "d5bdf938-caf9-11f1-89ff-9ae26f180443",
+    "type": "SecurityZone"
+   },
+   {
+    "name": "mcp-fw-outside",
+    "id": "d971edbe-caf9-11f1-89ff-9ae26f180443",
+    "type": "SecurityZone"
+   }
+  ],
+  "paging": {
+   "offset": 0,
+   "limit": 1000,
+   "count": 12,
+   "pages": 1
+  }
+ },
+ "assignment/policyassignments": {
+  "items": [
+   {
+    "type": "PolicyAssignment",
+    "policy": {
+     "type": "AccessPolicy",
+     "description": "FW run: base ACP for mcp-fw-branch1 and the mcp-fw-ha pair (allow inside -> outside, log)",
+     "name": "mcp-fw-base-acp",
+     "id": "00000000-0000-0ed3-0000-021474903666"
+    },
+    "targets": [
+     {
+      "id": "f706b55e-cb4d-11f1-a68f-c97bc7530305",
+      "type": "Device",
+      "name": "mcp-fw-branch1",
+      "keepLocalEvents": false
+     },
+     {
+      "id": "03e0cc6c-cb56-11f1-85ee-4ce46f180443",
+      "type": "DeviceHAPair",
+      "name": "mcp-fw-ha"
+     }
+    ],
+    "name": "mcp-fw-base-acp",
+    "id": "00000000-0000-0ed3-0000-021474903666"
+   },
+   {
+    "type": "PolicyAssignment",
+    "policy": {
+     "type": "FTDPlatformSettingsPolicy",
+     "description": "FW run F55: internal buffer logging (informational) for mcp-ftd-identity; it had no platform settings policy before",
+     "name": "mcp-fw-ps",
+     "id": "00000000-0000-0ed3-0000-021474909026"
+    },
+    "targets": [
+     {
+      "id": "71f24ba4-c9c6-11f1-b39a-f8b1a0356797",
+      "type": "Device",
+      "name": "mcp-ftd-identity",
+      "keepLocalEvents": false
+     }
+    ],
+    "name": "mcp-fw-ps",
+    "id": "00000000-0000-0ed3-0000-021474909026"
+   },
+   {
+    "type": "PolicyAssignment",
+    "policy": {
+     "type": "AccessPolicy",
+     "description": "SD-WAN rerun lab ACP",
+     "name": "mcp-sdwan-acp",
+     "id": "00000000-0000-0ed3-0000-021474856047"
+    },
+    "targets": [
+     {
+      "id": "6f935994-ca79-11f1-b14f-9be37119887f",
+      "type": "Device",
+      "name": "mcp-sdwan-t2-spoke2",
+      "keepLocalEvents": false
+     },
+     {
+      "id": "7dc6bec0-ca79-11f1-93b3-9fe9e23b362e",
+      "type": "Device",
+      "name": "mcp-sdwan-t2-hub2",
+      "keepLocalEvents": false
+     },
+     {
+      "id": "1e6635ca-ca81-11f1-8e8d-ed7d3abe955e",
+      "type": "Device",
+      "name": "mcp-sdwan-t1-spoke2",
+      "keepLocalEvents": false
+     },
+     {
+      "id": "bac748ea-ca82-11f1-a240-91fc18bec45c",
+      "type": "Device",
+      "name": "mcp-sdwan-t3-spoke2",
+      "keepLocalEvents": false
+     },
+     {
+      "id": "983e1c7c-ca82-11f1-ae1f-a9025946c992",
+      "type": "Device",
+      "name": "mcp-sdwan-t3-spoke1",
+      "keepLocalEvents": false
+     },
+     {
+      "id": "6b495956-ca79-11f1-8f9c-dce560457e9f",
+      "type": "Device",
+      "name": "mcp-sdwan-t2-spoke1",
+      "keepLocalEvents": false
+     },
+     {
+      "id": "1f48942e-ca81-11f1-acc4-d99580e40529",
+      "type": "Device",
+      "name": "mcp-sdwan-t1-spoke3",
+      "keepLocalEvents": false
+     },
+     {
+      "id": "4fc3908a-ca73-11f1-aef7-f44b5515d8ea",
+      "type": "Device",
+      "name": "mcp-sdwan-t1-hub",
+      "keepLocalEvents": false
+     },
+     {
+      "id": "7516a060-ca79-11f1-ab98-d1a1d78192b6",
+      "type": "Device",
+      "name": "mcp-sdwan-t2-hub",
+      "keepLocalEvents": false
+     },
+     {
+      "id": "1bcefc02-ca81-11f1-9c58-8639fcd7b26d",
+      "type": "Device",
+      "name": "mcp-sdwan-t1-spoke1",
+      "keepLocalEvents": false
+     },
+     {
+      "id": "8d3840c2-caa1-11f1-a4e0-98786f180443",
+      "type": "DeviceCluster",
+      "name": "mcp-sdwan-t3-cluster",
+      "keepLocalEvents": false
+     }
+    ],
+    "name": "mcp-sdwan-acp",
+    "id": "00000000-0000-0ed3-0000-021474856047"
+   },
+   {
+    "type": "PolicyAssignment",
+    "policy": {
+     "type": "AccessPolicy",
+     "description": "FW overnight run: threat-defense ACP for mcp-ftd-identity (baseline copied from mcp-test-identity-acp)",
+     "name": "mcp-fw-threat-acp",
+     "id": "00000000-0000-0ed3-0000-021474901848"
+    },
+    "targets": [
+     {
+      "id": "71f24ba4-c9c6-11f1-b39a-f8b1a0356797",
+      "type": "Device",
+      "name": "mcp-ftd-identity",
+      "keepLocalEvents": false
+     }
+    ],
+    "name": "mcp-fw-threat-acp",
+    "id": "00000000-0000-0ed3-0000-021474901848"
+   },
+   {
+    "type": "PolicyAssignment",
+    "policy": {
+     "type": "FTDNatPolicy",
+     "description": "FW run: interface PAT inside -> outside for the mcp-fw-ha pair",
+     "name": "mcp-fw-ha-nat",
+     "id": "00000000-0000-0ed3-0000-021474906729"
+    },
+    "targets": [
+     {
+      "id": "03e0cc6c-cb56-11f1-85ee-4ce46f180443",
+      "type": "DeviceHAPair",
+      "name": "mcp-fw-ha"
+     }
+    ],
+    "name": "mcp-fw-ha-nat",
+    "id": "00000000-0000-0ed3-0000-021474906729"
+   },
+   {
+    "type": "PolicyAssignment",
+    "policy": {
+     "type": "HealthPolicy",
+     "name": "mcp-sdwan-health",
+     "id": "dcd1c26c-cabe-11f1-a5c2-b58d6f180443"
+    },
+    "targets": [
+     {
+      "id": "4fc3908a-ca73-11f1-aef7-f44b5515d8ea",
+      "type": "Device",
+      "name": "mcp-sdwan-t1-hub",
+      "keepLocalEvents": false
+     },
+     {
+      "id": "6b495956-ca79-11f1-8f9c-dce560457e9f",
+      "type": "Device",
+      "name": "mcp-sdwan-t2-spoke1",
+      "keepLocalEvents": false
+     },
+     {
+      "id": "6f935994-ca79-11f1-b14f-9be37119887f",
+      "type": "Device",
+      "name": "mcp-sdwan-t2-spoke2",
+      "keepLocalEvents": false
+     },
+     {
+      "id": "7516a060-ca79-11f1-ab98-d1a1d78192b6",
+      "type": "Device",
+      "name": "mcp-sdwan-t2-hub",
+      "keepLocalEvents": false
+     },
+     {
+      "id": "7dc6bec0-ca79-11f1-93b3-9fe9e23b362e",
+      "type": "Device",
+      "name": "mcp-sdwan-t2-hub2",
+      "keepLocalEvents": false
+     },
+     {
+      "id": "1bcefc02-ca81-11f1-9c58-8639fcd7b26d",
+      "type": "Device",
+      "name": "mcp-sdwan-t1-spoke1",
+      "keepLocalEvents": false
+     },
+     {
+      "id": "1e6635ca-ca81-11f1-8e8d-ed7d3abe955e",
+      "type": "Device",
+      "name": "mcp-sdwan-t1-spoke2",
+      "keepLocalEvents": false
+     },
+     {
+      "id": "1f48942e-ca81-11f1-acc4-d99580e40529",
+      "type": "Device",
+      "name": "mcp-sdwan-t1-spoke3",
+      "keepLocalEvents": false
+     },
+     {
+      "id": "dc0d1aac-ca82-11f1-82bc-ca1afe70919b",
+      "type": "Device",
+      "name": "mcp-sdwan-t3-hub",
+      "keepLocalEvents": false
+     },
+     {
+      "id": "2d9af100-ca83-11f1-a882-d9fd30b1d53c",
+      "type": "Device",
+      "name": "mcp-sdwan-t3-hub2",
+      "keepLocalEvents": false
+     },
+     {
+      "id": "983e1c7c-ca82-11f1-ae1f-a9025946c992",
+      "type": "Device",
+      "name": "mcp-sdwan-t3-spoke1",
+      "keepLocalEvents": false
+     },
+     {
+      "id": "bac748ea-ca82-11f1-a240-91fc18bec45c",
+      "type": "Device",
+      "name": "mcp-sdwan-t3-spoke2",
+      "keepLocalEvents": false
+     }
+    ],
+    "name": "mcp-sdwan-health",
+    "id": "dcd1c26c-cabe-11f1-a5c2-b58d6f180443"
+   },
+   {
+    "type": "PolicyAssignment",
+    "policy": {
+     "type": "HealthPolicy",
+     "name": "Initial_Health_Policy 2026-04-02 19:28:02",
+     "id": "1114175a-2eca-11f1-bc1d-b8e359adb5f3"
+    },
+    "targets": [
+     {
+      "id": "43d57cc8-c9c6-11f1-858d-a03accd83568",
+      "type": "Device",
+      "name": "mcp-ftd1",
+      "keepLocalEvents": false
+     },
+     {
+      "id": "503133d6-c9c6-11f1-b434-883d23e0134a",
+      "type": "Device",
+      "name": "mcp-ftd2",
+      "keepLocalEvents": false
+     },
+     {
+      "id": "532a591e-c9c6-11f1-adb7-e0cf54ff7bd5",
+      "type": "Device",
+      "name": "mcp-ftd3",
+      "keepLocalEvents": false
+     },
+     {
+      "id": "71f24ba4-c9c6-11f1-b39a-f8b1a0356797",
+      "type": "Device",
+      "name": "mcp-ftd-identity",
+      "keepLocalEvents": false
+     },
+     {
+      "id": "0c7a00e4-caf9-11f1-a329-a5594ad4d7df",
+      "type": "Device",
+      "name": "mcp-fw-ha-a",
+      "keepLocalEvents": false
+     },
+     {
+      "id": "1010c922-caf9-11f1-96b6-d3ea1594a29a",
+      "type": "Device",
+      "name": "mcp-fw-ha-b",
+      "keepLocalEvents": false
+     },
+     {
+      "id": "f706b55e-cb4d-11f1-a68f-c97bc7530305",
+      "type": "Device",
+      "name": "mcp-fw-branch1",
+      "keepLocalEvents": false
+     }
+    ],
+    "name": "Initial_Health_Policy 2026-04-02 19:28:02",
+    "id": "1114175a-2eca-11f1-bc1d-b8e359adb5f3"
+   }
+  ],
+  "paging": {
+   "offset": 0,
+   "limit": 1000,
+   "count": 7,
+   "pages": 1
+  }
+ },
+ "global:assignment/policyassignments": {
+  "items": [
+   {
+    "type": "PolicyAssignment",
+    "policy": {
+     "type": "FTDPlatformSettingsPolicy",
+     "name": "mcp-test-ps",
+     "id": "00000000-0000-0ed3-0000-021474843415"
+    },
+    "targets": [
+     {
+      "id": "43d57cc8-c9c6-11f1-858d-a03accd83568",
+      "type": "Device",
+      "name": "mcp-ftd1",
+      "keepLocalEvents": false
+     }
+    ],
+    "name": "mcp-test-ps",
+    "id": "00000000-0000-0ed3-0000-021474843415"
+   },
+   {
+    "type": "PolicyAssignment",
+    "policy": {
+     "type": "AccessPolicy",
+     "name": "mcp-test-ftd-acp",
+     "id": "00000000-0000-0ed3-0000-021474837072"
+    },
+    "targets": [
+     {
+      "id": "43d57cc8-c9c6-11f1-858d-a03accd83568",
+      "type": "Device",
+      "name": "mcp-ftd1",
+      "keepLocalEvents": false
+     }
+    ],
+    "name": "mcp-test-ftd-acp",
+    "id": "00000000-0000-0ed3-0000-021474837072"
+   },
+   {
+    "type": "PolicyAssignment",
+    "policy": {
+     "type": "FTDNatPolicy",
+     "description": "CML ise-fmc-identity: PAT clients to outside",
+     "name": "mcp-test-identity-nat",
+     "id": "00000000-0000-0ed3-0000-021474840786"
+    },
+    "targets": [
+     {
+      "id": "71f24ba4-c9c6-11f1-b39a-f8b1a0356797",
+      "type": "Device",
+      "name": "mcp-ftd-identity",
+      "keepLocalEvents": false
+     }
+    ],
+    "name": "mcp-test-identity-nat",
+    "id": "00000000-0000-0ed3-0000-021474840786"
+   },
+   {
+    "type": "PolicyAssignment",
+    "policy": {
+     "type": "AccessPolicy",
+     "name": "mcp-test-ha-acp",
+     "id": "00000000-0000-0ed3-0000-021474837244"
+    },
+    "targets": [
+     {
+      "id": "9b895d5c-c9d2-11f1-8e93-9a786f180443",
+      "type": "DeviceHAPair",
+      "name": "mcp-test-ha"
+     }
+    ],
+    "name": "mcp-test-ha-acp",
+    "id": "00000000-0000-0ed3-0000-021474837244"
+   },
+   {
+    "type": "PolicyAssignment",
+    "policy": {
+     "type": "FTDNatPolicy",
+     "name": "mcp-test-ftd-nat",
+     "id": "00000000-0000-0ed3-0000-021474841852"
+    },
+    "targets": [
+     {
+      "id": "43d57cc8-c9c6-11f1-858d-a03accd83568",
+      "type": "Device",
+      "name": "mcp-ftd1",
+      "keepLocalEvents": false
+     }
+    ],
+    "name": "mcp-test-ftd-nat",
+    "id": "00000000-0000-0ed3-0000-021474841852"
+   },
+   {
+    "type": "PolicyAssignment",
+    "policy": {
+     "type": "HealthPolicy",
+     "name": "Initial_Health_Policy 2026-04-02 19:28:02",
+     "id": "1114175a-2eca-11f1-bc1d-b8e359adb5f3"
+    },
+    "targets": [
+     {
+      "id": "43d57cc8-c9c6-11f1-858d-a03accd83568",
+      "type": "Device",
+      "name": "mcp-ftd1",
+      "keepLocalEvents": false
+     },
+     {
+      "id": "503133d6-c9c6-11f1-b434-883d23e0134a",
+      "type": "Device",
+      "name": "mcp-ftd2",
+      "keepLocalEvents": false
+     },
+     {
+      "id": "532a591e-c9c6-11f1-adb7-e0cf54ff7bd5",
+      "type": "Device",
+      "name": "mcp-ftd3",
+      "keepLocalEvents": false
+     },
+     {
+      "id": "71f24ba4-c9c6-11f1-b39a-f8b1a0356797",
+      "type": "Device",
+      "name": "mcp-ftd-identity",
+      "keepLocalEvents": false
+     },
+     {
+      "id": "0c7a00e4-caf9-11f1-a329-a5594ad4d7df",
+      "type": "Device",
+      "name": "mcp-fw-ha-a",
+      "keepLocalEvents": false
+     },
+     {
+      "id": "1010c922-caf9-11f1-96b6-d3ea1594a29a",
+      "type": "Device",
+      "name": "mcp-fw-ha-b",
+      "keepLocalEvents": false
+     },
+     {
+      "id": "f706b55e-cb4d-11f1-a68f-c97bc7530305",
+      "type": "Device",
+      "name": "mcp-fw-branch1",
+      "keepLocalEvents": false
+     }
+    ],
+    "name": "Initial_Health_Policy 2026-04-02 19:28:02",
+    "id": "1114175a-2eca-11f1-bc1d-b8e359adb5f3"
+   }
+  ],
+  "paging": {
+   "offset": 0,
+   "limit": 1000,
+   "count": 6,
+   "pages": 1
+  }
+ }
+}

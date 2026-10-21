@@ -9,6 +9,7 @@ from fastmcp import Context
 from pydantic import Field
 
 from fmc_mcp._core import ToolRegistrar, UpstreamError, get_client
+from fmc_mcp.bulk_fixes import bulk_fixes
 from fmc_mcp.catalog import Catalog, parse_ip_value, parse_port_value
 from fmc_mcp.client import FmcApp
 from fmc_mcp.rules import OPAQUE_CONDITIONS, flatten_access_rule, has_value
@@ -531,7 +532,8 @@ def register(reg: ToolRegistrar) -> None:
         intrusion policy, rules that log nothing, disabled rules, rules with no hits in N days on the
         devices the policy is deployed to, rules on expired time ranges, duplicate objects (same value,
         different names) and adjacent rules that could be merged. Each finding carries a proposed fix as
-        a tool call to preview; nothing is changed. Use fmc_shadowed_rules for just the shadowing check."""
+        a tool call to preview, and bulk_fixes one fmc_bulk_update_access_rules call per group of
+        identical fixes; nothing is changed. Use fmc_shadowed_rules for just the shadowing check."""
         app: FmcApp = get_client(ctx)
         wanted = set(checks or ALL_CHECKS)
         p = await resolve_policy(app, "access", policy, domain)
@@ -587,6 +589,8 @@ def register(reg: ToolRegistrar) -> None:
             "checks_run": [c for c in ALL_CHECKS if c in wanted],
         }
         out["findings"] = findings[:max_findings]
+        if fixes := bulk_fixes(name, findings, unused_days):
+            out["bulk_fixes"] = fixes  # one previewed bulk edit per group of identical fixes (F67)
         if len(findings) > max_findings:
             notes.append(
                 f"Showing the first {max_findings} of {len(findings)} findings (highest severity first)."

@@ -1,0 +1,400 @@
+{
+ "_source": "FMC 10.0.1 (build 1), Global/mcp-test-leaf lab, 2026-10-20 (build:rules, F66). GETs via fmc_api_call; links dropped.",
+ "applications_page": {
+  "_source": "GET object/applications?limit=5 (also with filter=name:HTTP and filter=nameOrValue:HTTP: the same unfiltered rows, count 8393). Rows after the first five are added for the tests (HTTP from GET applications/676; the others synthetic names with made-up ids).",
+  "items": [
+   {
+    "id": "2325",
+    "type": "Application",
+    "name": "050plus"
+   },
+   {
+    "id": "1553",
+    "type": "Application",
+    "name": "1&1 Internet"
+   },
+   {
+    "id": "535",
+    "type": "Application",
+    "name": "1-800-Flowers"
+   },
+   {
+    "id": "6889",
+    "type": "Application",
+    "name": "1.1.1.1 App"
+   },
+   {
+    "id": "3715",
+    "type": "Application",
+    "name": "1000mercis"
+   },
+   {
+    "id": "676",
+    "type": "Application",
+    "name": "HTTP"
+   },
+   {
+    "id": "90001",
+    "type": "Application",
+    "name": "HTTPS"
+   },
+   {
+    "id": "90002",
+    "type": "Application",
+    "name": "HTTP/2"
+   },
+   {
+    "id": "90003",
+    "type": "Application",
+    "name": "Facebook"
+   },
+   {
+    "id": "90004",
+    "type": "Application",
+    "name": "Facebook Messages"
+   },
+   {
+    "id": "90005",
+    "type": "Application",
+    "name": "SSH"
+   }
+  ],
+  "paging": {
+   "offset": 0,
+   "limit": 1000,
+   "count": 11,
+   "pages": 1
+  }
+ },
+ "application_http": {
+  "_source": "GET object/applications/676",
+  "appProductivity": {
+   "name": "Medium",
+   "id": "MEDIUM",
+   "type": "ApplicationProductivity"
+  },
+  "appCategories": [
+   {
+    "name": "network protocols/services",
+    "id": "10",
+    "type": "ApplicationCategory",
+    "metadata": {
+     "count": 1736
+    }
+   }
+  ],
+  "applicationTags": [
+   {
+    "name": "file sharing/transfer",
+    "id": "12",
+    "type": "ApplicationTag",
+    "metadata": {
+     "count": 784
+    }
+   },
+   {
+    "name": "allows remote connect",
+    "id": "51",
+    "type": "ApplicationTag",
+    "metadata": {
+     "count": 100
+    }
+   },
+   {
+    "name": "opens port",
+    "id": "98",
+    "type": "ApplicationTag",
+    "metadata": {
+     "count": 48
+    }
+   }
+  ],
+  "id": "676",
+  "type": "Application",
+  "name": "HTTP",
+  "appId": 676,
+  "risk": {
+   "type": "ApplicationRisk",
+   "name": "Very Low",
+   "id": "VERY_LOW"
+  },
+  "applicationTypes": [
+   {
+    "type": "ApplicationType",
+    "name": "Server",
+    "id": "SERVER"
+   }
+  ]
+ },
+ "applicationfilters_empty": {
+  "_source": "GET object/applicationfilters?expanded=true&limit=3 (none in the lab)",
+  "paging": {
+   "offset": 0,
+   "limit": 0,
+   "count": 0,
+   "pages": 0
+  }
+ },
+ "applicationrisks": {
+  "_source": "GET object/applicationrisks?expanded=true",
+  "items": [
+   {
+    "type": "ApplicationRisk",
+    "name": "Very Low",
+    "id": "VERY_LOW",
+    "metadata": {
+     "count": 1959
+    }
+   },
+   {
+    "type": "ApplicationRisk",
+    "name": "Low",
+    "id": "LOW",
+    "metadata": {
+     "count": 960
+    }
+   },
+   {
+    "type": "ApplicationRisk",
+    "name": "Medium",
+    "id": "MEDIUM",
+    "metadata": {
+     "count": 2868
+    }
+   },
+   {
+    "type": "ApplicationRisk",
+    "name": "High",
+    "id": "HIGH",
+    "metadata": {
+     "count": 1946
+    }
+   },
+   {
+    "type": "ApplicationRisk",
+    "name": "Very High",
+    "id": "VERY_HIGH",
+    "metadata": {
+     "count": 660
+    }
+   }
+  ],
+  "paging": {
+   "offset": 0,
+   "limit": 10,
+   "count": 5,
+   "pages": 1
+  }
+ },
+ "applicationproductivities": {
+  "_source": "GET object/applicationproductivities",
+  "items": [
+   {
+    "name": "Very Low",
+    "id": "VERY_LOW",
+    "type": "ApplicationProductivity"
+   },
+   {
+    "name": "Low",
+    "id": "LOW",
+    "type": "ApplicationProductivity"
+   },
+   {
+    "name": "Medium",
+    "id": "MEDIUM",
+    "type": "ApplicationProductivity"
+   },
+   {
+    "name": "High",
+    "id": "HIGH",
+    "type": "ApplicationProductivity"
+   },
+   {
+    "name": "Very High",
+    "id": "VERY_HIGH",
+    "type": "ApplicationProductivity"
+   }
+  ],
+  "paging": {
+   "offset": 0,
+   "limit": 10,
+   "count": 5,
+   "pages": 1
+  }
+ },
+ "applicationtypes": {
+  "_source": "GET object/applicationtypes",
+  "items": [
+   {
+    "type": "ApplicationType",
+    "name": "Server",
+    "id": "SERVER"
+   },
+   {
+    "type": "ApplicationType",
+    "name": "Client",
+    "id": "CLIENT"
+   },
+   {
+    "type": "ApplicationType",
+    "name": "Webapp",
+    "id": "WEBAPP"
+   }
+  ],
+  "paging": {
+   "offset": 0,
+   "limit": 10,
+   "count": 3,
+   "pages": 1
+  }
+ },
+ "applicationcategories": {
+  "_source": "GET object/applicationcategories?limit=3 (67 in all); 'file sharing' and 'social networking' rows added for the tests (made-up ids)",
+  "items": [
+   {
+    "name": "active directory",
+    "id": "123",
+    "type": "ApplicationCategory"
+   },
+   {
+    "name": "ad portal",
+    "id": "118",
+    "type": "ApplicationCategory"
+   },
+   {
+    "name": "anonymizer/proxy",
+    "id": "58",
+    "type": "ApplicationCategory"
+   },
+   {
+    "name": "network protocols/services",
+    "id": "10",
+    "type": "ApplicationCategory"
+   },
+   {
+    "name": "file sharing",
+    "id": "90101",
+    "type": "ApplicationCategory"
+   },
+   {
+    "name": "social networking",
+    "id": "90102",
+    "type": "ApplicationCategory"
+   }
+  ],
+  "paging": {
+   "offset": 0,
+   "limit": 1000,
+   "count": 6,
+   "pages": 1
+  }
+ },
+ "applicationtags": {
+  "_source": "GET object/applicationtags?limit=3 (81 in all); 'opens port' from the HTTP application",
+  "items": [
+   {
+    "name": "adds/installs other software",
+    "id": "46",
+    "type": "ApplicationTag"
+   },
+   {
+    "name": "adult content",
+    "id": "114",
+    "type": "ApplicationTag"
+   },
+   {
+    "name": "allows remote connect",
+    "id": "51",
+    "type": "ApplicationTag"
+   },
+   {
+    "name": "opens port",
+    "id": "98",
+    "type": "ApplicationTag"
+   }
+  ],
+  "paging": {
+   "offset": 0,
+   "limit": 1000,
+   "count": 4,
+   "pages": 1
+  }
+ },
+ "isesecuritygrouptags": {
+  "_source": "GET object/isesecuritygrouptags?expanded=true (17 downloaded over pxGrid; 6 kept)",
+  "items": [
+   {
+    "name": "Unknown",
+    "id": "92adf9f0-8c01-11e6-996c-525400b48521",
+    "type": "ISESecurityGroupTag",
+    "tag": 0
+   },
+   {
+    "name": "ANY",
+    "id": "92bb1950-8c01-11e6-996c-525400b48521",
+    "type": "ISESecurityGroupTag",
+    "tag": 65535
+   },
+   {
+    "name": "Contractors",
+    "id": "9370d4c0-8c01-11e6-996c-525400b48521",
+    "type": "ISESecurityGroupTag",
+    "tag": 5
+   },
+   {
+    "name": "Employees",
+    "id": "93ad6890-8c01-11e6-996c-525400b48521",
+    "type": "ISESecurityGroupTag",
+    "tag": 4
+   },
+   {
+    "name": "Guests",
+    "id": "93c66ed0-8c01-11e6-996c-525400b48521",
+    "type": "ISESecurityGroupTag",
+    "tag": 6
+   },
+   {
+    "name": "PCI_Servers",
+    "id": "93f91790-8c01-11e6-996c-525400b48521",
+    "type": "ISESecurityGroupTag",
+    "tag": 14
+   }
+  ],
+  "paging": {
+   "offset": 0,
+   "limit": 25,
+   "count": 6,
+   "pages": 1
+  }
+ },
+ "securitygrouptags_ise_enabled": {
+  "_source": "GET object/securitygrouptags?expanded=true -> HTTP 422 while an ISE source is enabled (error body shape as FMC's other 422s)",
+  "error": {
+   "category": "FRAMEWORK",
+   "messages": [
+    {
+     "description": "Request cannot be processed because Identity Service Engine is enabled"
+    }
+   ],
+   "severity": "ERROR"
+  }
+ },
+ "timeranges": {
+  "_source": "GET object/timeranges?expanded=true",
+  "items": [
+   {
+    "effectiveStartDateTime": "2024-12-24T00:00",
+    "effectiveEndDateTime": "2024-12-26T23:59",
+    "name": "mcp-test-hyg-expired",
+    "type": "TimeRange",
+    "id": "00000000-0000-0ed3-0000-021474850516"
+   }
+  ],
+  "paging": {
+   "offset": 0,
+   "limit": 1,
+   "count": 1,
+   "pages": 1
+  }
+ }
+}

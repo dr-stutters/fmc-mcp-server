@@ -50,8 +50,9 @@ class Settings(BaseServerSettings):
     )
     bundle_dir: Path | None = Field(
         default=None,
-        description="Directory fmc_export_policy_bundle also writes each bundle to (fmc_diff_policy_bundle "
-        "reads bundle file names from). Unset: bundles are only returned inline, nothing is written.",
+        description="Directory fmc_export_policy_bundle and fmc_export_device_config also write each "
+        "bundle or device export to (fmc_diff_policy_bundle and fmc_diff_device_config read file names "
+        "from). Unset: they are only returned inline, nothing is written.",
     )
     pki_dir: Path | None = Field(
         default=None,

@@ -13,6 +13,7 @@ dependencies = [
     "pydantic-settings>=2.15.0",
     "tzdata>=2025.2",
     "uvicorn>=0.30",
+    "fastmcp-tasks>=4.1,<5",
     # <<< bundled stutters-mcp-core
 ]
 
@@ -24,6 +25,7 @@ fmc-mcp-server = "fmc_mcp:main"
 [tool.bundle-core]
 tag = "v0.14.2"
 commit = "3a8025f649e41d24f4788ff9fc2fd1deb16f4534"
+extras = ["tasks"]  # MCP background tasks (core C12): fmc_register_devices runs as a task with MCP_TASKS=true
 
 [build-system]
 requires = ["uv_build>=0.10.9,<0.11.0"]

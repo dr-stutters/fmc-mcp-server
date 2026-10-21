@@ -425,7 +425,7 @@ async def test_device_metrics_by_group_runs_each_member(fleet: respx.MockRouter)
 def test_health_review_takes_a_group_and_uses_fleet_calls() -> None:
     from fmc_mcp.tools.prompts import _health_review_text
 
-    text = _health_review_text("Global/mcp-test-leaf", None, 24, "mcp-w6-t1")
+    text = _health_review_text("Global/mcp-test-leaf", None, 24, group="mcp-w6-t1")
     assert 'devices of device group "mcp-w6-t1"' in text
     assert '`fmc_list_device_groups` with group="mcp-w6-t1"' in text
     assert 'device="group:mcp-w6-t1" runs it on every device of the group' in text

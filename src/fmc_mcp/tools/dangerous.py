@@ -2,7 +2,9 @@
 
 # No `from __future__ import annotations`: FastMCP inspects signatures at runtime.
 import ipaddress
+import re
 import time
+from datetime import datetime
 from typing import Annotated, Any, Literal
 
 from fastmcp import Context
@@ -22,6 +24,7 @@ from fmc_mcp._core import (
     get_settings,
     poll_until,
 )
+from fmc_mcp._core.secrets import register_secret
 from fmc_mcp.client import FmcApp
 from fmc_mcp.config import Settings
 from fmc_mcp.preview import fmc_preview
@@ -91,6 +94,98 @@ def _as_int(v: Any) -> int:
         return int(str(v))
     except ValueError:
         return 0
+
+
+def job_epoch(v: Any) -> int:
+    """A deployment job's startTime as epoch seconds. FMC 10.0.1 sends ISO 8601 strings
+    ("2026-10-19T00:04:08Z"); older releases (and the spec) epoch seconds or milliseconds. 0 if unknown."""
+    if isinstance(v, str) and "T" in v:
+        try:
+            return int(datetime.fromisoformat(v.replace("Z", "+00:00")).timestamp())
+        except ValueError:
+            return 0
+    n = _as_int(v)
+    return n // 1000 if n > 10**11 else n
+
+
+# --- device registration (shared by fmc_register_device and fmc_register_devices) -------------
+
+# FMC refuses anything else: "Registration key contains invalid characters. Only alphanumerics and
+# hyphen (-) are allowed." (FMC 10.0.1, seen in the SD-WAN run with a key carrying a stray character).
+REG_KEY_OK = re.compile(r"[A-Za-z0-9-]+")
+SERVER_KEY = "server config (FMC_FTD_REG_KEY)"
+
+
+def registration_key(settings: Settings, reg_key: str | None, what: str = "argument") -> tuple[str, str]:
+    """(key, where it comes from) for a registration: the caller's key, else FMC_FTD_REG_KEY. Surrounding
+    whitespace is dropped (an env file or _FILE often leaves a newline). Raises when there is neither.
+    The key is registered as a secret: later log lines and tool errors mask it (core masks the configured
+    value as given, which is not this one when it was stripped, and knows nothing of an argument's key)."""
+    if reg_key and reg_key.strip():
+        key, source = reg_key.strip(), what
+    elif settings.ftd_reg_key is not None:
+        key, source = settings.ftd_reg_key.get_secret_value().strip(), SERVER_KEY
+    else:
+        raise InvalidRequest(
+            "No registration key: pass reg_key, or set FMC_FTD_REG_KEY (or _FILE / _REF) on the server "
+            "so the key stays out of the conversation."
+        )
+    register_secret(key)
+    return key, source
+
+
+def registration_key_problem(key: str, source: str) -> str | None:
+    """A blocker when FMC would refuse the key (never shows the key itself)."""
+    if REG_KEY_OK.fullmatch(key):
+        return None
+    if not key:
+        return f"The registration key from {source} is empty: set it on the server and preview again."
+    return (
+        f"The registration key from {source} has characters FMC refuses (only letters, digits and '-' are "
+        "allowed): fix it on the server (and in the FTDs' `configure manager add`) and preview again."
+    )
+
+
+def registration_body(
+    *,
+    name: str,
+    host: str | None,
+    key: str,
+    access_policy_id: str,
+    license_caps: list[str] | None,
+    nat_id: str | None,
+    performance_tier: str | None,
+) -> dict[str, Any]:
+    """The devicerecords POST body for one FTD."""
+    body: dict[str, Any] = {
+        "name": name,
+        "hostName": host or "",
+        "regKey": key,
+        "type": "Device",
+        "license_caps": [c.strip().upper() for c in license_caps or ["ESSENTIALS"]],
+        "accessPolicy": {"id": access_policy_id, "type": "AccessPolicy"},
+    }
+    if nat_id:
+        body["natID"] = nat_id
+    if performance_tier:
+        body["performanceTier"] = performance_tier
+    return body
+
+
+def registration_hint(message: str) -> str | None:
+    """What to check after a failed registration task, from FMC's message."""
+    low = message.lower()
+    if "timed out" in low:
+        return (
+            "Check on the FTD that 'show managers' lists this FMC as Pending with the same registration key "
+            "(configure manager add) and that it can reach FMC on TCP 8305."
+        )
+    if "smart licens" in low:
+        return (
+            "FMC must be registered with Smart Licensing or be in evaluation mode first (fmc_license_status "
+            "shows it)."
+        )
+    return None
 
 
 def task_id_of(resp: Any) -> str | None:
@@ -184,8 +279,8 @@ async def _wait_initial_deploy(
         page = await app.page(jobs, {"filter": flt}, limit=25)
         # Only jobs started after the registration request, newest first (a re-registered device
         # also has older jobs).
-        fresh = [j for j in page.items if _as_int(j.get("startTime")) >= since - 5]
-        fresh.sort(key=lambda j: _as_int(j.get("startTime")), reverse=True)
+        fresh = [j for j in page.items if job_epoch(j.get("startTime")) >= since - 5]
+        fresh.sort(key=lambda j: job_epoch(j.get("startTime")), reverse=True)
         job = fresh[0] if fresh else {}
         return {
             "device_id": dev["id"],
@@ -554,28 +649,18 @@ def register(reg: ToolRegistrar) -> None:
         back; without reg_key the server's FMC_FTD_REG_KEY is used. Next steps: fmc_update_interface,
         fmc_create_static_route, fmc_assign_policy, fmc_deploy."""
         app: FmcApp = get_client(ctx)
-        configured = get_settings(ctx).ftd_reg_key
-        if not reg_key and configured is None:
-            raise InvalidRequest(
-                "No registration key: pass reg_key, or set FMC_FTD_REG_KEY (or _FILE / _REF) on the server "
-                "so the key stays out of the conversation."
-            )
-        key_source = "argument" if reg_key else "server config (FMC_FTD_REG_KEY)"
-        key = reg_key or (configured.get_secret_value() if configured else "")
+        key, key_source = registration_key(get_settings(ctx), reg_key)
         acp = await resolve_in(app, POLICY_KINDS["access"], access_policy, "access policy", domain)
-        body: dict[str, Any] = {
-            "name": name,
-            "hostName": host,
-            "regKey": key,
-            "type": "Device",
-            "license_caps": license_caps or ["ESSENTIALS"],
-            "accessPolicy": {"id": acp["id"], "type": "AccessPolicy"},
-        }
-        if nat_id:
-            body["natID"] = nat_id
-        if performance_tier:
-            body["performanceTier"] = performance_tier
-        blockers = []
+        body = registration_body(
+            name=name,
+            host=host,
+            key=key,
+            access_policy_id=acp["id"],
+            license_caps=license_caps,
+            nat_id=nat_id,
+            performance_tier=performance_tier,
+        )
+        blockers = [p for p in [registration_key_problem(key, key_source)] if p]
         try:
             await resolve_in(app, DEVICES, name, "device", domain)
             blockers.append(f"A device named {name!r} is already registered.")
@@ -590,16 +675,9 @@ def register(reg: ToolRegistrar) -> None:
             try:
                 result = await finish(ctx, app, resp, wait, domain, "device registration")
             except TaskFailed as e:
-                if "timed out" in str(e).lower():
-                    raise TaskFailed(
-                        f"{e} Check on the FTD that 'show managers' lists this FMC as Pending with the same "
-                        "registration key (configure manager add) and that it can reach FMC on TCP 8305."
-                    ) from e
-                if "smart licens" in str(e).lower():
-                    raise TaskFailed(
-                        f"{e} FMC must be registered with Smart Licensing or be in evaluation mode first "
-                        "(fmc_license_status shows it)."
-                    ) from e
+                hint = registration_hint(str(e))
+                if hint:
+                    raise TaskFailed(f"{e} {hint}") from e
                 raise
             if wait and isinstance(result, dict) and "task" in result:
                 result["initial_deployment"] = await _wait_initial_deploy(ctx, app, name, started, domain)
