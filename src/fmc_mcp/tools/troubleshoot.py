@@ -24,7 +24,9 @@ from fmc_mcp._core import (
     NotFound,
     ResponseFormat,
     ToolRegistrar,
+    Unreachable,
     UpstreamError,
+    UpstreamTimeout,
     get_client,
     list_result,
 )
@@ -309,11 +311,18 @@ def _json(resp: Any) -> Any:
 # with each other's output: six concurrent 'show version' all came back with one device's banner and UUID
 # (Wave 6 live proof; the spec promises one request per device and ten devices at once). So this server
 # sends one show command at a time (every tool, every session), and a 'show version' whose UUID line names
-# another device (FMC answered a request another API client had running) is sent once more.
+# another device (FMC answered a request another API client had running) is sent once more. The lock is held
+# for one request at a time (at most SHOW_TIMEOUT), never across retries and their back-off, so a wedged but
+# connected FTD delays the other show commands by one timeout, not by every retry.
 _show_gates: weakref.WeakKeyDictionary[FmcApp, asyncio.Lock] = weakref.WeakKeyDictionary()
 SHOW_UUID = re.compile(
     r"^\s*UUID\s*:\s*([0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12})\s*$", re.I | re.M
 )
+# 'show version' opens with a banner naming the device: '--------------[ mcp-sdwan-t1-spoke1 ]-------------'
+SHOW_BANNER = re.compile(r"^\s*-{3,}\[\s*(\S[^\]]*?)\s*\]-{3,}\s*$", re.M)
+SHOW_TIMEOUT = 120.0  # seconds for one operational/commands request (FMC asks the FTD over its tunnel)
+SHOW_RETRY = frozenset({502, 503, 504})  # what the client retries for a GET, besides timeouts and lost links
+SHOW_BACKOFF = 0.5  # seconds before the first retry; doubles, at most 10 s
 
 
 def show_gate(app: FmcApp) -> asyncio.Lock:
@@ -329,6 +338,12 @@ def answered_for(text: str) -> str | None:
     it names none (most commands print nothing that identifies the device)."""
     m = SHOW_UUID.search(text)
     return m.group(1).lower() if m else None
+
+
+def banner_name(text: str) -> str | None:
+    """The device name a 'show version' banner prints ('----[ <name> ]----'); None for most outputs."""
+    m = SHOW_BANNER.search(text)
+    return m.group(1) if m else None
 
 
 async def run_show(
@@ -350,12 +365,11 @@ async def run_show(
     if rest:
         params["parameters"] = rest
     path = await app.config_path(f"devices/devicerecords/{device_id}/operational/commands", domain)
-    async with show_gate(app):
+    text = await _show(app, path, params, command, retry)
+    other = answered_for(text)
+    if other and other != device_id.lower():
         text = await _show(app, path, params, command, retry)
         other = answered_for(text)
-        if other and other != device_id.lower():
-            text = await _show(app, path, params, command, retry)
-            other = answered_for(text)
     if other and other != device_id.lower():
         raise UpstreamError(
             f"FMC answered {command!r} for device {device_id} twice with the output of device {other}: FMC "
@@ -367,9 +381,28 @@ async def run_show(
 
 
 async def _show(app: FmcApp, path: str, params: dict[str, Any], command: str, retry: bool | None) -> str:
-    """One operational/commands GET: the output, or InvalidRequest/NotFound for FMC's 404s."""
+    """One show command: each attempt is a single request under the show lock (show_gate); a timeout, a lost
+    connection or a 502/503/504 is retried like the client retries a GET (app.api.retries times unless
+    retry=False), after a back-off spent outside the lock so the other show commands go in between."""
+    tries = 1 if retry is False else 1 + max(0, app.api.retries)
+    attempt = 1
+    while True:
+        try:
+            async with show_gate(app):
+                return await _show_once(app, path, params, command)
+        except UpstreamError as e:
+            transient = isinstance(e, (UpstreamTimeout, Unreachable)) or e.status_code in SHOW_RETRY
+            if not transient or attempt >= tries:
+                raise
+        await asyncio.sleep(min(10.0, SHOW_BACKOFF * 2 ** (attempt - 1)))
+        attempt += 1
+
+
+async def _show_once(app: FmcApp, path: str, params: dict[str, Any], command: str) -> str:
+    """One operational/commands GET, never retried here: the output, or InvalidRequest/NotFound for FMC's
+    404s."""
     resp = await app.api.request(
-        "GET", path, params=params, timeout=120, expect="response", ok_status={404}, retry=retry
+        "GET", path, params=params, timeout=SHOW_TIMEOUT, expect="response", ok_status={404}, retry=False
     )
     if resp.status_code == 404:
         detail = fmc_error_detail(_json(resp)) or ""

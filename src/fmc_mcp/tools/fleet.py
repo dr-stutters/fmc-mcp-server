@@ -7,10 +7,12 @@ once per process and, when FMC refuses it (403/404/405/501), runs the per-device
 instead, one request per device and command, one at a time: FMC 10.0.1 answers concurrent requests with
 each other's output (Wave 6 live proof: six devices queried eight at a time all got one device's 'show
 version'), so troubleshoot.run_show sends every show command of this server alone and re-asks a 'show
-version' that names another device's UUID. Devices FMC reports disconnected are reported without a
-request; a device FMC can't reach answers HTTP 500 with an SFTunnelException, which becomes that device's
-failure row. The bulk answer's per-device shape (`metadata.task` -> TaskStatus `subTasks` with target and
-message, by the 10.0.1 schema) is unit-tested from the schema only until an FMC with the flag on records it.
+version' that names another device's UUID; any row whose UUID line or 'show version' banner names another
+device of the run (bulk or per device) is a failure, not output. Devices FMC reports disconnected are
+reported without a request; a device FMC can't reach answers HTTP 500 with an SFTunnelException, which
+becomes that device's failure row. The bulk answer's per-device shape (`metadata.task` -> TaskStatus
+`subTasks` with target and message, by the 10.0.1 schema) is unit-tested from the schema only until an FMC
+with the flag on records it.
 
 `run_fleet(ctx, app, devices, commands, domain)` runs several commands on several devices and returns one
 row per device and command; `resolve_fleet` turns names, UUIDs, HA pairs, clusters and device groups into
@@ -33,9 +35,9 @@ from fmc_mcp.tools.common import Domain
 from fmc_mcp.tools.dangerous import FAILED_WORDS, task_id_of, task_state
 from fmc_mcp.tools.device_config import resolve_device
 from fmc_mcp.tools.device_groups import GROUP_PREFIX, Fleet, expand_devices
-from fmc_mcp.tools.devices import DEVICES, memberships
+from fmc_mcp.tools.devices import DEVICES, membership_of, memberships
 from fmc_mcp.tools.show_commands import Supported, check_command, supported_commands
-from fmc_mcp.tools.troubleshoot import ROUTE_LEGEND, filter_lines, redact, run_show
+from fmc_mcp.tools.troubleshoot import ROUTE_LEGEND, answered_for, banner_name, filter_lines, redact, run_show
 
 BULK = "devices/devicerecords/operational/bulkcommands"
 MAX_FLEET = 25  # FMC's bulkcommands cap per request, and this tool's per call
@@ -210,6 +212,30 @@ async def _bulk(
     return got, [str(m) for m in meta.get("matches") or []]
 
 
+def foreign_output(d: dict[str, Any], text: str, devices: list[dict[str, Any]]) -> str | None:
+    """Why an answer for device `d` is another device's output, or None: its 'UUID :' line names another
+    device, or its 'show version' banner names another device of this run (not `d`, and not an HA or
+    cluster peer of `d`, which may print the same hostname). An identity canary that costs no request:
+    most outputs name no device, so a mix-up there stays unseen (one show command at a time prevents
+    the server's own)."""
+    own = str(d["id"]).lower()
+    uid = answered_for(text)
+    if uid and uid != own:
+        return f"its UUID line names device {uid}"
+    name = banner_name(text)
+    if not name or name.lower() == str(d.get("name") or "").lower():
+        return None
+    mine = membership_of(d)
+    for o in devices:
+        if str(o.get("name") or "").lower() != name.lower() or str(o["id"]).lower() == own:
+            continue
+        peer = membership_of(o)
+        if mine and peer and peer.container_id == mine.container_id:
+            continue
+        return f"its 'show version' banner names {o.get('name')!r}"
+    return None
+
+
 async def run_fleet(
     ctx: Context,
     app: FmcApp,
@@ -224,8 +250,8 @@ async def run_fleet(
     allowlist first (InvalidRequest before any call), then bulkcommands is tried per command unless FMC
     refused it before in this process; whatever it doesn't answer runs per device, one request at a time
     (device by device, each device's commands in order: FMC 10.0.1 mixes up the outputs of concurrent
-    show commands). One row per device and command; a failure is a row with ok=False, never an
-    exception."""
+    show commands). An answer that names another device (foreign_output) is a failure. One row per device and
+    command; a failure is a row with ok=False, never an exception."""
     for c in commands:
         check_command(c, supported)
     texts = [" ".join(c.split()) for c in commands]
@@ -276,6 +302,13 @@ async def run_fleet(
     for d in devices:
         for c in texts:
             ok, text = done[(d["id"], c)]
+            if ok and (why := foreign_output(d, text, devices)):
+                ok, text = (
+                    False,
+                    f"FMC answered with another device's output ({why}): FMC 10.0.1 mixes up show commands "
+                    "that run at the same time (another API client may be running some). Not shown; run "
+                    "it again.",
+                )
             row: dict[str, Any] = {"device": d.get("name"), "id": d["id"], "command": c, "ok": ok}
             row["text" if ok else "error"] = text
             rows.append(row)

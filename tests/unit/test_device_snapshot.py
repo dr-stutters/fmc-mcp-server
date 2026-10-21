@@ -28,9 +28,8 @@ from fmc_mcp.tools.device_snapshot import (
 )
 from fmc_mcp.tools.prompts import _health_review_text, _rule_change_review_text
 
-from .conftest import CFG, fixture, items
+from .conftest import CFG, ConcurrentFmc, fixture, items
 from .test_device_export import SP1, SP2, recorded, server, t1
-from .test_fleet import ConcurrentFmc
 
 FX = fixture("device_snapshot_t1")
 FLEET = fixture("fleet_show")

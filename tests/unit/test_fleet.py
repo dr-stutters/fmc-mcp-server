@@ -14,7 +14,7 @@ from fastmcp.exceptions import ToolError
 
 from fmc_mcp.server import create_server
 
-from .conftest import CFG, fixture, items, make_settings
+from .conftest import CFG, ConcurrentFmc, fixture, items, make_settings
 
 FX = fixture("fleet_show")
 A, B, C, D = (f"a0000000-0000-4000-8000-00000000000{x}" for x in "abcd")
@@ -105,37 +105,6 @@ def show_ok(name: str, text: str | None = None) -> httpx.Response:
     return items(
         [{"commandInput": "show version", "commandOutput": text or version_text(name), "type": "command"}]
     )
-
-
-class ConcurrentFmc:
-    """FMC 10.0.1's operational/commands as recorded live (fleet_show.json `concurrent_mixup`): a request
-    that overlaps another one, for any device, is answered with the output of the newest request in
-    flight. Requests that don't overlap get their own device's output. `peak`: most requests at once."""
-
-    def __init__(self, outputs: dict[str, str] | dict[str, dict[str, str]]) -> None:
-        self.outputs = outputs  # device id -> its output, or {command: output}
-        self.inflight: list[str] = []
-        self.peak = 0
-        self.calls: list[str] = []
-
-    async def __call__(self, request: httpx.Request) -> httpx.Response:
-        dev = request.url.path.split("/")[-3]
-        self.calls.append(dev)
-        self.inflight.append(dev)
-        self.peak = max(self.peak, len(self.inflight))
-        await asyncio.sleep(0.01)
-        source = self.inflight[-1]
-        self.inflight.remove(dev)
-        q = request.url.params
-        cmd = q["command"] + (f" {q['parameters']}" if "parameters" in q else "")
-        out = self.outputs[source]
-        text = out if isinstance(out, str) else out[cmd]
-        return items([{"commandInput": cmd, "commandOutput": text, "type": "command"}])
-
-    def mount(self, router: respx.MockRouter) -> "ConcurrentFmc":
-        for i in self.outputs:
-            router.get(cmd_path(i)).mock(side_effect=self)
-        return self
 
 
 # --- fleet show commands ------------------------------------------------------------------------------
@@ -234,6 +203,84 @@ async def test_an_answer_naming_another_device_is_asked_again(fleet: respx.MockR
     assert rows["ftd-a"]["ok"] and f"UUID                      : {A}" in rows["ftd-a"]["output"]
     assert not rows["ftd-b"]["ok"] and "mixes up show commands" in rows["ftd-b"]["error"]
     assert out["failed"] == ["ftd-b"]
+
+
+async def test_a_wedged_device_holds_the_show_lock_for_one_request_not_its_retries(
+    fleet: respx.MockRouter, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    """A device whose show command times out is retried (retries=2) with the back-off spent outside the show
+    lock: another device's command goes in between, so a wedged but connected FTD delays the others by one
+    request (at most SHOW_TIMEOUT), not by every retry (~6 min with 120 s and two retries)."""
+    monkeypatch.setattr("fmc_mcp.tools.troubleshoot.SHOW_BACKOFF", 0.01)
+    order: list[str] = []
+    first = asyncio.Event()
+
+    async def wedged(request: httpx.Request) -> httpx.Response:
+        order.append("a")
+        if not first.is_set():
+            first.set()
+            await asyncio.sleep(0.3)  # holds the lock while ftd-b's call arrives and waits for it
+        raise httpx.ReadTimeout("no answer", request=request)
+
+    def fine(request: httpx.Request) -> httpx.Response:
+        order.append("b")
+        return show_ok("ftd-b")
+
+    fleet.get(cmd_path(A)).mock(side_effect=wedged)
+    fleet.get(cmd_path(B)).mock(side_effect=fine)
+    async with Client(server(retries=2)) as c:
+        slow = asyncio.create_task(
+            c.call_tool(
+                "fmc_run_show_command", {"device": "ftd-a", "command": "show version"}, raise_on_error=False
+            )
+        )
+        await first.wait()
+        b = await run(
+            c, "fmc_run_show_command", {"device": "ftd-b", "command": "show version", "match": "UUID"}
+        )
+        a = await slow
+    assert order == ["a", "b", "a", "a"]  # the lock held across retries gave a, a, a, b
+    assert a.is_error and "timed out" in a.content[0].text  # type: ignore[union-attr]
+    assert B in b["output"]
+
+
+def banner_only(name: str) -> str:
+    """'show version' as device `name` prints it, without its UUID line (only the banner names it)."""
+    return "\n".join(ln for ln in version_text(name).splitlines() if not ln.startswith("UUID"))
+
+
+async def test_an_answer_whose_banner_names_another_device_of_the_run_is_a_failure(
+    fleet: respx.MockRouter,
+) -> None:
+    """Identity canary at no cost: an answer whose 'show version' banner names another device of the run is
+    that row's failure, never its output. A hostname outside the run, or an HA peer's (units may print the
+    same hostname), is no evidence."""
+    fleet.post(BULK).mock(return_value=httpx.Response(403, json=FX["bulk_refused_403"]))
+    answers = {A: "ftd-b", B: "ftd-b", C: "firepower", HA_A: "fw-ha-b", HA_B: "fw-ha-b"}
+    for i, banner in answers.items():
+        fleet.get(cmd_path(i)).mock(return_value=show_ok(BY_ID[i]["name"], banner_only(banner)))
+    args = {"devices": ["ftd-a", "ftd-b", "ftd-c", "fw-ha"], "command": "show version"}
+    async with Client(server()) as c:
+        out = await run(c, "fmc_run_show_command", args)
+    rows = {r["device"]: r for r in out["results"]}
+    assert out["failed"] == ["ftd-a"]
+    assert "another device's output (its 'show version' banner names 'ftd-b')" in rows["ftd-a"]["error"]
+    assert all(rows[n]["ok"] for n in ("ftd-b", "ftd-c", "fw-ha-a", "fw-ha-b"))
+
+
+async def test_a_bulk_answer_naming_another_device_is_a_failure(fleet: respx.MockRouter) -> None:
+    """The same canary on bulkcommands answers (where FMC enables it): a device's row whose UUID line names
+    another device is a failure."""
+    rows = [
+        {"device": {"id": A}, "commandOutput": version_text("ftd-b")},
+        {"device": {"id": B}, "commandOutput": version_text("ftd-b")},
+    ]
+    fleet.post(BULK).mock(return_value=items(rows))
+    async with Client(server()) as c:
+        out = await run(c, "fmc_run_show_command", {"devices": [A, B], "command": "show version"})
+    got = {r["device"]: r for r in out["results"]}
+    assert out["path"] == "bulkcommands" and out["failed"] == ["ftd-a"]
+    assert f"its UUID line names device {B}" in got["ftd-a"]["error"] and got["ftd-b"]["ok"]
 
 
 async def test_bulk_task_shape_from_the_schema(fleet: respx.MockRouter) -> None:
