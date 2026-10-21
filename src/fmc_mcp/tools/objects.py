@@ -36,13 +36,16 @@ from fmc_mcp.tools.common import (
     resolve_object,
     slim,
 )
+from fmc_mcp.tools.decryption import rule_row
 from fmc_mcp.tools.object_lifecycle import BLIND_FILTER_TYPES, GROUP_USAGE_CAP, free_groups
+from fmc_mcp.tools.object_writes import cipher_list_rules, cipher_rule_usage
 
 ObjectRef = Annotated[str, Field(description="Object name or UUID")]
 OptionalType = Annotated[
     ObjectTypeName | None,
     Field(
-        description="Object type; speeds up the lookup and disambiguates names (default: search common types)"
+        description="Object type; speeds up the lookup and disambiguates names (default: search common "
+        "types, not cipher_suite_list)"
     ),
 ]
 
@@ -124,6 +127,26 @@ class _RuleReader:
         return None
 
 
+async def _cipher_list_users(
+    app: FmcApp, obj: dict[str, Any], here: str
+) -> tuple[list[dict[str, Any]], list[dict[str, Any]]]:
+    """Usage entries and rule rows for a cipher suite list: the decryption rules that use it, in rule order
+    per policy, each with the domain that holds its policy on a multi-domain FMC."""
+    found = await cipher_list_rules(app, obj, here)
+    order: dict[str, int] = {}
+    for pol, _ in found:
+        order.setdefault(pol["id"], len(order))
+    found.sort(key=lambda pr: (order[pr[0]["id"]], (pr[1].get("metadata") or {}).get("ruleIndex") or 0))
+    used_by: list[dict[str, Any]] = []
+    rules: list[dict[str, Any]] = []
+    for pol, r in found:
+        dom = ((pol.get("metadata") or {}).get("domain") or {}).get("id")
+        where = {"domain": await app.domain_name(str(dom))} if len(app.domains) > 1 and dom else {}
+        used_by.append({**cipher_rule_usage(pol, r), **where})
+        rules.append({"policy": pol.get("name"), **rule_row(r), **where})
+    return used_by, rules
+
+
 async def _rules_domain(app: FmcApp, rules: list[dict[str, Any]]) -> str | None:
     """The domain that holds a policy, from its rules' metadata.domain (an inherited policy's rules
     name the ancestor)."""
@@ -152,8 +175,8 @@ def register(reg: ToolRegistrar) -> None:
     ) -> ToolResult:
         """List FMC objects of one type (hosts, networks, ranges, FQDNs, network/port/URL groups,
         ports, ICMP, URLs, security zones, interface groups, VLAN tags, dynamic objects, time ranges,
-        applications, URL categories, geolocations) with value or group members. To find which
-        objects contain an IP or port use fmc_find_object."""
+        applications, URL categories, geolocations, cipher suite lists) with value or group members. To
+        find which objects contain an IP or port use fmc_find_object."""
         app: FmcApp = get_client(ctx)
         t = obj_type(type)
         path = await app.config_path(t.path, domain)
@@ -239,7 +262,11 @@ def register(reg: ToolRegistrar) -> None:
         object: ObjectRef,
         type: OptionalType = None,
         drill_down: Annotated[
-            bool, Field(description="Also list the individual access/prefilter/NAT rules that reference it")
+            bool,
+            Field(
+                description="Also list the individual access/prefilter/NAT rules (for a cipher suite list, "
+                "decryption rules) that reference it"
+            ),
         ] = True,
         domain: Domain = None,
     ) -> dict[str, Any]:
@@ -247,11 +274,34 @@ def register(reg: ToolRegistrar) -> None:
         reports, plus (drill_down) the exact rules in each access, prefilter and NAT policy that use
         it directly or through a group. Use before changing or deleting an object. On a multi-domain
         FMC an object inherited from an ancestor domain is checked there (FMC answers usage only in the
-        owner domain), across every domain below it; policies and rules say which domain holds them."""
+        owner domain), across every domain below it; policies and rules say which domain holds them.
+        Cipher suite lists (type='cipher_suite_list'), which FMC's usage API doesn't cover: the decryption
+        rules that use them, read from every decryption policy in the domain and the domains below the
+        list's own."""
         app: FmcApp = get_client(ctx)
         here = await app.domain_uuid(domain)
-        t, obj = await resolve_object(app, object, domain, [type] if type else None)
+        try:
+            t, obj = await resolve_object(app, object, domain, [type] if type else None)
+        except NotFound as e:
+            if type:
+                raise
+            raise NotFound(f"{e} A cipher suite list: pass type='cipher_suite_list'.", 404) from None
         owner = owner_domain(obj)
+        multi = len(app.domains) > 1
+        if t.key == "cipher_suite_list":
+            used_by, rows = await _cipher_list_users(app, obj, here)
+            listed: dict[str, Any] = {
+                "object": {"name": obj.get("name"), "type": obj.get("type"), "id": obj["id"]},
+                "in_use": bool(used_by),
+                "used_by": used_by,
+                "note": "FMC's usage API doesn't cover cipher suite lists, so the rules of every decryption "
+                "policy in this domain and the domains below the list's own were read.",
+            }
+            if multi and owner:
+                listed["object"]["domain"] = await app.domain_name(str(owner["id"]))
+            if drill_down:
+                listed["rules"] = rows
+            return listed
         usage_in = here
         try:
             usage = await _usage(app, obj, t, here)
@@ -268,7 +318,6 @@ def register(reg: ToolRegistrar) -> None:
             except (ValidationFailed, AuthError, NotFound):
                 raise _no_usage(t, obj, e) from None
             usage_in = owner_id
-        multi = len(app.domains) > 1
         used_by = [{"type": u.get("type"), "name": u.get("name"), "id": u.get("id")} for u in usage.items]
         out: dict[str, Any] = {
             "object": {"name": obj.get("name"), "type": obj.get("type"), "id": obj["id"]},

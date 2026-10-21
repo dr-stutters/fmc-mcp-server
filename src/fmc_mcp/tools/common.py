@@ -77,6 +77,7 @@ ObjectTypeName = Literal[
     "application",
     "url_category",
     "geolocation",
+    "cipher_suite_list",
 ]
 # Types that support FMC's `nameOrValue` and `unusedOnly` filters.
 FILTERABLE = {
