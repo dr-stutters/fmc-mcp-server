@@ -150,8 +150,9 @@ Workflows:
   UI-only).
 - Application, VLAN, time and SGT rules: fmc_find_application (an app or filter by exact name or id, with
   risk and business relevance) -> fmc_create_application_filter / fmc_create_time_range if needed ->
-  fmc_create_access_rule applications=[...], application_filters=[...], vlan_tags=[...], time_range=...,
-  source_sgts=[...] (ISE SGTs by name or tag) -> fmc_deploy -> fmc_get_hit_counts after real traffic
+  fmc_create_access_rule applications=[...], application_filters=[...] or inline_app_filter={risks: [...]}
+  (no filter object), vlan_tags=[...], time_range=..., source_sgts=[...] (ISE SGTs by name or tag) ->
+  fmc_deploy -> fmc_get_hit_counts after real traffic
   (packet tracer can't simulate app-id).
 - Users and groups in access rules (AD/LDAP): fmc_create_trusted_ca (LDAPS) -> fmc_create_realm ->
   fmc_test_realm -> fmc_download_realm -> fmc_create_identity_policy + fmc_create_identity_rule (PASSIVE
