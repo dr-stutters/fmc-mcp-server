@@ -1,0 +1,139 @@
+{
+ "_about": "FMC 10.0.1 (build 1), Global/mcp-test-leaf, 2026-10-21 (W6N live-A, F76 #171): locking mcp-w6-child-acp as the API user mcp-api-svc and unlocking it. links dropped.",
+ "lock_post": {
+  "_source": "POST policy/operational/policylocks (lock sent as a JSON boolean)",
+  "request": {
+   "policies": [
+    {
+     "policy": {
+      "id": "00000000-0000-0ed3-0000-021475055837",
+      "type": "AccessPolicy"
+     },
+     "lock": true
+    }
+   ]
+  },
+  "response": {
+   "policies": [
+    {
+     "type": "PolicyLock",
+     "policy": {
+      "name": "mcp-w6-child-acp",
+      "id": "00000000-0000-0ed3-0000-021475055837",
+      "type": "AccessPolicy"
+     },
+     "metadata": {
+      "lockedByUser": {
+       "name": "mcp-api-svc"
+      }
+     },
+     "status": "LOCKED"
+    }
+   ]
+  }
+ },
+ "locks_while_locked": {
+  "_source": "GET policy/operational/policylocks?expanded=true while locked",
+  "items": [
+   {
+    "policies": [
+     {
+      "type": "PolicyLock",
+      "policy": {
+       "name": "mcp-w6-child-acp",
+       "id": "00000000-0000-0ed3-0000-021475055837",
+       "type": "AccessPolicy"
+      },
+      "metadata": {
+       "lockedByUser": {
+        "name": "mcp-api-svc"
+       }
+      },
+      "status": "LOCKED"
+     }
+    ]
+   }
+  ],
+  "paging": {
+   "offset": 0,
+   "limit": 25,
+   "count": 1,
+   "pages": 1
+  }
+ },
+ "acp_while_locked": {
+  "_source": "GET policy/accesspolicies/<child> while locked (trimmed): lockingStatus nests the holder under metadata.lockedByUser.name, no userName key",
+  "metadata": {
+   "inherit": true,
+   "parentPolicy": {
+    "name": "mcp-w6-acp",
+    "id": "00000000-0000-0ed3-0000-021474963108",
+    "type": "AccessPolicy"
+   },
+   "lockingStatus": {
+    "metadata": {
+     "lockedByUser": {
+      "name": "mcp-api-svc"
+     }
+    },
+    "status": "LOCKED"
+   },
+   "timestamp": 1792604631241,
+   "lastUser": {
+    "name": "mcp-api-svc"
+   }
+  },
+  "loggingPolicySetting": {
+   "isLockedForChild": false,
+   "syslogConfigFromPlatformSetting": true,
+   "severityForPlatformSettingSyslogConfig": "INFO",
+   "inheritFromParent": true,
+   "type": "LoggingSetting",
+   "id": "00000000-0000-0ed3-0000-021474963138"
+  },
+  "name": "mcp-w6-child-acp",
+  "id": "00000000-0000-0ed3-0000-021475055837"
+ },
+ "unlock_post": {
+  "_source": "POST policy/operational/policylocks with lock false",
+  "request": {
+   "policies": [
+    {
+     "policy": {
+      "id": "00000000-0000-0ed3-0000-021475055837",
+      "type": "AccessPolicy"
+     },
+     "lock": false
+    }
+   ]
+  },
+  "response": {
+   "policies": [
+    {
+     "type": "PolicyLock",
+     "policy": {
+      "name": "mcp-w6-child-acp",
+      "id": "00000000-0000-0ed3-0000-021475055837",
+      "type": "AccessPolicy"
+     },
+     "metadata": {
+      "lockedByUser": {}
+     },
+     "status": "UNLOCKED"
+    }
+   ]
+  }
+ },
+ "locks_after_unlock": {
+  "_source": "GET policy/operational/policylocks?expanded=true after the unlock (one empty item)",
+  "items": [
+   {}
+  ],
+  "paging": {
+   "offset": 0,
+   "limit": 25,
+   "count": 1,
+   "pages": 1
+  }
+ }
+}
