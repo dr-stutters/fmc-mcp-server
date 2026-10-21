@@ -174,10 +174,20 @@ async def file_policy_ref(app: FmcApp, ref: str, domain: str | None) -> dict[str
     return {"id": fp["id"], "type": "FilePolicy", "name": fp.get("name")}
 
 
+MONITOR_LOG_NONE = (
+    "MONITOR rules always log the connection end to FMC: FMC 10.0.1 keeps logEnd and sendEventsToFMC on "
+    "whatever is sent (it answered 200 to log='none' and changed nothing), so log='none' only turns off "
+    "logging at the connection start."
+)
+
+
 def _log_fields(log: LogMode | None, action: str | None = None) -> dict[str, Any]:
     if log is None:
         return {}
     if log == "none":
+        if str(action or "").upper() == "MONITOR":
+            # what FMC keeps anyway (MONITOR_LOG_NONE): the preview shows what the rule will have
+            return {"logBegin": False, "logEnd": True, "sendEventsToFMC": True}
         return {"logBegin": False, "logEnd": False, "sendEventsToFMC": False}
     if str(action or "").upper() in BLOCKING:
         # A blocked connection has no end: FMC rejects logEnd on block rules ("LogEnd is not supported
@@ -288,7 +298,10 @@ def register(reg: ToolRegistrar) -> None:
         enabled: Annotated[bool, Field(description="Create the rule enabled")] = True,
         log: Annotated[
             LogMode,
-            Field(description="Connection logging to FMC (block rules log at the connection start)"),
+            Field(
+                description="Connection logging to FMC (block rules log at the connection start; MONITOR "
+                "rules always log the end)"
+            ),
         ] = "end",
         intrusion_policy: Annotated[
             str | None,
@@ -420,6 +433,7 @@ def register(reg: ToolRegistrar) -> None:
             blockers=blockers,
             side_effects=extra.warnings
             + ["Takes effect on devices after the next deployment."]
+            + ([MONITOR_LOG_NONE] if action == "MONITOR" and log == "none" else [])
             + ([URL_LICENCE] if cats else [])
             + extra.notes
             + ([VLAN_NOTE] if body.get("vlanTags") else []),
@@ -490,7 +504,10 @@ def register(reg: ToolRegistrar) -> None:
         time_range: TimeRangeParam = None,
         source_sgts: SgtsParam = None,
         destination_sgts: SgtsParam = None,
-        log: Annotated[LogMode | None, Field(description="Connection logging to FMC")] = None,
+        log: Annotated[
+            LogMode | None,
+            Field(description="Connection logging to FMC (MONITOR rules always log the connection end)"),
+        ] = None,
         intrusion_policy: Annotated[
             str | None,
             Field(
@@ -689,6 +706,7 @@ def register(reg: ToolRegistrar) -> None:
                 blockers=blockers,
                 side_effects=extra.warnings
                 + ["Takes effect on devices after the next deployment."]
+                + ([MONITOR_LOG_NONE] if desired.get("action") == "MONITOR" and log == "none" else [])
                 + ([URL_LICENCE] if cats else [])
                 + extra.notes
                 + ([VLAN_NOTE] if new_conditions.get("vlanTags") else []),
