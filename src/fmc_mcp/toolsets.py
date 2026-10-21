@@ -254,7 +254,7 @@ CATALOGUE: dict[str, tuple[str, tuple[str, ...]]] = {
         ),
     ),
     "tls": (
-        "TLS decryption policies and rules, internal CAs and certificates, readiness check",
+        "TLS decryption policies and rules, certificates (all kinds, days left), readiness check",
         (
             "fmc_create_decryption_policy",
             "fmc_create_decryption_rule",
@@ -265,6 +265,7 @@ CATALOGUE: dict[str, tuple[str, tuple[str, ...]]] = {
             "fmc_get_decryption_policy",
             "fmc_import_certificate_files",
             "fmc_install_internal_ca_cert",
+            "fmc_list_certificates",
             "fmc_set_decryption_policy",
             "fmc_tls_decryption_check",
             "fmc_update_decryption_policy",
