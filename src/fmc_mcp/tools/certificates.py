@@ -27,6 +27,7 @@ from fmc_mcp._core import (
     list_result,
 )
 from fmc_mcp._core.http import page_of
+from fmc_mcp.cert_names import cert_names
 from fmc_mcp.client import FmcApp, is_uuid
 from fmc_mcp.tools.common import Domain, pick_by_name
 from fmc_mcp.tools.pki import bundled, parse_date
@@ -110,11 +111,12 @@ def object_row(c: dict[str, Any], col: Collection, now: datetime) -> dict[str, A
     end = cert_date(c.get("validityEndDate"))
     left = days_until(end, now)
     owner = ((c.get("metadata") or {}).get("domain") or {}).get("name")
+    names = cert_names(c)  # from the PEM: FMC's own name fields are garbled for some bundled roots
     row: dict[str, Any] = {
         "kind": col.kind,
         "name": c.get("name"),
-        "subject": c.get("subjectCommonName") or c.get("subjectOrganization") or None,
-        "issuer": c.get("issuerCommonName") or c.get("issuerOrganization") or None,
+        "subject": names.subject_cn or names.subject_o,
+        "issuer": names.issuer_cn or names.issuer_o,
         "expires": iso(end),
         "days_left": left,
         "severity": severity(left),
