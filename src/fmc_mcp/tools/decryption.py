@@ -1,17 +1,18 @@
-"""Decryption policy (F13 slice 2, F64): read decryption policies and their rules, create and tune a
-policy (trusted CAs, TLS 1.3 decryption, untrusted server certificates), add or delete rules
-(DECRYPT_RESIGN with an internal CA, DECRYPT_KNOWN_KEY with a server's own certificate, DO_NOT_DECRYPT
-exemptions for banking or health sites, BLOCK), and link a decryption policy to an access control policy.
+"""Decryption policy (F13 slice 2, F64, F82, F83): read decryption policies and their rules, create and
+tune a policy (trusted CAs, TLS 1.3 decryption, untrusted server certificates, undecryptable actions,
+default-action logging), add or delete rules (DECRYPT_RESIGN with an internal CA, DECRYPT_KNOWN_KEY with a
+server's own certificate, DO_NOT_DECRYPT exemptions for banking or health sites, BLOCK on old TLS versions
+or weak cipher suites), cipher suite list objects, and link a decryption policy to an access control policy.
 
 The certificate objects live in fmc_mcp.tools.pki; fmc_tls_decryption_check (decryption_check.py) explains
-what happens to one flow."""
+what happens to one flow; the cipher suite table is fmc_mcp.cipher_suites."""
 
 # No `from __future__ import annotations`: FastMCP inspects signatures at runtime.
 from typing import Annotated, Any, Literal
 
 from fastmcp import Context
 from fastmcp.tools import ToolResult
-from pydantic import Field
+from pydantic import BaseModel, ConfigDict, Field
 
 from fmc_mcp._core import (
     Confirm,
@@ -25,6 +26,7 @@ from fmc_mcp._core import (
     list_result,
 )
 from fmc_mcp._core.http import page_of
+from fmc_mcp.cipher_suites import PRESETS, SUITES, Suite, find_suite, suite_of_literal
 from fmc_mcp.client import FmcApp
 from fmc_mcp.preview import fmc_preview
 from fmc_mcp.refs import RefResolver
@@ -65,6 +67,49 @@ CERT_CONDITIONS = (
 # Versions selection for Do not decrypt rule is deprecated", the same for Decrypt - Resign).
 ALL_TLS_VERSIONS = {"sslv3": True, "tls10": True, "tls11": True, "tls12": True, "tls13": True}
 NO_VERSION_SELECTION = {"DO_NOT_DECRYPT": "Do not decrypt", "DECRYPT_RESIGN": "Decrypt - Resign"}
+TlsVersion = Literal["sslv3", "tls10", "tls11", "tls12", "tls13"]
+CIPHER_LISTS = "object/ciphersuitelists"
+BLOCKING = ("BLOCK", "BLOCK_WITH_RESET")
+# Rule actions that take TLS version and cipher suite conditions (F82). FMC 10.0.1 accepts and deploys
+# them on Block rules; it refuses version selection on Do-not-decrypt and Decrypt-Resign rules at deploy,
+# and Cisco's guide says these conditions interfere with ClientHello processing in decrypt rules.
+TLS_CONDITION_ACTIONS = ("BLOCK", "BLOCK_WITH_RESET", "MONITOR")
+# FMC DecryptionPolicyUndecryptableActions, as (our name, FMC field, what it covers).
+UNDECRYPTABLE = (
+    ("compressed_session", "compressedSession", "compressed session"),
+    ("sslv2_session", "sslV2Session", "SSLv2 session"),
+    ("unknown_cipher_suite", "unknownCipherSuite", "unknown cipher suite"),
+    ("unsupported_cipher_suite", "unsupportedCipherSuite", "unsupported cipher suite (RC4, for example)"),
+    ("session_not_cached", "sessionNotCached", "session not cached"),
+    ("handshake_errors", "handshakeErrors", "handshake errors"),
+    ("decryption_errors", "decryptionErrors", "decryption errors"),
+)
+UndecryptableAction = Literal["INHERIT_DEFAULT_ACTION", "DO_NOT_DECRYPT", "BLOCK", "BLOCK_WITH_RESET"]
+
+
+class Undecryptable(BaseModel):
+    """What the FTD does with TLS sessions it can't decrypt (the policy's Undecryptable Actions); fields
+    left out stay as they are. INHERIT_DEFAULT_ACTION = the policy's default action."""
+
+    model_config = ConfigDict(extra="forbid")
+
+    compressed_session: UndecryptableAction | None = Field(None, description="TLS compression is on")
+    sslv2_session: UndecryptableAction | None = Field(None, description="SSLv2")
+    unknown_cipher_suite: UndecryptableAction | None = Field(None, description="A suite FTD doesn't know")
+    unsupported_cipher_suite: UndecryptableAction | None = Field(
+        None,
+        description="A suite FTD can't decrypt, such as RC4. With the default (inherit Do not decrypt), a "
+        "Decrypt-Resign rule passes an RC4-only session undecrypted; BLOCK_WITH_RESET resets it",
+    )
+    session_not_cached: UndecryptableAction | None = Field(
+        None, description="A resumed session FTD has no cached keys for"
+    )
+    handshake_errors: UndecryptableAction | None = Field(None, description="The TLS handshake fails")
+    decryption_errors: Literal["BLOCK", "BLOCK_WITH_RESET"] | None = Field(
+        None, description="Decryption fails mid-session (block only)"
+    )
+
+
 TrustedParam = Annotated[
     list[str] | None,
     Field(
@@ -132,11 +177,91 @@ def rule_row(r: dict[str, Any]) -> dict[str, Any]:
         "users": block_labels(r.get("users")) or None,
         "applications": app_labels(r.get("applications")) or None,
         "urls": url_labels(r.get("urls")) or None,
-        "cert_conditions": cert_conditions(r) or None,
+        "tls_versions": versions_on(r),
+        "cipher_suite_lists": block_labels(r.get("cipherSuiteLists")) or None,
+        # the two above have their own keys
+        "cert_conditions": [c for c in cert_conditions(r) if c not in ("tlsVersions", "cipherSuiteLists")]
+        or None,
         "log": True if (r.get("logging") or {}).get("logEnd") else None,
         "id": r.get("id"),
     }
     return {k: v for k, v in row.items() if v is not None}
+
+
+def versions_on(r: dict[str, Any]) -> list[str] | None:
+    """The TLS/SSL versions a rule is limited to, or None when it matches every version (all on; or all off,
+    which is what FMC stores for a rule created without them)."""
+    v = r.get("tlsVersions")
+    if not isinstance(v, dict):
+        return None
+    on = [k for k in ALL_TLS_VERSIONS if v.get(k) is True]
+    return on if on and len(on) < len(ALL_TLS_VERSIONS) else None
+
+
+def tls_block(r: dict[str, Any]) -> bool:
+    """An enabled Block rule with a TLS version or cipher suite condition."""
+    return (
+        r.get("enabled", True) is not False
+        and r.get("ruleAction") in BLOCKING
+        and bool(versions_on(r) or has_value(r.get("cipherSuiteLists")))
+    )
+
+
+def _zone_ids(block: Any) -> set[str]:
+    objs = block.get("objects") if isinstance(block, dict) else None
+    return {str(o.get("id") or o.get("name")) for o in objs or [] if isinstance(o, dict)}
+
+
+def _port_ranges(block: Any) -> list[tuple[str, int, int]] | None:
+    """A destinationPorts block as (protocol, low, high) ranges; None when it is empty or holds objects
+    (or a literal without a port), which this check doesn't resolve."""
+    if not isinstance(block, dict) or block.get("objects") or not block.get("literals"):
+        return None
+    out = []
+    for lit in block["literals"]:
+        lo, _, hi = str(lit.get("port") or "").partition("-")
+        if not lo.isdigit() or not (hi or lo).isdigit():
+            return None
+        out.append((str(lit.get("protocol")), int(lo), int(hi or lo)))
+    return out
+
+
+def disjoint(a: dict[str, Any], b: dict[str, Any]) -> bool:
+    """True when no session can match both rules: both name source (or destination) zones and none is
+    shared, or both list destination ports as literals and none overlaps. Anything else may overlap."""
+    for field in ("sourceZones", "destinationZones"):
+        za, zb = _zone_ids(a.get(field)), _zone_ids(b.get(field))
+        if za and zb and not za & zb:
+            return True
+    pa, pb = _port_ranges(a.get("destinationPorts")), _port_ranges(b.get("destinationPorts"))
+    if pa is not None and pb is not None:
+        return not any(x[0] == y[0] and x[1] <= y[2] and y[1] <= x[2] for x in pa for y in pb)
+    return False
+
+
+def order_problems(rules: list[dict[str, Any]]) -> list[str]:
+    """Decrypt rules above overlapping TLS version / cipher suite Block rules (F82 live finding: decryptable
+    weak suites then pass decrypted and allowed)."""
+    out = []
+    live = [r for r in rules if r.get("enabled", True) is not False]
+    for d in live:
+        if d.get("ruleAction") not in DECRYPT_ACTIONS:
+            continue
+        below = [
+            b for b in live if tls_block(b) and (_index(d) or 0) < (_index(b) or 0) and not disjoint(d, b)
+        ]
+        if below:
+            out.append(
+                f"{d.get('ruleAction')} rule {_index(d)} {d.get('name')!r} is above Block rule(s) "
+                f"{_labels(below)} with TLS version or cipher suite conditions: the sessions it decrypts "
+                "never reach them, so weak suites FTD can decrypt (3DES, RSA key exchange, CBC) pass "
+                "decrypted and allowed. Put the Block rules first."
+            )
+    return out
+
+
+def _labels(rules: list[dict[str, Any]]) -> str:
+    return ", ".join(f"{_index(r)} {r.get('name')!r}" for r in rules)
 
 
 def version_problem(r: dict[str, Any]) -> str | None:
@@ -152,6 +277,26 @@ def version_problem(r: dict[str, Any]) -> str | None:
         "created without them): FMC 10 refuses the deploy ('Support for SSL Versions selection for "
         f"{NO_VERSION_SELECTION[action]} rule is deprecated'). Turn every version on (fmc_api_call PUT of "
         "the rule with tlsVersions all true) or re-create it with fmc_create_decryption_rule (sends them)."
+    )
+
+
+def undecryptable_row(p: dict[str, Any]) -> dict[str, str]:
+    """A policy's undecryptable actions under our names (FMC's values)."""
+    u = p.get("undecryptableActions") or {}
+    return {ours: str(u[fmc]) for ours, fmc, _ in UNDECRYPTABLE if u.get(fmc)}
+
+
+def effective_undecryptable(p: dict[str, Any]) -> dict[str, str]:
+    """What each undecryptable case really gets: INHERIT_DEFAULT_ACTION resolved to the default action."""
+    default = (p.get("defaultAction") or {}).get("policyAction") or "DO_NOT_DECRYPT"
+    return {k: (default if v == "INHERIT_DEFAULT_ACTION" else v) for k, v in undecryptable_row(p).items()}
+
+
+def default_logged(p: dict[str, Any]) -> bool:
+    """Whether the default action logs connections at their end: the policy's `logging` (FMC 10.0.1 keeps
+    that) or defaultAction.eventLogAction (accepted on a PUT but stored as LOG_NONE)."""
+    return bool((p.get("logging") or {}).get("logEnd")) or (
+        (p.get("defaultAction") or {}).get("eventLogAction") == "LOG_FLOW_END"
     )
 
 
@@ -231,6 +376,7 @@ async def readiness(
         if r.get("ruleAction") == "DECRYPT_RESIGN" and not (r.get("decryptionCerts") or {}).get("objects"):
             notes.append(f"DECRYPT_RESIGN rule {r.get('name')!r} has no internal CA.")
     notes += [m for m in (version_problem(r) for r in enabled) if m]
+    notes += order_problems(rules)
     return notes
 
 
@@ -244,10 +390,11 @@ def register(reg: ToolRegistrar) -> None:
         domain: Domain = None,
         response_format: ResponseFormat = "markdown",
     ) -> ToolResult:
-        """List decryption (TLS/SSL) policies, or show one: mode, default action, trusted CAs, advanced
-        options (TLS 1.3 decryption, untrusted server certificates), the access policies using it, its rules
-        in order (DO_NOT_DECRYPT, DECRYPT_RESIGN with the internal CA, DECRYPT_KNOWN_KEY, BLOCK, with zones,
-        networks, ports, users, URLs) and what blocks decryption from working (`readiness`)."""
+        """List decryption (TLS/SSL) policies, or show one: mode, default action and its logging, trusted
+        CAs, advanced options (TLS 1.3 decryption, untrusted server certificates), undecryptable actions, the
+        access policies using it, its rules in order (DO_NOT_DECRYPT, DECRYPT_RESIGN with the internal CA,
+        DECRYPT_KNOWN_KEY, BLOCK, with zones, networks, ports, users, URLs, TLS versions and cipher suite
+        lists) and what keeps decryption or the TLS block rules from working (`readiness`)."""
         app: FmcApp = get_client(ctx)
         if not policy:
             page = await app.all(await app.config_path(DECRYPTION, domain))
@@ -271,10 +418,13 @@ def register(reg: ToolRegistrar) -> None:
             "name": p.get("name"),
             "mode": p.get("mode"),
             "default_action": (p.get("defaultAction") or {}).get("policyAction"),
+            "default_log": default_logged(p),
             "trusted_cas": trusted_labels(p) or None,
             "advanced": advanced_row(p) or None,
+            "undecryptable": undecryptable_row(p) or None,
             "used_by": (await acps_using(app, str(p["id"]), domain)).get(str(p["id"]), []),
-            "rules": [rule_row(r) for r in rules.items],
+            # FMC 10.0.1 lists rules in creation order, not by index
+            "rules": [rule_row(r) for r in sorted(rules.items, key=lambda x: _index(x) or 1_000_000)],
             "readiness": await readiness(app, p, rules.items, domain),
             "id": p.get("id"),
         }
@@ -372,12 +522,28 @@ def register(reg: ToolRegistrar) -> None:
         ] = None,
         tls13_decryption: Tls13Param = None,
         propagate_untrusted_certs: PropagateParam = None,
+        undecryptable: Annotated[
+            Undecryptable | None,
+            Field(
+                description="Undecryptable Actions to change, e.g. {'unsupported_cipher_suite': "
+                "'BLOCK_WITH_RESET'} so RC4 sessions a Decrypt-Resign rule can't decrypt are reset"
+            ),
+        ] = None,
+        default_log: Annotated[
+            bool | None,
+            Field(
+                description="Log connections the default action handles, at their end, to FMC (the "
+                "policy's logging logEnd and sendEvents; FMC 10.0.1 ignores defaultAction.eventLogAction)"
+            ),
+        ] = None,
         domain: Domain = None,
         confirm: Confirm = None,
     ) -> dict[str, Any]:
-        """Change a decryption policy's settings: default action, trusted CAs (the issuers the FTD accepts
-        for server certificates; a private or lab server's CA must be here for its re-signed certificate to
-        look trusted), TLS 1.3 decryption and how untrusted server certificates are handled. Rules are
+        """Change a decryption policy's settings: default action and its logging, trusted CAs (the issuers
+        the FTD accepts for server certificates; a private or lab server's CA must be here for its
+        re-signed certificate to look trusted), TLS 1.3 decryption, how untrusted server certificates are
+        handled, and the Undecryptable Actions (what happens to compressed or SSLv2 sessions, unknown or
+        unsupported cipher suites such as RC4, uncached sessions, handshake and decryption errors). Rules are
         unchanged. Current settings: fmc_get_decryption_policy; the effect on one flow:
         fmc_tls_decryption_check. Takes effect after a deploy of the devices whose access policy uses it."""
         app: FmcApp = get_client(ctx)
@@ -424,8 +590,39 @@ def register(reg: ToolRegistrar) -> None:
                 adv[field] = value
                 changes[arg] = {"from": adv_now.get(field), "to": value}
         desired["advancedOptions"] = adv
+        if undecryptable is not None:
+            u_now = cur.get("undecryptableActions") or {}
+            u = dict(u_now)
+            for ours, fmc, _ in UNDECRYPTABLE:
+                value = getattr(undecryptable, ours)
+                if value is not None and u_now.get(fmc) != value:
+                    u[fmc] = value
+                    changes.setdefault("undecryptable", {})[ours] = {"from": u_now.get(fmc), "to": value}
+            desired["undecryptableActions"] = u
+        if default_log is not None and default_log != default_logged(cur):
+            desired["defaultAction"] = {
+                **(desired.get("defaultAction") or {}),
+                "eventLogAction": "LOG_FLOW_END" if default_log else "LOG_NONE",
+            }
+            desired["logging"] = {
+                **(cur.get("logging") or {}),
+                "logEnd": default_log,
+                "sendEvents": default_log,
+            }
+            changes["default_log"] = {"from": default_logged(cur), "to": default_log}
         if not changes and not blockers:
             blockers.append("Nothing to change.")
+
+        async def apply() -> Any:
+            res = await app.api.put(path, desired)
+            if "default_log" in changes and isinstance(res, dict) and default_logged(res) != default_log:
+                res = {
+                    **res,
+                    "warning": f"FMC answered without default-action logging {'on' if default_log else 'off'}"
+                    "; check it with fmc_get_decryption_policy.",
+                }
+            return res
+
         return await fmc_preview(
             ctx,
             tool="fmc_update_decryption_policy",
@@ -436,6 +633,8 @@ def register(reg: ToolRegistrar) -> None:
                 "remove_trusted_cas": remove_trusted_cas,
                 "tls13_decryption": tls13_decryption,
                 "propagate_untrusted_certs": propagate_untrusted_certs,
+                "undecryptable": undecryptable.model_dump(exclude_none=True) if undecryptable else None,
+                "default_log": default_log,
                 "domain": domain,
             },
             confirm=confirm,
@@ -447,7 +646,7 @@ def register(reg: ToolRegistrar) -> None:
                 blockers=blockers,
                 side_effects=["Takes effect on devices after the next deployment."],
             ),
-            apply=lambda: applied(app, lambda: app.api.put(path, desired)),
+            apply=lambda: applied(app, apply),
         )
 
     @reg.write(title="Create decryption rule")
@@ -460,7 +659,9 @@ def register(reg: ToolRegistrar) -> None:
             Field(
                 description="DO_NOT_DECRYPT exempts the traffic (banking, health, pinned apps); "
                 "DECRYPT_RESIGN decrypts outbound TLS, re-signing server certificates with internal_ca; "
-                "DECRYPT_KNOWN_KEY decrypts inbound TLS to your own server with its certificate and key"
+                "DECRYPT_KNOWN_KEY decrypts inbound TLS to your own server with its certificate and key; "
+                "BLOCK / BLOCK_WITH_RESET with tls_versions or cipher_suite_lists stop old TLS or weak "
+                "suites without decrypting"
             ),
         ] = "DO_NOT_DECRYPT",
         internal_ca: Annotated[
@@ -490,12 +691,29 @@ def register(reg: ToolRegistrar) -> None:
         destination_ports: PortsParam = None,
         urls: UrlsParam = None,
         users: UsersParam = None,
+        tls_versions: Annotated[
+            list[TlsVersion] | None,
+            Field(
+                description="BLOCK, BLOCK_WITH_RESET or MONITOR only: match sessions the server negotiates "
+                "with these versions, e.g. ['sslv3', 'tls10', 'tls11'] to block old TLS; default every "
+                "version"
+            ),
+        ] = None,
+        cipher_suite_lists: Annotated[
+            list[str] | None,
+            Field(
+                description="BLOCK, BLOCK_WITH_RESET or MONITOR only: cipher suite list objects (name or "
+                "UUID; fmc_create_cipher_suite_list). Matches the suite the server picks in its "
+                "ServerHello, even when the client offered a strong one first"
+            ),
+        ] = None,
         insert_before: Annotated[
             int | None,
             Field(
                 ge=1,
                 description="Rule index to insert before (1 = first); default: the end. Put DO_NOT_DECRYPT "
-                "exemptions above the DECRYPT_RESIGN rules: rules match top-down",
+                "exemptions and TLS version / cipher suite Block rules above the DECRYPT_RESIGN rules: "
+                "rules match top-down",
             ),
         ] = None,
         log: Annotated[bool, Field(description="Log matching connections at their end to FMC")] = False,
@@ -503,11 +721,28 @@ def register(reg: ToolRegistrar) -> None:
         confirm: Confirm = None,
     ) -> dict[str, Any]:
         """Add a rule to a decryption policy (at the end, or before rule `insert_before`). DECRYPT_RESIGN
-        needs an internal CA that clients trust; the preview warns when the policy can't decrypt TLS 1.3,
-        when an exemption would land below a decrypt rule, or when an existing rule's TLS version selection
-        will make FMC refuse the deploy. The rule matches every TLS/SSL version. Takes effect after a deploy
-        of the devices whose access policy uses the decryption policy (fmc_set_decryption_policy)."""
+        needs an internal CA that clients trust. Block old TLS or weak cipher suites with a BLOCK_WITH_RESET
+        rule and tls_versions or cipher_suite_lists (no decryption needed: FTD matches the server's
+        ServerHello). The preview warns when the policy can't decrypt TLS 1.3, when an exemption would land
+        below a decrypt rule, when a decrypt rule would sit above a TLS version / cipher suite Block rule
+        (decryptable weak suites then pass decrypted), or when an existing rule's TLS version selection will
+        make FMC refuse the deploy. Takes effect after a deploy of the devices whose access policy uses the
+        decryption policy (fmc_set_decryption_policy)."""
         app: FmcApp = get_client(ctx)
+        versions = [v for v in ALL_TLS_VERSIONS if v in (tls_versions or [])]
+        if len(versions) == len(ALL_TLS_VERSIONS):
+            versions = []  # all five = every version, no condition
+        if (versions or cipher_suite_lists) and action not in TLS_CONDITION_ACTIONS:
+            given = " and ".join(
+                n for n, v in (("tls_versions", versions), ("cipher_suite_lists", cipher_suite_lists)) if v
+            )
+            raise InvalidRequest(
+                f"{given} only go on BLOCK, BLOCK_WITH_RESET or MONITOR rules, not {action}: FMC 10 refuses "
+                "to deploy a Do-not-decrypt or Decrypt-Resign rule that selects TLS versions, and Cisco's "
+                "guide warns that version and cipher suite conditions on decrypt rules interfere with "
+                "ClientHello processing. Add a BLOCK_WITH_RESET rule with the condition above the "
+                f"{action} rule instead."
+            )
         if internal_ca and action != "DECRYPT_RESIGN":
             raise InvalidRequest("internal_ca is only for action='DECRYPT_RESIGN'.")
         if internal_certificates and action != "DECRYPT_KNOWN_KEY":
@@ -526,8 +761,18 @@ def register(reg: ToolRegistrar) -> None:
             "type": "DecryptionPolicyRule",
             "ruleAction": action,
             "enabled": True,
-            "tlsVersions": dict(ALL_TLS_VERSIONS),
+            "tlsVersions": {v: v in versions for v in ALL_TLS_VERSIONS}
+            if versions
+            else dict(ALL_TLS_VERSIONS),
         }
+        lists = [
+            await resolve_in(app, CIPHER_LISTS, c, "cipher suite list", domain)
+            for c in cipher_suite_lists or []
+        ]
+        if lists:
+            body["cipherSuiteLists"] = {
+                "objects": [{"id": c["id"], "name": c.get("name"), "type": "CipherSuiteList"} for c in lists]
+            }
         for field, values, kind in (
             ("sourceZones", source_zones, "zone"),
             ("destinationZones", destination_zones, "zone"),
@@ -597,13 +842,52 @@ def register(reg: ToolRegistrar) -> None:
                 destination_ports,
                 urls,
                 users,
+                versions,
+                lists,
             )
         )
         if match_all and action != "DO_NOT_DECRYPT":
             blockers.append(
                 f"A {action} rule without conditions would match all TLS traffic; add a condition."
             )
+        if tls_versions and not versions:
+            warnings.append("tls_versions lists all five versions: that is every version, no condition.")
         position = insert_before or count + 1
+        # the new rule takes `position`; existing rules from `position` on end up below it
+        if action in DECRYPT_ACTIONS:
+            below = [
+                r
+                for r in existing.items
+                if tls_block(r) and (_index(r) or 0) >= position and not disjoint(body, r)
+            ]
+            if below:
+                last = max(_index(r) or 0 for r in below)
+                warnings.append(
+                    f"This {action} rule lands at {position}, above Block rule(s) {_labels(below)} with TLS "
+                    "version or cipher suite conditions: the sessions it decrypts never reach them, so weak "
+                    "suites FTD can decrypt (3DES, RSA key exchange, CBC) pass decrypted and allowed. Put it "
+                    + (
+                        f"below them (insert_before={last + 1})."
+                        if last < count
+                        else "below them (omit insert_before to add it at the end)."
+                    )
+                )
+        elif tls_block(body):
+            above = [
+                r
+                for r in existing.items
+                if r.get("enabled", True) is not False
+                and r.get("ruleAction") in DECRYPT_ACTIONS
+                and (_index(r) or 0) < position
+                and not disjoint(body, r)
+            ]
+            if above:
+                first = min(_index(r) or position for r in above)
+                warnings.append(
+                    f"This rule lands at {position}, below decrypt rule(s) {_labels(above)}: the sessions "
+                    "they decrypt never reach it, so weak suites FTD can decrypt (3DES, RSA key exchange, "
+                    f"CBC) pass decrypted and allowed. Use insert_before={first} to check it first."
+                )
         if action in ("DO_NOT_DECRYPT", "MONITOR"):
             above = [
                 rule_row(r)
@@ -656,6 +940,8 @@ def register(reg: ToolRegistrar) -> None:
                 "destination_ports": destination_ports,
                 "urls": urls,
                 "users": users,
+                "tls_versions": tls_versions,
+                "cipher_suite_lists": cipher_suite_lists,
                 "insert_before": insert_before,
                 "log": log,
                 "domain": domain,
@@ -665,9 +951,9 @@ def register(reg: ToolRegistrar) -> None:
             plan=Plan(
                 f"Add decryption rule {name!r} ({action}) to {p.get('name')!r} {where}",
                 details={
-                    # all versions on is no condition (FMC 10's default; it refuses version selection)
-                    "rule": rule_row({k: v for k, v in body.items() if k != "tlsVersions"}),
-                    "tls_versions": "all",
+                    "rule": rule_row(body),
+                    # all versions on is no condition (FMC 10's default for rules without a selection)
+                    "tls_versions": versions or "all",
                     "position": position,
                     "rules_now": count,
                 },
@@ -675,6 +961,7 @@ def register(reg: ToolRegistrar) -> None:
                     "policy": p["id"],
                     "rules": [r.get("id") for r in existing.items],
                     "certs": cert_fp,
+                    "cipher_suite_lists": [(c["id"], c.get("literals")) for c in lists],
                 },
                 blockers=blockers,
                 side_effects=[*warnings, "Takes effect on devices after the next deployment."],
@@ -776,6 +1063,188 @@ def register(reg: ToolRegistrar) -> None:
             ),
             apply=apply,
         )
+
+    @reg.read(title="Cipher suite lists")
+    async def fmc_list_cipher_suite_lists(
+        ctx: Context,
+        name: Annotated[
+            str | None, Field(description="One cipher suite list (name or UUID) to show in full")
+        ] = None,
+        known_suites: Annotated[
+            bool,
+            Field(
+                description="List the suites this server can put in a list instead: IANA name, code, why it "
+                "is weak, whether FMC 10.0.1 accepted it, and the presets"
+            ),
+        ] = False,
+        limit: Annotated[int, Field(ge=1, le=1000)] = 200,
+        offset: Annotated[int, Field(ge=0)] = 0,
+        domain: Domain = None,
+        response_format: ResponseFormat = "markdown",
+    ) -> ToolResult:
+        """List cipher suite list objects (the Cipher Suite condition of decryption Block rules) with how
+        many of their suites are weak and which strong ones they hold, or show one list's suites. With
+        known_suites=true, the suites fmc_create_cipher_suite_list accepts and its `weak` preset."""
+        app: FmcApp = get_client(ctx)
+        if known_suites:
+            rows = [
+                {
+                    "name": s.name,
+                    "code": s.code,
+                    "hex": f"0x{s.code:04X}",
+                    "weak": s.weak,
+                    "fmc_10_0_1": s.fmc or "not tried",
+                    "weak_preset": True if s in PRESETS["weak"] else None,
+                }
+                for s in SUITES
+            ]
+            return list_result(page_of(rows, limit=limit, offset=offset), fmt=response_format)
+        if name:
+            c = await resolve_in(app, CIPHER_LISTS, name, "cipher suite list", domain)
+            if "literals" not in c:  # a by-name listing isn't expanded
+                c = await app.api.get(f"{await app.config_path(CIPHER_LISTS, domain)}/{c['id']}")
+            suites = []
+            for lit in c.get("literals") or []:
+                s = suite_of_literal(lit)
+                suites.append(
+                    {
+                        "name": lit.get("name"),
+                        "code": lit.get("value"),
+                        "weak": (s.weak or "no") if s else "unknown to this server",
+                    }
+                )
+            return object_reply(
+                {"name": c.get("name"), "suites": suites, "id": c.get("id")}, fmt=response_format
+            )
+        page = await app.all(await app.config_path(CIPHER_LISTS, domain))
+        return list_result(
+            page_of([list_row(c) for c in page.items], limit=limit, offset=offset), fmt=response_format
+        )
+
+    @reg.write(title="Create cipher suite list")
+    async def fmc_create_cipher_suite_list(
+        ctx: Context,
+        name: Annotated[str, Field(min_length=1, max_length=64, description="New list name")],
+        suites: Annotated[
+            list[str] | None,
+            Field(
+                description="Cipher suites: IANA names (TLS_RSA_WITH_AES_128_CBC_SHA) or codes ('47', "
+                "'0x002F'); fmc_list_cipher_suite_lists known_suites=true lists them"
+            ),
+        ] = None,
+        preset: Annotated[
+            Literal["weak"] | None,
+            Field(
+                description="'weak': the 23 weak suites FMC 10.0.1 accepts (NULL, EXPORT, DES, RC4, 3DES, "
+                "RSA key exchange, CBC with SHA-1); `suites` are added to it"
+            ),
+        ] = None,
+        description: Annotated[str | None, Field(description="Description")] = None,
+        domain: Domain = None,
+        confirm: Confirm = None,
+    ) -> dict[str, Any]:
+        """Create a cipher suite list object for the Cipher Suite condition of a decryption rule
+        (fmc_create_decryption_rule action='BLOCK_WITH_RESET' cipher_suite_lists=[name]: blocks sessions
+        whose server picks one of these suites, without decrypting). FMC refuses a suite outside its
+        predefined set with 400 "The SHA is incorrect" and names none, so the preview checks each suite and
+        names the bad ones."""
+        app: FmcApp = get_client(ctx)
+        chosen: list[Suite] = list(PRESETS[preset]) if preset else []
+        unknown: list[str] = []
+        for ref_ in suites or []:
+            s = find_suite(ref_)
+            if s is None:
+                unknown.append(ref_)
+            elif s not in chosen:
+                chosen.append(s)
+        blockers: list[str] = []
+        warnings: list[str] = []
+        try:
+            await resolve_in(app, CIPHER_LISTS, name, "cipher suite list", domain)
+            blockers.append(f"A cipher suite list named {name!r} already exists.")
+        except NotFound:
+            pass
+        if unknown:
+            blockers.append(
+                f"Not a cipher suite this server knows: {', '.join(unknown)} (IANA names or codes; "
+                "fmc_list_cipher_suite_lists known_suites=true)."
+            )
+        refused = [s.name for s in chosen if s.fmc == "refused"]
+        if refused:
+            blockers.append(
+                f"FMC 10.0.1 refuses {', '.join(refused)} (not in its predefined suites): leave them out."
+            )
+        if not chosen and not unknown:
+            blockers.append("Give suites or preset='weak'.")
+        untried = [s.name for s in chosen if s.fmc is None]
+        if untried:
+            warnings.append(
+                f"Not yet seen accepted by FMC 10.0.1: {', '.join(untried)}. If FMC answers 'The SHA is "
+                "incorrect', one of them is outside its predefined set."
+            )
+        strong = [s.name for s in chosen if s.weak is None]
+        if strong:
+            warnings.append(
+                f"Strong suites in the list: {', '.join(strong)}. A Block rule using it blocks sessions "
+                "that negotiate them too."
+            )
+        body: dict[str, Any] = {
+            "name": name,
+            "type": "CipherSuiteList",
+            "literals": [s.literal() for s in chosen],
+        }
+        if description:
+            body["description"] = description
+        path = await app.config_path(CIPHER_LISTS, domain)
+
+        async def create() -> Any:
+            try:
+                return await app.api.post(path, body)
+            except UpstreamError as e:
+                if "SHA is incorrect" not in str(e):
+                    raise
+                hint = f" Suites not yet seen accepted: {', '.join(untried)}." if untried else ""
+                raise UpstreamError(
+                    f"{e} FMC refused a suite outside its predefined set.{hint}", e.status_code
+                ) from e
+
+        return await fmc_preview(
+            ctx,
+            tool="fmc_create_cipher_suite_list",
+            args={
+                "name": name,
+                "suites": suites,
+                "preset": preset,
+                "description": description,
+                "domain": domain,
+            },
+            confirm=confirm,
+            plan=Plan(
+                f"Create cipher suite list {name!r} ({len(chosen)} suites)",
+                details={
+                    "suites": [{"name": s.name, "code": s.code, "weak": s.weak or "no"} for s in chosen]
+                },
+                blockers=blockers,
+                side_effects=warnings,
+            ),
+            apply=lambda: applied(app, create),
+        )
+
+
+def list_row(c: dict[str, Any]) -> dict[str, Any]:
+    """One cipher suite list: suite count, weak count, the strong suites and literals this server doesn't
+    know."""
+    lits = c.get("literals") or []
+    known = [(lit, suite_of_literal(lit)) for lit in lits]
+    row = {
+        "name": c.get("name"),
+        "suites": len(lits),
+        "weak": sum(1 for _, s in known if s and s.weak),
+        "strong": [s.name for _, s in known if s and s.weak is None] or None,
+        "unknown": [str(lit.get("name") or lit.get("value")) for lit, s in known if s is None] or None,
+        "id": c.get("id"),
+    }
+    return {k: v for k, v in row.items() if v is not None}
 
 
 async def created_anyway(app: FmcApp, base: str, name: str, known: set[Any]) -> dict[str, Any] | None:
