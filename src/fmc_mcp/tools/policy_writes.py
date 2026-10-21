@@ -19,6 +19,7 @@ from fmc_mcp._core import (
 from fmc_mcp.client import FmcApp, is_uuid
 from fmc_mcp.preview import fmc_preview
 from fmc_mcp.refs import NETWORK_TYPES, PORT_TYPES, RefResolver, network_literal
+from fmc_mcp.rule_conditions import VLAN_NOTE, ExtraConditions, relabel_changes
 from fmc_mcp.rules import flatten_access_rule, flatten_nat_rule, url_labels
 from fmc_mcp.tools.common import Domain, block_labels, ref_label, resolve_in, rule_changes
 from fmc_mcp.tools.fqdn_dns import fqdn_dns_check
@@ -47,6 +48,7 @@ CONDITION_PARAMS = {
     "source_dynamic_objects": ("sourceDynamicObjects", "dynamic"),
     "destination_dynamic_objects": ("destinationDynamicObjects", "dynamic"),
     "users": ("users", "user"),
+    "vlan_tags": ("vlanTags", "vlan"),
 }
 
 ZonesParam = Annotated[list[str] | None, Field(description="Security zone / interface group names")]
@@ -85,6 +87,44 @@ UsersParam = Annotated[
         "or 'realm\\name'. The access policy needs an identity policy with a rule for that realm "
         "(fmc_get_identity_policy), and the device needs a user-IP mapping source (ISE/pxGrid, passive "
         "agent, captive portal) for the rule to match traffic"
+    ),
+]
+ApplicationsParam = Annotated[
+    list[str] | None,
+    Field(
+        description="Applications by exact name or numeric app id (fmc_find_application), e.g. ['HTTP', "
+        "'Facebook']. On update a given list replaces the rule's applications ([] removes them) and keeps "
+        "its application filters"
+    ),
+]
+AppFiltersParam = Annotated[
+    list[str] | None,
+    Field(
+        description="Application filter names (fmc_find_application kind=filter; new ones with "
+        "fmc_create_application_filter). On update a given list replaces the rule's filters and keeps its "
+        "applications"
+    ),
+]
+VlanParam = Annotated[
+    list[str] | None,
+    Field(
+        description="802.1Q VLAN tags: VLAN tag objects/groups, or literals '10' and '100-110'. They match "
+        "only traffic on inline sets, never on routed or transparent interfaces"
+    ),
+]
+TimeRangeParam = Annotated[
+    str | None,
+    Field(
+        description="Time range object name or UUID (fmc_create_time_range): the rule matches only while "
+        "it is in effect, in the device's time zone. On update '' removes it"
+    ),
+]
+SgtsParam = Annotated[
+    list[str] | None,
+    Field(
+        description="Security group tags by name or tag number, e.g. ['Employees'] or ['4']: ISE SGTs "
+        "(downloaded over pxGrid, fmc_get_identity_sources) or custom SGTs (only while no ISE source is "
+        "enabled). Shown with their tag numbers in the preview; [] on update removes them"
     ),
 ]
 
@@ -237,6 +277,12 @@ def register(reg: ToolRegistrar) -> None:
         source_dynamic_objects: DynamicParam = None,
         destination_dynamic_objects: DynamicParam = None,
         users: UsersParam = None,
+        applications: ApplicationsParam = None,
+        application_filters: AppFiltersParam = None,
+        vlan_tags: VlanParam = None,
+        time_range: TimeRangeParam = None,
+        source_sgts: SgtsParam = None,
+        destination_sgts: SgtsParam = None,
         enabled: Annotated[bool, Field(description="Create the rule enabled")] = True,
         log: Annotated[
             LogMode,
@@ -272,8 +318,10 @@ def register(reg: ToolRegistrar) -> None:
         confirm: Confirm = None,
     ) -> dict[str, Any]:
         """Add a rule to an access control policy at a chosen position. Conditions accept object
-        names or literal values; omitted conditions mean 'any'. Preview shows the rule as FMC will store
-        it, where it lands, and fmc_rule_lookup-style context (rule count). Deploy to take effect."""
+        names or literal values; omitted conditions mean 'any'. Layer-7 and identity conditions:
+        applications and application filters, URL categories, users, VLAN tags, a time range, source and
+        destination SGTs. Preview shows the rule as FMC will store it, where it lands, and
+        fmc_rule_lookup-style context (rule count). Deploy to take effect."""
         app: FmcApp = get_client(ctx)
         if section and category:
             raise InvalidRequest("Give either section or category, not both.")
@@ -296,13 +344,23 @@ def register(reg: ToolRegistrar) -> None:
                     "source_dynamic_objects": source_dynamic_objects,
                     "destination_dynamic_objects": destination_dynamic_objects,
                     "users": users,
+                    "vlan_tags": vlan_tags,
                 },
             )
         )
         cats = await category_conditions(ctx, app, url_categories or [], domain)
         if cats:
             body["urls"] = merge_url_block(None, body.get("urls") or {}, cats)
-        body = {k: v for k, v in body.items() if v != {}}
+        extra = await ExtraConditions(app, domain).resolve(
+            None,
+            applications=applications,
+            application_filters=application_filters,
+            time_range=time_range or None,
+            source_sgts=source_sgts,
+            destination_sgts=destination_sgts,
+        )
+        body.update(extra.fields)
+        body = {k: v for k, v in body.items() if v not in ({}, [])}
         body.update(_log_fields(log, action))
         if intrusion_policy:
             if action != "ALLOW":
@@ -343,17 +401,25 @@ def register(reg: ToolRegistrar) -> None:
             if insert_after
             else f"at the end of the {category or section or 'default'} section"
         )
-        details: dict[str, Any] = {"rule": flatten_access_rule(body), "position": where, "rules_now": count}
+        details: dict[str, Any] = {
+            "rule": flatten_access_rule(body, extra.tags),
+            "position": where,
+            "rules_now": count,
+        }
         if cats:
             details["url_categories"] = category_details(cats, action)
+        details.update(extra.details)
         details.update(await fqdn_dns_check(app, body, domain, policy=p))
         plan = Plan(
             f"Add {action} rule {name!r} to {p.get('name')!r} {where}",
             details={**details, "body": body},
             fingerprint={"policy": p["id"], "rules": [r.get("id") for r in existing.items], "body": body},
             blockers=blockers,
-            side_effects=["Takes effect on devices after the next deployment."]
-            + ([URL_LICENCE] if cats else []),
+            side_effects=extra.warnings
+            + ["Takes effect on devices after the next deployment."]
+            + ([URL_LICENCE] if cats else [])
+            + extra.notes
+            + ([VLAN_NOTE] if body.get("vlanTags") else []),
         )
         return await fmc_preview(
             ctx,
@@ -374,6 +440,12 @@ def register(reg: ToolRegistrar) -> None:
                 "source_dynamic_objects": source_dynamic_objects,
                 "destination_dynamic_objects": destination_dynamic_objects,
                 "users": users,
+                "applications": applications,
+                "application_filters": application_filters,
+                "vlan_tags": vlan_tags,
+                "time_range": time_range,
+                "source_sgts": source_sgts,
+                "destination_sgts": destination_sgts,
                 "enabled": enabled,
                 "log": log,
                 "intrusion_policy": intrusion_policy,
@@ -409,6 +481,12 @@ def register(reg: ToolRegistrar) -> None:
         source_dynamic_objects: DynamicParam = None,
         destination_dynamic_objects: DynamicParam = None,
         users: UsersParam = None,
+        applications: ApplicationsParam = None,
+        application_filters: AppFiltersParam = None,
+        vlan_tags: VlanParam = None,
+        time_range: TimeRangeParam = None,
+        source_sgts: SgtsParam = None,
+        destination_sgts: SgtsParam = None,
         log: Annotated[LogMode | None, Field(description="Connection logging to FMC")] = None,
         intrusion_policy: Annotated[
             str | None,
@@ -433,8 +511,9 @@ def register(reg: ToolRegistrar) -> None:
         confirm: Confirm = None,
     ) -> dict[str, Any]:
         """Change an access rule: rename, action, enable/disable, logging, replace any condition (a
-        given list replaces the old one; [] means any), add a comment, or move it to another position.
-        Preview shows the field changes and the old/new index."""
+        given list replaces the old one; [] means any) including applications, application filters, URL
+        categories, users, VLAN tags, the time range ('' removes it) and SGTs, add a comment, or move it to
+        another position. Preview shows the field changes and the old/new index."""
         app: FmcApp = get_client(ctx)
         p = await resolve_policy(app, "access", policy, domain)
         current = await find_access_rule(app, p, rule, domain)
@@ -478,9 +557,23 @@ def register(reg: ToolRegistrar) -> None:
                 "source_dynamic_objects": source_dynamic_objects,
                 "destination_dynamic_objects": destination_dynamic_objects,
                 "users": users,
+                "vlan_tags": vlan_tags,
             },
         )
         cats = None if url_categories is None else await category_conditions(ctx, app, url_categories, domain)
+        extra = await ExtraConditions(app, domain).resolve(
+            current,
+            applications=applications,
+            application_filters=application_filters,
+            time_range=time_range,
+            source_sgts=source_sgts,
+            destination_sgts=destination_sgts,
+        )
+        for field, value in extra.fields.items():
+            if value:
+                desired[field] = value
+            else:  # nothing left = any: FMC's PUT replaces the rule, so omit the field
+                desired.pop(field, None)
         if cats is not None or "urls" in new_conditions:
             # objects/literals and categories share the urls block: replace only the part that was given
             new_conditions["urls"] = merge_url_block(current.get("urls"), new_conditions.get("urls"), cats)
@@ -502,11 +595,14 @@ def register(reg: ToolRegistrar) -> None:
             desired["newComments"] = [comment]
         old_index = (current.get("metadata") or {}).get("ruleIndex")
         base = await app.config_path(f"{ACCESS}/{p['id']}/accessrules", domain)
-        changes = {**rule_changes(editable(current), desired), **cleared}
+        changes = relabel_changes(
+            {**rule_changes(editable(current), desired), **cleared}, editable(current), desired, extra.tags
+        )
         changes.pop("commentHistoryList", None)
         details: dict[str, Any] = {"rule": current.get("name"), "index": old_index, "changes": changes}
         if cats:
             details["url_categories"] = category_details(cats, desired.get("action"))
+        details.update(extra.details)
         blockers = await identity_blockers(app, p, new_conditions.get("users"), domain)
         order = await all_rules(app, base)
         if move_to:
@@ -561,6 +657,12 @@ def register(reg: ToolRegistrar) -> None:
                 "source_dynamic_objects": source_dynamic_objects,
                 "destination_dynamic_objects": destination_dynamic_objects,
                 "users": users,
+                "applications": applications,
+                "application_filters": application_filters,
+                "vlan_tags": vlan_tags,
+                "time_range": time_range,
+                "source_sgts": source_sgts,
+                "destination_sgts": destination_sgts,
                 "log": log,
                 "intrusion_policy": intrusion_policy,
                 "file_policy": file_policy,
@@ -580,8 +682,11 @@ def register(reg: ToolRegistrar) -> None:
                     "desired": desired,
                 },
                 blockers=blockers,
-                side_effects=["Takes effect on devices after the next deployment."]
-                + ([URL_LICENCE] if cats else []),
+                side_effects=extra.warnings
+                + ["Takes effect on devices after the next deployment."]
+                + ([URL_LICENCE] if cats else [])
+                + extra.notes
+                + ([VLAN_NOTE] if new_conditions.get("vlanTags") else []),
             ),
             apply=lambda: applied_rule(app, apply),
         )

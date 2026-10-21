@@ -11,6 +11,7 @@ from fmc_mcp._core import InvalidRequest, ToolRegistrar, UpstreamError, get_clie
 from fmc_mcp.catalog import Catalog, IpInterval, ip_contains, parse_ip_value, port_contains
 from fmc_mcp.client import FmcApp
 from fmc_mcp.flow import access_policy_of, device_context
+from fmc_mcp.rule_conditions import SGT_FIELDS, sgt_catalog, sgt_tags
 from fmc_mcp.rules import OPAQUE_CONDITIONS, flatten_access_rule, has_value
 from fmc_mcp.tools.common import PROTO_NUMBERS, Domain, block_labels
 from fmc_mcp.tools.device_config import resolve_device
@@ -274,6 +275,12 @@ def register(reg: ToolRegistrar) -> None:
         dyn = await dynamic_sets(
             app, [r for r in rules.items if r.get("enabled", True) or include_disabled], domain
         )
+        tags: dict[str, Any] | None = None
+        if any(has_value(r.get(f)) for r in rules.items for f in SGT_FIELDS):
+            try:  # SGT labels with their tag numbers ('Employees (SGT 4)')
+                tags = sgt_tags((await sgt_catalog(app, domain))[0])
+            except UpstreamError:
+                tags = None
         identity: dict[str, Any] | None = None
         if resolve_user and any(
             has_value(r.get("users")) for r in rules.items if r.get("enabled", True) or include_disabled
@@ -309,7 +316,7 @@ def register(reg: ToolRegistrar) -> None:
             unknown = [k for k, v in checks.items() if v is None] + _opaque(r, skip)
             if reputation_open and checks.get("url_category"):
                 unknown.append("url_reputation")
-            row = flatten_access_rule(r)
+            row = flatten_access_rule(r, tags)
             if unknown:
                 conditional.append({**row, "depends_on": unknown})
                 continue

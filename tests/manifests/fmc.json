@@ -491,6 +491,10 @@
       "tier": "write",
       "title": "Create application route"
     },
+    "fmc_create_application_filter": {
+      "tier": "write",
+      "title": "Create application filter"
+    },
     "fmc_create_decryption_policy": {
       "tier": "write",
       "title": "Create decryption policy"
@@ -606,6 +610,10 @@
     "fmc_create_subinterface": {
       "tier": "write",
       "title": "Create subinterface"
+    },
+    "fmc_create_time_range": {
+      "tier": "write",
+      "title": "Create time range"
     },
     "fmc_create_trusted_ca": {
       "tier": "write",
@@ -734,6 +742,10 @@
     "fmc_find_address": {
       "tier": "read",
       "title": "Find where an address appears"
+    },
+    "fmc_find_application": {
+      "tier": "read",
+      "title": "Find applications and application filters"
     },
     "fmc_find_intrusion_rules": {
       "tier": "read",

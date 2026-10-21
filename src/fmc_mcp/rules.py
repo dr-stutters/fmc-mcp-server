@@ -2,6 +2,8 @@
 
 from typing import Any
 
+from fmc_mcp.rule_conditions import SGT_FIELDS, sgt_labels
+from fmc_mcp.rule_conditions import app_labels as app_labels  # re-exported (decryption rules use it)
 from fmc_mcp.tools.common import block_labels, ref_label
 
 # Access-rule condition fields: our key -> FMC field.
@@ -36,16 +38,6 @@ OPAQUE_CONDITIONS = (
 )
 
 
-def app_labels(block: Any) -> list[str]:
-    if not isinstance(block, dict):
-        return []
-    out = [ref_label(a) for a in block.get("applications") or []]
-    out += [f"filter:{ref_label(f)}" for f in block.get("applicationFilters") or []]
-    for f in block.get("inlineApplicationFilters") or []:
-        out.append(f"inline-filter:{ref_label(f)}")
-    return out
-
-
 def url_labels(block: Any) -> list[str]:
     if not isinstance(block, dict):
         return []
@@ -65,7 +57,8 @@ def has_value(v: Any) -> bool:
     return v not in (None, "", False)
 
 
-def flatten_access_rule(r: dict[str, Any]) -> dict[str, Any]:
+def flatten_access_rule(r: dict[str, Any], sgt_tags: dict[str, Any] | None = None) -> dict[str, Any]:
+    """One compact row; `sgt_tags` (rule_conditions.sgt_tags) adds tag numbers to the SGT labels."""
     meta = r.get("metadata") or {}
     row: dict[str, Any] = {
         "index": meta.get("ruleIndex"),
@@ -76,7 +69,7 @@ def flatten_access_rule(r: dict[str, Any]) -> dict[str, Any]:
         "enabled": r.get("enabled"),
     }
     for key, field in ACCESS_CONDITIONS.items():
-        labels = block_labels(r.get(field))
+        labels = sgt_labels(r.get(field), sgt_tags) if field in SGT_FIELDS else block_labels(r.get(field))
         row[key] = labels or None
     row["applications"] = app_labels(r.get("applications")) or None
     row["urls"] = url_labels(r.get("urls")) or None

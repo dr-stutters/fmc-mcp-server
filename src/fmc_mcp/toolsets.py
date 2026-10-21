@@ -148,14 +148,17 @@ CATALOGUE: dict[str, tuple[str, tuple[str, ...]]] = {
     "objects": (
         "network/port/URL objects and groups, zones, dynamic objects, overrides, where an address is used",
         (
+            "fmc_create_application_filter",
             "fmc_create_dynamic_object",
             "fmc_create_group",
             "fmc_create_object",
             "fmc_create_security_zone",
+            "fmc_create_time_range",
             "fmc_delete_dynamic_object",
             "fmc_delete_object",
             "fmc_delete_objects",
             "fmc_find_address",
+            "fmc_find_application",
             "fmc_find_object",
             "fmc_get_object",
             "fmc_import_objects",
