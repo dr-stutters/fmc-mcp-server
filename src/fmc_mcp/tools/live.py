@@ -36,6 +36,7 @@ from fmc_mcp._core import (
     NotFound,
     ResponseFormat,
     ToolRegistrar,
+    UpstreamError,
     get_client,
     list_result,
 )
@@ -553,6 +554,14 @@ def refused(what: str = SESSIONS_WHAT) -> str:
     return f"FMC refused {what} (403). {ROLE_HINT}"
 
 
+def history_error(e: UpstreamError) -> str:
+    """Why the user activity (history) could not be read, for `history_error`: a history failure never fails
+    the session lookup it came with (#199). A 403 names the permission that fixes it."""
+    if e.status_code == 403:
+        return refused(ACTIVITY_WHAT)
+    return f"User activity (analysis/useractivity) not read: {e}"
+
+
 def role_error(e: AuthError, what: str = SESSIONS_WHAT) -> AuthError:
     """A 403 on FMC's identity view becomes refused(what); other errors are returned unchanged."""
     if e.status_code == 403:
@@ -746,8 +755,9 @@ def register(reg: ToolRegistrar) -> None:
         """Which user is on an IP, or where a user is logged in, from FMC's identity view (what the
         firewalls use to match user and group rules): user, realm, current IP, reporting device,
         authentication type (passive from ISE/pxGrid or AD, active captive portal, VPN), login and
-        last-seen time. With history, also the user's (or the IP's) recent logins and logoffs. The
-        FTD CLI has no 'show user-identity' and FMC 10.0.1 refuses it, so this reads FMC's
+        last-seen time. With history, also the user's (or the IP's) recent logins and logoffs (if FMC
+        refuses those, the sessions still come back, with `history_error` saying why). The FTD CLI
+        has no 'show user-identity' and FMC 10.0.1 refuses it, so this reads FMC's
         analysis/activesessions and analysis/useractivity; the account's role needs the Events &
         Logs > Analysis > Users permissions (403 otherwise). In a child domain with no session, the
         ancestor domains are read up to Global (where FMC keeps the ISE source's sessions) and
@@ -779,9 +789,10 @@ def register(reg: ToolRegistrar) -> None:
         if history:
             try:
                 events = await activity_items(app, domain, ip=ip, user=user, device=dev_name, hours=hours)
-            except AuthError as e:
-                raise role_error(e, ACTIVITY_WHAT) from None
-            extra["history"] = [activity_row(a) for a in events][:50]
-            if owner := sessions_domain(events):
-                extra["history_domain"] = owner
+            except UpstreamError as e:
+                extra["history_error"] = history_error(e)
+            else:
+                extra["history"] = [activity_row(a) for a in events][:50]
+                if owner := sessions_domain(events):
+                    extra["history_domain"] = owner
         return list_result(page_of(rows, limit=limit, offset=offset), fmt=response_format, extra=extra)
