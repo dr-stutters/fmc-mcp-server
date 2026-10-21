@@ -201,7 +201,8 @@ def register(reg: ToolRegistrar) -> None:
             str,
             Field(
                 description="An IP/CIDR/range (finds objects and groups containing it), a port such as "
-                "'443', 'tcp/443' or 'udp/53' (finds port objects and groups covering it), or text"
+                "'443', 'tcp/443', 'udp/53' or '1000-2000' (finds port objects and groups covering it), or "
+                "any other text such as a name or prefix ('sdwan-single'), searched in names and values"
             ),
         ],
         domain: Domain = None,

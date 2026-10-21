@@ -1,5 +1,28 @@
 # Changelog
 
+## Unreleased
+
+### Added
+- **Block old TLS and weak ciphers** (F82, #276): `fmc_create_decryption_rule` takes `tls_versions` and `cipher_suite_lists`
+  on BLOCK, BLOCK_WITH_RESET and MONITOR rules (refused on decrypt and do-not-decrypt rules, which FMC 10 won't deploy with
+  versions). New `fmc_create_cipher_suite_list` checks IANA names or codes against FMC 10.0.1's suites before sending (FMC's
+  own refusal, "The SHA is incorrect", names none; the anonymous suites are refused, NULL/EXPORT/DES/RC4 accepted) and has a
+  23-suite `weak` preset; new `fmc_list_cipher_suite_lists`. Previews, `fmc_get_decryption_policy` and
+  `fmc_tls_decryption_check` warn when a decrypt rule sits above an overlapping TLS version / cipher Block rule (decryptable
+  weak suites then pass decrypted). `fmc_get_decryption_policy` lists rules by index with their versions and lists.
+- **Undecryptable Actions and default-action logging** (F83, #277): `fmc_update_decryption_policy` takes `undecryptable`
+  (the seven actions, e.g. Unsupported Cipher Suite BLOCK_WITH_RESET so RC4 doesn't pass a resign rule undecrypted) and
+  `default_log` (FMC 10.0.1 keeps it only through the policy's `logging`, not `defaultAction.eventLogAction`);
+  `fmc_get_decryption_policy` shows both and `fmc_tls_decryption_check` says which action a session that can't be
+  decrypted gets, or which cipher Block rule stops RC4 first.
+
+### Fixed
+- **`fmc_find_object` read hyphenated names as ports**: `value='sdwan-single'` searched port objects for protocol
+  `SDWAN-SINGLE` on ports 0-65535 (query `SDWAN-SINGLE/0-65535`) and silently found nothing. A port query now needs a known
+  protocol (tcp, udp, icmp, ... or a number 0-255) and ports 0-65535; anything else (`sdwan-single`, `mcp-test-inside`,
+  `HTTPS`, `70000`) is a name/value text search. `443`, `tcp/443`, `udp/53` and `1000-2000` still search ports. The same
+  check applies to port values given to `fmc_create_object` and to port literals in rules.
+
 ## 0.15.0 (2026-10-21)
 
 Wave 6 Now: operate the fleet, not one device. Built and proven live in the fleet run of 2026-10-20/21 on FMC 10.0.1 with
