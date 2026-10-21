@@ -22,6 +22,7 @@ from fmc_mcp.rule_conditions import (
     TIME_NOTE,
     TIME_RANGES,
     UNLISTED_FILTERS,
+    app_condition,
     app_filter_catalog,
     app_index,
     app_row,
@@ -30,8 +31,6 @@ from fmc_mcp.rule_conditions import (
     filter_row,
     get_application,
     name_matches,
-    pick_facet,
-    pick_level,
     remember_filter,
     remembered_filters,
     resolve_applications,
@@ -296,32 +295,15 @@ def register(reg: ToolRegistrar) -> None:
         the new filter's name and id for the rule writers and fmc_find_application while it runs (per
         process, lost on restart); keep the id from the result for later (application_filters=[id])."""
         app: FmcApp = get_client(ctx)
-        cond: dict[str, Any] = {}
-        if risks:
-            cond["risks"] = [
-                {"id": i, "type": "ApplicationRisk", "name": n}
-                for i, n in dict(pick_level(r, LEVELS, "risk") for r in risks).items()
-            ]
-        if business_relevance:
-            cond["productivities"] = [
-                {"id": i, "type": "ApplicationProductivity", "name": n}
-                for i, n in dict(
-                    pick_level(r, LEVELS, "business relevance") for r in business_relevance
-                ).items()
-            ]
-        if types:
-            cond["applicationTypes"] = [
-                {"id": i, "type": "ApplicationType", "name": n}
-                for i, n in dict(pick_level(r, APP_TYPES, "application type") for r in types).items()
-            ]
-        for param, key, path, fmc_type, what in (
-            (categories, "categories", APP_CATEGORIES, "ApplicationCategory", "category"),
-            (tags, "tags", APP_TAGS, "ApplicationTag", "tag"),
-        ):
-            if param:
-                rows = await facet(app, path, domain)
-                picked = {h["id"]: h for h in (pick_facet(rows, v, what) for v in param)}
-                cond[key] = [{"id": h["id"], "type": fmc_type, "name": h["name"]} for h in picked.values()]
+        cond = await app_condition(
+            app,
+            domain,
+            risks=risks,
+            business_relevance=business_relevance,
+            categories=categories,
+            tags=tags,
+            types=types,
+        )
         apps = await resolve_applications(app, applications, domain) if applications else []
         if not cond and not apps:
             raise InvalidRequest("Give applications or at least one attribute (risks, categories, ...).")
