@@ -143,7 +143,10 @@ Notes on some read tools:
   (destination or gateway) and VPN protected networks and extranet peers, exact matches first, each with the
   object chain it was found through. Narrow it with `device`, `access_policy` or `nat_policy`.
 - `fmc_rule_lookup` works out, offline, which access rule handles traffic from a source to a
-  destination and port. `fmc_packet_tracer` asks the device itself (FMC runs packet-tracer; nothing
+  destination and port. Rules whose time range has ended are left out (`not_in_effect`, with `evaluated_at`),
+  and source SGT rules are matched with the SGT of the source IP's newest ISE login (FMC user activity, not
+  cross-checked with an active session) or `source_sgt`; an SGT it can't compare keeps the rule conditional.
+  `fmc_packet_tracer` asks the device itself (FMC runs packet-tracer; nothing
   is transmitted) and names the rule that allowed or dropped the packet and why.
 - `fmc_get_ha_status` reads the pair from FMC and, by default, each unit's own failover state through FMC
   (`show failover`, `show failover state`, `show failover history`): per unit Active / Standby Ready / Failed,
