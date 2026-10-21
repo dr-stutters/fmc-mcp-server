@@ -7,6 +7,7 @@ import respx
 from fastmcp.exceptions import ToolError
 
 from fmc_mcp._core.testing import call_tool
+from fmc_mcp.catalog import parse_port_query
 from fmc_mcp.server import create_server
 
 from .conftest import ACP_ID, CFG, empty, fixture, items, make_settings
@@ -143,6 +144,81 @@ async def test_find_object_by_port(lab: respx.MockRouter) -> None:
     assert {"mcp-test-tcp-8443", "mcp-test-web-ports", "TCP_high_ports"} <= names
     data = await call("fmc_find_object", {"value": "udp/5050", "response_format": "json"})
     assert [r["name"] for r in data["results"]] == ["mcp-test-udp-5000s"]
+
+
+@pytest.mark.parametrize(
+    ("value", "query", "expected"),
+    [
+        ("443", "any/443", {"HTTPS", "mcp-test-web-ports"}),
+        ("tcp/443", "6/443", {"HTTPS", "mcp-test-web-ports"}),
+        ("udp/53", "17/53", {"DNS_over_UDP"}),
+        ("UDP 53", "17/53", {"DNS_over_UDP"}),
+        (
+            "5000-5010",
+            "any/5000-5010",
+            {"YahooMessenger_Voice_Chat_UDP", "mcp-test-udp-5000s", "TCP_high_ports"},
+        ),
+        ("tcp/1025-2000", "6/1025-2000", {"TCP_high_ports"}),
+        ("1000-2000", "any/1000-2000", set()),
+    ],
+)
+async def test_find_object_port_forms_search_ports(
+    lab: respx.MockRouter, value: str, query: str, expected: set[str]
+) -> None:
+    search = lab.get(f"{CFG}/search/object").mock(return_value=empty())
+    data = await call("fmc_find_object", {"value": value, "response_format": "json"})
+    assert data["query"] == query
+    assert {r["name"] for r in data["results"]} == expected
+    assert not search.called
+
+
+@pytest.mark.parametrize(
+    "value", ["sdwan-single", "mcp-test-inside", "HTTPS", "tcp/https", "70000", "2000-1000"]
+)
+async def test_find_object_names_fall_through_to_text_search(lab: respx.MockRouter, value: str) -> None:
+    hit = {"name": value, "type": "SecurityZone", "id": "z-1"}
+    search = lab.get(f"{CFG}/search/object").mock(return_value=items([hit]))
+    data = await call("fmc_find_object", {"value": value, "response_format": "json"})
+    assert search.calls.last.request.url.params["filter"] == f"text:{value}"
+    assert data["query"] == value
+    assert [r["name"] for r in data["results"]] == [value]
+
+
+@pytest.mark.parametrize(
+    ("text", "spec"),
+    [
+        ("443", ("", 443, 443)),
+        ("1000-2000", ("", 1000, 2000)),
+        ("tcp/443", ("6", 443, 443)),
+        ("udp/53", ("17", 53, 53)),
+        ("UDP 53", ("17", 53, 53)),
+        ("6/22", ("6", 22, 22)),
+        ("tcp/1000-2000", ("6", 1000, 2000)),
+        ("tcp", ("6", 0, 65535)),
+        ("icmp/8", ("1", 8, 8)),
+    ],
+)
+def test_parse_port_query_accepts_ports(text: str, spec: tuple[str, int, int]) -> None:
+    assert parse_port_query(text) == spec
+
+
+@pytest.mark.parametrize(
+    "text",
+    [
+        "sdwan-single",
+        "mcp-test-inside",
+        "HTTPS",
+        "foo/443",
+        "300/22",
+        "tcp/https",
+        "tcp/1-2-3",
+        "70000",
+        "2000-1000",
+    ],
+)
+def test_parse_port_query_rejects_names(text: str) -> None:
+    with pytest.raises(ValueError):
+        parse_port_query(text)
 
 
 async def test_find_object_by_ip_uses_fmc_search(lab: respx.MockRouter) -> None:
