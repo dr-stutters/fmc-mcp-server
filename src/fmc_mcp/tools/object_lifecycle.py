@@ -62,9 +62,11 @@ from fmc_mcp.tools.policies import ACCESS, NAT, POLICY_KINDS, PREFILTER, all_rul
 
 USAGE = "object/operational/usage"
 # FMC 10.0.1's `unusedOnly` filter never lists network groups (live 2026-10-21: count 0 in the leaf and in
-# Global while the usage API named no referrer and FMC accepted the group's DELETE), so for groups the usage
-# API decides: an empty answer means nothing references the group (FMC still refuses a DELETE in use).
-GROUP_KEYS = frozenset({"network_group", "port_group", "url_group", "vlan_group"})
+# Global while the usage API named no referrer and FMC accepted the group's DELETE). Only there, and only when
+# the filter answers no group of the type at all in the domain (that blind-filter signature), does an empty
+# usage answer free a group. Everywhere else the filter stays authoritative: "in use" by the filter with no
+# referrer named is refused, since the usage API is not known to be complete for other types.
+BLIND_FILTER_TYPES = frozenset({"network_group"})
 GROUP_USAGE_CAP = 40  # groups the unused-objects listing checks with the usage API (one request each)
 
 # --- shared ---------------------------------------------------------------------------------------
@@ -109,13 +111,21 @@ class FreeGroups:
     unchecked: list[str] = field(default_factory=list)  # left over when the cap was reached
 
 
-async def free_groups(
-    app: FmcApp, key: str, domain: str | None, listed: set[str], budget: int = GROUP_USAGE_CAP
-) -> FreeGroups:
-    """Groups of type `key` that FMC's unused filter left out (`listed`: the ids it answered) although
-    nothing references them: FMC 10.0.1's filter answers no network group at all. Built-ins, groups an
-    ancestor domain owns (the usage API can't answer for them here) and groups another group holds are
-    skipped without a request; the rest are asked one by one, at most `budget`."""
+async def filter_is_blind(app: FmcApp, key: str, domain: str | None) -> bool:
+    """FMC's unused filter answers no group of a BLIND_FILTER_TYPES type at all in the domain: FMC 10.0.1's
+    for network groups (one request, one row at most)."""
+    if key not in BLIND_FILTER_TYPES:
+        return False
+    path = await app.config_path(OBJECT_TYPES[key].path, domain)
+    page = await app.page(path, {"filter": "unusedOnly:true"}, limit=1, expanded=False)
+    return not page.items
+
+
+async def free_groups(app: FmcApp, key: str, domain: str | None, budget: int = GROUP_USAGE_CAP) -> FreeGroups:
+    """Groups of type `key` nothing references, for a type whose unused filter is blind here (see
+    filter_is_blind: FMC 10.0.1 lists no network group). Built-ins, groups an ancestor domain owns (the
+    usage API can't answer for them here) and groups another group holds are skipped without a request; the
+    rest are asked one by one, at most `budget`. A usage answer FMC refuses (400) keeps the group out."""
     t = OBJECT_TYPES[key]
     here = (await app.domain_uuid(domain)).lower()
     page = await app.all(await app.config_path(t.path, domain), cap=20_000)
@@ -125,7 +135,7 @@ async def free_groups(
     out = FreeGroups()
     for g in sorted(page.items, key=lambda o: str(o.get("name", "")).lower()):
         gid = str(g.get("id", "")).lower()
-        if not gid or gid in listed or gid in held or is_system(g) or inherited_from(g, here):
+        if not gid or gid in held or is_system(g) or inherited_from(g, here):
             continue
         if out.checked >= budget:
             out.unchecked.append(str(g.get("name") or gid))
@@ -247,42 +257,51 @@ class Gather:
             self.warnings.append(f"{path} has more items than the first {cap} that were read.")
         return page.items
 
+    async def _blind(self, key: str, filtered: bool) -> bool:
+        """The unused filter (which just answered no row) is blind for this type here (FMC 10.0.1's for
+        network groups): with a name filter, asked again without it."""
+        if key not in BLIND_FILTER_TYPES:
+            return False
+        return await filter_is_blind(self.app, key, self.domain) if filtered else True
+
     async def objects(self, types: list[str]) -> None:
         """Value objects and groups: FMC's unused filter says which are free; the usage API names the
-        users of the others (so an object used only by other victims can go after them). Groups are listed
-        without the filter (FMC 10.0.1's never answers them) and an empty usage answer frees them."""
+        users of the others (so an object used only by other victims can go after them). Where the filter
+        is blind (FMC 10.0.1 lists no network group at all) network groups are listed without it and an
+        empty usage answer frees them."""
         for key in types:
             t = OBJECT_TYPES[key]
-            group = key in GROUP_KEYS
             base = [f"nameOrValue:{self.sel.prefix}"] if self.sel.prefix else []
-            unused_listing = self.unused_only and not group
-            hits = [
-                o
-                for o in await self.listing(t.path, [*base, "unusedOnly:true"] if unused_listing else base)
-                if self.sel.picks(o)
-            ]
-            if not hits:
-                continue
-            free = (
-                {str(o.get("id")).lower() for o in hits}
-                if unused_listing
-                else {
+            blind = False
+            if self.unused_only:
+                rows = await self.listing(t.path, [*base, "unusedOnly:true"])
+                if not rows and await self._blind(key, bool(base)):
+                    blind, rows = True, await self.listing(t.path, base)
+                hits = [o for o in rows if self.sel.picks(o)]
+                free = set() if blind else {str(o.get("id")).lower() for o in hits}
+            else:
+                hits = [o for o in await self.listing(t.path, base) if self.sel.picks(o)]
+                if not hits:
+                    continue
+                free = {
                     str(o.get("id")).lower() for o in await self.listing(t.path, [*base, "unusedOnly:true"])
                 }
-            )
+                blind = not free and await self._blind(key, bool(base))
             for o in hits:
                 c = Candidate("objects", key, o)
                 self.cands.append(c)
                 if not self._fixed(c) and c.id not in free:
-                    await self._users_from_usage(c, t, group=group)
+                    await self._users_from_usage(c, t, blind=blind)
 
-    async def _users_from_usage(self, c: Candidate, t: ObjType, *, group: bool = False) -> None:
+    async def _users_from_usage(self, c: Candidate, t: ObjType, *, blind: bool = False) -> None:
+        """`blind`: FMC's unused filter lists no group of this type here, so it says nothing about `c`; the
+        usage API decides (an empty answer frees it, no answer is unknown, not "in use")."""
+        blind_note = f"FMC's unused filter lists no {c.key.replace('_', ' ')} here"
         if self.usage_budget <= 0:
-            if group:  # the unused filter says nothing about groups: unknown, not in use
+            if blind:
                 c.refuse(
-                    f"not checked (FMC's unused filter doesn't list groups, and more than {USAGE_CAP} "
-                    "selected objects needed the usage API; narrow the selection or check with "
-                    "fmc_where_used)",
+                    f"not checked ({blind_note}, and more than {USAGE_CAP} selected objects needed the "
+                    "usage API; narrow the selection or check with fmc_where_used)",
                     in_use=False,
                 )
                 return
@@ -293,9 +312,14 @@ class Gather:
             return
         self.usage_budget -= 1
         used = await usage_of(self.app, c.obj, t, self.domain)
-        if used is None:
+        if used is None and blind:
+            c.refuse(
+                f"not checked ({blind_note} and its usage API can't answer for this one; fmc_where_used)",
+                in_use=False,
+            )
+        elif used is None:
             c.refuse("in use (FMC's usage API can't say by what here; fmc_where_used)")
-        elif not used and not group:
+        elif not used and not blind:
             c.refuse("in use (FMC's unused filter says so, its usage API names nothing)")
         for u in used or []:
             label = f"{u.get('type')} {u.get('name')}"
@@ -815,9 +839,9 @@ def register(reg: ToolRegistrar) -> None:
         unused_only: Annotated[
             bool,
             Field(
-                description="Only what nothing references (FMC's unused filter; groups: FMC's usage API, "
-                "since FMC 10.0.1's filter lists no network group); alone, every unused object of the "
-                "selected types. In-use matches are then skipped (counted), not refused"
+                description="Only what nothing references (FMC's unused filter; network groups: FMC's usage "
+                "API when the filter lists none at all, as FMC 10.0.1's does); alone, every unused object of "
+                "the selected types. In-use matches are then skipped (counted), not refused"
             ),
         ] = False,
         kinds: Annotated[

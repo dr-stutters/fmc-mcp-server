@@ -373,9 +373,10 @@ async def test_prefix_cleanup_deletes_a_group_fmc_10_0_1_doesnt_call_unused(fmc:
 async def test_unused_only_checks_groups_with_the_usage_api(
     fmc: respx.MockRouter, monkeypatch: pytest.MonkeyPatch
 ) -> None:
-    """unused_only lists groups without FMC's filter (it answers none on 10.0.1): a group the usage API
-    names nothing for is deleted, a used one skipped; a group past the usage budget is refused as not
-    checked (not counted as in use)."""
+    """unused_only: FMC's filter answers no network group (10.0.1), in the prefix and without it (the
+    blind-filter signature), so the groups are listed without it: a group the usage API names nothing for
+    is deleted, a used one skipped; a group past the usage budget is refused as not checked (not counted as
+    in use)."""
     groups = [
         obj("g1", "mcp-w6-grp-free", "NetworkGroup", objects=[{"id": "h1", "type": "Host"}]),
         obj("g2", "mcp-w6-grp-used", "NetworkGroup"),
@@ -395,7 +396,11 @@ async def test_unused_only_checks_groups_with_the_usage_api(
     assert [(r["name"], r["reason"].split(" (")[0]) for r in got["refused"]] == [
         ("mcp-w6-grp-late", "not checked")
     ]
-    assert route.calls[0].request.url.params["filter"] == "nameOrValue:mcp-w6-"  # no unusedOnly
+    assert [r.request.url.params["filter"] for r in route.calls] == [
+        "nameOrValue:mcp-w6-;unusedOnly:true",
+        "unusedOnly:true",  # the signature: none at all in the domain
+        "nameOrValue:mcp-w6-",  # then the groups, decided by the usage API
+    ]
 
 
 async def test_unused_objects_lists_groups_the_filter_leaves_out(
@@ -432,6 +437,82 @@ async def test_unused_objects_lists_groups_the_filter_leaves_out(
         capped = await run(c, "fmc_unused_objects", {"types": ["network_group"], "response_format": "json"})
     assert [r["name"] for r in capped["results"]] == ["mcp-w6-grp"]
     assert "1 more groups were not checked (at most 1 per call): mcp-w6-outer" in capped["note"]
+
+
+async def test_blind_filter_group_the_usage_api_refuses_is_neither_freed_nor_listed(
+    fmc: respx.MockRouter,
+) -> None:
+    """FMC's filter lists no network group (10.0.1) and its usage API answers 400 for the group: nothing
+    says it is free, so fmc_delete_objects refuses it (unknown, not "in use") and fmc_unused_objects leaves
+    it out."""
+    grp = obj("g1", "mcp-w6-grp", "NetworkGroup")
+    fmc.get(f"{CFG}/object/networkgroups").mock(side_effect=live_groups([grp]))
+    usage = fmc.get(f"{CFG}/object/operational/usage").mock(
+        return_value=httpx.Response(400, json={"error": {"messages": [{"description": "Invalid type"}]}})
+    )
+    async with Client(server()) as c:
+        for unused_only in (False, True):
+            args = {"prefix": "mcp-w6-", "types": ["network_group"], "unused_only": unused_only}
+            d = await run(c, "fmc_delete_objects", {**args, "dry_run": True})
+            got = d["preview"]
+            assert "delete" not in got or not got["delete"].get("objects"), got
+            ((name, reason),) = [(r["name"], r["reason"]) for r in got["refused"]]
+            assert name == "mcp-w6-grp" and reason.startswith("not checked (FMC's unused filter lists no ")
+            assert "usage API can't answer" in reason and not got.get("in_use_skipped")
+        listed = await run(c, "fmc_unused_objects", {"types": ["network_group"], "response_format": "json"})
+    assert listed["results"] == [] and usage.call_count == 3
+
+
+async def test_port_group_filter_disagreement_is_refused(fmc: respx.MockRouter) -> None:
+    """Only network groups have live evidence of a blind filter. A port group FMC's filter doesn't call
+    unused, with no referrer named by the usage API, stays refused as in use, even when the filter lists no
+    port group at all; unused_only skips it and fmc_unused_objects doesn't ask the usage API."""
+    pg = obj("p1", "mcp-w6-ports", "PortObjectGroup")
+    fmc.get(f"{CFG}/object/portobjectgroups").mock(side_effect=collection([pg], unused=set()))
+    usage = fmc.get(f"{CFG}/object/operational/usage").mock(
+        return_value=httpx.Response(200, json=LIVE_GROUPS["usage_none"])
+    )
+    async with Client(server()) as c:
+        args = {"prefix": "mcp-w6-", "types": ["port_group"], "dry_run": True}
+        d = await run(c, "fmc_delete_objects", args)
+        assert [(r["name"], r["reason"]) for r in d["preview"]["refused"]] == [
+            ("mcp-w6-ports", "in use (FMC's unused filter says so, its usage API names nothing)")
+        ]
+        assert usage.call_count == 1
+        only = await run(c, "fmc_delete_objects", {**args, "unused_only": True})
+        assert only["preview"]["delete"] == {} and only["blockers"] == ["Nothing to delete."]
+        listed = await run(c, "fmc_unused_objects", {"types": ["port_group"], "response_format": "json"})
+    assert listed["results"] == [] and "note" not in listed
+    assert usage.call_count == 1  # neither unused_only nor the listing asked about the port group
+
+
+async def test_network_group_filter_that_answers_stays_authoritative(fmc: respx.MockRouter) -> None:
+    """The relaxation needs the blind-filter signature: here FMC's filter lists another network group as
+    unused (outside the prefix, so asked without it), so it works, and a group it doesn't list whose
+    usage answer is empty is refused as in use, not freed."""
+    other = obj("g9", "mcp-test-spare", "NetworkGroup")
+    target = obj("g1", "mcp-w6-grp", "NetworkGroup")
+    route = fmc.get(f"{CFG}/object/networkgroups").mock(
+        side_effect=collection([other, target], unused={"g9"})
+    )
+    usage = fmc.get(f"{CFG}/object/operational/usage").mock(
+        return_value=httpx.Response(200, json=LIVE_GROUPS["usage_none"])
+    )
+    async with Client(server()) as c:
+        d = await run(
+            c, "fmc_delete_objects", {"prefix": "mcp-w6-", "types": ["network_group"], "dry_run": True}
+        )
+        assert [(r["name"], r["reason"]) for r in d["preview"]["refused"]] == [
+            ("mcp-w6-grp", "in use (FMC's unused filter says so, its usage API names nothing)")
+        ]
+        assert [r.request.url.params["filter"] for r in route.calls] == [
+            "nameOrValue:mcp-w6-",
+            "nameOrValue:mcp-w6-;unusedOnly:true",
+            "unusedOnly:true",  # the signature check: FMC lists mcp-test-spare, so not blind
+        ]
+        listed = await run(c, "fmc_unused_objects", {"types": ["network_group"], "response_format": "json"})
+    assert [(r["name"], r.get("checked_by")) for r in listed["results"]] == [("mcp-test-spare", None)]
+    assert usage.call_count == 1 and "note" not in listed
 
 
 # --- fmc_replace_object ---------------------------------------------------------------------------
