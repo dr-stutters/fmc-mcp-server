@@ -25,6 +25,7 @@ from fmc_mcp.client import FmcApp
 from fmc_mcp.preview import fmc_preview
 from fmc_mcp.refs import RefResolver
 from fmc_mcp.tools.common import Domain, proto_name, ref_label, resolve_in
+from fmc_mcp.tools.evidence import EVIDENCE_COLUMNS, collect, flat
 from fmc_mcp.tools.policies import ACCESS, all_rules, resolve_policy
 from fmc_mcp.tools.policy_writes import BLOCKING, LogMode, RuleAction, _conditions, _log_fields
 from fmc_mcp.tools.render import object_reply
@@ -143,9 +144,9 @@ def not_importable(r: dict[str, Any]) -> list[str]:
     return sorted(set(out))
 
 
-def to_csv(rows: list[dict[str, Any]]) -> str:
+def to_csv(rows: list[dict[str, Any]], columns: list[str] = COLUMNS) -> str:
     out = io.StringIO()
-    w = csv.DictWriter(out, fieldnames=COLUMNS, extrasaction="ignore")
+    w = csv.DictWriter(out, fieldnames=columns, extrasaction="ignore")
     w.writeheader()
     for r in rows:
         w.writerow({k: ";".join(map(str, v)) if isinstance(v, list) else v for k, v in r.items()})
@@ -186,6 +187,17 @@ def register(reg: ToolRegistrar) -> None:
         ctx: Context,
         policy: Annotated[str, Field(description="Access control policy name or UUID")],
         format: Annotated[Literal["rows", "csv"], Field(description="rows (JSON) or one CSV text")] = "rows",
+        evidence: Annotated[
+            bool,
+            Field(
+                description="Add audit evidence per rule (hit counts per device, logging, intrusion/file "
+                "policy, last change and user from the audit log, the deployment that pushed it, comments, "
+                "the ticket when change management is on) and the policy's SI/DNS state; refreshes hit counts"
+            ),
+        ] = False,
+        since_days: Annotated[
+            int, Field(ge=1, le=365, description="Evidence window in days (audit records, deployments)")
+        ] = 30,
         domain: Domain = None,
         limit: Annotated[int, Field(ge=1, le=1000)] = 1000,
         offset: Annotated[int, Field(ge=0)] = 0,
@@ -195,7 +207,11 @@ def register(reg: ToolRegistrar) -> None:
         icmp/8, 10.1.0.0/16) that fmc_import_access_rules accepts back: for reviews, audits, diffs and
         migrations. CSV joins list values with ';'. Rows list in `not_importable` what the importer can't
         rebuild (applications, users, URL categories, file policy, ...); such rows are refused on import so
-        a rule is never re-created wider than it was."""
+        a rule is never re-created wider than it was. evidence=true adds per rule its hits per device,
+        logging, inspection, last change (FMC's 'Save Policy' audit record and user), the deployment
+        that pushed it and comments (CSV: extra columns), plus `evidence` for the policy: SI/DNS lists,
+        default action hits, devices out of date, change-management state; the ticket column only when
+        FMC change management answers. The fmc_compliance_evidence prompt builds the audit pack."""
         app: FmcApp = get_client(ctx)
         p = await resolve_policy(app, "access", policy, domain)
         page = await all_rules(app, await app.config_path(f"{ACCESS}/{p['id']}/accessrules", domain))
@@ -203,22 +219,28 @@ def register(reg: ToolRegistrar) -> None:
         if not p.get("defaultAction"):
             p = await app.api.get(await app.config_path(f"{ACCESS}/{p['id']}", domain)) or p
         default = (p.get("defaultAction") or {}).get("action")
+        extra: dict[str, Any] = {
+            "policy": p.get("name"),
+            "default_action": default,
+            "complete": page.complete,
+        }
+        columns = COLUMNS
+        if evidence:  # F80
+            per_rule, extra["evidence"] = await collect(ctx, app, p, page.items, since_days, domain)
+            evs = [per_rule.get(str(r.get("id"))) for r in page.items]
+            if format == "csv":
+                rows, columns = (
+                    [{**row, **flat(ev)} for row, ev in zip(rows, evs, strict=True)],
+                    COLUMNS + EVIDENCE_COLUMNS,
+                )
+            else:
+                rows = [{**row, "evidence": ev} if ev else row for row, ev in zip(rows, evs, strict=True)]
         if format == "csv":
             return object_reply(
-                {
-                    "policy": p.get("name"),
-                    "default_action": default,
-                    "rules": len(rows),
-                    "csv": to_csv(rows),
-                    "complete": page.complete,
-                },
+                {**extra, "rules": len(rows), "csv": to_csv(rows, columns)},
                 fmt=response_format,
             )
-        return list_result(
-            page_of(rows, limit=limit, offset=offset),
-            fmt=response_format,
-            extra={"policy": p.get("name"), "default_action": default, "complete": page.complete},
-        )
+        return list_result(page_of(rows, limit=limit, offset=offset), fmt=response_format, extra=extra)
 
     @reg.write(title="Import access rules")
     async def fmc_import_access_rules(

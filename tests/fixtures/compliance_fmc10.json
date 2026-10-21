@@ -1,0 +1,1014 @@
+{
+ "_source": "FMC 10.0.1, domain Global/mcp-test-leaf, read-only GETs by build:compliance 2026-10-21 (W6 Next F80). `ps_sections`: every section of the lab's platform settings policy mcp-w6-ps as FMC answered (SSH access with no entries has no items key; external authentication unset has no externalAuthServer; SNMP off; banner unset; syslog settings without timeStampFormat = LEGACY; ICMP without rules). `device`: mcp-ftd1's record (FTDv, disconnected). `backup_manager`: backup/files/manager answers ONE object; `backup_device_error`: an FTDv's backup/files/<id>. `rules`: the first three rules of mcp-w6-acp (all re-stamped by one insert at 06:11:04Z). `audit`: policy-editor records (subsystem=%Access Control > Policy Editor%). `jobs`: mcp-ftd1's job history. `si`, `smart`, `ha_monitored` (mcp-fw-ha), `hitcounts_unassigned` (the 500 for a device the ACP isn't assigned to), `serverversion` (fmc_status values). Lab addresses replaced by documentation ranges, FMC host and serial scrubbed, links dropped.",
+ "ps": {
+  "id": "00000000-0000-0ed3-0000-021474965445",
+  "name": "mcp-w6-ps",
+  "type": "FTDPlatformSettingsPolicy"
+ },
+ "ps_sections": {
+  "snmpsettings": {
+   "items": [
+    {
+     "type": "FTDSNMPPlatformSettings",
+     "id": "00000000-0000-0ed3-0000-021474965445",
+     "enableSNMPServers": false,
+     "port": "161",
+     "snmpTrap": {
+      "linkUp": true,
+      "syslog": false,
+      "cputhresholdValueInPercent": "70",
+      "cputhresholdIntervalInMins": "1",
+      "memThresholdValueInPercent": "70",
+      "linkDown": true,
+      "coldStart": true,
+      "warmStart": true,
+      "fruinsert": false,
+      "fruremove": false,
+      "entityConfigChange": false,
+      "connLimitReached": false,
+      "natPacketDiscard": false,
+      "cputhreshold": false,
+      "memoryThreshold": false,
+      "peerFlap": false,
+      "authentication": true,
+      "failoverState": false,
+      "clusterState": false
+     }
+    }
+   ],
+   "paging": {
+    "offset": 0,
+    "limit": 25,
+    "count": 1,
+    "pages": 1
+   }
+  },
+  "sshaccesssettings": {
+   "paging": {
+    "offset": 0,
+    "limit": 0,
+    "count": 0,
+    "pages": 0
+   }
+  },
+  "externalauthsettings": {
+   "items": [
+    {
+     "id": "00000000-0000-0ed3-0000-021474965445",
+     "type": "ExternalAuthSetting",
+     "metadata": {}
+    }
+   ],
+   "paging": {
+    "offset": 0,
+    "limit": 25,
+    "count": 1,
+    "pages": 1
+   }
+  },
+  "httpaccesssettings": {
+   "items": [
+    {
+     "metadata": {},
+     "type": "HttpAccessSetting",
+     "id": "00000000-0000-0ed3-0000-021474965445",
+     "enableHttpServer": false,
+     "port": 443
+    }
+   ],
+   "paging": {
+    "offset": 0,
+    "limit": 25,
+    "count": 1,
+    "pages": 1
+   }
+  },
+  "icmpsettings": {
+   "items": [
+    {
+     "type": "ICMPSetting",
+     "id": "00000000-0000-0ed3-0000-021474965445",
+     "rateLimit": "1",
+     "burstSize": "1"
+    }
+   ],
+   "paging": {
+    "offset": 0,
+    "limit": 25,
+    "count": 1,
+    "pages": 1
+   }
+  },
+  "ntpsettings": {
+   "items": [
+    {
+     "type": "NTPSetting",
+     "id": "00000000-0000-0ed3-0000-021474965445",
+     "ntpMode": "SYNC_VIA_MGMT_CENTER_NTP"
+    }
+   ],
+   "paging": {
+    "offset": 0,
+    "limit": 25,
+    "count": 1,
+    "pages": 1
+   }
+  },
+  "bannersettings": {
+   "items": [
+    {
+     "type": "BannerSetting",
+     "id": "00000000-0000-0ed3-0000-021474965445"
+    }
+   ],
+   "paging": {
+    "offset": 0,
+    "limit": 25,
+    "count": 1,
+    "pages": 1
+   }
+  },
+  "syslog/servers": {
+   "items": [
+    {
+     "type": "Server",
+     "id": "00000000-0000-0ed3-0000-021474965445",
+     "allowUserTrafficWhenDown": true,
+     "messageSizeQueue": "512",
+     "servers": [
+      {
+       "ipAddress": {
+        "object": {
+         "name": "mcp-w6-syslog-host",
+         "id": "00000000-0000-0ed3-0000-021474979396",
+         "type": "Network"
+        }
+       },
+       "protocol": "UDP",
+       "port": "514",
+       "isMgmtReachable": false,
+       "logMessagesInEMBLEM": false,
+       "secureSyslog": false,
+       "interfaces": {
+        "objects": [
+         {
+          "name": "mcp-test-ftd-in",
+          "id": "d06d930e-c9d6-11f1-a4e0-98786f180443",
+          "type": "SecurityZone"
+         }
+        ]
+       }
+      }
+     ]
+    }
+   ],
+   "paging": {
+    "offset": 0,
+    "limit": 25,
+    "count": 1,
+    "pages": 1
+   }
+  },
+  "syslog/syslogsettings": {
+   "items": [
+    {
+     "type": "SyslogSetting",
+     "id": "00000000-0000-0ed3-0000-021474965445",
+     "facility": "LOCAL4"
+    }
+   ],
+   "paging": {
+    "offset": 0,
+    "limit": 25,
+    "count": 1,
+    "pages": 1
+   }
+  },
+  "syslog/basicloggingsetups": {
+   "items": [
+    {
+     "type": "BasicLoggingSetup",
+     "id": "00000000-0000-0ed3-0000-021474965445",
+     "enableLogging": true,
+     "enableLoggingFailover": false,
+     "enableEMBLEMFormat": false,
+     "enableDebugMesgAsSyslog": false,
+     "internalBuffMemSizeInBytes": 1048576,
+     "loggingToFMCType": "VPN",
+     "loggingToFMCLogLevel": "ERR",
+     "enableFlash": false,
+     "maxFlashForLoggingInKB": 3076,
+     "minFreePreservedSpaceInKB": 1024
+    }
+   ],
+   "paging": {
+    "offset": 0,
+    "limit": 25,
+    "count": 1,
+    "pages": 1
+   }
+  },
+  "syslog/loggingdestinations": {
+   "items": [
+    {
+     "type": "LoggingDestination",
+     "id": "00000000-0000-0ed3-0000-021474979649",
+     "loggingDestination": "SYSLOG_SERVERS",
+     "allEventConfig": {
+      "filterCriteria": "SEVERITY",
+      "value": "INFO"
+     }
+    },
+    {
+     "type": "LoggingDestination",
+     "id": "00000000-0000-0ed3-0000-021474979840",
+     "loggingDestination": "INTERNAL_BUFFER",
+     "allEventConfig": {
+      "filterCriteria": "SEVERITY",
+      "value": "INFO"
+     }
+    }
+   ],
+   "paging": {
+    "offset": 0,
+    "limit": 25,
+    "count": 2,
+    "pages": 1
+   }
+  },
+  "dnssettings": {
+   "items": [
+    {
+     "type": "DNSSetting",
+     "id": "00000000-0000-0ed3-0000-021474965445",
+     "dnsServerGroups": [
+      {
+       "dnsServerGroup": {
+        "name": "mcp-w6-dns",
+        "id": "00000000-0000-0ed3-0000-021474996696",
+        "type": "DNSServerGroupObject"
+       },
+       "isDefault": true
+      }
+     ],
+     "expiryTimerInMins": 1,
+     "pollTimerInMins": 240,
+     "enableLookupViaMgmt": false,
+     "interfaceObjects": [
+      {
+       "name": "mcp-test-ftd-out",
+       "id": "d1686144-c9d6-11f1-a4e0-98786f180443",
+       "type": "SecurityZone"
+      }
+     ]
+    }
+   ],
+   "paging": {
+    "offset": 0,
+    "limit": 25,
+    "count": 1,
+    "pages": 1
+   }
+  }
+ },
+ "device": {
+  "deploymentStatus": "DEPLOYED",
+  "id": "43d57cc8-c9c6-11f1-858d-a03accd83568",
+  "type": "Device",
+  "name": "mcp-ftd1",
+  "description": "NOT SUPPORTED",
+  "model": "Cisco Secure Firewall Threat Defense for KVM",
+  "modelId": "B",
+  "modelNumber": "75",
+  "modelType": "Sensor",
+  "healthStatus": "disabled",
+  "healthMessage": "Appliance unreachable",
+  "sw_version": "10.0.0",
+  "healthPolicy": {
+   "id": "1114175a-2eca-11f1-bc1d-b8e359adb5f3",
+   "name": "Initial_Health_Policy 2026-04-02 19:28:02",
+   "type": "HealthPolicy"
+  },
+  "accessPolicy": {
+   "name": "mcp-test-ftd-acp",
+   "id": "00000000-0000-0ed3-0000-021474837072",
+   "type": "AccessPolicy"
+  },
+  "advanced": {
+   "enableOGS": true
+  },
+  "hostName": "192.0.2.151",
+  "license_caps": [
+   "ESSENTIALS",
+   "MALWARE_DEFENSE",
+   "IPS",
+   "URL"
+  ],
+  "performanceTier": "FTDv5",
+  "keepLocalEvents": false,
+  "prohibitPacketTransfer": false,
+  "isConnected": false,
+  "ftdMode": "ROUTED",
+  "analyticsOnly": false,
+  "metadata": {
+   "readOnly": {
+    "state": false
+   },
+   "inventoryData": {
+    "cpuCores": "1 CPU (4 cores)",
+    "cpuType": "CPU Xeon 4100/6100/8100 series 2700 MHz",
+    "memoryInMB": "8192 MB RAM"
+   },
+   "deviceSerialNumber": "REDACTED",
+   "domain": {
+    "name": "mcp-test-leaf",
+    "id": "a1c73df0-8353-8db7-1097-000000000000",
+    "type": "Domain"
+   },
+   "isMultiInstance": false,
+   "snortVersion": "3.9.3.1-61",
+   "vdbVersion": "Build 426 - 2026-03-24 09:29:08.0",
+   "lspVersion": "lsp-rel-20261019-1844",
+   "clusterBootstrapSupported": true,
+   "universalZeroTrustSupported": false,
+   "coreProfile": "Default"
+  },
+  "snortEngine": "SNORT3",
+  "isMCDManaged": false,
+  "managementState": "MANAGED"
+ },
+ "serverversion": {
+  "items": [
+   {
+    "serverVersion": "10.0.1 (build 1)",
+    "vdbVersion": "build 426 ( 2026-03-24 09:29:08 )",
+    "sruVersion": "2026-10-19-001-vrt",
+    "lspVersion": "lsp-rel-20261019-1844",
+    "hostname": "fmc.example.com",
+    "type": "ServerVersion"
+   }
+  ]
+ },
+ "smart": {
+  "items": [
+   {
+    "regStatus": "REGISTERED",
+    "force": "false",
+    "metadata": {
+     "authStatus": "AUTHORIZED",
+     "virtualAccount": "example-va",
+     "exportControl": true,
+     "evalUsed": true,
+     "evalExpiresInDays": 0,
+     "lastSynchronizedTime": "2026-10-18T14:09:16UTC",
+     "lastRenewedTime": "2026-10-17T11:44:05UTC"
+    },
+    "type": "SmartLicense"
+   }
+  ],
+  "paging": {
+   "offset": 0,
+   "limit": 25,
+   "count": 1,
+   "pages": 1
+  }
+ },
+ "backup_manager": {
+  "backupVersion": "1792375370",
+  "targetId": "manager",
+  "systemInformation": "fmc.example.com Cisco Secure Firewall Management Center for VMware 10.0.1",
+  "fileName": "Weekly_config_only_backup_20261019020001-2026-10-19T02-00-08.tar",
+  "size": "456",
+  "creationDate": "2026-10-19 02:02:50",
+  "type": "BackupFile",
+  "isTidEnabled": "false",
+  "isEventsEnabled": "false",
+  "isConfigurationsEnabled": "true",
+  "deviceType": "Firewall Management Center",
+  "location": "Local"
+ },
+ "backup_device_error": {
+  "status": 400,
+  "error": {
+   "messages": [
+    {
+     "description": "File not found."
+    }
+   ]
+  }
+ },
+ "hitcounts_unassigned": {
+  "status": 500,
+  "error": {
+   "messages": [
+    {
+     "description": "Access Policy is not assigned to the device specified via deviceId parameter - 43d57cc8-c9c6-11f1-858d-a03accd83568."
+    }
+   ]
+  }
+ },
+ "acp": {
+  "type": "AccessPolicy",
+  "name": "mcp-w6-acp",
+  "id": "00000000-0000-0ed3-0000-021474963108"
+ },
+ "rules": {
+  "items": [
+   {
+    "metadata": {
+     "ruleIndex": 1,
+     "section": "Default",
+     "category": "--Undefined--",
+     "accessPolicy": {
+      "name": "mcp-w6-acp",
+      "id": "00000000-0000-0ed3-0000-021474963108",
+      "type": "AccessPolicy"
+     },
+     "timestamp": 1792563064128,
+     "domain": {
+      "name": "Global \\ mcp-test-leaf",
+      "id": "a1c73df0-8353-8db7-1097-000000000000",
+      "type": "Domain"
+     }
+    },
+    "enabled": true,
+    "advancedLogging": {},
+    "sendEventsToFMC": true,
+    "enableSyslog": true,
+    "destinationDynamicObjects": {},
+    "logBegin": true,
+    "logEnd": false,
+    "logFiles": false,
+    "sourceDynamicObjects": {
+     "objects": [
+      {
+       "id": "00000000-0000-0ed3-0000-021474842550",
+       "name": "mcp-test-quarantine",
+       "type": "DynamicObject"
+      }
+     ]
+    },
+    "commentHistoryList": [
+     {
+      "date": "2026-10-20T23:56:22.000+0000",
+      "comment": "W6: copy of mcp-test-quarantine-block",
+      "user": {
+       "name": "mcp-api-svc",
+       "type": "User"
+      }
+     }
+    ],
+    "vlanTags": {},
+    "action": "BLOCK",
+    "variableSet": {
+     "name": "Default-Set",
+     "id": "76fa83ea-c972-11e2-8be8-8e45bb1343c0",
+     "type": "VariableSet"
+    },
+    "type": "AccessRule",
+    "name": "mcp-w6-quarantine-block",
+    "id": "00000000-0000-0ed3-0000-000268434506"
+   },
+   {
+    "metadata": {
+     "ruleIndex": 2,
+     "section": "Default",
+     "category": "--Undefined--",
+     "accessPolicy": {
+      "name": "mcp-w6-acp",
+      "id": "00000000-0000-0ed3-0000-021474963108",
+      "type": "AccessPolicy"
+     },
+     "timestamp": 1792563064124,
+     "domain": {
+      "name": "Global \\ mcp-test-leaf",
+      "id": "a1c73df0-8353-8db7-1097-000000000000",
+      "type": "Domain"
+     }
+    },
+    "enabled": true,
+    "advancedLogging": {},
+    "sendEventsToFMC": true,
+    "enableSyslog": false,
+    "destinationDynamicObjects": {},
+    "logBegin": false,
+    "logEnd": true,
+    "logFiles": false,
+    "sourceDynamicObjects": {},
+    "commentHistoryList": [
+     {
+      "date": "2026-10-21T06:11:04.000+0000",
+      "comment": "W6 live-B2 F69: FQDN rule (cisco.com), matches only once mcp-w6-ps has a DNS server group",
+      "user": {
+       "name": "mcp-api-svc",
+       "type": "User"
+      }
+     }
+    ],
+    "sourceNetworks": {
+     "objects": [
+      {
+       "type": "Network",
+       "overridable": false,
+       "name": "mcp-test-ftd-inside-net",
+       "id": "00000000-0000-0ed3-0000-021474841321"
+      }
+     ]
+    },
+    "destinationNetworks": {
+     "objects": [
+      {
+       "type": "FQDN",
+       "overridable": false,
+       "name": "mcp-w6-fqdn",
+       "id": "00000000-0000-0ed3-0000-021474996491"
+      }
+     ]
+    },
+    "vlanTags": {},
+    "destinationPorts": {
+     "literals": [
+      {
+       "type": "PortLiteral",
+       "port": "443",
+       "protocol": "6"
+      }
+     ]
+    },
+    "action": "ALLOW",
+    "variableSet": {
+     "name": "Default-Set",
+     "id": "76fa83ea-c972-11e2-8be8-8e45bb1343c0",
+     "type": "VariableSet"
+    },
+    "type": "AccessRule",
+    "name": "mcp-w6-fqdn-allow",
+    "id": "00000000-0000-0ed3-0000-000268434534"
+   },
+   {
+    "metadata": {
+     "ruleIndex": 3,
+     "section": "Default",
+     "category": "--Undefined--",
+     "accessPolicy": {
+      "name": "mcp-w6-acp",
+      "id": "00000000-0000-0ed3-0000-021474963108",
+      "type": "AccessPolicy"
+     },
+     "timestamp": 1792563064128,
+     "domain": {
+      "name": "Global \\ mcp-test-leaf",
+      "id": "a1c73df0-8353-8db7-1097-000000000000",
+      "type": "Domain"
+     }
+    },
+    "timeRangeObjects": [
+     {
+      "name": "mcp-w6-tr-expired",
+      "type": "TimeRange",
+      "id": "00000000-0000-0ed3-0000-021474975872"
+     }
+    ],
+    "enabled": true,
+    "advancedLogging": {},
+    "sendEventsToFMC": true,
+    "enableSyslog": true,
+    "destinationDynamicObjects": {},
+    "logBegin": false,
+    "logEnd": true,
+    "logFiles": false,
+    "sourceDynamicObjects": {},
+    "commentHistoryList": [
+     {
+      "date": "2026-10-21T05:38:14.000+0000",
+      "comment": "W6 live-B1 F66: expired time range, must never match",
+      "user": {
+       "name": "mcp-api-svc",
+       "type": "User"
+      }
+     }
+    ],
+    "sourceNetworks": {
+     "objects": [
+      {
+       "type": "Network",
+       "overridable": false,
+       "name": "mcp-test-ftd-inside-net",
+       "id": "00000000-0000-0ed3-0000-021474841321"
+      }
+     ]
+    },
+    "destinationNetworks": {
+     "literals": [
+      {
+       "type": "Host",
+       "value": "198.51.100.185"
+      }
+     ]
+    },
+    "vlanTags": {},
+    "destinationPorts": {
+     "literals": [
+      {
+       "type": "PortLiteral",
+       "port": "80",
+       "protocol": "6"
+      }
+     ]
+    },
+    "action": "ALLOW",
+    "variableSet": {
+     "name": "Default-Set",
+     "id": "76fa83ea-c972-11e2-8be8-8e45bb1343c0",
+     "type": "VariableSet"
+    },
+    "type": "AccessRule",
+    "name": "mcp-w6-expired",
+    "id": "00000000-0000-0ed3-0000-000268434523"
+   }
+  ],
+  "paging": {
+   "offset": 0,
+   "limit": 3,
+   "count": 3,
+   "pages": 1
+  }
+ },
+ "audit": {
+  "items": [
+   {
+    "time": 1792574677,
+    "domain": "A1C73DF083538DB71097000000000000",
+    "auditId": "00000000-0000-0ed3-0000-000000021974",
+    "subSystem": "Policies > Security policies > Access Control > Policy Editor",
+    "source": "192.0.2.200",
+    "snapshotId": "00000000-0000-0ed3-0000-000000000760",
+    "username": "mcp-api-svc",
+    "message": "Save Policy mcp-w6-acp:760"
+   },
+   {
+    "time": 1792574667,
+    "domain": "A1C73DF083538DB71097000000000000",
+    "auditId": "00000000-0000-0ed3-0000-000000021964",
+    "subSystem": "Policies > Security policies > Access Control > Policy Editor",
+    "source": "192.0.2.200",
+    "snapshotId": "00000000-0000-0ed3-0000-000000000759",
+    "username": "mcp-api-svc",
+    "message": "Save Policy mcp-w6-acp:759"
+   },
+   {
+    "time": 1792563066,
+    "domain": "A1C73DF083538DB71097000000000000",
+    "auditId": "00000000-0000-0ed3-0000-000000021348",
+    "subSystem": "Policies > Security policies > Access Control > Policy Editor",
+    "source": "192.0.2.200",
+    "snapshotId": "00000000-0000-0ed3-0000-000000000743",
+    "username": "mcp-api-svc",
+    "message": "Save Policy mcp-w6-acp:743"
+   },
+   {
+    "time": 1792562664,
+    "domain": "A1C73DF083538DB71097000000000000",
+    "auditId": "00000000-0000-0ed3-0000-000000021017",
+    "subSystem": "Policies > Security policies > Access Control > Policy Editor",
+    "source": "192.0.2.200",
+    "snapshotId": "00000000-0000-0ed3-0000-000000000722",
+    "username": "mcp-api-svc",
+    "message": "Save Policy mcp-w6-acp:722"
+   },
+   {
+    "time": 1792562356,
+    "domain": "A1C73DF083538DB71097000000000000",
+    "auditId": "00000000-0000-0ed3-0000-000000020967",
+    "subSystem": "Policies > Security policies > Access Control > Policy Editor",
+    "source": "192.0.2.200",
+    "snapshotId": "00000000-0000-0ed3-0000-000000000721",
+    "username": "mcp-api-svc",
+    "message": "Save Policy mcp-w6-hygiene-acp:721"
+   },
+   {
+    "time": 1792558798,
+    "domain": "A1C73DF083538DB71097000000000000",
+    "auditId": "00000000-0000-0ed3-0000-000000019718",
+    "subSystem": "Policies > Security policies > Access Control > Policy Editor",
+    "source": "localhost",
+    "username": "Firepower System",
+    "message": "Policy mcp-w6-bulk-acp Assigned to Device : mcp-w6-bulk-spoke3"
+   },
+   {
+    "time": 1792540922,
+    "domain": "A1C73DF083538DB71097000000000000",
+    "auditId": "00000000-0000-0ed3-0000-000000019410",
+    "subSystem": "Policies > Security policies > Access Control > Policy Editor",
+    "source": "192.0.2.200",
+    "snapshotId": "00000000-0000-0ed3-0000-000000000682",
+    "username": "mcp-api-svc",
+    "message": "Save Policy mcp-w6-acp;Assigned to device(s) - mcp-ftd1;UnAssigned from device(s) - mcp-ftd1 is unassigned from policy mcp-test-ftd-acp:682"
+   },
+   {
+    "time": 1792540572,
+    "domain": "A1C73DF083538DB71097000000000000",
+    "auditId": "00000000-0000-0ed3-0000-000000019247",
+    "subSystem": "Policies > Security policies > Access Control > Policy Editor",
+    "source": "192.0.2.200",
+    "username": "mcp-api-svc",
+    "message": "Create Policy mcp-w6-acp"
+   }
+  ],
+  "paging": {
+   "offset": 0,
+   "limit": 100,
+   "count": 8,
+   "pages": 1
+  }
+ },
+ "jobs": {
+  "items": [
+   {
+    "id": "00000000-0000-0ed3-0000-021474998019",
+    "jobName": "Deploy_Job_147",
+    "jobStatus": "DEPLOYED",
+    "jobType": "DEPLOYMENT",
+    "startTime": "2026-10-21T06:16:14Z",
+    "endTime": "2026-10-21T06:16:45Z",
+    "user": "mcp-api-svc",
+    "deploymentNote": "W6 live-B2 F69: NetFlow, banner, ICMP and HTTPS access on mcp-w6-ps",
+    "deviceList": [
+     {
+      "deviceName": "mcp-ftd1",
+      "deviceUUID": "43d57cc8-c9c6-11f1-858d-a03accd83568",
+      "deploymentStatus": "SUCCEEDED",
+      "deployedVersion": 14
+     }
+    ],
+    "type": "JobHistory"
+   },
+   {
+    "id": "00000000-0000-0ed3-0000-021474997240",
+    "jobName": "Deploy_Job_146",
+    "jobStatus": "DEPLOYED",
+    "jobType": "DEPLOYMENT",
+    "startTime": "2026-10-21T06:11:32Z",
+    "endTime": "2026-10-21T06:12:00Z",
+    "user": "mcp-api-svc",
+    "deploymentNote": "W6 live-B2: F70 replace mcp-w6-a->b + F69 DNS group mcp-w6-dns + FQDN rule",
+    "deviceList": [
+     {
+      "deviceName": "mcp-ftd1",
+      "deviceUUID": "43d57cc8-c9c6-11f1-858d-a03accd83568",
+      "deploymentStatus": "SUCCEEDED",
+      "deployedVersion": 13
+     }
+    ],
+    "type": "JobHistory"
+   },
+   {
+    "id": "00000000-0000-0ed3-0000-021474982094",
+    "jobName": "Deploy_Job_143",
+    "jobStatus": "DEPLOYED",
+    "jobType": "DEPLOYMENT",
+    "startTime": "2026-10-21T05:45:49Z",
+    "endTime": "2026-10-21T05:46:17Z",
+    "user": "mcp-api-svc",
+    "deploymentNote": "W6 live-B1 F66: mcp-w6-ps connection syslog ids 302013-302021",
+    "deviceList": [
+     {
+      "deviceName": "mcp-ftd1",
+      "deviceUUID": "43d57cc8-c9c6-11f1-858d-a03accd83568",
+      "deploymentStatus": "SUCCEEDED",
+      "deployedVersion": 12
+     }
+    ],
+    "type": "JobHistory"
+   }
+  ],
+  "paging": {
+   "offset": 0,
+   "limit": 25,
+   "count": 3,
+   "pages": 1
+  }
+ },
+ "si": {
+  "items": [
+   {
+    "id": "00000000-0000-0ed3-0000-021474963162",
+    "type": "SecurityIntelligencePolicy",
+    "urls": {
+     "allowlist": [
+      {
+       "url": {
+        "name": "Domain-Do-Not-Block-List-for-URL-mcp-test-leaf",
+        "id": "916cc1ba-c9d7-11f1-b4f6-cdbc6f180443",
+        "type": "SIURLList"
+       }
+      },
+      {
+       "url": {
+        "name": "Global Do-Not-Block List for URL",
+        "id": "5915d129-0d33-4e9c-969a-eab3cde32156",
+        "type": "SIURLList"
+       }
+      }
+     ],
+     "blocklist": [
+      {
+       "url": {
+        "name": "Domain-Block-List-for-URL-mcp-test-leaf",
+        "id": "9236e33c-c9d7-11f1-b4f6-cdbc6f180443",
+        "type": "SIURLList"
+       }
+      },
+      {
+       "url": {
+        "name": "Global Block List for URL",
+        "id": "127dc4a2-1ea3-4423-a02d-1f02069828ac",
+        "type": "SIURLList"
+       }
+      }
+     ],
+     "blocklistLogging": {
+      "enableLogging": true,
+      "sendLogsToSyslogServer": false,
+      "sendLogsToEventViewer": true
+     }
+    },
+    "networks": {
+     "allowlist": [
+      {
+       "network": {
+        "name": "Domain-Do-Not-Block-List-mcp-test-leaf",
+        "id": "8f05bd1e-c9d7-11f1-b4f6-cdbc6f180443",
+        "type": "SINetworkList"
+       }
+      },
+      {
+       "network": {
+        "name": "Global Do-Not-Block List",
+        "id": "d8eea83e-6167-11e1-a154-589de99bfdf1",
+        "type": "SINetworkList"
+       }
+      }
+     ],
+     "blocklist": [
+      {
+       "network": {
+        "name": "Domain-Block-List-mcp-test-leaf",
+        "id": "8f3e82fc-c9d7-11f1-b4f6-cdbc6f180443",
+        "type": "SINetworkList"
+       }
+      },
+      {
+       "network": {
+        "name": "Global Block List",
+        "id": "c76556bc-6167-11e1-88e8-479de99bfdf1",
+        "type": "SINetworkList"
+       }
+      }
+     ],
+     "blocklistLogging": {
+      "enableLogging": true,
+      "sendLogsToSyslogServer": false,
+      "sendLogsToEventViewer": true
+     }
+    },
+    "metadata": {
+     "timestamp": 1792574677626
+    },
+    "dnsPolicy": {
+     "blocklistLogging": {
+      "enableLogging": true,
+      "sendLogsToSyslogServer": false,
+      "sendLogsToEventViewer": true
+     },
+     "id": "dc906e6e-69ed-11e4-82ce-87dc73eef419",
+     "name": "DNS Block List Policy",
+     "type": "DNSPolicy"
+    }
+   }
+  ],
+  "paging": {
+   "offset": 0,
+   "limit": 25,
+   "count": 1,
+   "pages": 1
+  }
+ },
+ "ha_monitored": {
+  "items": [
+   {
+    "name": "management",
+    "id": "00000000-0000-0ed3-0000-021474923968",
+    "type": "MonitoredInterface",
+    "metadata": {
+     "interfaceUuid": "00000000-0000-0ed3-0000-021474904435",
+     "interfaceName": "Management0/0",
+     "interfaceType": "PHYSICAL"
+    },
+    "monitorForFailures": true
+   },
+   {
+    "name": "outside",
+    "id": "00000000-0000-0ed3-0000-021474923966",
+    "type": "MonitoredInterface",
+    "metadata": {
+     "interfaceUuid": "00000000-0000-0ed3-0000-021474904431",
+     "interfaceName": "Ethernet0/0",
+     "interfaceType": "PHYSICAL"
+    },
+    "ipv4Configuration": {
+     "activeIPv4Address": "192.0.2.218",
+     "activeIPv4Mask": "18",
+     "standbyIPv4Address": "192.0.2.219"
+    },
+    "monitorForFailures": true
+   },
+   {
+    "name": "inside",
+    "id": "00000000-0000-0ed3-0000-021474923967",
+    "type": "MonitoredInterface",
+    "metadata": {
+     "interfaceUuid": "00000000-0000-0ed3-0000-021474904432",
+     "interfaceName": "Ethernet0/1",
+     "interfaceType": "PHYSICAL"
+    },
+    "ipv4Configuration": {
+     "activeIPv4Address": "198.51.100.1",
+     "activeIPv4Mask": "24",
+     "standbyIPv4Address": "198.51.100.2"
+    },
+    "monitorForFailures": true
+   }
+  ],
+  "paging": {
+   "offset": 0,
+   "limit": 25,
+   "count": 3,
+   "pages": 1
+  }
+ },
+ "deployable_row_trimmed": {
+  "isDeploying": false,
+  "version": "1792584036476",
+  "id": "1bcefc02-ca81-11f1-9c58-8639fcd7b26d",
+  "name": "mcp-sdwan-t1-spoke1",
+  "device": {
+   "id": "1bcefc02-ca81-11f1-9c58-8639fcd7b26d",
+   "type": "SENSOR",
+   "name": "mcp-sdwan-t1-spoke1",
+   "keepLocalEvents": false
+  },
+  "deviceMembers": [
+   {
+    "id": "1bcefc02-ca81-11f1-9c58-8639fcd7b26d",
+    "type": "SENSOR",
+    "name": "mcp-sdwan-t1-spoke1",
+    "keepLocalEvents": false
+   }
+  ],
+  "domain": {
+   "uuid": "a1c73df0-8353-8db7-1097-000000000000",
+   "name": "Global>mcp-test-leaf",
+   "id": "a1c73df0-8353-8db7-1097-000000000000",
+   "type": "Domain"
+  },
+  "policyStatusList": [
+   {
+    "upToDate": false,
+    "policy": {
+     "name": "mcp-sdwan-acp",
+     "id": "00000000-0000-0ed3-0000-021474856047",
+     "type": "PG.FIREWALL.NGFWAccessControlPolicy"
+    },
+    "modifiedUserInfoList": [
+     {
+      "lastModifiedTime": 1792556320835,
+      "userName": "System"
+     }
+    ],
+    "trafficInterrupting": false,
+    "versionTimeStamp": 1792556320695
+   },
+   {
+    "upToDate": true,
+    "policy": {
+     "name": "Build 426 - 2026-03-24 09:29:08",
+     "type": "VDB"
+    },
+    "trafficInterrupting": false
+   },
+   {
+    "upToDate": false,
+    "policy": {
+     "name": " lsp-rel-20261019-1844",
+     "type": "RuleUpdate"
+    },
+    "trafficInterrupting": false
+   }
+  ],
+  "canBeDeployed": true,
+  "upToDate": false,
+  "trafficInterruption": "NO",
+  "type": "DeployableDevice"
+ }
+}

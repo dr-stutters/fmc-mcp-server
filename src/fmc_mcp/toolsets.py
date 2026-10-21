@@ -184,7 +184,8 @@ CATALOGUE: dict[str, tuple[str, tuple[str, ...]]] = {
         ),
     ),
     "platform": (
-        "platform settings: syslog, connection logging, NTP, SNMP, DNS, NetFlow, SSH/HTTPS/ICMP, banner",
+        "platform settings: syslog, connection logging, NTP, SNMP, DNS, NetFlow, SSH/HTTPS/ICMP, banner, "
+        "hardening",
         (
             "fmc_configure_dns",
             "fmc_configure_mgmt_access",
@@ -195,6 +196,7 @@ CATALOGUE: dict[str, tuple[str, tuple[str, ...]]] = {
             "fmc_configure_syslog",
             "fmc_create_platform_settings_policy",
             "fmc_get_platform_settings",
+            "fmc_hardening_check",
             "fmc_set_access_logging",
             "fmc_set_banner",
         ),
@@ -340,6 +342,7 @@ AREA_OF: dict[str, str] = {tool: area for area, tools in TOOLSETS.items() for to
 # areas for optional steps (the instructions say those are missing); tests check these areas are among
 # the ones its rendered text uses.
 PROMPT_TOOLSETS: dict[str, frozenset[str]] = {
+    "fmc_compliance_evidence": frozenset({"migrate", "platform"}),
     "fmc_firewall_health_review": frozenset({"troubleshoot"}),
     "fmc_ha_failover_check": frozenset({"ha"}),
     "fmc_onboard_branch": frozenset({"deploy", "devices", "sdwan"}),
