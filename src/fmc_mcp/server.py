@@ -31,6 +31,7 @@ from fmc_mcp.tools import (
     device_config,
     device_export,
     device_groups,
+    device_snapshot,
     devices,
     dns,
     dynamic_objects,
@@ -192,6 +193,11 @@ Workflows:
   fmc_export_device_config (one device or HA pair by section: interfaces, routing, policies, NAT,
   platform settings, VPN, overrides, out-of-band changes; secrets masked; FMC_BUNDLE_DIR keeps it) ->
   fmc_diff_device_config(a=<export>) against live, or (a=<device>, b=<device | export | template>).
+- Change window before/after evidence: fmc_device_snapshot(devices, label='before') (routing table,
+  interface state, failover, IKEv2/IPsec SAs, tunnels, hit counts, health alerts, deployed version,
+  optional running-config sections; about ten requests per device) -> the change and deploy ->
+  fmc_device_snapshot(label='after') -> fmc_diff_device_config(a=<before>, b=<after>) per device: routes
+  lost, tunnels down, interface changes, new alerts, hit-count deltas.
 - Health: fmc_list_devices, fmc_device_health, fmc_list_vpn_tunnels; "what changed or broke in the
   last hour?": fmc_recent_activity (health alerts + audit + deployments), fmc_list_health_alerts.
   A full ranked review of the estate: the fmc_firewall_health_review prompt.
@@ -284,6 +290,7 @@ REGISTER: list[Callable[[ToolRegistrar], None]] = [
     sdwan.register,
     templates.register,
     device_export.register,
+    device_snapshot.register,
     sdwan_status.register,
     vpn_status.register,
     activity.register,

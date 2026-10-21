@@ -81,6 +81,7 @@ CATALOGUE: dict[str, tuple[str, tuple[str, ...]]] = {
             "fmc_delete_device_group",
             "fmc_delete_device_template",
             "fmc_delete_interface",
+            "fmc_device_snapshot",
             "fmc_diff_device_config",
             "fmc_export_device_config",
             "fmc_get_device",
