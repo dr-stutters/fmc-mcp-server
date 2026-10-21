@@ -3,14 +3,17 @@ and age; fmc_pending_changes says when FMC doesn't count the device as deployabl
 real stuck cluster deployment (tests/fixtures/deploy_in_progress.json)."""
 
 import copy
+import json
 import time
 from typing import Any
 
 import httpx
 import respx
 
+from fmc_mcp._core.formatting import max_chars
 from fmc_mcp._core.testing import call_tool
 from fmc_mcp.server import create_server
+from fmc_mcp.tools.deploy import CHANGE_TEXT_CAP, CHANGES_PER_ROW
 
 from .conftest import CFG, fixture, items, make_settings
 
@@ -148,3 +151,41 @@ async def test_job_start_times_in_other_iso_forms(fmc: respx.MockRouter) -> None
     (row,) = data["in_progress"]
     assert row["probably_stuck"] is None and "could not be read" in row["note"] and "running_for" not in row
     assert "probably_stuck" not in data
+
+
+async def test_a_huge_pending_change_is_cut_to_fit(fmc: respx.MockRouter) -> None:
+    """W6 live (FMC 10.0.1, 2026-10-21): after an LSP install, mcp-ftd-identity's pending changes held a
+    Snort 3 network analysis policy UPDATE whose inspectorData value was 115 KB; the tool said it truncated
+    the output (it dropped other rows) but still answered 115,521 characters, over the client's limit."""
+    lab(fmc)
+    inspector = json.dumps(
+        {"inspectors": [{"name": f"binder-{i}", "rules": ["x" * 40] * 20} for i in range(120)]}
+    )
+    assert len(inspector) > 100_000
+    nap = {
+        "entityName": "Balanced Security and Connectivity",
+        "entityType": "Snort3NapPolicy",
+        "action": "UPDATE",
+        "lastUpdatedByUsers": [{"name": "admin", "type": "User"}],
+        "valueUpdated": [{"fieldName": "inspectorData", "oldValue": inspector[:-50], "newValue": inspector}],
+    }
+    many = {
+        "entityName": "mcp-w6-acp",
+        "entityType": "NGFWAccessControlPolicy",
+        "action": "UPDATE",
+        "valueUpdated": [{"fieldName": f"rule {i}", "oldValue": "a", "newValue": "b"} for i in range(45)],
+    }
+    small = {"entityName": "mcp-w6-tr-now", "entityType": "TimeRange", "action": "ADD"}
+    fmc.get(f"{CFG}/deployment/deployabledevices/{IDENTITY}/pendingchanges").mock(
+        return_value=items([nap, many, small])
+    )
+    data = await call("fmc_pending_changes", {"device": "mcp-ftd-identity"})
+    assert len(json.dumps(data)) < max_chars()
+    rows = {r["entity"]: r for r in data["results"]}
+    assert set(rows) == {"Balanced Security and Connectivity", "mcp-w6-acp", "mcp-w6-tr-now"}  # none dropped
+    (line,) = rows["Balanced Security and Connectivity"]["changes"]
+    assert line.startswith("inspectorData: {") and line.endswith(" more characters]")
+    assert len(line) < CHANGE_TEXT_CAP + 50
+    assert len(rows["mcp-w6-acp"]["changes"]) == CHANGES_PER_ROW and rows["mcp-w6-acp"]["changes_total"] == 45
+    assert "changes_total" not in rows["mcp-w6-tr-now"]
+    assert "deployment preview shows them whole" in data["note"]
