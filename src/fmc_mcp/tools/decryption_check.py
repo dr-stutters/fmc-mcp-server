@@ -131,9 +131,12 @@ def matches_if(r: dict[str, Any]) -> list[str]:
 
 
 async def rc4_blockers(app: FmcApp, rules: list[dict[str, Any]], domain: str | None) -> list[str]:
-    """Block rules among `rules` (those above the decrypt rule) whose cipher suite lists hold RC4 suites:
-    FTD resets a session whose server picks RC4 there, before the Unsupported Cipher Suite action is
-    reached (live on FTD 10.0: the lab's only-rc4 case was reset by the cipher rule, not the action)."""
+    """Block rules among `rules` (those above the decrypt rule) whose cipher suite lists hold RC4 suites.
+    FTD stops a session whose server picks RC4 there only while the Unsupported Cipher Suite action lets it
+    through (DO_NOT_DECRYPT, or inherited from a Do-not-decrypt default); when that action is BLOCK or
+    BLOCK_WITH_RESET, it stops the session first, under the decrypt rule. Live on FTD 10.0 (the lab's only-rc4
+    case): reset by block-weak-ciphers with the action inherited, by resign-stepup with flow status
+    Unsupported Cipher Suite with BLOCK_WITH_RESET, the list holding RC4 both times."""
     out: list[str] = []
     for r in rules:
         objs = (r.get("cipherSuiteLists") or {}).get("objects") or []
@@ -165,7 +168,21 @@ def undecryptable_check(pol: dict[str, Any], rc4_rules: list[str] | None = None)
     rc4 = eff.get("unsupported_cipher_suite", default)
     inherited = raw.get("unsupportedCipherSuite") in (None, "INHERIT_DEFAULT_ACTION")
     lead = "If the session can't be decrypted, the policy's Undecryptable Actions decide instead of the rule."
-    if rc4_rules:
+    if rc4 in BLOCKING:
+        # FTD 10.0 applies a blocking Unsupported Cipher Suite action before a cipher Block rule above the
+        # decrypt rule gets the session (see rc4_blockers)
+        verb = "reset" if rc4 == "BLOCK_WITH_RESET" else "blocked"
+        head = (
+            f"{lead} Unsupported cipher suite (RC4, for example) -> {rc4}"
+            + (" (inherited from the default action)" if inherited else "")
+            + f": a session whose server picks RC4 is {verb} by this action under the decrypt rule (its "
+            "connection event: the decrypt rule, flow status 'Unsupported Cipher Suite')"
+        )
+        if rc4_rules:
+            whose = "its cipher suite list holds" if len(rc4_rules) == 1 else "their cipher suite lists hold"
+            head += f", not by {', '.join(rc4_rules)} above it, although {whose} RC4"
+        head += "."
+    elif rc4_rules:
         head = (
             f"{lead} A session whose server picks RC4 is stopped first by {', '.join(rc4_rules)}: its cipher "
             f"suite list holds RC4. Unsupported cipher suite -> {rc4} applies to the other suites FTD can't "

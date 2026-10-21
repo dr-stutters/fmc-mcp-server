@@ -429,18 +429,20 @@ def undecryptable(out: dict[str, Any]) -> str:
     return str(next(c for c in out["readiness"] if c["check"] == "undecryptable sessions")["detail"])
 
 
-async def test_check_names_the_unsupported_cipher_action(fmc: respx.MockRouter) -> None:
-    """The lab's only-rc4 case (the resign rule takes the flow; RC4 can't be decrypted), in the three
-    states of the live proof."""
-    inherit = {
-        **FINAL_POL,
-        "undecryptableActions": {
-            **FINAL_POL["undecryptableActions"],
-            "unsupportedCipherSuite": "INHERIT_DEFAULT_ACTION",
-        },
+def unsupported_cipher(policy: dict[str, Any], action: str) -> dict[str, Any]:
+    return {
+        **policy,
+        "undecryptableActions": {**policy["undecryptableActions"], "unsupportedCipherSuite": action},
     }
-    # deploy 1: block-weak-ciphers on a list with RC4 -> FTD reset only-rc4 there (SSLRuleName
-    # block-weak-ciphers), before the Unsupported Cipher Suite action
+
+
+async def test_check_names_the_unsupported_cipher_action(fmc: respx.MockRouter) -> None:
+    """The lab's only-rc4 case (the resign rule takes the flow; RC4 can't be decrypted) in the states of the
+    live proofs: a cipher Block rule listing RC4 stops it only while Unsupported Cipher Suite lets it
+    through; with BLOCK or BLOCK_WITH_RESET that action stops it first, under the decrypt rule."""
+    inherit = unsupported_cipher(FINAL_POL, "INHERIT_DEFAULT_ACTION")
+    # #285, deploy 1: block-weak-ciphers on a list with RC4 and 'inherit' -> FTD reset only-rc4 there
+    # (tls-events: Block With Reset block-weak-ciphers)
     check_mock(fmc, RULES, inherit)
     out = await check.run(FLOW)
     assert out["verdict"] == "Rule 3 'resign-stepup' -> DECRYPT_RESIGN"
@@ -456,9 +458,44 @@ async def test_check_names_the_unsupported_cipher_action(fmc: respx.MockRouter) 
     detail = undecryptable(await check.run(FLOW))
     assert "-> DO_NOT_DECRYPT (inherited from the default action): a session whose server picks RC4" in detail
     assert "decryption errors -> BLOCK" in detail
-    # deploy 2: BLOCK_WITH_RESET -> only-rc4 reset by resign-stepup, flow status Unsupported Cipher Suite
+    # #313, deploy 1: block-weak-ciphers on tls-weak-preset (RC4, code 5) and BLOCK_WITH_RESET -> only-rc4
+    # reset by the action (tls-events: Block With Reset resign-stepup, Unsupported Cipher Suite)
+    preset = {"name": PRESET_LIST["name"], "id": PRESET_LIST["id"], "type": "CipherSuiteList"}
+    on_preset = [
+        {**r, "cipherSuiteLists": {"objects": [preset]}} if r["name"] == "block-weak-ciphers" else r
+        for r in FINAL_RULES
+    ]
+    reset_by_action = (
+        "Unsupported cipher suite (RC4, for example) -> BLOCK_WITH_RESET: a session whose server picks RC4 "
+        "is reset by this action under the decrypt rule (its connection event: the decrypt rule, flow status "
+        "'Unsupported Cipher Suite')"
+    )
+    for rules, lst in ((on_preset, "tls-weak-preset"), (RULES, "tls-weak-ciphers")):
+        check_mock(fmc, rules, FINAL_POL)
+        detail = undecryptable(await check.run(FLOW))
+        assert reset_by_action in detail
+        not_by = (
+            f", not by rule 2 'block-weak-ciphers' ({lst}) above it, although its cipher suite list holds"
+        )
+        assert not_by + " RC4." in detail
+        assert "stopped first" not in detail
+    # #285, deploy 2 (and #313's end state): tls-weak-no-rc4 and BLOCK_WITH_RESET -> reset by the action
     check_mock(fmc, FINAL_RULES, FINAL_POL)
-    assert "-> BLOCK_WITH_RESET." in undecryptable(await check.run(FLOW))
+    detail = undecryptable(await check.run(FLOW))
+    assert detail.split(" Others: ")[0].endswith(reset_by_action + ".")
+    # BLOCK, and BLOCK_WITH_RESET inherited from the default action: the same, worded for each
+    check_mock(fmc, RULES, unsupported_cipher(FINAL_POL, "BLOCK"))
+    detail = undecryptable(await check.run(FLOW))
+    assert "-> BLOCK: a session whose server picks RC4 is blocked by this action" in detail
+    assert "not by rule 2 'block-weak-ciphers'" in detail
+    check_mock(fmc, RULES, {**inherit, "defaultAction": {"policyAction": "BLOCK_WITH_RESET"}})
+    detail = undecryptable(await check.run(FLOW))
+    assert (
+        "-> BLOCK_WITH_RESET (inherited from the default action): a session whose server picks RC4" in detail
+    )
+    # DO_NOT_DECRYPT set explicitly lets RC4 through to the Block rule, like 'inherit'
+    check_mock(fmc, RULES, unsupported_cipher(FINAL_POL, "DO_NOT_DECRYPT"))
+    assert "stopped first by rule 2 'block-weak-ciphers'" in undecryptable(await check.run(FLOW))
 
 
 async def test_check_flags_resign_above_block(fmc: respx.MockRouter) -> None:
