@@ -525,6 +525,10 @@
       "tier": "write",
       "title": "Contain a host (quarantine)"
     },
+    "fmc_cpu_profile": {
+      "tier": "write",
+      "title": "Snort 3 CPU profiling"
+    },
     "fmc_create_access_policy": {
       "tier": "write",
       "title": "Create access control policy"
@@ -925,6 +929,10 @@
       "tier": "read",
       "title": "Get platform settings"
     },
+    "fmc_get_profiler_results": {
+      "tier": "read",
+      "title": "Snort profiler results"
+    },
     "fmc_get_ravpn": {
       "tier": "read",
       "title": "Get remote-access VPN"
@@ -1208,6 +1216,10 @@
     "fmc_si_block": {
       "tier": "write",
       "title": "Security Intelligence block/unblock"
+    },
+    "fmc_snort_profile": {
+      "tier": "write",
+      "title": "Snort rule profiling"
     },
     "fmc_status": {
       "tier": "read",
