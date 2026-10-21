@@ -1,22 +1,30 @@
 {
- "_source": "Shape for W6N #272 unit tests, not a recording: the access rule is W6 live-B1's GET of mcp-w6-appfilter-rule (app_filters_fmc10.json rule_with_filter, FMC 10.0.1) with its named filter swapped for an inline one; the inline condition is FMC 10.0.1's answer to fmc_create_application_filter (appConditions[0], with the `search` text FMC adds). The spec types both as IAppCondition (IAccessRuleApplicationsContainer.inlineApplicationFilters). Stage 2 records the real GET of a disabled mcp-w6-* rule with an inline filter and replaces `rule_with_inline_filter` with it.",
+ "_source": "W6N #272. rule_with_inline_filter: recorded live on FMC 10.0.1 (Global/mcp-test-leaf, 2026-10-21, W6N live-B): the answer to the POST of the disabled rule mcp-w6-inline-filter in mcp-w6-acp, equal to its GET by id (links dropped). FMC stores the inline condition without a `type` and without the `search` text it adds to a named filter's appConditions, and adds applicationDefaultPort false. create_request: fmc_create_access_rule's body for that rule (its preview, which the live agent POSTed as is). spec_example_inline_filter: the 10.0.1 spec's IAppCondition example (every attribute).",
  "rule_with_inline_filter": {
   "metadata": {
-   "ruleIndex": 6,
+   "ruleIndex": 13,
    "section": "Default",
    "category": "--Undefined--",
-   "timestamp": 1792561150355,
-   "domain": "Global \\ mcp-test-leaf"
+   "accessPolicy": {
+    "name": "mcp-w6-acp",
+    "id": "00000000-0000-0ed3-0000-021474963108",
+    "type": "AccessPolicy"
+   },
+   "timestamp": 1792606649640,
+   "domain": {
+    "name": "Global \\ mcp-test-leaf",
+    "id": "a1c73df0-8353-8db7-1097-000000000000",
+    "type": "Domain"
+   }
   },
   "enabled": false,
   "advancedLogging": {},
-  "sendEventsToFMC": true,
+  "sendEventsToFMC": false,
   "enableSyslog": false,
   "applications": {
    "applicationDefaultPort": false,
    "inlineApplicationFilters": [
     {
-     "search": "Risks:High, Very High",
      "risks": [
       {
        "type": "ApplicationRisk",
@@ -34,32 +42,70 @@
   },
   "destinationDynamicObjects": {},
   "logBegin": false,
-  "logEnd": true,
+  "logEnd": false,
   "logFiles": false,
   "sourceDynamicObjects": {},
-  "sourceNetworks": {
-   "objects": [
-    {
-     "type": "Network",
-     "overridable": false,
-     "name": "mcp-test-ftd-inside-net",
-     "id": "00000000-0000-0ed3-0000-021474841321"
+  "commentHistoryList": [
+   {
+    "date": "2026-10-21T18:17:29.000+0000",
+    "comment": "live-B #272: inline application filter shape (disabled, deleted after the read)",
+    "user": {
+     "name": "mcp-api-svc",
+     "type": "User"
     }
-   ]
-  },
-  "destinationNetworks": {
-   "literals": [
-    {
-     "type": "Host",
-     "value": "198.51.100.35"
-    }
-   ]
-  },
+   }
+  ],
   "vlanTags": {},
-  "action": "ALLOW",
+  "action": "BLOCK",
+  "variableSet": {
+   "name": "Default-Set",
+   "id": "76fa83ea-c972-11e2-8be8-8e45bb1343c0",
+   "type": "VariableSet"
+  },
   "type": "AccessRule",
-  "name": "mcp-w6-inline-rule",
-  "id": "00000000-0000-0ed3-0000-000268434601"
+  "name": "mcp-w6-inline-filter",
+  "id": "00000000-0000-0ed3-0000-000268434574"
+ },
+ "create_request": {
+  "name": "mcp-w6-inline-filter",
+  "type": "AccessRule",
+  "action": "BLOCK",
+  "enabled": false,
+  "applications": {
+   "inlineApplicationFilters": [
+    {
+     "risks": [
+      {
+       "id": "HIGH",
+       "type": "ApplicationRisk",
+       "name": "High"
+      },
+      {
+       "id": "VERY_HIGH",
+       "type": "ApplicationRisk",
+       "name": "Very High"
+      }
+     ]
+    }
+   ]
+  },
+  "logBegin": false,
+  "logEnd": false,
+  "sendEventsToFMC": false,
+  "newComments": [
+   "live-B #272: inline application filter shape (disabled, deleted after the read)"
+  ]
+ },
+ "read_summary": {
+  "index": 13,
+  "section": "Default",
+  "name": "mcp-w6-inline-filter",
+  "action": "BLOCK",
+  "enabled": false,
+  "applications": [
+   "inline-filter:risk High or Very High"
+  ],
+  "comments": 1
  },
  "spec_example_inline_filter": {
   "risks": [
