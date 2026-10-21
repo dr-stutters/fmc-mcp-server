@@ -1,0 +1,101 @@
+{
+ "_source": "Shape for W6N #272 unit tests, not a recording: the access rule is W6 live-B1's GET of mcp-w6-appfilter-rule (app_filters_fmc10.json rule_with_filter, FMC 10.0.1) with its named filter swapped for an inline one; the inline condition is FMC 10.0.1's answer to fmc_create_application_filter (appConditions[0], with the `search` text FMC adds). The spec types both as IAppCondition (IAccessRuleApplicationsContainer.inlineApplicationFilters). Stage 2 records the real GET of a disabled mcp-w6-* rule with an inline filter and replaces `rule_with_inline_filter` with it.",
+ "rule_with_inline_filter": {
+  "metadata": {
+   "ruleIndex": 6,
+   "section": "Default",
+   "category": "--Undefined--",
+   "timestamp": 1792561150355,
+   "domain": "Global \\ mcp-test-leaf"
+  },
+  "enabled": false,
+  "advancedLogging": {},
+  "sendEventsToFMC": true,
+  "enableSyslog": false,
+  "applications": {
+   "applicationDefaultPort": false,
+   "inlineApplicationFilters": [
+    {
+     "search": "Risks:High, Very High",
+     "risks": [
+      {
+       "type": "ApplicationRisk",
+       "name": "High",
+       "id": "HIGH"
+      },
+      {
+       "type": "ApplicationRisk",
+       "name": "Very High",
+       "id": "VERY_HIGH"
+      }
+     ]
+    }
+   ]
+  },
+  "destinationDynamicObjects": {},
+  "logBegin": false,
+  "logEnd": true,
+  "logFiles": false,
+  "sourceDynamicObjects": {},
+  "sourceNetworks": {
+   "objects": [
+    {
+     "type": "Network",
+     "overridable": false,
+     "name": "mcp-test-ftd-inside-net",
+     "id": "00000000-0000-0ed3-0000-021474841321"
+    }
+   ]
+  },
+  "destinationNetworks": {
+   "literals": [
+    {
+     "type": "Host",
+     "value": "198.51.100.35"
+    }
+   ]
+  },
+  "vlanTags": {},
+  "action": "ALLOW",
+  "type": "AccessRule",
+  "name": "mcp-w6-inline-rule",
+  "id": "00000000-0000-0ed3-0000-000268434601"
+ },
+ "spec_example_inline_filter": {
+  "risks": [
+   {
+    "name": "Very Low",
+    "id": "VERY_LOW",
+    "type": "ApplicationRisk"
+   }
+  ],
+  "productivities": [
+   {
+    "name": "Medium",
+    "id": "MEDIUM",
+    "type": "ApplicationProductivity"
+   }
+  ],
+  "applicationTypes": [
+   {
+    "name": "Client Application",
+    "id": "CLIENT",
+    "type": "ApplicationType"
+   }
+  ],
+  "categories": [
+   {
+    "name": "collaboration",
+    "id": "28",
+    "type": "ApplicationCategory"
+   }
+  ],
+  "tags": [
+   {
+    "name": "edonkey",
+    "id": "111",
+    "type": "ApplicationTag"
+   }
+  ]
+ }
+}
