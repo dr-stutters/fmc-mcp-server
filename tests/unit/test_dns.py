@@ -214,6 +214,29 @@ async def test_threat_posture_names_the_dns_policy_itself(fmc: respx.MockRouter)
     assert out["security_intelligence"]["dns_policy"] == "Default DNS Policy"  # not the SI reference's name
     dns = next(f for f in out["findings"] if f["check"] == "dns_no_talos")
     assert dns["detail"].startswith("DNS policy 'Default DNS Policy' blocks no Talos DNS category")
+    # a read-only DNS policy of the domain itself: not "FMC's read-only default" (#250), a policy of its own
+    assert dns["detail"].endswith("(it is read-only in this domain)."), dns["detail"]
+    assert dns["fix"].startswith("fmc_create_dns_policy + fmc_set_dns_policy("), dns["fix"]
+
+
+async def test_threat_posture_on_an_inherited_dns_policy_names_the_owner(fmc: respx.MockRouter) -> None:
+    """The inherited branch (#235) keeps its wording: the owner domain, read-only here."""
+    from .conftest import TOP, TOP_CFG, as_leaf, empty
+    from .test_threat_posture import mock_lab, posture
+
+    mock_lab(fmc)
+    as_leaf(fmc)
+    fmc.get(f"{TOP_CFG}/assignment/policyassignments").mock(return_value=empty())
+    si, _ = leaf_recordings()  # the leaf's view: Global owns the Default DNS Policy
+    dns = si["dns_policy"]
+    assert dns["metadata"]["domain"]["id"] == TOP
+    fmc.get(f"{CFG}/policy/dnspolicies/{dns['id']}").mock(return_value=httpx.Response(200, json=dns))
+    out = await posture(fmc)
+    dns = next(f for f in out["findings"] if f["check"] == "dns_no_talos")
+    assert dns["detail"] == (
+        "DNS policy 'Default DNS Policy' blocks no Talos DNS category (it belongs to domain 'Global', "
+        "read-only here)."
+    ), dns["detail"]
 
 
 # --- fmc_set_si_lists on a DNS policy the domain inherits (#250) --------------------------------------
