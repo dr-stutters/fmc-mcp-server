@@ -60,6 +60,27 @@ async def test_inherited_object_is_blocked_in_child_domain(fmc: respx.MockRouter
     assert not put.called
 
 
+async def test_a_builtin_in_a_child_domain_is_blocked_as_builtin(fmc: respx.MockRouter) -> None:
+    """#273: FMC 10.0.1 marks its built-ins readOnly DOMAIN in a leaf like Global's own objects
+    (leaf_inherited_objects.json); a write to one said "defined in domain 'Global' ... Repeat with
+    domain='Global'", where FMC refuses it too. The fixed id makes it a built-in."""
+    rows = fixture("leaf_inherited_objects")["networkgroups"]["items"]
+    builtin = next(r for r in rows if r["name"] == "any")
+    fmc.get(f"{CHILD_CFG}/object/networkgroups").mock(return_value=items([builtin]))
+    fmc.get(f"{CHILD_CFG}/object/hosts").mock(
+        return_value=items([{**HOST, "metadata": {"domain": CHILD_REF}}])
+    )
+    fmc.get(f"{CHILD_CFG}/object/operational/usage").mock(return_value=items([]))
+    put = fmc.put(f"{CHILD_CFG}/object/networkgroups/{builtin['id']}")
+    async with Client(server()) as c:
+        out = await run(
+            c, "fmc_update_group", {"group": "any", "kind": "network", "add": ["h1"], "domain": "Branch"}
+        )
+    assert out["status"] == "blocked", out
+    assert out["blockers"] == ["'any' is an FMC built-in (system) object, read-only in every domain."]
+    assert not put.called
+
+
 async def test_owner_domain_edit_shows_domain(fmc: respx.MockRouter) -> None:
     fmc.get(f"{CFG}/object/hosts").mock(return_value=items([HOST]))
     fmc.get(f"{CFG}/object/operational/usage").mock(return_value=items([]))
