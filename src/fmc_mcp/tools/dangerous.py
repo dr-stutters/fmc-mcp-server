@@ -49,6 +49,38 @@ Wait = Annotated[bool, Field(description="Wait for the FMC task to finish (other
 
 
 FAILED_WORDS = ("fail", "cancel", "error", "interrupt", "abort")
+# FMC validates every pending change before it answers a deployment request (live, FMC 10.0.1: four FTDs
+# after an LSP update took longer than the client's default 30 s), so the request gets this long.
+DEPLOY_POST_TIMEOUT = 180.0
+
+
+async def deploy_timeout(
+    app: FmcApp, err: UpstreamTimeout, device_ids: list[str], domain: str | None
+) -> UpstreamTimeout:
+    """What a deployment request that timed out means: FMC may have refused it or may still start it. One
+    read of the deployable list says whether a target is deploying now."""
+    try:
+        rows = await deployable(app, domain)
+    except UpstreamError:
+        rows = None
+    wanted = {i.lower() for i in device_ids}
+    busy = sorted(
+        str(r.get("name") or (r.get("device") or {}).get("name"))
+        for r in rows or []
+        if r.get("isDeploying") and str((r.get("device") or {}).get("id", "")).lower() in wanted
+    )
+    if rows is None:
+        now = "FMC's deployable list could not be read either"
+    elif busy:
+        now = f"FMC lists {', '.join(busy)} as deploying now: a deployment did start"
+    else:
+        now = "FMC lists none of them as deploying now, so probably nothing was deployed"
+    return UpstreamTimeout(
+        f"{err} (no answer in {DEPLOY_POST_TIMEOUT:.0f} s; FMC validates the pending changes before it "
+        f"answers). {now}. Before deploying again, check fmc_list_deployable_devices (deploying) and "
+        "fmc_list_deployments(since_hours=1), then preview again: the confirm token was used.",
+        err.status_code,
+    )
 
 
 def task_state(task: dict[str, Any]) -> tuple[bool, str | None]:
@@ -427,11 +459,17 @@ def register(reg: ToolRegistrar) -> None:
             details["warnings_ignored"] = ignored
         path = await app.config_path("deployment/deploymentrequests", domain)
 
+        async def post(payload: dict[str, Any]) -> Any:
+            try:
+                return await app.api.post(path, payload, timeout=DEPLOY_POST_TIMEOUT)
+            except UpstreamTimeout as e:
+                raise await deploy_timeout(app, e, device_ids, domain) from e
+
         async def apply() -> Any:
             check_deploy_window(settings, "fmc_deploy")
             # Always try without ignoring warnings first: when FMC has none, that is the deploy.
             try:
-                resp = await app.api.post(path, {**body, "ignoreWarning": False})
+                resp = await post({**body, "ignoreWarning": False})
             except ValidationFailed as e:
                 if "warning" not in str(e).lower():
                     raise
@@ -456,7 +494,7 @@ def register(reg: ToolRegistrar) -> None:
                         + ". Preview again with ignore_warning=true to review them.",
                         e.status_code,
                     ) from e
-                resp = await app.api.post(path, body)
+                resp = await post(body)
             return await finish(ctx, app, resp, wait, domain, "deployment")
 
         return await fmc_preview(

@@ -8,7 +8,7 @@ import respx
 from fastmcp import Client
 
 from fmc_mcp.server import create_server
-from fmc_mcp.tools.dangerous import task_state
+from fmc_mcp.tools.dangerous import DEPLOY_POST_TIMEOUT, task_state
 
 from .conftest import ACP_ID, CFG, empty, items, make_settings
 
@@ -80,6 +80,29 @@ async def test_deploy_failed_task_is_error(fmc: respx.MockRouter) -> None:
         preview = await run(c, "fmc_deploy", {})
         r = await c.call_tool("fmc_deploy", {"confirm": preview["confirm"]}, raise_on_error=False)
     assert r.is_error and "validation" in r.content[0].text  # type: ignore[union-attr]
+
+
+async def test_deploy_request_timeout_says_whether_anything_started(fmc: respx.MockRouter) -> None:
+    """Live (Wave 6, FMC 10.0.1, four FTDs after an LSP update): FMC validated the deployment request for
+    longer than the client's 30 s, the POST timed out and no job was created. The request now gets
+    DEPLOY_POST_TIMEOUT, and a timeout says what FMC lists as deploying and what to check before
+    deploying again, instead of a bare 'request timed out'."""
+    lists = fmc.get(f"{CFG}/deployment/deployabledevices").mock(
+        side_effect=[items([PENDING]) for _ in range(5)] + [items([{**PENDING, "isDeploying": True}])]
+    )  # per round: the preview, the confirm's re-check, the read after the timeout
+    post = fmc.post(f"{CFG}/deployment/deploymentrequests").mock(side_effect=httpx.ReadTimeout("slow"))
+    async with Client(server()) as c:
+        for expect in (
+            "lists none of them as deploying now, so probably nothing was deployed",
+            "lists ftd1 as deploying now: a deployment did start",
+        ):
+            preview = await run(c, "fmc_deploy", {})
+            r = await c.call_tool("fmc_deploy", {"confirm": preview["confirm"]}, raise_on_error=False)
+            text = r.content[0].text  # type: ignore[union-attr]
+            assert r.is_error and "FMC request timed out: POST" in text and expect in text
+            assert "fmc_list_deployments(since_hours=1)" in text and "preview again" in text
+    assert post.call_count == 2 and lists.call_count == 6  # a POST is never re-sent on a timeout
+    assert post.calls.last.request.extensions["timeout"]["read"] == DEPLOY_POST_TIMEOUT
 
 
 async def test_deploy_nothing_pending_is_blocked(fmc: respx.MockRouter) -> None:
