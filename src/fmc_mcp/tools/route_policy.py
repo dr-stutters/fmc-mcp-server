@@ -644,15 +644,40 @@ def apply_filters(
         "default_originate_route_map" in resolved
         and (resolved["default_originate_route_map"] is not None or "neighborDefaultOriginate" in nf)
     ):  # a route map turns default-originate on; 'none' only drops the condition of an existing one
-        do = dict(nf.get("neighborDefaultOriginate") or {})
+        current = nf.get("neighborDefaultOriginate")
+        do = dict(current or {})
         if "default_originate_route_map" in resolved:
             ref = resolved["default_originate_route_map"]
             if ref is None:
                 do.pop("routeMap", None)
             else:
                 do["routeMap"] = ref
+        if not do.get("routeMap") and do != current:
+            # 'none' on a default-originate with a route map would drop the default route itself
+            removing = "default_originate_route_map" in resolved and bool((current or {}).get("routeMap"))
+            raise InvalidRequest(default_originate_needs_route_map(removing=removing))
         nf["neighborDefaultOriginate"] = do
     return {**n, "neighborFiltering": nf}
+
+
+def default_originate_needs_route_map(*, removing: bool) -> str:
+    """Why default-originate without a route map is refused. FMC 10.0.1 answers 200 to a neighbour's
+    neighborDefaultOriginate without routeMap ({} or {type: neighbordefaultoriginate}) and stores
+    neighborFiltering {}: no 'default-originate' reaches the device. With a route map it is stored and
+    deployed as 'neighbor ... default-originate route-map ...' (live 2026-10-21, W6N live-B)."""
+    if removing:
+        return (
+            "default_originate_route_map='none' would leave default-originate without a route map, which "
+            "FMC 10.0.1 drops: the neighbor would stop getting the default route. To stop it, pass "
+            "default_originate=false; to change the condition, name another route map."
+        )
+    return (
+        "FMC 10.0.1 keeps a BGP neighbor's default-originate only with a route map: without one it "
+        "answers OK and stores nothing, so the device never sends the default route. Pass "
+        "default_originate_route_map=<route map>. For an unconditional default route, use a route map "
+        "with one permit entry and no match: fmc_create_route_map(name='<name>', entries=[{'action': "
+        "'permit'}])."
+    )
 
 
 # --- redistribution ----------------------------------------------------------------------------
