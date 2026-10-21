@@ -389,7 +389,8 @@ def register(reg: ToolRegistrar) -> None:
                     f"collector_name {collector_name!r} is not used."
                 )
             existing = next((c for c in collectors if same(c.get("collectorHost") or {}, target)), None)
-            block = None
+            block: dict[str, Any] | None = None
+            refused: list[str] = []
             if interfaces:
                 block, refused = await _netflow_interfaces(app, interfaces, domain)
                 blockers += refused
@@ -399,7 +400,7 @@ def register(reg: ToolRegistrar) -> None:
                 if block:
                     existing["interfaces"] = _zones(block)
             else:
-                if not interfaces:
+                if not block and not refused:  # none given, or only blank names
                     raise InvalidRequest(
                         "Give the interfaces (interface groups) the new collector is reached through."
                     )

@@ -464,6 +464,13 @@ async def test_netflow_blockers(fmc: respx.MockRouter) -> None:
     async with Client(server()) as c:
         with pytest.raises(ToolError, match="interfaces"):
             await run(c, "fmc_configure_netflow", {"policy": "mcp-w6-ps", "collector": "192.0.2.50"})
+        # only blank names: no collector with empty interfaces, the same refusal
+        with pytest.raises(ToolError, match="interfaces"):
+            await run(
+                c,
+                "fmc_configure_netflow",
+                {"policy": "mcp-w6-ps", "collector": "192.0.2.50", "interfaces": [" ", ""]},
+            )
         on = await run(c, "fmc_configure_netflow", {"policy": "mcp-w6-ps", "enable": True})
         assert on["status"] == "blocked" and "needs a collector" in on["blockers"][0]
         new = {"policy": "mcp-w6-ps", "collector": "192.0.2.50", "interfaces": ["mcp-w6-nf-ifg"]}
