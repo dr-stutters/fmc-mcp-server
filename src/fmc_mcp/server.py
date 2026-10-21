@@ -29,6 +29,7 @@ from fmc_mcp.tools import (
     decryption_check,
     deploy,
     device_config,
+    device_export,
     devices,
     dns,
     dynamic_objects,
@@ -180,6 +181,10 @@ Workflows:
 - "What is this host talking to right now, and who is it?": fmc_live_connections (device, host/user/port;
   from the device's syslog buffer because FMC 10.0.1 refuses 'show conn') -> fmc_user_identity_sessions
   (user <-> IP from FMC's identity view) -> fmc_packet_tracer for the verdict.
+- "Is branch B configured like branch A?" / "what changed on this FTD since yesterday?":
+  fmc_export_device_config (one device or HA pair by section: interfaces, routing, policies, NAT,
+  platform settings, VPN, overrides, out-of-band changes; secrets masked; FMC_BUNDLE_DIR keeps it) ->
+  fmc_diff_device_config(a=<export>) against live, or (a=<device>, b=<device | export | template>).
 - Health: fmc_list_devices, fmc_device_health, fmc_list_vpn_tunnels; "what changed or broke in the
   last hour?": fmc_recent_activity (health alerts + audit + deployments), fmc_list_health_alerts.
   A full ranked review of the estate: the fmc_firewall_health_review prompt.
@@ -269,6 +274,7 @@ REGISTER: list[Callable[[ToolRegistrar], None]] = [
     vpn.register,
     sdwan.register,
     templates.register,
+    device_export.register,
     sdwan_status.register,
     vpn_status.register,
     activity.register,

@@ -128,6 +128,7 @@ There are 180 tools when every tier is enabled (79 read, 90 write, 11 dangerous;
 | Change management | `fmc_change_tickets` (status, tickets, a ticket's changes and validation) |
 | Admin | `fmc_upgrade_status` (versions, upgrade history, packages), `fmc_list_backups`, `fmc_get_health_policy`, `fmc_list_users`, `fmc_list_object_overrides` |
 | Analysis | `fmc_rule_lookup`, `fmc_shadowed_rules`, `fmc_policy_audit` (ranked hygiene findings with a fix each), `fmc_threat_posture` (intrusion and file policies and modes, TRUST/fastpath bypasses, SI and DNS coverage, decryption, device licences; findings with a fix each), `fmc_export_access_rules` (rows or CSV, re-importable) |
+| Device configuration | `fmc_export_device_config` (one FTD or HA pair by section: interfaces, routing, assigned policies, NAT rules, platform settings, VPN memberships, object overrides, out-of-band changes, versions and licences; versioned YAML, secrets masked), `fmc_diff_device_config` (two devices, a device and a template, or an export against the device now; field by field per section) |
 | Policy bundles | `fmc_export_policy_bundle` (an access policy with everything it references, as versioned YAML), `fmc_diff_policy_bundle` (two bundles, or a bundle against live FMC), `fmc_plan_policy_bundle_import` (what an import would create, reuse, update or need first) |
 | Deployment | `fmc_list_deployable_devices`, `fmc_pending_changes`, `fmc_list_deployments` |
 | API spec | `fmc_search_spec`, `fmc_get_definition`, `fmc_api_call` (GET only) |
@@ -333,6 +334,20 @@ MD5 password, because FMC returns it masked and a PUT would replace it, unless y
   of `mcp-test-acp` costs about 16 requests. With `FMC_BUNDLE_DIR` set, each export is also written there
   and both tools accept a bundle's file name; unset (the default, right for shared hosts) nothing is
   written.
+- **Is branch B configured like branch A? What changed on this FTD?** `fmc_export_device_config(device)`
+  returns one YAML document (format `fmc-device-config`, version 1) by section: device (model, version,
+  mode, licences, tier, Snort/VDB/LSP), interfaces of every kind keyed by hardware name, routing (static
+  routes keyed by interface and destination, BGP, OSPF, EIGRP, PBR, ECMP, BFD, VRFs), assigned policies,
+  the NAT policy's rules, the platform settings, VPN topology memberships, per-device object overrides,
+  out-of-band changes, and for an HA pair its failover settings. Ids are stripped, items sorted and secrets
+  masked (SNMP communities, BGP and OSPF keys, PSKs, secrets on CLI lines), so an unchanged device exports
+  with the same `digest`. `fmc_diff_device_config(a, b)` compares two devices, a device with a device
+  template (only what the template defines; its variables as applied to `a`), or a stored export with the
+  device now (`b` omitted): added, removed and changed items per section with `fields` {path: {from, to}}.
+  One export costs about 30 requests (a two-device diff about 50) and reads only FMC, so a disconnected
+  FTD exports too. With `FMC_BUNDLE_DIR` set, exports are written there (`device-<name>-<time>.yaml`) and
+  both tools take the file name. The `fmc_firewall_health_review` prompt's `compare_with` adds this as
+  a drift check.
 - **Send FTD logs to a SIEM:** `fmc_configure_syslog` -> `fmc_assign_policy(kind='platform_settings')`
   -> `fmc_deploy` -> `fmc_run_show_command('show running-config logging')`.
 - **Show it in a PoC:** [docs/demos.md](docs/demos.md) has three 15-minute stories as prompt sequences (a change
@@ -404,7 +419,7 @@ including nested groups, to ranges, then walk the rules in order. The results ar
 | `FMC_DEPLOY_WINDOW` | off | Maintenance window for changes that reach devices (deploy, rollback, register, delete device, HA). Same syntax as `MCP_CHANGE_WINDOW`. See "Deploy safety rails". |
 | `FMC_TICKET` | | Change-management ticket id sent with every request (FMC 7.6+ change management; `fmc_ticket` sets it at run time) |
 | `FMC_UI_USERNAME`, `FMC_UI_PASSWORD` | | Optional FMC web-UI user for `fmc_test_realm` / `fmc_download_realm` (role with Integrations > Realms modify). Must differ from `FMC_USERNAME`: a UI login ends the same user's REST session. |
-| `FMC_BUNDLE_DIR` | off | Directory `fmc_export_policy_bundle` also writes bundles to (and `fmc_diff_policy_bundle` reads bundle file names from). Off: bundles are only returned inline. |
+| `FMC_BUNDLE_DIR` | off | Directory `fmc_export_policy_bundle` and `fmc_export_device_config` also write bundles and device exports to (and `fmc_diff_policy_bundle` / `fmc_diff_device_config` read their file names from). Off: both are only returned inline. |
 | `FMC_PKI_DIR` | off | Directory on the server host that `fmc_import_certificate_files` reads PEM certificate, key and passphrase files from (keys never pass through MCP). Off: file imports are refused; `fmc_create_internal_ca` still works (FMC generates the key). In Docker, bind-mount it read-only (see `docker-compose.yml`). |
 | `FMC_TOOLSETS` | every area | Load only some areas of the tool surface, e.g. `troubleshoot,objects,deploy` or `all,-sdwan,-tls` (see "Toolsets"). The tiers still apply on top. |
 | `FMC_ALLOW_IGNORE_WARNING` | `false` | Allow `fmc_deploy(ignore_warning=true)` (the preview must then list the FMC warnings being ignored) |
