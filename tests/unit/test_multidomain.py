@@ -399,3 +399,42 @@ def test_bundle_in_child_domain_names_globals_objects_only() -> None:
     # The leaf's own object: FMC's metadata calls the leaf 'Global \\ mcp-test-leaf'.
     assert rows["mcp-fw-ha-inside-net"]["metadata"]["domain"]["name"] == "Global \\ mcp-test-leaf"
     assert "domain" not in object_entry(rows["mcp-fw-ha-inside-net"], here)
+
+
+def test_bundle_entry_does_not_depend_on_the_exporting_users_role() -> None:
+    # A read-only API user sees every object as readOnly reason RBAC (bundle_acp.json, recorded with such a
+    # user): the bundle must still name Global's own objects and leave out FMC's built-ins, as for a writer.
+    import copy
+
+    from fmc_mcp.tools.bundle import object_entry
+
+    rec = fixture("bundle_acp")
+    ro_rows = {
+        str(o["name"]): o
+        for path, page in rec.items()
+        if path.endswith(("/object/hosts", "/object/protocolportobjects"))
+        for o in page["items"]
+    }
+    here = "Global/mcp-test-leaf"
+    assert ro_rows["mcp-test-db"]["metadata"]["readOnly"]["reason"] == "RBAC"
+    assert object_entry(ro_rows["mcp-test-db"], here)["domain"] == "Global"
+    assert "domain" not in object_entry(ro_rows["AOL"], here)
+    for name in ("mcp-test-db", "IPv4-Private-10.0.0.0-8", "mcp-test-servers"):
+        writer = leaf_rows()[name]  # reason DOMAIN
+        reader = copy.deepcopy(writer)
+        reader["metadata"]["readOnly"] = {"state": True, "reason": "RBAC"}
+        assert object_entry(reader, here) == object_entry(writer, here), name
+
+
+async def test_delete_inherited_builtin_says_system_only(fmc: respx.MockRouter) -> None:
+    aol = fixture("unused_inherited_builtins")["leaf_unused"][0]
+    fmc.get(f"{CHILD_CFG}/object/protocolportobjects").mock(return_value=items([aol]))
+    fmc.get(f"{CHILD_CFG}/object/operational/usage").mock(
+        return_value=httpx.Response(400, json={"error": {"messages": [{"description": "not supported"}]}})
+    )
+    async with Client(server()) as c:
+        out = await run(c, "fmc_delete_object", {"object": "AOL", "type": "port", "domain": "Branch"})
+    assert out["status"] == "blocked"
+    assert out["blockers"] == [
+        "Read-only system object."
+    ]  # not "repeat with domain='Global'": it is read-only there too

@@ -216,27 +216,34 @@ def smart_license_row(item: dict[str, Any]) -> dict[str, Any]:
 # FMC gives the objects it creates ids whose third group is 0ed3 ("00000000-0000-0ed3-0000-021474836604",
 # "005056B9-1CC8-0ed3-0000-034211017460"); its built-in network and port objects ship with fixed ids, the
 # same on every FMC (any-ipv4 cb7116e8-66a6-480b-8f9b-295191a0940a, AOL 1834d812-38bb-11e2-86aa-62f0c593a59a).
+# FMC 10.0.1 ships no built-in FQDN, ICMP or port-group objects; security zones get v1 UUIDs without 0ed3.
 _FMC_CREATED_ID = re.compile(r"^[0-9a-f]{8}-[0-9a-f]{4}-0ed3-[0-9a-f]{4}-[0-9a-f]{12}$", re.IGNORECASE)
 # The families FMC ships built-in objects of (networks, network groups, ports).
 _BUILTIN_FAMILIES = ("network", "port")
+
+
+def is_builtin_object(obj: dict[str, Any]) -> bool:
+    """Whether an object is one of FMC's built-in network or port objects (any, RFC1918, HTTP, ...), from
+    its type and id alone: the same answer in every domain and for every API user's role (metadata.readOnly
+    says SYSTEM, DOMAIN or RBAC depending on both)."""
+    t = type_for(obj.get("type"))
+    oid = str(obj.get("id") or "")
+    return bool(oid) and t is not None and t.family in _BUILTIN_FAMILIES and not _FMC_CREATED_ID.match(oid)
 
 
 def is_system(obj: dict[str, Any]) -> bool:
     """True for FMC's built-in read-only objects (any, RFC1918 groups, well-known ports, ...).
 
     A child domain sees everything an ancestor owns as readOnly with reason DOMAIN, FMC's built-ins
-    included (FMC 10.0.1: HTTP, SSH and IPv4-Private-10.0.0.0-8 say SYSTEM only in Global). Those are
-    network and port objects with FMC's fixed ids, so an inherited network or port object whose id FMC
-    didn't generate is a built-in. Any other inherited object (Global's own hosts, groups, ...) is not a
-    system object; writes to it are blocked with the owner domain instead (fmc_mcp.preview)."""
+    included (FMC 10.0.1: HTTP, SSH and IPv4-Private-10.0.0.0-8 say SYSTEM only in Global); for those the
+    type and id decide (is_builtin_object). Any other inherited object (Global's own hosts, groups, ...) is
+    not a system object; writes to it are blocked with the owner domain instead (fmc_mcp.preview)."""
     ro = (obj.get("metadata") or {}).get("readOnly")
     if not (isinstance(ro, dict) and ro.get("state")):
         return False
     if ro.get("reason") != "DOMAIN":
         return True
-    t = type_for(obj.get("type"))
-    oid = str(obj.get("id") or "")
-    return bool(oid) and t is not None and t.family in _BUILTIN_FAMILIES and not _FMC_CREATED_ID.match(oid)
+    return is_builtin_object(obj)
 
 
 def domain_path(name: str) -> str:
