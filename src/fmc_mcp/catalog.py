@@ -89,11 +89,13 @@ class Catalog:
     complete: bool = True
     _loaded: set[str] = field(default_factory=set)
 
-    async def _load(self, path: str) -> None:
+    async def _load(self, path: str) -> bool:
+        """Load one collection (cached for CACHE_TTL); True when it was read from FMC."""
         if path in self._loaded:
-            return
+            return False
         full = await self.app.config_path(path, self.domain)
         cached = self.app.cache_get(full)
+        fetched = cached is None
         if cached is None:
             page = await self.app.all(full, cap=CATALOG_CAP)
             cached = (page.items, page.complete)
@@ -104,6 +106,12 @@ class Catalog:
             if o.get("id"):
                 self.objects[o["id"]] = o
         self._loaded.add(path)
+        return fetched
+
+    async def load(self, *paths: str) -> int:
+        """Any other object collections (FQDN, URL, URL group, ...), like load_networks; how many were
+        read from FMC (the rest came from the cache)."""
+        return sum([await self._load(p) for p in paths])
 
     async def load_networks(self) -> None:
         # The networkaddresses aggregate leaves out ranges (FMC 10.0), so load them separately.

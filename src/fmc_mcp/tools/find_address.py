@@ -206,16 +206,71 @@ class Tracer:
         return best, count
 
 
-@dataclass
-class Search:
+@dataclass(kw_only=True)
+class Findings:
+    """The ranked rows of a 'where does it appear?' search (fmc_find_address, fmc_find_indicator): each
+    area's reader adds rows with add(); result() ranks them (match, then the narrowest value, then the
+    area's place in `area_order`) and builds the reply with what was searched, skipped and not resolved."""
+
     app: FmcApp
     domain: str | None
-    tracer: Tracer
-    include_broad: bool
+    include_broad: bool = False
+    area_order: dict[str, int] = field(default_factory=lambda: AREA_ORDER)
     hits: list[dict[str, Any]] = field(default_factory=list)
     searched: dict[str, Any] = field(default_factory=dict)
     skipped_broad: int = 0
     warnings: list[str] = field(default_factory=list)
+
+    def add(self, area: str, m: Match, where: str, side: str | None = None, via: str | None = None) -> None:
+        if m.broad and not self.include_broad:
+            self.skipped_broad += 1
+            return
+        self.hits.append(
+            {
+                "match": m.relation,
+                "area": area,
+                "where": where,
+                "side": side,
+                "via": via if via is not None else (" > ".join(m.path) or "literal"),
+                "value": m.value,
+                "_key": (*m.key(), self.area_order.get(area, 99)),
+            }
+        )
+
+    def result(
+        self,
+        head: dict[str, Any],
+        *,
+        limits: str,
+        notes: dict[str, Any] | None = None,
+        limit: int,
+        offset: int,
+        fmt: ResponseFormat,
+        columns: list[str] = COLUMNS,
+    ) -> ToolResult:
+        """Rows ranked 1..n; `head` leads the extra fields, then by_area and searched, the hidden broad
+        matches, `notes`, the warnings and `limits`."""
+        hits = sorted(self.hits, key=lambda h: h["_key"])
+        rows = []
+        for i, h in enumerate(hits, 1):
+            row = {"rank": i, **{k: v for k, v in h.items() if k != "_key" and v is not None}}
+            rows.append(row)
+        by_area: dict[str, int] = {}
+        for h in hits:
+            by_area[h["area"]] = by_area.get(h["area"], 0) + 1
+        extra: dict[str, Any] = {**head, "by_area": by_area, "searched": self.searched}
+        if self.skipped_broad:
+            extra["hidden_broad_matches"] = self.skipped_broad
+        extra.update(notes or {})
+        if self.warnings:
+            extra["warning"] = " ".join(dict.fromkeys(self.warnings))
+        extra["limits"] = limits
+        return list_result(page_of(rows, limit=limit, offset=offset), fmt=fmt, extra=extra, columns=columns)
+
+
+@dataclass(kw_only=True)
+class Search(Findings):
+    tracer: Tracer
     dynamic: dict[str, Match | None] = field(default_factory=dict)
     dynamic_budget: int = DYNAMIC_CAP
     # interface IP -> every 'device interface' holding it, from the interfaces area (a static route's
@@ -234,22 +289,6 @@ class Search:
         if not held:
             return None
         return f"next hop: {held[0]}" if len(held) == 1 else f"next hop ambiguous: {', '.join(held)}"
-
-    def add(self, area: str, m: Match, where: str, side: str | None = None, via: str | None = None) -> None:
-        if m.broad and not self.include_broad:
-            self.skipped_broad += 1
-            return
-        self.hits.append(
-            {
-                "match": m.relation,
-                "area": area,
-                "where": where,
-                "side": side,
-                "via": via if via is not None else (" > ".join(m.path) or "literal"),
-                "value": m.value,
-                "_key": (*m.key(), AREA_ORDER.get(area, 99)),
-            }
-        )
 
     async def dynamic_match(self, oid: str, name: str) -> Match | None:
         """The best mapping of one dynamic object (mappings read once per call, within the cap)."""
@@ -296,7 +335,7 @@ def _rule_where(policy: str, rule: dict[str, Any], action: Any) -> str:
     return where
 
 
-async def _policies(s: Search, kind: str, path: str, one: str | None, label: str) -> list[dict[str, Any]]:
+async def _policies(s: Findings, kind: str, path: str, one: str | None, label: str) -> list[dict[str, Any]]:
     """One named policy, or every policy of a kind (up to POLICY_CAP)."""
     if one:
         return [await resolve_policy(s.app, kind, one, s.domain)]
@@ -704,7 +743,7 @@ def register(reg: ToolRegistrar) -> None:
         wanted = set(areas or AREAS)
         cat = Catalog(app, domain)
         await cat.load_networks()
-        s = Search(app, domain, Tracer(cat, want), include_broad)
+        s = Search(app=app, domain=domain, tracer=Tracer(cat, want), include_broad=include_broad)
         dev = await resolve_device(app, device, domain) if device else None
 
         acps: list[dict[str, Any]] = []
@@ -756,27 +795,15 @@ def register(reg: ToolRegistrar) -> None:
         if "vpn" in wanted:
             await _vpn(s)
         not_checked = [n for n in [await _identity(s)] if n] if "identity" in wanted else []
-
-        hits = sorted(s.hits, key=lambda h: h["_key"])
-        rows = []
-        for i, h in enumerate(hits, 1):
-            row = {"rank": i, **{k: v for k, v in h.items() if k != "_key" and v is not None}}
-            rows.append(row)
-        by_area: dict[str, int] = {}
-        for h in hits:
-            by_area[h["area"]] = by_area.get(h["area"], 0) + 1
-        extra: dict[str, Any] = {"address": interval_text(want), "by_area": by_area, "searched": s.searched}
-        if s.skipped_broad:
-            extra["hidden_broad_matches"] = s.skipped_broad
-        if not_checked:
-            extra["not_checked"] = not_checked
         if not cat.complete:
             s.warnings.append(
                 "The object catalog was larger than the scan cap; some objects were not resolved."
             )
-        if s.warnings:
-            extra["warning"] = " ".join(dict.fromkeys(s.warnings))
-        extra["limits"] = LIMITS
-        return list_result(
-            page_of(rows, limit=limit, offset=offset), fmt=response_format, extra=extra, columns=COLUMNS
+        return s.result(
+            {"address": interval_text(want)},
+            limits=LIMITS,
+            notes={"not_checked": not_checked} if not_checked else None,
+            limit=limit,
+            offset=offset,
+            fmt=response_format,
         )
