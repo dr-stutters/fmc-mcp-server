@@ -24,6 +24,7 @@ OTHER = {"name": "Global", "id": "99999999-0000-4000-8000-000000000001", "type":
 HERE = {"name": "Global", "id": "e276abec-e0f2-11e3-8169-6d9ed49b625f", "type": "Domain"}
 ACP = "00000000-0000-0ed3-0000-000000000a01"
 NATP = "00000000-0000-0ed3-0000-000000000b01"
+PFP = "00000000-0000-0ed3-0000-000000000c01"
 DEV = "4fc3908a-0000-4000-8000-000000000d01"
 
 
@@ -369,17 +370,31 @@ async def test_replace_everywhere_in_order(fmc: respx.MockRouter) -> None:
     usage = [
         {"type": "NetworkAddress", "name": "mcp-w6-grp", "id": "g1"},
         {"type": "AccessPolicy", "name": "mcp-w6-acp", "id": ACP},
+        {"type": "PrefilterPolicy", "name": "mcp-w6-pf", "id": PFP},
         {"type": "FTDNatPolicy", "name": "mcp-w6-nat", "id": NATP},
         {**REC["usage_static_route"]["items"][0], "id": DEV},
     ]
     lab = lab_for_replace(fmc, usage)
+    pf_rule = {
+        "id": "p1",
+        "name": "mcp-w6-p1",
+        "type": "PrefilterRule",
+        "action": "FASTPATH",
+        "ruleType": "PREFILTER",
+        "metadata": {"ruleIndex": 1, "domain": HERE},
+        "destinationNetworks": {"objects": [ref(OLD)]},
+    }
+    fmc.get(f"{CFG}/policy/prefilterpolicies/{PFP}/prefilterrules").mock(return_value=items([pf_rule]))
     seen: list[tuple[str, Any]] = []
+    params: list[dict[str, str]] = []
 
     def put(request: httpx.Request) -> httpx.Response:
         seen.append((request.url.path.split("/v1/domain/")[1].split("/", 1)[1], json.loads(request.content)))
+        params.append(dict(request.url.params))
         return httpx.Response(200, json={})
 
     fmc.put(f"{CFG}/policy/accesspolicies/{ACP}/accessrules").mock(side_effect=put)
+    fmc.put(f"{CFG}/policy/prefilterpolicies/{PFP}/prefilterrules/p1").mock(side_effect=put)
     fmc.put(f"{CFG}/object/networkgroups/g1").mock(side_effect=put)
     fmc.put(f"{CFG}/policy/ftdnatpolicies/{NATP}/autonatrules/{lab['nat']['id']}").mock(side_effect=put)
     fmc.put(f"{CFG}/devices/devicerecords/{DEV}/routing/ipv4staticroutes/{lab['route']['id']}").mock(
@@ -391,31 +406,56 @@ async def test_replace_everywhere_in_order(fmc: respx.MockRouter) -> None:
         p = await run(c, "fmc_replace_object", args)
         assert p["status"] == "preview", p
         got = p["preview"]
-        assert got["counts"] == {"access_rules": 2, "groups": 1, "nat_rules": 1, "static_routes": 1}
+        assert got["counts"] == {
+            "access_rules": 2,
+            "prefilter_rules": 1,
+            "groups": 1,
+            "nat_rules": 1,
+            "static_routes": 1,
+        }
         assert got["changes"]["access_rules"] == [
             {"where": "mcp-w6-acp #1 mcp-w6-r1", "fields": ["sourceNetworks"]},
             {"where": "mcp-w6-acp #2 mcp-w6-r2", "fields": ["destinationNetworks"]},
         ]
         assert got["changes"]["static_routes"][0]["where"].startswith("mcp-sdwan-t1-spoke1: mcp-w6-a via")
         assert got["found_by"] == "FMC's usage API" and "not_changed" not in got
-        assert got["write_requests"] == 5 and p["blast_radius"] == 6
+        assert got["write_requests"] == 6 and p["blast_radius"] == 7
         out = (await run(c, "fmc_replace_object", {**args, "confirm": p["confirm"]}))["result"]
-    assert out["replaced"] == {"access_rules": 2, "groups": 1, "nat_rules": 1, "static_routes": 1}
+    assert out["replaced"] == {
+        "access_rules": 2,
+        "prefilter_rules": 1,
+        "groups": 1,
+        "nat_rules": 1,
+        "static_routes": 1,
+    }
     assert out["old_deleted"] is True and gone.called
     assert [s[0].split("/")[-1] if "accessrules" not in s[0] else "accessrules" for s in seen] == [
         "accessrules",
+        "p1",
         "g1",
         lab["nat"]["id"],
         lab["route"]["id"],
     ]
-    bulk = seen[0][1]
-    assert [r["id"] for r in bulk] == ["r1", "r2"] and "commentHistoryList" not in bulk[0]
-    assert bulk[0]["sourceNetworks"] == {"objects": [ref(NEW)]}
-    assert bulk[1]["destinationNetworks"]["objects"] == [ref(NEW)]  # already there: the old one just goes
-    assert bulk[1]["destinationNetworks"]["literals"] == [{"type": "Host", "value": "198.51.100.7"}]
-    assert seen[1][1]["objects"] == [ref(NEW), {"id": "x1", "type": "Network", "name": "keep"}]
-    assert seen[2][1]["originalNetwork"] == ref(NEW)
-    assert seen[3][1]["selectedNetworks"] == [ref(NEW)] and "metadata" not in seen[3][1]
+    # access rules: one bulk partial update (the F67 probe's recorded shape), only the changed blocks,
+    # whole blocks (literals kept); the rules' other fields, comments and positions are not sent
+    assert params[0] == {"bulk": "true", "partialUpdate": "true"}
+    assert seen[0][1] == [
+        {"id": "r1", "type": "AccessRule", "sourceNetworks": {"objects": [ref(NEW)]}},
+        {
+            "id": "r2",
+            "type": "AccessRule",
+            # already there: the old one just goes
+            "destinationNetworks": {
+                "objects": [ref(NEW)],
+                "literals": [{"type": "Host", "value": "198.51.100.7"}],
+            },
+        },
+    ]
+    assert params[1] == {} and seen[1][1]["destinationNetworks"] == {"objects": [ref(NEW)]}
+    assert seen[1][1]["action"] == "FASTPATH" and "metadata" not in seen[1][1]  # full rule PUT
+    assert seen[2][1]["objects"] == [ref(NEW), {"id": "x1", "type": "Network", "name": "keep"}]
+    assert seen[3][1]["originalNetwork"] == ref(NEW)
+    assert seen[4][1]["selectedNetworks"] == [ref(NEW)] and "metadata" not in seen[4][1]
 
 
 async def test_replace_reports_references_it_cant_change(fmc: respx.MockRouter) -> None:
@@ -424,6 +464,7 @@ async def test_replace_reports_references_it_cant_change(fmc: respx.MockRouter) 
     usage = [
         {"type": "FTDS2SVpn", "name": "mcp-w6-vpn", "id": "v1"},
         {"type": "AccessPolicy", "name": "mcp-w6-acp", "id": ACP},
+        {"type": "Device", "name": "Static Route Setting under virtual router blue", "id": DEV},
     ]
     lab_for_replace(fmc, usage)
     async with Client(server()) as c:
@@ -436,6 +477,7 @@ async def test_replace_reports_references_it_cant_change(fmc: respx.MockRouter) 
     assert p["preview"]["not_changed"] == [
         "FTDS2SVpn mcp-w6-vpn",
         "AccessPolicy mcp-w6-acp (access_rules not in scope)",
+        f"static routes in virtual router 'blue' of device {DEV}",
     ]
     assert any(b.startswith("delete_old: the old object stays referenced") for b in p["blockers"])
     assert p["preview"]["counts"] == {"groups": 1}
@@ -481,6 +523,66 @@ async def test_replace_blockers(fmc: respx.MockRouter) -> None:
             await run(c, "fmc_replace_object", {"old": "mcp-w6-a", "new": OLD["id"]})
 
 
+async def test_replace_zone_names_interfaces_it_leaves(fmc: respx.MockRouter) -> None:
+    """A zone's interfaces are set on the interface, so they stay in the old zone: the preview says so
+    (rules on the new zone no longer match their traffic) and delete_old is refused. FMC's usage API
+    refuses zones (400), so the policies are searched."""
+    zones = REC["securityzones"]["items"]  # mcp-w6-zone-wan: 2 interfaces; mcp-w6-zone-spare: none
+    fmc.get(f"{CFG}/object/securityzones").mock(return_value=items(zones))
+    fmc.get(f"{CFG}/object/interfacegroups").mock(return_value=items([]))
+    fmc.get(f"{CFG}/object/operational/usage").mock(
+        return_value=httpx.Response(400, json={"error": {"messages": [{"description": "not supported"}]}})
+    )
+    rule = {
+        "id": "r1",
+        "name": "mcp-w6-r1",
+        "type": "AccessRule",
+        "action": "ALLOW",
+        "metadata": {"ruleIndex": 1, "domain": HERE},
+        "sourceZones": {"objects": [ref(zones[0])]},
+    }
+    fmc.get(f"{CFG}/policy/accesspolicies").mock(return_value=items([{"id": ACP, "name": "mcp-w6-acp"}]))
+    fmc.get(f"{CFG}/policy/accesspolicies/{ACP}/accessrules").mock(return_value=items([rule]))
+    args = {
+        "old": "mcp-w6-zone-wan",
+        "new": "mcp-w6-zone-spare",
+        "type": "security_zone",
+        "scope": ["access_rules"],
+    }
+    async with Client(server()) as c:
+        p = await run(c, "fmc_replace_object", args)
+        assert p["status"] == "preview", p
+        assert p["preview"]["counts"] == {"access_rules": 1}
+        (left,) = p["preview"]["not_changed"]
+        assert left.startswith("2 device interface(s) in security_zone 'mcp-w6-zone-wan' (Ethernet0/0)")
+        assert "fmc_update_interface" in left
+        p = await run(c, "fmc_replace_object", {**args, "delete_old": True})
+    assert p["status"] == "blocked"
+    assert any(b.startswith("delete_old: the old object stays referenced") for b in p["blockers"])
+
+
+def test_replace_nat_port_needs_a_port_object() -> None:
+    """NAT port fields are IProtocolPortObject: a port group or ICMP object there is refused before any
+    write (FMC would reject it after the rules and groups had changed)."""
+    from fmc_mcp.tools.object_lifecycle import Walk, make_site, site_blockers
+
+    port = obj("p-old", "mcp-w6-port", "ProtocolPortObject", protocol="TCP", port="8443")
+    group = obj("pg-new", "mcp-w6-ports", "PortObjectGroup")
+    nat = {
+        **obj("n1", "", "FTDManualNatRule"),
+        "originalSource": {"id": "h1", "type": "Host"},
+        "originalDestinationPort": ref(port),
+    }
+    # site_blockers makes no FMC call, so the walk needs no client
+    walk = Walk(None, None, HERE["id"], port, ref(group), {"nat_rules"})  # type: ignore[arg-type]
+    site = make_site("nat_rules", "mcp-w6-nat manual #1", "path", nat, "p-old", ref(group))
+    assert site is not None and site.fields == ["originalDestinationPort"]
+    walk.sites.append(site)
+    (msg,) = site_blockers(walk, group)
+    assert "originalDestinationPort take one TCP/UDP port object, not a PortObjectGroup" in msg
+    assert site_blockers(walk, obj("p-new", "mcp-w6-port2", "ProtocolPortObject")) == []
+
+
 def test_swap_dedupes_and_counts() -> None:
     from fmc_mcp.tools.object_lifecycle import swap
 
@@ -501,7 +603,10 @@ async def test_sync_creates_updates_groups_and_orphans(fmc: respx.MockRouter) ->
         obj("hd", "other-d", "Host", value="192.0.2.4"),
     ]
     fmc.get(f"{CFG}/object/hosts").mock(side_effect=collection(hosts))
-    empty_collections(fmc, "networks", "ranges", "fqdns")
+    fmc.get(f"{CFG}/object/networks").mock(
+        side_effect=collection([obj("n9", "ipam-net-old", "Network", value="198.51.100.0/24")])
+    )
+    empty_collections(fmc, "ranges", "fqdns")
     group = obj(
         "g1",
         "ipam-web",
@@ -543,8 +648,9 @@ async def test_sync_creates_updates_groups_and_orphans(fmc: respx.MockRouter) ->
             },
             {"group": "ipam-new", "type": "network_group", "action": "create", "members": ["ipam-e"]},
         ]
-        assert [o["name"] for o in got["orphans"]] == ["ipam-c"]
-        assert got["summary"]["orphans"] == 1 and p["blast_radius"] == 4
+        # every type of the family is checked, not only the types the rows use
+        assert [o["name"] for o in got["orphans"]] == ["ipam-c", "ipam-net-old"]
+        assert got["summary"]["orphans"] == 2 and p["blast_radius"] == 4
         out = (await run(c, "fmc_import_objects", {**args, "confirm": p["confirm"]}))["result"]
     assert (
         out["created"] == 1
@@ -570,7 +676,7 @@ async def test_sync_problems_and_modes(fmc: respx.MockRouter) -> None:
     fmc.get(f"{CFG}/object/networks").mock(
         side_effect=collection([obj("n1", "ipam-n", "Network", value="192.0.2.0/24")])
     )
-    empty_collections(fmc, "ranges", "fqdns")
+    empty_collections(fmc, "ranges", "fqdns", "networkgroups")
     async with Client(server(dangerous=False)) as c:
         p = await run(
             c,
@@ -579,6 +685,16 @@ async def test_sync_problems_and_modes(fmc: respx.MockRouter) -> None:
         )
         assert p["status"] == "blocked" and "can't change an object's type" in p["blockers"][0]
         assert p["preview"]["orphans"].startswith("not checked")
+        rows = [
+            {"name": "ipam-x", "type": "host", "value": "192.0.2.9", "groups": ["ipam-y", " "]},
+            {"name": "ipam-y", "type": "host", "value": "192.0.2.10"},
+        ]
+        p = await run(c, "fmc_import_objects", {"objects": rows, "mode": "sync"})
+        assert p["status"] == "blocked"
+        assert p["preview"]["problems"] == [
+            "row 1 ('ipam-x'): an empty group name.",
+            "group 'ipam-y': a network object already has that name.",
+        ]
         with pytest.raises(ToolError, match="mode='sync' only"):
             await run(
                 c,

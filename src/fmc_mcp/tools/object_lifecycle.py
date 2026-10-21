@@ -11,7 +11,10 @@ an object, then the object). Value objects, groups and dynamic objects go out wi
 fmc_replace_object (write) is the reference walk behind fmc_where_used and fmc_find_address (F59) turned
 into a change: FMC's usage API names the policies, groups and devices that reference the object; their
 access and prefilter rules, groups, NAT rules and static routes are read and every reference to the old
-object is swapped for the new one, rules and groups first, NAT rules and static routes second.
+object is swapped for the new one, rules and groups first, NAT rules and static routes second. Access rules
+go out as FMC's bulk partial update (`PUT accessrules?bulk=true&partialUpdate=true` with `{id, type, <the
+changed condition blocks>}`), the shape the F67 probe recorded on 10.0.1: atomic per request, and the
+rule's other fields, section, category and position stay as they are.
 """
 
 # No `from __future__ import annotations`: FastMCP inspects signatures at runtime.
@@ -431,7 +434,8 @@ USAGE_AREAS = {
     "ftdnatpolicy": "nat_rules",
 }
 VRF = re.compile(r"virtual router\s+(.+?)\s*$", re.IGNORECASE)
-RULE_CHUNK = 100  # access rules per bulk PUT (FMC applies a batch atomically)
+RULE_CHUNK = 100  # access rules per bulk partial PUT (FMC applies a batch atomically)
+NAT_PORT_TYPES = {"ProtocolPortObject"}  # NAT port fields take one TCP/UDP port object (IProtocolPortObject)
 MAX_SITES = 300
 
 
@@ -479,6 +483,15 @@ class Site:
 
     def row(self) -> dict[str, Any]:
         return {"where": self.where, "fields": self.fields}
+
+    def partial(self) -> dict[str, Any]:
+        """The bulk partial-update body: id, type and only the condition blocks that change (whole blocks,
+        literals included), so FMC keeps every other field and the rule's position."""
+        return {
+            "id": self.item["id"],
+            "type": self.item.get("type") or "AccessRule",
+            **{k: self.desired[k] for k in self.fields},
+        }
 
 
 def make_site(
@@ -713,6 +726,12 @@ def site_blockers(walk: Walk, new: dict[str, Any]) -> list[str]:
         owner = inherited_from(s.item, walk.here)
         if owner:
             out.append(f"{s.where} is defined in domain {owner!r}; FMC changes it only there.")
+        if s.area == "nat_rules":
+            ports = [f for f in s.fields if f.endswith("Port")]
+            if ports and new_type not in NAT_PORT_TYPES:
+                out.append(
+                    f"{s.where}: NAT {', '.join(ports)} take one TCP/UDP port object, not a {new_type}."
+                )
         if s.area == "static_routes":
             if "gateway" in s.fields and new_type != "Host":
                 out.append(f"{s.where}: a static route's gateway must be a host object, not a {new_type}.")
@@ -941,7 +960,7 @@ def register(reg: ToolRegistrar) -> None:
             apply=apply,
         )
 
-    @reg.write(title="Replace an object everywhere")
+    @reg.write(title="Replace an object everywhere", destructive=True)
     async def fmc_replace_object(
         ctx: Context,
         old: Annotated[str, Field(description="The object to replace (name or UUID)")],
@@ -975,8 +994,10 @@ def register(reg: ToolRegistrar) -> None:
         the domain only inherits) the first 25 policies per kind and 30 devices are searched. The preview
         lists every rule, group, NAT rule and route with the fields that change, and what references the
         old object outside the scope (VPN, Security Intelligence, other policy types), which keeps
-        delete_old from running. Applied rules and groups first (access rules in bulk, 100 per request),
-        then NAT rules and static routes; stops at the first failure. Takes effect after a deploy."""
+        delete_old from running; for a zone, so do the device interfaces still in it (they stay in the old
+        zone: move them with fmc_update_interface). Applied rules and groups first (access rules as bulk
+        partial updates, 100 per request), then NAT rules and static routes; stops at the first failure.
+        Takes effect after a deploy."""
         app: FmcApp = get_client(ctx)
         if type is not None and type not in REPLACEABLE:
             raise InvalidRequest(f"{type} objects can't be replaced here; types: {', '.join(REPLACEABLE)}.")
@@ -1002,6 +1023,14 @@ def register(reg: ToolRegistrar) -> None:
         used = await usage_of(app, cur_old, t_old, domain)
         walk = Walk(app, domain, here, cur_old, ref_of(cur_new), wanted)
         await walk.run(t_old.family, used)
+        ifs = (cur_old.get("interfaces") or []) if t_old.family == "zone" else []
+        if ifs:  # interface membership is set on the interface, not in the zone (fmc_update_interface)
+            shown = ", ".join(sorted({ref_label(i) for i in ifs})[:10])
+            walk.not_changed.append(
+                f"{len(ifs)} device interface(s) in {t_old.key} {cur_old.get('name')!r} ({shown}): they stay "
+                "in it, so rules that now name the new one don't match their traffic until "
+                "fmc_update_interface moves them"
+            )
 
         changes: dict[str, list[dict[str, Any]]] = {}
         for s in walk.sites:
@@ -1067,7 +1096,9 @@ def register(reg: ToolRegistrar) -> None:
                         try:
                             if batch[0].bulk:
                                 await app.api.put(
-                                    batch[0].bulk, [s.desired for s in batch], params={"bulk": "true"}
+                                    batch[0].bulk,
+                                    [s.partial() for s in batch],
+                                    params={"bulk": "true", "partialUpdate": "true"},
                                 )
                             else:
                                 await app.api.put(batch[0].path, batch[0].desired)

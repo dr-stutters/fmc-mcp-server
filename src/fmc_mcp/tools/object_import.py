@@ -299,6 +299,9 @@ async def _sync(
             problems.append(f"{where}: {e}")
             continue
         for g in row.groups or []:
+            if not g.strip():
+                problems.append(f"{where}: an empty group name.")
+                continue
             gkey = GROUP_OF[fam]
             entry = want_groups.setdefault((gkey, g.strip().lower()), {"name": g.strip(), "members": []})
             entry["members"].append(row.name)
@@ -352,7 +355,7 @@ async def _sync(
         fam = next(f for f, k in GROUP_OF.items() if k == gkey)
         current = (await load(gkey)).get(glow)
         taken = [k for k in FAMILY_TYPES.get(fam, []) if (await load(k)).get(glow)]
-        if taken:
+        if taken or (fam, glow) in row_type:  # FMC keeps names unique across a family's objects and groups
             problems.append(f"group {info['name']!r}: a {fam} object already has that name.")
             continue
         members = list(dict.fromkeys(info["members"]))
@@ -391,7 +394,16 @@ async def _sync(
     orphans: list[dict[str, Any]] = []
     if pre:
         listed = {(k, low) for (fam, low), k in row_type.items()} | set(want_groups)
-        for key in sorted({k for k in row_type.values()} | {k for k, _ in want_groups}):
+        # every type of the rows' families and their group type, not only the types the rows use: a
+        # network or group under the prefix that the list no longer names is an orphan too
+        families = {fam for fam, _ in row_type}
+        scan = (
+            set(row_type.values())
+            | {k for k, _ in want_groups}
+            | {k for fam in families for k in FAMILY_TYPES.get(fam, [])}
+            | {GROUP_OF[fam] for fam in families if fam in GROUP_OF}
+        )
+        for key in sorted(scan):
             for low, o in (await load(key)).items():
                 if (
                     low.startswith(pre)
