@@ -356,6 +356,15 @@ def _si_rows(si: dict[str, Any]) -> dict[str, Any]:
     }
 
 
+async def si_summary(app: FmcApp, si: dict[str, Any], domain: str | None) -> dict[str, Any]:
+    """_si_rows with the DNS policy's own name, not the SI reference's alias (#204)."""
+    rows = _si_rows(si)
+    ref = si.get("dnsPolicy") or {}
+    if ref.get("id"):
+        rows["dns_policy"] = await dns_policy_name(app, ref, domain)
+    return rows
+
+
 async def _si_policy(app: FmcApp, acp: dict[str, Any], domain: str | None) -> tuple[str, dict[str, Any]]:
     base = await app.config_path(f"{ACCESS}/{acp['id']}/securityintelligencepolicies", domain)
     page = await app.all(base)
@@ -548,7 +557,7 @@ def register(reg: ToolRegistrar) -> None:
             )
         acp = await resolve_in(app, ACCESS, policy, "access policy", domain)
         _, si = await _si_policy(app, acp, domain)
-        out: dict[str, Any] = {"policy": acp.get("name"), **_si_rows(si)}
+        out: dict[str, Any] = {"policy": acp.get("name"), **await si_summary(app, si, domain)}
         used: dict[str, list[str]] = {}
         for kind, (section, key) in SECTION.items():
             for which in ("blocklist", "allowlist"):
@@ -558,7 +567,6 @@ def register(reg: ToolRegistrar) -> None:
                         used.setdefault(rid, []).append(f"{LABEL[kind]} {which[:-4]} list")
         dns_ref = si.get("dnsPolicy") or {}
         if dns_ref.get("id"):
-            out["dns_policy"] = await dns_policy_name(app, dns_ref, domain)
             rules = await all_rules(app, await app.config_path(f"{DNS}/{dns_ref['id']}/dnsrules", domain))
             out["dns_rules"] = [dns_rule_row(r) for r in rules.items] or None
             for r in rules.items:
@@ -701,7 +709,7 @@ def register(reg: ToolRegistrar) -> None:
                         await app.api.delete(f"{paths[kind_of(ref)]}/{ref['id']}")
             return {
                 "policy": acp.get("name"),
-                "si": _si_rows(result if isinstance(result, dict) else body),
+                "si": await si_summary(app, result if isinstance(result, dict) else body, domain),
                 "next": "fmc_deploy to the devices using the policy",
             }
 
@@ -1014,7 +1022,7 @@ def register(reg: ToolRegistrar) -> None:
             result = await applied(app, lambda: app.api.put(path, body))
             return {
                 "policy": acp.get("name"),
-                "si": _si_rows(result if isinstance(result, dict) else body),
+                "si": await si_summary(app, result if isinstance(result, dict) else body, domain),
                 "next": "fmc_deploy to the devices using the policy",
             }
 

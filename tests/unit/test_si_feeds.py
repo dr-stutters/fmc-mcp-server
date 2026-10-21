@@ -106,6 +106,9 @@ def mock_catalogs(
 
 def mock_policy(fmc: respx.MockRouter, si: dict[str, Any]) -> respx.Route:
     fmc.get(f"{CFG}/policy/accesspolicies").mock(return_value=items([ACP]))
+    fmc.get(f"{CFG}/policy/dnspolicies/{DEFAULT_DNS['id']}").mock(
+        return_value=httpx.Response(200, json=DEFAULT_DNS)
+    )
     fmc.get(SI_BASE).mock(return_value=items([si]))
     fmc.get(f"{SI_BASE}/{SI_ID}").mock(return_value=httpx.Response(200, json=si))
     return fmc.put(f"{SI_BASE}/{SI_ID}").mock(
@@ -188,9 +191,6 @@ async def test_policy_view_shows_feed_status_and_dns_rules(fmc: respx.MockRouter
     mock_catalogs(fmc, {"ip": [ip_feed(now - 900)], "dns": [dns_feed()]}, {"url": [url_list()]})
     fmc.get(f"{CFG}/policy/dnspolicies/{DEFAULT_DNS['id']}/dnsrules").mock(
         return_value=httpx.Response(200, json=REC["dns_rules"])
-    )
-    fmc.get(f"{CFG}/policy/dnspolicies/{DEFAULT_DNS['id']}").mock(
-        return_value=httpx.Response(200, json=DEFAULT_DNS)
     )
     async with Client(server()) as c:
         out = await run(
@@ -323,8 +323,9 @@ async def test_add_talos_category_and_feed_to_block_list(fmc: respx.MockRouter) 
     async with Client(server()) as c:
         p = await run(c, "fmc_set_si_lists", args)
         assert [e["name"] for e in p["preview"]["entries"]] == ["Malware", "mcp-fw-feed-ip"]
-        await run(c, "fmc_set_si_lists", {**args, "confirm": p["confirm"]})
+        done = await run(c, "fmc_set_si_lists", {**args, "confirm": p["confirm"]})
         again = await run(c, "fmc_set_si_lists", {**args, "names": ["Global Block List"]})
+    assert done["result"]["si"]["dns_policy"] == "Default DNS Policy"  # not the reference's alias (#204)
     block = json.loads(put.calls.last.request.content)["networks"]["blocklist"]
     assert [e["network"]["name"] for e in block][-2:] == ["Malware", "mcp-fw-feed-ip"]
     assert block[-1]["network"]["type"] == "SINetworkFeed" and block[-2]["network"]["type"] == "SINetworkList"
