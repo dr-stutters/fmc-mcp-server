@@ -247,5 +247,68 @@
    "count": 2,
    "pages": 1
   }
+ },
+ "trusted_cas_quirks": {
+  "_recorded": "FMC 10.0.1 (build 1), 2026-10-21 (W6 live-B2), GET object/externalcacertificates/{id} in Global/mcp-test-leaf for two bundled public roots, verbatim (PEM omitted, it is public). FMC's own quirks: an OpenSSL date with two spaces before a one-digit day, UTF-8 subject fields decoded as Latin-1 (mojibake), subjectOrganization cut at the comma ('SECOM Trust Systems CO.' for 'SECOM Trust Systems CO.,LTD.'), empty subject and issuer CNs, and a metadata.domain without an id.",
+  "items": [
+   {
+    "metadata": {
+     "readOnly": {
+      "state": true
+     },
+     "timestamp": 1775158292,
+     "lastUser": {
+      "name": "admin",
+      "type": "user"
+     },
+     "domain": {
+      "name": "Global",
+      "id": "e276abec-e0f2-11e3-8169-6d9ed49b625f",
+      "type": "Domain"
+     }
+    },
+    "subjectOrganization": "NetLock Kft.",
+    "subjectOrganizationUnit": "TanÃºsÃ­tvÃ¡nykiadÃ³k (Certification Services)",
+    "subjectCommonName": "NetLock Arany (Class Gold) FÅtanÃºsÃ­tvÃ¡ny",
+    "issuerCommonName": "NetLock Arany (Class Gold) FÅtanÃºsÃ­tvÃ¡ny",
+    "issuerOrganization": "NetLock Kft.",
+    "issuerOrganizationUnit": "TanÃºsÃ­tvÃ¡nykiadÃ³k (Certification Services)",
+    "validityStartDate": "Dec 11 15:08:21 2008 GMT",
+    "validityEndDate": "Dec  6 15:08:21 2028 GMT",
+    "crlSerials": [],
+    "serialNumber": "80544274841616 (0x49412ce40010)",
+    "certFingerprint": "06:08:3F:59:3F:15:A1:04:A0:69:A4:6B:A9:03:D0:06:B7:97:09:91",
+    "publicKeyFingerprint": "58941a2dc7b14c02235d97e9426cd0a0a63aed6f",
+    "id": "cd188e2a-4f90-32ef-9399-e52c54ce221f",
+    "type": "ExternalCACertificate",
+    "name": "NetLock-Arany-Class-Gold-FAtanAosAtvAny"
+   },
+   {
+    "metadata": {
+     "readOnly": {
+      "state": true
+     },
+     "timestamp": 1775158285,
+     "domain": {
+      "name": "Global",
+      "type": "Domain"
+     }
+    },
+    "subjectOrganization": "SECOM Trust Systems CO.",
+    "subjectOrganizationUnit": "Security Communication RootCA2",
+    "subjectCommonName": "",
+    "issuerCommonName": "",
+    "issuerOrganization": "SECOM Trust Systems CO.",
+    "issuerOrganizationUnit": "Security Communication RootCA2",
+    "validityStartDate": "May 29 05:00:39 2009 GMT",
+    "validityEndDate": "May 29 05:00:39 2029 GMT",
+    "crlSerials": [],
+    "serialNumber": "0 (0x0)",
+    "certFingerprint": "5F:3B:8C:F2:F8:10:B3:7D:78:B4:CE:EC:19:19:C3:73:34:B9:C7:74",
+    "id": "0b8e5ae9-dbfa-3c62-a183-7a237887809f",
+    "type": "ExternalCACertificate",
+    "name": "C_JP-O_SECOM-Trust-Systems-CO.LTD.-OU_Security-Communication-RootCA2"
+   }
+  ]
  }
 }
