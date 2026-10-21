@@ -3,8 +3,8 @@ fmc_configure_bgp and fmc_configure_ospf use to put them on a device (neighbour 
 prefix, default-originate and redistribution).
 
 Shapes, FMC 10.0.1 (spec, cross-checked with the CiscoDevNet terraform provider's definitions):
-- object/ipv4prefixlists: {name, type, entries[{sequence, action PERMIT|DENY, ipAddress, minPrefixLenth
-  (FMC's spelling), maxPrefixLength}]}.
+- object/ipv4prefixlists: {name, entries[{sequence, action PERMIT|DENY, ipAddress, minPrefixLenth
+  (FMC's spelling), maxPrefixLength}]}; FMC answers with type IPV4PrefixList.
 - object/routemaps: {name, type RouteMap, entries[{sequence, action, ipv4PrefixListAddresses[],
   communityLists[], asPathLists[], localPreferenceSetting, metricBandwidth, weightSetting,
   communityListSetting (+ the well-known community flags, addToExistingCommunity), asPathPrependASPath[]}]}.
@@ -24,7 +24,7 @@ from typing import Annotated, Any, Literal
 from fastmcp import Context
 from pydantic import BaseModel, ConfigDict, Field
 
-from fmc_mcp._core import Confirm, InvalidRequest, NotFound, Plan, ToolRegistrar, get_client
+from fmc_mcp._core import Confirm, InvalidRequest, NotFound, Plan, ToolRegistrar, UpstreamError, get_client
 from fmc_mcp._core.writes import field_changes
 from fmc_mcp.client import FmcApp, is_uuid
 from fmc_mcp.preview import fmc_preview
@@ -424,7 +424,9 @@ def register(reg: ToolRegistrar) -> None:
         (fmc_configure_bgp neighbor_prefix_list_in / _out) or in a route map (fmc_create_route_map
         match_prefix_list). The preview shows the lines as the device will have them."""
         rows, warnings = prefix_entries(entries)
-        body: dict[str, Any] = {"name": name, "type": "IPv4PrefixList", "entries": rows}
+        # No `type` on the POST: the spec's request example and the terraform provider send none, and
+        # FMC answers with its own spelling (IPV4PrefixList), which a replace PUT sends back as it came.
+        body: dict[str, Any] = {"name": name, "entries": rows}
         if description:
             body["description"] = description
         return await _object_write(
@@ -838,6 +840,12 @@ async def fill_names(refs: PolicyRefs, *models: Any) -> None:
     for m in models:
         walk(m)
     for path, ref in missing:
-        hit = next((r for r in await refs.rows(path) if str(r.get("id")) == str(ref["id"])), None)
+        try:
+            rows = await refs.rows(path)
+        except (InvalidRequest, UpstreamError):
+            # names are a nicety: a listing FMC refuses leaves the id, never fails the read view
+            refs._lists[path] = []
+            continue
+        hit = next((r for r in rows if str(r.get("id")) == str(ref["id"])), None)
         if hit and hit.get("name"):
             ref["name"] = hit["name"]

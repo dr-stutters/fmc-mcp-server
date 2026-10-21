@@ -516,7 +516,9 @@ def register(reg: ToolRegistrar) -> None:
                         if filters.given():
                             changed = apply_filters(changed, filters, resolved)
                             touched = (existing, addr)
-                        if changed == existing:
+                        if changed == existing and not redistribute:
+                            # with redistribute, the redistribution is the change (and blocks itself
+                            # when it changes nothing)
                             blockers.append(f"Neighbor {addr} is already configured that way.")
                         neighbors = [changed if x is existing else x for x in neighbors]
             have = {str((x.get("ipv4Address") or {}).get("id")) for x in networks}

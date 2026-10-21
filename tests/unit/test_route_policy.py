@@ -190,6 +190,20 @@ async def test_get_routing_names_route_policy(fmc: respx.MockRouter) -> None:
     assert af["redistribution"] == [{"protocol": "connected", "route_map": "rm-peer-in", "metric": 5}]
 
 
+async def test_get_routing_keeps_working_when_a_name_listing_is_refused(fmc: respx.MockRouter) -> None:
+    """Names for id-only references are a nicety: a refused listing leaves the id instead of failing
+    the read view."""
+    mount(fmc, FX["bgp_filtered"])
+    fmc.get(f"{CFG}/object/routemaps").mock(
+        return_value=httpx.Response(403, json={"error": {"messages": [{"description": "denied"}]}})
+    )
+    async with Client(server()) as c:
+        out = await run(c, "fmc_get_routing", {"device": DEV["name"]})
+    n = out["bgp"]["ipv4"]["neighbors"][0]
+    assert n["route_map_in"] == "rm-peer-in"  # FMC sent that name with the reference
+    assert n["default_originate"]["route_map"] != "rm-default"  # no name to fill: the reference stays
+
+
 # --- prefix lists and route maps ---------------------------------------------------------------
 
 
@@ -211,9 +225,8 @@ async def test_create_prefix_list(fmc: respx.MockRouter) -> None:
         "seq 10 permit 0.0.0.0/0 le 32",
     ]
     assert any("host bits" in s for s in preview["side_effects"])
-    assert body(post) == {
+    assert body(post) == {  # no `type`: the spec example and terraform send none (FMC: IPV4PrefixList)
         "name": "pl-peer-in",
-        "type": "IPv4PrefixList",
         "entries": [
             {"sequence": 5, "action": "DENY", "ipAddress": "203.0.113.0/24", "minPrefixLenth": 25},
             {"sequence": 10, "action": "PERMIT", "ipAddress": "0.0.0.0/0", "maxPrefixLength": 32},
@@ -522,6 +535,86 @@ async def test_bgp_redistribute_connected_and_ospf(fmc: respx.MockRouter) -> Non
         {"type": "RedistributeOSPF", "processId": "1", "matchInternal": True, "matchExternal2": True},
     ]
     assert gone["status"] == "blocked" and "static isn't redistributed" in gone["blockers"][0]
+
+
+async def test_neighbor_named_with_only_redistribute_is_not_blocked(fmc: respx.MockRouter) -> None:
+    """Naming the (unchanged) neighbour next to redistribute: the redistribution is the change, so the
+    neighbour's 'already configured that way' doesn't block it."""
+    mount(fmc)
+    put = fmc.put(f"{R}/bgp/{BGP_ID}").mock(return_value=httpx.Response(200, json={}))
+    args = {
+        "device": DEV["name"],
+        "neighbor": "192.0.2.2",
+        "redistribute": [{"protocol": "static", "route_map": "rm-default"}],
+    }
+    async with Client(server()) as c:
+        preview = await run(c, "fmc_configure_bgp", args)
+        await run(c, "fmc_configure_bgp", {**args, "confirm": preview["confirm"]})
+        plain = await run(c, "fmc_configure_bgp", {"device": DEV["name"], "neighbor": "192.0.2.2"})
+    assert preview.get("status") != "blocked", preview
+    assert preview["preview"]["redistribute_changes"] == {
+        "added": [{"protocol": "static", "route_map": "rm-default"}]
+    }
+    af = body(put)["addressFamilyIPv4"]
+    assert af["neighbors"] == FX["bgp_recorded"]["addressFamilyIPv4"]["neighbors"]
+    assert af["redistributeProtocols"] == [
+        {
+            "type": "RedistributeStatic",
+            "routeMap": {"id": RM_DEF["id"], "type": "RouteMap", "name": "rm-default"},
+        }
+    ]
+    # without redistribute, an unchanged neighbour still blocks as in 0.15.0
+    assert plain["status"] == "blocked" and "already configured that way" in plain["blockers"][0]
+
+
+async def test_bgp_from_scratch_with_route_policy(fmc: respx.MockRouter) -> None:
+    """A device without BGP (the Stage 2 iBGP pair): one call sets up BGP, a neighbour with
+    default-originate, an advertised network and redistribution through a route map."""
+    mount(fmc)
+    fmc.get(f"{R}/bgpgeneralsettings").mock(return_value=empty())
+    fmc.get(f"{R}/bgp").mock(return_value=empty())
+    gen = fmc.post(f"{R}/bgpgeneralsettings").mock(return_value=httpx.Response(201, json={"id": "g"}))
+    post = fmc.post(f"{R}/bgp").mock(return_value=httpx.Response(201, json={"id": "b"}))
+    args = {
+        "device": DEV["name"],
+        "local_as": "65110",
+        "router_id": "198.51.100.1",
+        "neighbor": "192.0.2.5",
+        "remote_as": "65110",
+        "neighbor_description": "spoke",
+        "advertise": ["inside-net"],
+        "redistribute": [{"protocol": "connected", "route_map": "rm-default"}],
+        "default_originate": True,
+    }
+    async with Client(server()) as c:
+        preview = await run(c, "fmc_configure_bgp", args)
+        done = await run(c, "fmc_configure_bgp", {**args, "confirm": preview["confirm"]})
+    d = preview["preview"]
+    assert d["steps"] == ["create bgp general settings", "create bgp"]
+    assert d["before"] is None and d["after"]["networks"] == ["inside-net"]  # the full view: BGP is new
+    assert d["neighbor_changes"]["changes"]["default_originate"] == {"from": None, "to": True}
+    assert d["redistribute_changes"] == {"added": [{"protocol": "connected", "route_map": "rm-default"}]}
+    assert done["result"]["applied"] == ["create bgp general settings", "create bgp"]
+    assert body(gen)["asNumber"] == "65110" and body(gen)["routerId"] == "198.51.100.1"
+    sent = body(post)
+    assert sent["asNumber"] == "65110"
+    af = sent["addressFamilyIPv4"]
+    assert af["neighbors"] == [
+        {
+            "type": "neighboripv4",
+            "ipv4Address": "192.0.2.5",
+            "remoteAs": "65110",
+            "neighborGeneral": {"enableAddress": True, "shutdown": False, "description": "spoke"},
+            "neighborFiltering": {"neighborDefaultOriginate": {}},
+        }
+    ]
+    assert af["networks"] == [{"ipv4Address": {"id": NET["id"], "type": "Network", "name": "inside-net"}}]
+    assert af["redistributeProtocols"] == [
+        {
+            "type": "RedistributeConnected",
+            "routeMap": {"id": RM_DEF["id"], "type": "RouteMap", "name": "rm-default"},
+        }
+    ]
 
 
 async def test_bgp_stop_redistributing_drops_the_key(fmc: respx.MockRouter) -> None:
