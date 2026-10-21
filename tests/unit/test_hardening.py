@@ -248,8 +248,10 @@ async def test_snmp_v2c_and_open_ssh_appear_then_clear(fmc: respx.MockRouter) ->
         "fmc_configure_ssh_access(policy='mcp-w6-ps', action='remove', network='any-ipv4', "
         "interfaces=['mcp-test-ftd-in'])"
     )
-    assert "a community string is set" in found["snmp-v3-only"]["detail"]
-    assert "manager mcp-w6-nms uses SNMPv2c" in found["snmp-v3-only"]["detail"]
+    # live-A read "SNMP is on with a community string is set ..." (W6N, F80 #175): the problems follow "but"
+    assert found["snmp-v3-only"]["detail"] == (
+        "SNMP is on, but a community string is set (SNMPv1/v2c polling); manager mcp-w6-nms uses SNMPv2c."
+    )
     # FMC masks the community and fmc_configure_snmp blocks a change without it: the fix says to give it
     assert found["snmp-v3-only"]["fix"].startswith(
         "fmc_configure_snmp(policy='mcp-w6-ps', enabled=False, community='<the current community>')"
