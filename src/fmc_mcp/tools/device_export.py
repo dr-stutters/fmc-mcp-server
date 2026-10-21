@@ -112,11 +112,15 @@ UNORDERED = frozenset(
         "entries",
     }
 )
-# Secrets on device CLI lines (out-of-band diffs): the value after the keyword (and an optional
-# encryption-type digit) is masked.
+# Secrets on device CLI lines (out-of-band diffs): the value after the keyword is masked, past the
+# qualifiers that may sit between them: an encryption type or key id (`password 0 x`,
+# `message-digest-key 1 md5 x`), a hash or format (`failover key hex x`, `auth sha x`, `priv aes 128 x`)
+# and EIGRP's AS (`authentication key eigrp 100 x`). Values the device already masked (`*****`) stay.
 _CLI_SECRET = re.compile(
-    r"(?i)\b(password|passwd|secret|key-string|pre-shared-key|authentication-key|community|key)"
-    r"(\s+\d)?\s+(?!\*+(?:\s|$))(\S+)"
+    r"(?i)\b(password|passwd|secret|key-string|pre-shared-key|authentication-key|message-digest-key"
+    r"|community|key|auth|priv)"
+    r"((?:\s+(?:\d+|md5|sha\d*|hex|ascii|aes\d*(?:\s+\d+)?|3des|des|eigrp\s+\d+))*)"
+    r"\s+(?!\*+(?:\s|$))(\S+)"
 )
 _VARIABLE = re.compile(r"^\$\{[^}]+\}$")
 _FILE_NAME = re.compile(r"[\w.@+-]+\.ya?ml")
@@ -284,7 +288,7 @@ def _body(item: dict[str, Any], *drop: str) -> dict[str, Any]:
 
 
 def mask_cli(line: str) -> str:
-    return _CLI_SECRET.sub(lambda m: f"{m.group(1)}{m.group(2) or ''} {MASK}", line)
+    return _CLI_SECRET.sub(lambda m: f"{m.group(1)}{m.group(2)} {MASK}", line)
 
 
 def mask(value: Any) -> Any:
@@ -406,6 +410,9 @@ def static_routes(kind: str, routes: list[dict[str, Any]], prefix: str = "") -> 
 
 
 async def _protocols(ctx: ExportContext, base: str, prefix: str, *, global_table: bool) -> dict[str, Any]:
+    """One routing table: the global one (base = the device's routing/) or a user VRF's (base = its
+    virtualrouters/<id>, keys prefixed 'vrf <name>: '). FMC keeps BGP general settings and OSPFv3 in the
+    global table only; everything else exists per VRF too."""
     out: dict[str, Any] = {}
     out.update(static_routes("static4", await ctx.one_page(f"{base}/ipv4staticroutes"), prefix))
     out.update(static_routes("static6", await ctx.one_page(f"{base}/ipv6staticroutes"), prefix))
@@ -413,35 +420,39 @@ async def _protocols(ctx: ExportContext, base: str, prefix: str, *, global_table
         _put(out, f"{prefix}bgp", norm(_body(b, "name")))
     for p in await ctx.one_page(f"{base}/ospfv2routes"):
         _put(out, f"{prefix}ospfv2 process {p.get('processId')}", norm(_body(p, "name")))
+    for i in await ctx.one_page(f"{base}/ospfinterface"):
+        _put(
+            out, f"{prefix}ospf interface {ref_label(i.get('deviceInterface') or {})}", norm(_body(i, "name"))
+        )
+    for e in await ctx.one_page(f"{base}/eigrproutes"):
+        _put(out, f"{prefix}eigrp {e.get('asNumber') or e.get('name') or ''}".strip(), norm(_body(e, "name")))
+    for p in await ctx.one_page(f"{base}/policybasedroutes"):
+        ingress = ", ".join(_named(p.get("ingressInterfaces"))) or str(p.get("name") or "?")
+        _put(out, f"{prefix}policy-based route {ingress}", norm(_body(p, "name")))
+    for z in await ctx.one_page(f"{base}/ecmpzones"):
+        _put(out, f"{prefix}ecmp zone {z.get('name')}", norm(_body(z, "name")))
+    for b in await ctx.one_page(f"{base}/bfdpolicies"):
+        where = ref_label(b["interface"]) if isinstance(b.get("interface"), dict) else b.get("name")
+        _put(
+            out,
+            f"{prefix}bfd {b.get('hopType') or ''} {where or ''}".replace("  ", " ").strip(),
+            norm(_body(b, "name")),
+        )
     if not global_table:
         return out
     for g in await ctx.one_page(f"{base}/bgpgeneralsettings"):
         _put(out, "bgp general settings", norm(_body(g, "name")))
     for p in await ctx.one_page(f"{base}/ospfv3routes"):
         _put(out, f"ospfv3 process {p.get('processId')}", norm(_body(p, "name")))
-    for i in await ctx.one_page(f"{base}/ospfinterface"):
-        _put(out, f"ospf interface {ref_label(i.get('deviceInterface') or {})}", norm(_body(i, "name")))
-    for e in await ctx.one_page(f"{base}/eigrproutes"):
-        _put(out, f"eigrp {e.get('asNumber') or e.get('name') or ''}".strip(), norm(_body(e, "name")))
-    for p in await ctx.one_page(f"{base}/policybasedroutes"):
-        ingress = ", ".join(_named(p.get("ingressInterfaces"))) or str(p.get("name") or "?")
-        _put(out, f"policy-based route {ingress}", norm(_body(p, "name")))
-    for z in await ctx.one_page(f"{base}/ecmpzones"):
-        _put(out, f"ecmp zone {z.get('name')}", norm(_body(z, "name")))
-    for b in await ctx.one_page(f"{base}/bfdpolicies"):
-        where = ref_label(b["interface"]) if isinstance(b.get("interface"), dict) else b.get("name")
-        _put(
-            out,
-            f"bfd {b.get('hopType') or ''} {where or ''}".replace("  ", " ").strip(),
-            norm(_body(b, "name")),
-        )
+    for i in await ctx.one_page(f"{base}/ospfv3interfaces"):
+        _put(out, f"ospfv3 interface {ref_label(i.get('deviceInterface') or {})}", norm(_body(i, "name")))
     return out
 
 
 @export_section(
     "routing",
-    summary="static routes (IPv4/IPv6), BGP, OSPFv2/v3, OSPF interfaces, EIGRP, policy-based routes, ECMP "
-    "zones, BFD and user VRFs with their own routes",
+    summary="static routes (IPv4/IPv6), BGP, OSPFv2/v3 and their interfaces, EIGRP, policy-based routes, "
+    "ECMP zones, BFD, and user VRFs with their own routes and protocols",
 )
 async def _routing(ctx: ExportContext) -> dict[str, Any]:
     base = f"{ctx.base}/routing"
@@ -1080,6 +1091,9 @@ def register(reg: ToolRegistrar) -> None:
         FMC_BUNDLE_DIR too when set. Reads only FMC (works for disconnected devices); about 30
         requests for one device."""
         app: FmcApp = get_client(ctx)
+        bundle_dir = app.settings.bundle_dir
+        if not include_text and bundle_dir is None:
+            raise InvalidRequest("include_text=false needs FMC_BUNDLE_DIR (nowhere else to put the export).")
         doc, warnings = await build_export(app, device, domain, select_sections(sections))
         text = finish(doc)
         meta = doc["meta"]
@@ -1093,7 +1107,6 @@ def register(reg: ToolRegistrar) -> None:
         }
         if meta.get("errors"):
             out["errors"] = meta["errors"]
-        bundle_dir = app.settings.bundle_dir
         if bundle_dir is not None and offset == 0:
             out["file"] = str(
                 await asyncio.to_thread(
@@ -1103,10 +1116,6 @@ def register(reg: ToolRegistrar) -> None:
         if warnings:
             out["warnings"] = warnings[:20]
         if not include_text:
-            if bundle_dir is None:
-                raise InvalidRequest(
-                    "include_text=false needs FMC_BUNDLE_DIR (nowhere else to put the export)."
-                )
             return _result(out)
         body = text if format == "yaml" else render_markdown(doc)
         out["size"] = len(body)
@@ -1184,6 +1193,13 @@ def register(reg: ToolRegistrar) -> None:
             db, more = await _side(app, b, b_kind, domain, names, shared, a=da)
         warnings += more
         result = diff_exports(da, db, None if sections is None else names)
+        if not result["compared"]:  # never 'identical' on nothing
+            why = "; ".join(f"{k}: {v}" for k, v in (result.get("not_compared") or {}).items())
+            raise InvalidRequest(
+                "No section was read on both sides, so there is nothing to compare"
+                + (f" ({why})." if why else ".")
+                + " Pick sections both sides have (a stored export keeps the ones it was exported with)."
+            )
         changes = result.pop("changes")
         out: dict[str, Any] = {
             "a": _meta(da),

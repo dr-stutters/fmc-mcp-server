@@ -362,6 +362,23 @@ def test_mask_cli() -> None:
     )
     assert mask_cli("enable password ****** encrypted") == "enable password ****** encrypted"
     assert mask_cli("interface Ethernet0/1") == "interface Ethernet0/1"
+    # The value comes after an encryption type, key id, hash, format or EIGRP AS: those stay, it doesn't.
+    for line, kept in (
+        ("ospf message-digest-key 1 md5 S1", "ospf message-digest-key 1 md5"),
+        ("ntp authentication-key 2 md5 S1", "ntp authentication-key 2 md5"),
+        ("authentication key eigrp 100 S1 key-id 1", "authentication key eigrp 100"),
+        ("failover key hex S1", "failover key hex"),
+        ("snmp-server user u g v3 auth sha S1 priv aes 128 S2", "snmp-server user u g v3 auth sha"),
+        ("snmp-server user u g v3 encrypted auth sha256 S1 priv aes256 S2", "priv aes256"),
+        ("snmp-server community 12345", "snmp-server community"),
+        ("aaa-server ISE (inside) host 192.0.2.5 key S1", "host 192.0.2.5 key"),
+    ):
+        masked = mask_cli(line)
+        assert "S1" not in masked and "S2" not in masked and "12345" not in masked, masked
+        assert kept in masked and MASK in masked
+    assert mask_cli("authentication key eigrp 100 S1 key-id 1").endswith("key-id 1")
+    for plain in ("aaa authentication ssh console LOCAL", "ssh key-exchange group dh-group14-sha256"):
+        assert mask_cli(plain) == plain
 
 
 async def test_vpn_nat_and_overrides(fmc: respx.MockRouter) -> None:
@@ -475,6 +492,11 @@ async def test_diff_with_device_template(fmc: respx.MockRouter) -> None:
     assert out["not_in_template"] == {"interfaces": 3, "policies": 1}
     assert out["not_compared"]["routing"] == "not in the template"
     assert "s3cret" not in json.dumps(out)
+    # A section the template doesn't define is never "identical": refused, with the reason.
+    async with Client(server()) as c:
+        args = {"a": "mcp-sdwan-t1-spoke1", "b": "mcp-sdwan-spoke-tmpl", "sections": ["routing"]}
+        res = await c.call_tool("fmc_diff_device_config", args, raise_on_error=False)
+    assert res.is_error and "routing: not in the template" in res.content[0].text  # type: ignore[union-attr]
 
 
 async def test_export_ha_pair(fmc: respx.MockRouter) -> None:
@@ -563,6 +585,101 @@ async def test_diff_refusals(fmc: respx.MockRouter) -> None:
         assert res.is_error and "No device, HA pair or device template named 'nope'" in res.content[0].text  # type: ignore[union-attr]
         res = await c.call_tool("fmc_export_device_config", {"device": "nope"}, raise_on_error=False)
         assert res.is_error and "No HA pair of that name either" in res.content[0].text  # type: ignore[union-attr]
+        # A stored export of routing only, compared on interfaces: nothing on both sides.
+        res = await c.call_tool("fmc_export_device_config", {"device": SP1, "sections": ["routing"]})
+        stored = (res.structured_content or {})["export"]
+        args = {"a": stored, "sections": ["interfaces"]}
+        res = await c.call_tool("fmc_diff_device_config", args, raise_on_error=False)
+        assert res.is_error and "nothing to compare" in res.content[0].text  # type: ignore[union-attr]
+
+
+async def test_vrf_routing_and_ospfv3_interfaces(fmc: respx.MockRouter) -> None:
+    """A user VRF exports its own routes and protocols (static, PBR, ECMP, EIGRP, BFD, OSPF interfaces),
+    keyed 'vrf <name>: ...'; OSPFv3 interfaces come from the global table. Keys stay masked."""
+    data = recorded()
+    routing = f"devices/devicerecords/{SP1}/routing"
+    inside = {"type": "PhysicalInterface", "id": "if-in", "name": "Ethernet0/3", "ifname": "inside"}
+    data[f"{routing}/virtualrouters"]["items"].append(
+        {"type": "VirtualRouter", "id": "vr-blue", "name": "blue", "interfaces": [inside]}
+    )
+    vr = f"{routing}/virtualrouters/vr-blue"
+    data[f"{vr}/ipv4staticroutes"] = items(
+        [
+            {
+                "id": "r-b",
+                "interfaceName": "inside",
+                "selectedNetworks": [{"type": "Network", "name": "blue-net", "id": "n-b"}],
+                "gateway": {"literal": {"type": "Host", "value": "192.0.2.14"}},
+                "metricValue": 1,
+            }
+        ]
+    ).json()
+    data[f"{vr}/policybasedroutes"] = items(
+        [
+            {
+                "id": "p-b",
+                "ingressInterfaces": [inside],
+                "forwardingActions": [{"forwardingActionType": "SET_EGRESS_INTF_BY_ORDER"}],
+            }
+        ]
+    ).json()
+    data[f"{vr}/ecmpzones"] = items([{"id": "e-b", "name": "blue-wan", "interfaces": [inside]}]).json()
+    data[f"{vr}/eigrproutes"] = items([{"id": "g-b", "asNumber": 100, "autoSummary": False}]).json()
+    data[f"{vr}/bfdpolicies"] = items([{"id": "b-b", "hopType": "SINGLE_HOP", "interface": inside}]).json()
+    data[f"{vr}/ospfinterface"] = items(
+        [
+            {
+                "id": "o-b",
+                "deviceInterface": inside,
+                "authentication": {"md5AuthList": [{"md5KeyId": 1, "md5Key": "vrf-s3cret"}]},
+            }
+        ]
+    ).json()
+    data[f"{routing}/ospfv3interfaces"] = items(
+        [
+            {
+                "id": "o3",
+                "deviceInterface": inside,
+                "processId": 1,
+                "areaId": "0",
+                "properties": {"packetCost": 5},
+            }
+        ]
+    ).json()
+    t1(fmc, data)
+    out, doc = await export()
+    assert "vrf-s3cret" not in out["export"]
+    keys = set(doc["routing"])
+    assert {
+        "vrf blue",
+        "vrf blue: ipv4 route inside -> blue-net",
+        "vrf blue: policy-based route Ethernet0/3",
+        "vrf blue: ecmp zone blue-wan",
+        "vrf blue: eigrp 100",
+        "vrf blue: bfd SINGLE_HOP Ethernet0/3",
+        "vrf blue: ospf interface Ethernet0/3",
+        "ospfv3 interface Ethernet0/3",
+    } <= keys
+    assert doc["routing"]["vrf blue"] == {"interfaces": ["Ethernet0/3"]}
+    assert doc["routing"]["vrf blue: ospf interface Ethernet0/3"]["authentication"]["md5AuthList"] == [
+        {"md5Key": MASK, "md5KeyId": MASK}
+    ]
+    assert doc["routing"]["ospfv3 interface Ethernet0/3"]["properties"] == {"packetCost": 5}
+    # Global-only collections are not read per VRF.
+    paths = {c.request.url.path for c in fmc.calls}
+    assert f"{CFG}/{vr}/bgpgeneralsettings" not in paths and f"{CFG}/{vr}/ospfv3routes" not in paths
+    assert f"{CFG}/{vr}/eigrproutes" in paths
+
+
+async def test_include_text_false_needs_bundle_dir(fmc: respx.MockRouter) -> None:
+    """Refused before any device read: nowhere to put the export."""
+    t1(fmc)
+    async with Client(server()) as c:
+        res = await c.call_tool(
+            "fmc_export_device_config", {"device": SP1, "include_text": False}, raise_on_error=False
+        )
+    assert res.is_error and "needs FMC_BUNDLE_DIR" in res.content[0].text  # type: ignore[union-attr]
+    assert not [c for c in fmc.calls if c.request.url.path.startswith(f"{DEV}/")]  # no device read
 
 
 def test_static_route_keys() -> None:
