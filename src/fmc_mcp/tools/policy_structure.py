@@ -26,6 +26,7 @@ from fmc_mcp._core import (
     NotFound,
     Plan,
     ToolRegistrar,
+    UpstreamError,
     get_client,
 )
 from fmc_mcp.acp_structure import (
@@ -34,7 +35,6 @@ from fmc_mcp.acp_structure import (
     base_chain,
     base_of,
     category_row,
-    chain_names,
     find_category,
     holder,
     list_categories,
@@ -58,6 +58,7 @@ CategoryName = Annotated[
     str, Field(description="Category name (unique in the policy)", min_length=1, max_length=50)
 ]
 SHOWN = 10  # rule names listed per section in a preview
+INHERIT_SCAN = 25  # assigned access policies whose base chain a base change checks (descendants' devices)
 NO_LOCKS = (
     "FMC reports no lock state for this policy and its lock list can't be read: policy locks need FMC "
     "7.6 or later and a role that may lock policies."
@@ -79,12 +80,38 @@ async def rules_summary(app: FmcApp, acp: dict[str, Any], domain: str | None) ->
     return out
 
 
-async def assigned_to(app: FmcApp, policy_id: str, domain: str | None) -> list[str]:
-    out: list[str] = []
+async def assigned_to(
+    app: FmcApp, policy_id: str, domain: str | None
+) -> tuple[list[str], list[dict[str, Any]], list[str]]:
+    """(devices the policy is assigned to, [{policy, devices}] for assigned access policies that inherit
+    from it further down, notes). A policy's base change reaches its descendants' devices too: each other
+    assigned access policy's base chain is read (one request per level, the first INHERIT_SCAN policies)."""
+    direct: list[str] = []
+    below: list[dict[str, Any]] = []
+    notes: list[str] = []
+    others: list[dict[str, Any]] = []
     for a in await policy_assignments(app, domain):
-        if str((a.get("policy") or {}).get("id", "")).lower() == policy_id.lower():
-            out += [ref_label(t) for t in a.get("targets") or []]
-    return out
+        pol = a.get("policy") or {}
+        if str(pol.get("id", "")).lower() == policy_id.lower():
+            direct += [ref_label(t) for t in a.get("targets") or []]
+        elif pol.get("id") and pol.get("type", "AccessPolicy") == "AccessPolicy" and a.get("targets"):
+            others.append(a)
+    if len(others) > INHERIT_SCAN:
+        notes.append(
+            f"Only the first {INHERIT_SCAN} of {len(others)} assigned access policies were checked for "
+            "inheriting from it."
+        )
+    for a in others[:INHERIT_SCAN]:
+        pol = a["policy"]
+        try:
+            chain = await base_chain(app, str(pol["id"]), domain)
+        except UpstreamError:
+            notes.append(f"The base policy of {pol.get('name') or pol['id']!r} couldn't be read.")
+            continue
+        if any(str(c["id"]).lower() == policy_id.lower() for c in chain):
+            devices = [ref_label(t) for t in a.get("targets") or []]
+            below.append({"policy": pol.get("name") or pol["id"], "devices": devices})
+    return direct, below, notes
 
 
 def base_body(policy_id: str, base: dict[str, Any] | None) -> dict[str, Any]:
@@ -132,10 +159,11 @@ def inheritance_effect(base_name: str) -> str:
     )
 
 
-async def lock_now(app: FmcApp, p: dict[str, Any], domain: str | None) -> tuple[dict[str, Any], bool]:
-    """(the policy's lock state, whether FMC reported any): the lock list's entry first, then the policy's
-    own metadata.lockingStatus."""
-    rows = await read_locks(app, domain)
+async def lock_now(
+    app: FmcApp, p: dict[str, Any], domain: str | None, rows: list[dict[str, Any]] | None
+) -> tuple[dict[str, Any], bool]:
+    """(the policy's lock state, whether FMC reported any): its entry in the lock list (`rows`, read_locks)
+    first, then the policy's own metadata.lockingStatus."""
     listed = next(
         (r for r in rows or [] if str(r.get("policy_id", "")).lower() == str(p["id"]).lower()), None
     )
@@ -148,42 +176,82 @@ async def lock_now(app: FmcApp, p: dict[str, Any], domain: str | None) -> tuple[
     return {"status": "UNLOCKED" if rows is not None else "UNKNOWN"}, rows is not None
 
 
+async def parent_locks(
+    app: FmcApp, p: dict[str, Any], domain: str | None, rows: list[dict[str, Any]] | None
+) -> list[dict[str, Any]]:
+    """The lock state of every base policy above `p`, nearest first ({policy, status, locked_by?}): what
+    include_parents (FMC's lockParentsInHierarchy) also locks or unlocks."""
+    out: list[dict[str, Any]] = []
+    for ref in await base_chain(app, str(p["id"]), domain):
+        try:
+            rec = await resolve_policy(app, "access", str(ref["id"]), domain)
+        except UpstreamError:
+            out.append({"policy": ref.get("name") or ref["id"], "status": "UNKNOWN"})
+            continue
+        state, _ = await lock_now(app, rec, domain, rows)
+        out.append({"policy": rec.get("name") or ref["id"], **state})
+    return out
+
+
 def _lock_plan(
-    p: dict[str, Any], state: dict[str, Any], me: str | None, action: str, break_lock: bool
+    p: dict[str, Any],
+    state: dict[str, Any],
+    me: str | None,
+    action: str,
+    break_lock: bool,
+    parents: list[dict[str, Any]] | None = None,
 ) -> tuple[list[str], list[str]]:
-    """(blockers, side effects) of a lock or unlock request."""
+    """(blockers, side effects) of a lock or unlock request; `parents` (include_parents): the base
+    policies' lock states, which the request changes too."""
     name = p.get("name")
-    status = state.get("status")
-    who = state.get("locked_by") or "another user"
-    mine = same_user(state.get("locked_by"), me)
+    rows = [{"policy": name, **state}, *(parents or [])]
     blockers: list[str] = []
     side: list[str] = []
-    if action == "lock":
-        if status == "LOCKED" and mine:
-            blockers.append(f"Nothing to change: {name!r} is already locked by you ({me}).")
-        elif status == "LOCKED":
+
+    def mine(r: dict[str, Any]) -> bool:
+        return r.get("status") == "LOCKED" and same_user(r.get("locked_by"), me)
+
+    def done(r: dict[str, Any]) -> bool:
+        return mine(r) if action == "lock" else r.get("status") == "UNLOCKED"
+
+    also = " and its base policies" if parents else ""
+    if all(done(r) for r in rows):
+        blockers.append(
+            f"Nothing to change: {name!r}{also} {'are' if parents else 'is'} already locked by you ({me})."
+            if action == "lock"
+            else f"Nothing to change: {name!r}{also} {'are' if parents else 'is'}n't locked."
+        )
+    for i, r in enumerate(rows):
+        if r.get("status") != "LOCKED" or mine(r):
+            continue
+        who = r.get("locked_by") or "another user"
+        label = f"{r['policy']!r}" if i == 0 else f"Base policy {r['policy']!r}"
+        if action == "lock":
             blockers.append(
-                f"{name!r} is locked by {who}; they must unlock it first (or take it from them with "
+                f"{label} is locked by {who}; they must unlock it first (or take it from them with "
                 "action='unlock', break_lock=True)."
             )
+        elif not break_lock:
+            blockers.append(
+                f"{label} is locked by {who}, not by {me}. Ask them to unlock it, or repeat with "
+                "break_lock=True to take the lock away from them."
+            )
+        else:
+            on = "" if i == 0 else f"on base policy {r['policy']!r} "
+            side.append(
+                f"Takes the lock {on}away from {who}: anyone can change the policy again, even while they "
+                "are still working on it."
+            )
+    for r in parents or []:
+        if r.get("status") == "UNKNOWN":
+            side.append(f"FMC reports no lock state for base policy {r['policy']!r}.")
+    if action == "lock":
         side.append(
-            f"Until it is unlocked only {me} (this server's FMC account) can change {name!r}; FMC refuses "
-            "other users' edits."
+            f"Until it is unlocked only {me} (this server's FMC account) can change {name!r}{also}; FMC "
+            "refuses other users' edits."
         )
-        return blockers, side
-    if status == "UNLOCKED":
-        blockers.append(f"Nothing to change: {name!r} isn't locked.")
-    elif status == "LOCKED" and not mine and not break_lock:
-        blockers.append(
-            f"{name!r} is locked by {who}, not by {me}. Ask them to unlock it, or repeat with "
-            "break_lock=True to take the lock away from them."
-        )
-    elif status == "LOCKED" and not mine:
-        side.append(
-            f"Takes the lock away from {who}: anyone can change the policy again, even while they are "
-            "still working on it."
-        )
-    side.append(f"Other users can change {name!r} again.")
+    else:
+        side.append(f"Other users can change {name!r}{also} again.")
     return blockers, side
 
 
@@ -447,7 +515,8 @@ def register(reg: ToolRegistrar) -> None:
             blockers.append(f"Nothing to change: the base is already {new.get('name')!r}.")
         elif not current and not new:
             blockers.append("Nothing to change: the policy has no base.")
-        devices = await assigned_to(app, str(p["id"]), domain)
+        devices, below, scan_notes = await assigned_to(app, str(p["id"]), domain)
+        reached = sorted({d for b in below for d in b["devices"]} - set(devices))
         chain_from = [str(p.get("name"))] + named(before, names)
         chain_to = [str(p.get("name"))] + ([str(new.get("name"))] + named(above, names) if new else [])
         details: dict[str, Any] = {
@@ -457,6 +526,15 @@ def register(reg: ToolRegistrar) -> None:
             "assigned_to": devices,
         }
         side = ["Takes effect on devices after the next deployment."]
+        if below:
+            details["inherited_by"] = below
+            side.insert(
+                0,
+                f"Policies that inherit from {p.get('name')!r} change too: "
+                + "; ".join(f"{b['policy']} ({', '.join(b['devices'])})" for b in below)
+                + ".",
+            )
+        side += scan_notes
         if new and not blockers:
             details["inherited_from_base"] = await rules_summary(app, new, domain)
             details["own_default_action"] = (p.get("defaultAction") or {}).get("action")
@@ -481,7 +559,7 @@ def register(reg: ToolRegistrar) -> None:
                 fingerprint={"policy": p["id"], "before": before, "to": (new or {}).get("id")},
                 blockers=blockers,
                 side_effects=side,
-                blast_radius=len(devices),
+                blast_radius=len(devices) + len(reached),
             ),
             apply=lambda: put_base(app, str(p["id"]), target, domain),
         )
@@ -504,27 +582,32 @@ def register(reg: ToolRegistrar) -> None:
     ) -> dict[str, Any]:
         """Lock an access control policy so no other user can change it (a change window), or unlock it.
         The lock is held by this server's FMC account. The preview shows who holds the lock now; a lock
-        held by someone else is refused, and unlocking it needs break_lock=True. Access policies only (FMC
-        7.6+). Who holds a lock is also shown by fmc_get_access_policy and in every access policy write
-        preview."""
+        held by someone else is refused, and unlocking it needs break_lock=True; with include_parents the
+        same goes for each base policy above it. Access policies only (FMC 7.6+). Who holds a lock is also
+        shown by fmc_get_access_policy and in every access policy write preview."""
         app: FmcApp = get_client(ctx)
         p = await resolve_policy(app, "access", policy, domain)
         me = getattr(app.settings, "username", None)
-        state, known = await lock_now(app, p, domain)
-        blockers, side = _lock_plan(p, state, me, action, break_lock)
+        rows = await read_locks(app, domain)
+        state, known = await lock_now(app, p, domain, rows)
+        above = await parent_locks(app, p, domain, rows) if include_parents else []
+        blockers, side = _lock_plan(p, state, me, action, break_lock, above)
         if not known:
             blockers.insert(0, NO_LOCKS)
-        parents: list[str] = []
+        parents = [str(r["policy"]) for r in above]
         if include_parents:
-            parents = await chain_names(app, await base_chain(app, str(p["id"]), domain), domain)
             side.append(
                 f"The base policies above it are {action}ed too: {', '.join(parents)}."
                 if parents
                 else "The policy has no base policy: include_parents adds nothing."
             )
-        entry: dict[str, Any] = {"lock": action == "lock", "policy": {"id": p["id"], "type": "AccessPolicy"}}
+        entry: dict[str, Any] = {"policy": {"id": p["id"], "type": "AccessPolicy"}}
         if include_parents:
-            entry["lockParentsInHierarchy"] = True
+            # lockParentsInHierarchy carries the value itself: true locks the policy and every base above
+            # it, false unlocks them all (10.0.1 spec; its request example sends it without `lock`)
+            entry["lockParentsInHierarchy"] = action == "lock"
+        else:
+            entry["lock"] = action == "lock"
         body = {"policies": [entry]}
         path = await app.config_path(LOCKS, domain)
 
@@ -550,8 +633,14 @@ def register(reg: ToolRegistrar) -> None:
             plan=Plan(
                 f"{action.capitalize()} access policy {p.get('name')!r}"
                 + (f" and its base policies ({', '.join(parents)})" if parents else ""),
-                details={"policy": p.get("name"), "lock_now": state, "api_user": me, "body": body},
-                fingerprint={"policy": p["id"], "state": state, "parents": parents},
+                details={
+                    "policy": p.get("name"),
+                    "lock_now": state,
+                    **({"base_policies": above} if include_parents else {}),
+                    "api_user": me,
+                    "body": body,
+                },
+                fingerprint={"policy": p["id"], "state": state, "parents": above},
                 blockers=blockers,
                 side_effects=side,
             ),

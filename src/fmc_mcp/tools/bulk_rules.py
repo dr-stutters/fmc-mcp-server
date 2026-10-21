@@ -617,6 +617,7 @@ def register(reg: ToolRegistrar) -> None:
             ctx,
             tool="fmc_clear_hit_counts",
             owned=[p],
+            lock_check=False,  # hit counts are the device's counters, not the policy's configuration
             args={"policy": policy, "device": device, "kind": kind, "rules": rules, "domain": domain},
             confirm=confirm,
             plan=Plan(

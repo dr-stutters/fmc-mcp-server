@@ -360,6 +360,43 @@ async def test_set_base_policy(fmc: respx.MockRouter) -> None:
     assert setting.call_count >= 2  # preview + confirm re-read the chain
 
 
+async def test_set_base_policy_counts_the_devices_of_policies_below(fmc: respx.MockRouter) -> None:
+    """A base change reaches every policy that inherits from the policy: mcp-ftd1 runs mcp-w6-child-acp,
+    whose base is mcp-test-acp, so giving mcp-test-acp a base changes what mcp-ftd1 gets too."""
+    corp_id = "00000000-0000-0ed3-0000-0000000000c0"
+    corp = {**copy.deepcopy(ACP), "id": corp_id, "name": "mcp-w6-corp-acp"}
+    acp_list(fmc, ACP, CHILD_ACP, corp)
+    fmc.get(f"{CFG}/policy/accesspolicies/{corp_id}/accessrules").mock(return_value=empty())
+    no_base(fmc, corp_id)
+    no_base(fmc, ACP_ID)
+    with_base(fmc, CHILD, ACP_ID)
+    fmc.get(f"{CFG}/assignment/policyassignments").mock(
+        return_value=items(
+            [
+                {
+                    "id": CHILD,
+                    "policy": {"id": CHILD, "name": "mcp-w6-child-acp", "type": "AccessPolicy"},
+                    "targets": [{"id": DEVICE, "name": "mcp-ftd1", "type": "Device"}],
+                },
+                {
+                    "id": "nat-1",
+                    "policy": {"id": "nat-1", "name": "mcp-w6-nat", "type": "FTDNatPolicy"},
+                    "targets": [{"id": DEVICE, "name": "mcp-ftd1", "type": "Device"}],
+                },
+            ]
+        )
+    )
+    out = await preview_only("fmc_set_base_policy", {"policy": "mcp-test-acp", "base": "mcp-w6-corp-acp"})
+    assert out["status"] == "preview", out
+    assert out["preview"]["assigned_to"] == []
+    assert out["preview"]["inherited_by"] == [{"policy": "mcp-w6-child-acp", "devices": ["mcp-ftd1"]}]
+    assert out["blast_radius"] == 1
+    assert any(
+        "Policies that inherit from 'mcp-test-acp' change too: mcp-w6-child-acp (mcp-ftd1)" in s
+        for s in out["side_effects"]
+    )
+
+
 async def test_remove_base_policy_and_say_when_fmc_keeps_it(fmc: respx.MockRouter) -> None:
     child_and_parent(fmc)
     no_base(fmc, ACP_ID)
@@ -479,21 +516,69 @@ async def test_unlock_someone_elses_lock_needs_break_lock(lab: respx.MockRouter)
     assert json.loads(post.calls.last.request.content)["policies"][0]["lock"] is False
 
 
+def lock_list(*held: tuple[str, str, str]) -> httpx.Response:
+    """FMC's lock list with these (policy id, name, holder) locked, in the spec example's shape."""
+    policies = [
+        {
+            "type": "PolicyLock",
+            "policy": {"name": name, "id": pid, "type": "AccessPolicy"},
+            "status": "LOCKED",
+            "metadata": {"lockedByUser": {"name": user}},
+        }
+        for pid, name, user in held
+    ]
+    return httpx.Response(200, json={"items": [{"policies": policies}], "paging": {"count": 1}})
+
+
 async def test_lock_with_parents(fmc: respx.MockRouter) -> None:
+    """include_parents is FMC's lockParentsInHierarchy, which carries the value itself (spec: true locks the
+    policy and every base above it, false unlocks them all; the request example sends it without `lock`).
+    The base policies' locks are checked like the policy's own."""
     child_and_parent(fmc)
     with_base(fmc, CHILD, ACP_ID)
     no_base(fmc, ACP_ID)
+    locks = fmc.get(f"{CFG}/policy/operational/policylocks")
     post = fmc.post(f"{CFG}/policy/operational/policylocks").mock(return_value=httpx.Response(200, json={}))
-    preview, _ = await preview_apply(
-        "fmc_policy_lock", {"policy": "mcp-w6-child-acp", "action": "lock", "include_parents": True}
-    )
+    args = {"policy": "mcp-w6-child-acp", "include_parents": True}
+    preview, _ = await preview_apply("fmc_policy_lock", {**args, "action": "lock"})
     assert preview["action"] == "Lock access policy 'mcp-w6-child-acp' and its base policies (mcp-test-acp)"
-    entry = json.loads(post.calls.last.request.content)["policies"][0]
-    assert entry == {
-        "lock": True,
-        "policy": {"id": CHILD, "type": "AccessPolicy"},
-        "lockParentsInHierarchy": True,
-    }
+    assert preview["preview"]["base_policies"] == [{"policy": "mcp-test-acp", "status": "UNLOCKED"}]
+    assert json.loads(post.calls.last.request.content)["policies"] == [
+        {"policy": {"id": CHILD, "type": "AccessPolicy"}, "lockParentsInHierarchy": True}
+    ]
+    # the child is locked by us but its base isn't: locking the hierarchy still changes something
+    locks.mock(return_value=lock_list((CHILD, "mcp-w6-child-acp", "apiuser")))
+    out = await preview_only("fmc_policy_lock", {**args, "action": "lock"})
+    assert out["status"] == "preview", out
+    # unlock both (both ours): lockParentsInHierarchy false, never true on an unlock
+    locks.mock(
+        return_value=lock_list((CHILD, "mcp-w6-child-acp", "apiuser"), (ACP_ID, "mcp-test-acp", "apiuser"))
+    )
+    preview, _ = await preview_apply("fmc_policy_lock", {**args, "action": "unlock"})
+    assert json.loads(post.calls.last.request.content)["policies"] == [
+        {"policy": {"id": CHILD, "type": "AccessPolicy"}, "lockParentsInHierarchy": False}
+    ]
+    # the base is someone else's: an unlock of the hierarchy would take it from them
+    locks.mock(
+        return_value=lock_list((CHILD, "mcp-w6-child-acp", "apiuser"), (ACP_ID, "mcp-test-acp", "alice"))
+    )
+    out = await preview_only("fmc_policy_lock", {**args, "action": "unlock"})
+    assert out["status"] == "blocked"
+    assert out["blockers"] == [
+        "Base policy 'mcp-test-acp' is locked by alice, not by apiuser. Ask them to unlock it, or repeat "
+        "with break_lock=True to take the lock away from them."
+    ]
+    out = await preview_only("fmc_policy_lock", {**args, "action": "lock"})
+    assert out["status"] == "blocked"
+    assert "Base policy 'mcp-test-acp' is locked by alice" in out["blockers"][0]
+    out = await preview_only("fmc_policy_lock", {**args, "action": "unlock", "break_lock": True})
+    assert out["status"] == "preview"
+    assert "Takes the lock on base policy 'mcp-test-acp' away from alice" in out["side_effects"][0]
+    # without include_parents only the policy's own lock counts, and the body says `lock`
+    preview, _ = await preview_apply("fmc_policy_lock", {"policy": "mcp-w6-child-acp", "action": "unlock"})
+    assert json.loads(post.calls.last.request.content)["policies"] == [
+        {"policy": {"id": CHILD, "type": "AccessPolicy"}, "lock": False}
+    ]
 
 
 async def test_acp_write_previews_name_the_lock_holder(lab: respx.MockRouter) -> None:

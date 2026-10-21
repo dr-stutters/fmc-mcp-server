@@ -402,6 +402,25 @@ async def test_clear_hit_counts_previews_what_is_lost(probe: respx.MockRouter) -
     assert delete.calls.last.request.url.params["filter"] == f"deviceId:{DEV['id']}"  # every rule
 
 
+async def test_clear_hit_counts_ignores_policy_locks(probe: respx.MockRouter) -> None:
+    """F76: hit counts are the device's counters, not the policy's configuration, so another user's lock on
+    the policy doesn't block clearing them (it does block rule edits)."""
+    acp = copy.deepcopy(fixture("accesspolicies")["items"][0])
+    acp["metadata"]["lockingStatus"] = {"status": "LOCKED", "userName": "alice"}
+    probe.get(f"{CFG}/policy/accesspolicies").mock(return_value=items([acp]))
+    probe.put(HC).mock(return_value=httpx.Response(200, json={}))
+    probe.get(HC).mock(return_value=items([{"rule": {"id": P1, "name": "mcp-w6-probe-1"}, "hitCount": 1}]))
+    async with Client(server()) as c:
+        out = await run(c, "fmc_clear_hit_counts", {"policy": "mcp-test-acp", "device": DEV["name"]})
+        assert out["status"] == "preview" and "policy_lock" not in out["preview"]
+        out = await run(
+            c,
+            "fmc_bulk_update_access_rules",
+            {"policy": "mcp-test-acp", "select": {"names": ["mcp-w6-probe-1"]}, "set": {"enabled": False}},
+        )
+    assert out["status"] == "blocked" and "locked by alice" in out["blockers"][-1]
+
+
 async def test_clear_every_rule_shows_the_default_action_counter(probe: respx.MockRouter) -> None:
     """Without rule ids FMC clears every rule on the device and, as recorded live on 10.0.1, the default
     action's counter too, so the preview shows it (apart from hits_lost)."""

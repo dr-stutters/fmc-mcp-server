@@ -34,12 +34,15 @@ async def fmc_preview(
     apply: Callable[[], Awaitable[Any]],
     owned: Iterable[dict[str, Any] | None] = (),
     lock_check: bool = True,
+    lock_refs: Iterable[dict[str, Any] | None] = (),
 ) -> dict[str, Any]:
     """core preview_or_apply plus the domain in the preview details and an inherited-object check.
 
     `owned`: the existing objects/policies the change edits or deletes; when one is defined in another
     (ancestor) domain, the preview is blocked and says which domain to use. An owned access policy that
-    another user has locked blocks it too (the holder is named); `lock_check=False` for the lock tool."""
+    another user has locked blocks it too (the holder is named); `lock_check=False` for the lock tool and
+    for operations that don't edit the policy (hit counts). `lock_refs`: access policies the change edits
+    that the tool knows only by reference (id, name), checked against FMC's lock list (one read)."""
     app: FmcApp = get_client(ctx)
     uuid = await app.domain_uuid(args.get("domain"))
     name = await app.domain_name(uuid)
@@ -65,7 +68,7 @@ async def fmc_preview(
                 f"won't change it. Repeat with domain={where!r} (it then applies to every domain below)."
             )
     if lock_check:
-        lock_blockers, lock_notes = await lock_findings(app, owned, args.get("domain"))
+        lock_blockers, lock_notes = await lock_findings(app, owned, args.get("domain"), list(lock_refs))
         plan.blockers.extend(lock_blockers)
         if lock_notes:
             plan.details["policy_lock"] = lock_notes[0] if len(lock_notes) == 1 else lock_notes

@@ -112,30 +112,56 @@ def describe(name: str, state: dict[str, Any], me: str | None) -> str:
     return f"Access policy {name!r} is locked by {who}{ticket}."
 
 
+def _classify(
+    name: str, state: dict[str, Any], me: str | None, blockers: list[str], notes: list[str]
+) -> None:
+    if same_user(state.get("locked_by"), me):
+        notes.append(describe(name, state, me))
+    else:
+        blockers.append(
+            describe(name, state, me)
+            + " FMC refuses changes to it until they unlock it (in the FMC UI, or fmc_policy_lock "
+            "action='unlock' as that user; break_lock=True takes the lock away from them)."
+        )
+
+
 async def lock_findings(
-    app: FmcApp, owned: list[dict[str, Any] | None], domain: str | None
+    app: FmcApp,
+    owned: list[dict[str, Any] | None],
+    domain: str | None,
+    refs: list[dict[str, Any] | None] | None = None,
 ) -> tuple[list[str], list[str]]:
     """(blockers, notes) for the access policies a write changes: another user's lock blocks the preview (FMC
-    would refuse the write with a bare error), the API user's own lock is a note."""
+    would refuse the write with a bare error), the API user's own lock is a note.
+
+    `owned`: policy records (their metadata.lockingStatus says it, no request). `refs`: policies known only
+    by reference ({id, name}), e.g. the policies whose rules fmc_replace_object edits: one read of FMC's lock
+    list covers them all (nothing when it can't be read)."""
     me = getattr(app.settings, "username", None)
     blockers: list[str] = []
     notes: list[str] = []
+    seen: set[str] = set()
     for obj in owned:
         if not is_access_policy(obj):
             continue
         assert obj is not None
+        seen.add(str(obj["id"]).lower())
         state = await holder(app, obj, domain)
         if state is None or state["status"] != "LOCKED":
             continue
-        name = str(obj.get("name") or obj.get("id"))
-        if same_user(state.get("locked_by"), me):
-            notes.append(describe(name, state, me))
-        else:
-            blockers.append(
-                describe(name, state, me)
-                + " FMC refuses changes to it until they unlock it (in the FMC UI, or fmc_policy_lock "
-                "action='unlock' as that user; break_lock=True takes the lock away from them)."
-            )
+        _classify(str(obj.get("name") or obj.get("id")), state, me, blockers, notes)
+    want = {
+        str(r["id"]).lower(): r
+        for r in refs or []
+        if isinstance(r, dict) and r.get("id") and str(r["id"]).lower() not in seen
+    }
+    if want:
+        for row in locked(await read_locks(app, domain)):
+            ref = want.pop(str(row.get("policy_id") or "").lower(), None)
+            if ref is None:
+                continue
+            state = {"status": "LOCKED", **({"locked_by": row["locked_by"]} if row.get("locked_by") else {})}
+            _classify(str(ref.get("name") or row.get("policy") or ref["id"]), state, me, blockers, notes)
     return blockers, notes
 
 
