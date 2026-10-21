@@ -15,6 +15,7 @@ import respx
 from fastmcp import Client
 
 from fmc_mcp.server import create_server
+from fmc_mcp.tools.routing import FILTER_STEP
 
 from .conftest import CFG, empty, fixture, items, make_settings
 
@@ -603,6 +604,10 @@ async def test_bgp_from_scratch_with_route_policy(fmc: respx.MockRouter) -> None
     fmc.get(f"{R}/bgp").mock(return_value=empty())
     gen = fmc.post(f"{R}/bgpgeneralsettings").mock(return_value=httpx.Response(201, json={"id": "g"}))
     post = fmc.post(f"{R}/bgp").mock(return_value=httpx.Response(201, json={"id": "b"}))
+    # the re-read after the create (F77-6) finds the neighbour's filters as sent: no second request
+    reread = fmc.get(f"{R}/bgp/b").mock(
+        side_effect=lambda request: httpx.Response(200, json={**body(post), "id": "b"})
+    )
     args = {
         "device": DEV["name"],
         "local_as": "65110",
@@ -619,7 +624,7 @@ async def test_bgp_from_scratch_with_route_policy(fmc: respx.MockRouter) -> None
         preview = await run(c, "fmc_configure_bgp", args)
         done = await run(c, "fmc_configure_bgp", {**args, "confirm": preview["confirm"]})
     d = preview["preview"]
-    assert d["steps"] == ["create bgp general settings", "create bgp"]
+    assert d["steps"] == ["create bgp general settings", "create bgp", FILTER_STEP]
     assert d["before"] is None and d["after"]["networks"] == ["inside-net"]  # the full view: BGP is new
     assert d["neighbor_changes"]["changes"]["default_originate"] == {
         "from": None,
@@ -627,6 +632,8 @@ async def test_bgp_from_scratch_with_route_policy(fmc: respx.MockRouter) -> None
     }
     assert d["redistribute_changes"] == {"added": [{"protocol": "connected", "route_map": "rm-default"}]}
     assert done["result"]["applied"] == ["create bgp general settings", "create bgp"]
+    assert done["result"]["verified"] == "re-read after the create: the neighbor filters are stored as sent"
+    assert reread.call_count == 1
     assert body(gen)["asNumber"] == "65110" and body(gen)["routerId"] == "198.51.100.1"
     sent = body(post)
     assert sent["asNumber"] == "65110"
