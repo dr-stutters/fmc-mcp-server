@@ -18,7 +18,7 @@ import httpx
 import respx
 from cryptography import x509
 from cryptography.hazmat.primitives import hashes, serialization
-from cryptography.hazmat.primitives.asymmetric import ec
+from cryptography.hazmat.primitives.asymmetric import ec, rsa
 from cryptography.x509.oid import NameOID
 from fastmcp import Client
 
@@ -122,3 +122,20 @@ async def test_get_certificate_shows_the_pem_names(fmc: respx.MockRouter) -> Non
     # live-B's call (#293): the CN-less root now has its subject, issuer and self_signed
     assert sc["organization"] == SECOM_O and sc["subject"] == SECOM_OU and sc["issuer"] == SECOM_OU
     assert sc["self_signed"] is True
+
+
+def test_same_dn_signed_by_a_key_of_another_type_is_not_self_signed() -> None:
+    """Review of #311: an RSA certificate signed by an EC key under the same DN makes cryptography raise
+    ValueError("Signature algorithm does not match issuer key type"): its own key didn't sign it, so it
+    isn't self-signed (it was reported self-signed). Keys are made in memory for the test only."""
+    rsa_key = rsa.generate_private_key(public_exponent=65537, key_size=2048)
+    ec_key = ec.generate_private_key(ec.SECP256R1())
+    dn = x509.Name([x509.NameAttribute(NameOID.COMMON_NAME, "mcp-test mixed root")])
+    mixed = cert_names({"cert": _pem(dn, dn, rsa_key, ec_key)})
+    assert (mixed.subject, mixed.issuer, mixed.self_signed) == (
+        "mcp-test mixed root",
+        "mcp-test mixed root",
+        False,
+    )
+    assert cert_names({"cert": _pem(dn, dn, rsa_key, rsa_key)}).self_signed is True
+    assert cert_names({"cert": _pem(dn, dn, ec_key, rsa_key)}).self_signed is False

@@ -76,15 +76,17 @@ def _from_pem(pem: str) -> CertNames | None:
 
 def _self_signed(cert: x509.Certificate) -> bool:
     """Issued by itself: the same subject and issuer DN, and its own key verifies the signature (a CA's
-    link certificate can repeat the DN with another key). A signature this library can't check counts by
-    the DNs alone."""
+    link certificate can repeat the DN with another key). After the DN check a ValueError means its own key
+    can't have made the signature (an RSA certificate signed with an EC key: "Signature algorithm does not
+    match issuer key type"), so it isn't self-signed. A signature algorithm or key type this library can't
+    check counts by the DNs alone."""
     if cert.subject != cert.issuer:
         return False
     try:
         cert.verify_directly_issued_by(cert)
-    except InvalidSignature:
+    except (InvalidSignature, ValueError):
         return False
-    except (ValueError, TypeError, UnsupportedAlgorithm):
+    except (TypeError, UnsupportedAlgorithm):
         return True
     return True
 
