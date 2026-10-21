@@ -1,5 +1,5 @@
 {
- "_source": "show logging (buffer off): FMC 10.0.1 operational/commands on mcp-ftd1, 2026-10-18 (GET). show conn all / show conn all detail: the FTD 10.0.0 CLI of the same device through the CML console (FMC refuses 'show conn' over its API), 2026-10-18. show logging (buffer on): that header with buffered logging turned on and message lines in the formats of the Secure Firewall Threat Defense syslog guide (302013-302021, 305011, 430002/430003), lab addressing, because the lab buffer was off at recording time. activesessions / useractivity: the FMC 10.0.1 spec example shapes (getActiveSession, getUserActivity) with lab users; the lab API role gets 403 on analysis/*.",
+ "_source": "show logging (buffer off): FMC 10.0.1 operational/commands on mcp-ftd1, 2026-10-18 (GET). show conn all / show conn all detail: the FTD 10.0.0 CLI of the same device through the CML console (FMC refuses 'show conn' over its API), 2026-10-18. show logging (buffer on): that header with buffered logging turned on and message lines in the formats of the Secure Firewall Threat Defense syslog guide (302013-302021, 305011, 430002/430003), lab addressing, because the lab buffer was off at recording time. activesessions / useractivity: the FMC 10.0.1 spec example shapes (getActiveSession, getUserActivity) with lab users; the lab API role gets 403 on analysis/*. 'show logging (FTD 10.0.0 live, ...)' (W6 live-B1, 2026-10-21, mcp-ftd1 via FMC 10.0.1, buffer at informational after 302013-302021 were enabled): the live header (Timestamp logging: disabled, buffer and trap at informational, the trap line with its UDP drop counters) over the same device's other header lines, and the message lines captured from that run (CML capture of the same messages sent to the syslog server; the buffer holds them without timestamps); the 'no connection messages' buffer: before 302013-302021 were enabled only NAT 305011/305012 (syslog guide format). Snort's 430003 never appeared in the buffer ('show logging' match 43000: 0 lines); the one line here is as the syslog server received it. Addresses: client 10.99.1.10, PAT 192.0.2.1, servers 192.0.2.x; DeviceUUID zeroed; DNS name example.com.",
  "show logging (buffer off)": {
   "items": [
    {
@@ -97,5 +97,36 @@
    "count": 1,
    "pages": 1
   }
- }
+ },
+ "show logging (FTD 10.0.0 live, buffer on)": {
+  "items": [
+   {
+    "commandInput": "show logging",
+    "commandOutput": "Syslog logging: enabled\n    Facility: 20\n    Timestamp logging: disabled\n    Timezone: disabled\n    Logging Format: disabled\n    Hide Username logging: enabled\n    Standby logging: disabled\n    Debug-trace logging: disabled\n    Console logging: disabled\n    Monitor logging: disabled\n    Buffer logging: level informational, 341 messages logged\n    Trap logging: level informational, facility 20, 374 messages logged\n        Logging to inside 10.99.1.10, UDP TX:62 errors: 10  dropped: 207\n    Global TCP syslog stats::\n        NOT_PUTABLE: 0, ALL_CHANNEL_DOWN: 0\n        CHANNEL_FLAP_CNT: 0, SYSLOG_PKT_LOSS: 0\n        PARTIAL_REWRITE_CNT: 0\n    Permit-hostdown logging: enabled\n    History logging: disabled\n    Device ID: disabled\n    Mail logging: disabled\n    ASDM logging: disabled\n    FMC logging: list MANAGER_VPN_EVENT_LIST, 0 messages logged\n    cloud-manager logging: disabled\n    DRW Read Lock Failure: 0\n\n%FTD-6-302013: Built inbound TCP connection 80 for inside:10.99.1.10/38478 (192.0.2.1/38478) to outside:192.0.2.76/22 (192.0.2.76/22) -1 -1\n%FTD-6-302013: Built inbound TCP connection 89 for inside:10.99.1.10/56764 (192.0.2.1/56764) to outside:192.0.2.35/80 (192.0.2.35/80) -1 -1\n%FTD-6-302014: Teardown TCP connection 103 for inside:10.99.1.10/34361 to outside:192.0.2.53/23 duration 0:00:30 bytes 0 SYN Timeout -1 -1\n%FTD-6-302020: Built inbound ICMP connection for faddr 10.99.1.10/0 gaddr 10.99.1.1/0 laddr 10.99.1.1/0 type 3 code 3 Internal-Data0/-1:RX[-1]\n",
+    "type": "command"
+   }
+  ],
+  "paging": {
+   "offset": 0,
+   "limit": 25,
+   "count": 1,
+   "pages": 1
+  }
+ },
+ "show logging (FTD 10.0.0 live, no connection messages)": {
+  "items": [
+   {
+    "commandInput": "show logging",
+    "commandOutput": "Syslog logging: enabled\n    Facility: 20\n    Timestamp logging: disabled\n    Timezone: disabled\n    Logging Format: disabled\n    Hide Username logging: enabled\n    Standby logging: disabled\n    Debug-trace logging: disabled\n    Console logging: disabled\n    Monitor logging: disabled\n    Buffer logging: level informational, 341 messages logged\n    Trap logging: level informational, facility 20, 374 messages logged\n        Logging to inside 10.99.1.10, UDP TX:62 errors: 10  dropped: 207\n    Global TCP syslog stats::\n        NOT_PUTABLE: 0, ALL_CHANNEL_DOWN: 0\n        CHANNEL_FLAP_CNT: 0, SYSLOG_PKT_LOSS: 0\n        PARTIAL_REWRITE_CNT: 0\n    Permit-hostdown logging: enabled\n    History logging: disabled\n    Device ID: disabled\n    Mail logging: disabled\n    ASDM logging: disabled\n    FMC logging: list MANAGER_VPN_EVENT_LIST, 0 messages logged\n    cloud-manager logging: disabled\n    DRW Read Lock Failure: 0\n\n%FTD-6-305011: Built dynamic TCP translation from inside:10.99.1.10/38478 to outside:192.0.2.1/38478\n%FTD-6-305012: Teardown dynamic TCP translation from inside:10.99.1.10/38478 to outside:192.0.2.1/38478 duration 0:00:30\n",
+    "type": "command"
+   }
+  ],
+  "paging": {
+   "offset": 0,
+   "limit": 25,
+   "count": 1,
+   "pages": 1
+  }
+ },
+ "snort 430003 at the syslog server (FTD 10.0.0 live)": "SFIMS %FTD-6-430003: EventPriority: Low, DeviceUUID: 00000000-0000-0000-0000-000000000099, InstanceID: 3, FirstPacketSecond: 2026-10-21T05:47:29Z, ConnectionID: 32, AccessControlRuleAction: Allow, SrcIP: 10.99.1.10, DstIP: 192.0.2.53, SrcPort: 43656, DstPort: 53, Protocol: udp, IngressInterface: inside, EgressInterface: outside, IngressZone: mcp-test-ftd-in, EgressZone: mcp-test-ftd-out, IngressVRF: Global, EgressVRF: Global, ACPolicy: mcp-w6-acp, AccessControlRuleName: mcp-w6-allow-out, Prefilter Policy: Default Prefilter Policy, Client: DNS, ApplicationProtocol: DNS, ConnectionDuration: 0, InitiatorPackets: 2, ResponderPackets: 2, InitiatorBytes: 138, ResponderBytes: 182, NAPPolicy: Balanced Security and Connectivity, DNSQuery: example.com, DNSRecordType: IP6 Address, DNSResponseType: No Error, DNS_TTL: 145, ReferencedHost: example.com, NAT_InitiatorPort: 43656, NAT_ResponderPort: 53, NAT_InitiatorIP: 192.0.2.1, NAT_ResponderIP: 192.0.2.53, ClientAppDetector: AppID, InspectedPacketCount: 4, InspectionMicroseconds: 796"
 }
