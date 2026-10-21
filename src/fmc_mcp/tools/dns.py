@@ -108,15 +108,19 @@ async def inherited_blockers(
     app: FmcApp,
     pol: dict[str, Any],
     domain: str | None,
-    wanted: list[str],
-    action: str,
-    mode: str,
     rules: list[dict[str, Any]],
+    *,
+    then: tuple[str, dict[str, Any]] | None,
+    goal: str = "block",
+    relink: list[dict[str, Any]] | None = None,
 ) -> list[str]:
-    """For a DNS policy an ancestor domain owns (#204). Block: the way to block in this domain alone first
-    (a DNS policy of its own, linked to its access policies), then what changing the ancestor's policy
-    reaches. Unblock: only the ancestor (a new policy has nothing to unblock). Empty when the domain owns
-    the policy."""
+    """For a DNS policy an ancestor domain owns (#204, #250): the way to make the change in this domain
+    alone first (a DNS policy of its own, linked to its access policies, then `then`: the call that repeats
+    the change there, as (tool, arguments without `domain`)), then what changing the ancestor's policy
+    reaches. `then` None (unblock, remove: a new policy has nothing to take out): only the ancestor.
+    `relink`: the access policies to link to the new policy (default: the domain's own ones that use
+    `pol`); when none of them is the domain's own, only the ancestor. `goal` words the leaf way ('To
+    <goal> in <domain> only'). Empty when the domain owns the policy."""
     here = await app.domain_uuid(domain)
     owner = owner_domain(pol)
     if not owner or str(owner["id"]).lower() == here.lower():
@@ -152,25 +156,31 @@ async def inherited_blockers(
         if not complete:
             reach += f", of the first {ACP_SCAN_CAP} access policies checked"
     reach += "."
-    if action != "block":
+    if then is None:
         return [f"{head} {reach}"]
 
     def owned_here(a: dict[str, Any]) -> bool:
         d = owner_domain(a)
         return not d or str(d["id"]).lower() == here.lower()
 
-    mine = [str(a.get("name")) for a in users if owned_here(a)]
-    theirs = [str(a.get("name")) for a in users if not owned_here(a)]
+    pool = users if relink is None else relink
+    mine = [str(a.get("name")) for a in pool if owned_here(a)]
+    theirs = [str(a.get("name")) for a in pool if not owned_here(a)]
+    verb = "belongs" if len(theirs) == 1 else "belong"
+    if relink is not None and not mine:
+        also = f"({', '.join(theirs)} {verb} to an ancestor domain too and can only be relinked there.)"
+        return [f"{head} {reach} {also}"]
+    tool, kwargs = then
     steps = [_call("fmc_create_dns_policy", name=NEW_POLICY, domain=here_name)]
     steps += [
         _call("fmc_set_dns_policy", access_policy=a, dns_policy=NEW_POLICY, domain=here_name)
         for a in mine or ["<access policy>"]
     ]
-    steps.append(_call("fmc_dns_block", policy=NEW_POLICY, domains=wanted, mode=mode, domain=here_name))
+    steps.append(_call(tool, **kwargs, domain=here_name))
     local = (
-        f"{head} To block in {here_name!r} only, give it a DNS policy of its own: {' -> '.join(steps)}, then "
-        f"fmc_deploy. The access policies relinked to it stop using {name!r}: the new policy starts with "
-        "FMC's Global allow/block rules only"
+        f"{head} To {goal} in {here_name!r} only, give it a DNS policy of its own: {' -> '.join(steps)}, "
+        f"then fmc_deploy. The access policies relinked to it stop using {name!r}: the new policy starts "
+        "with FMC's Global allow/block rules only"
     )
     others = [str(r.get("name")) for r in rules if not FMC_DNS_RULE.match(str(r.get("name") or ""))]
     if others:
@@ -181,7 +191,6 @@ async def inherited_blockers(
         )
     local += "."
     if theirs:
-        verb = "belongs" if len(theirs) == 1 else "belong"
         local += f" ({', '.join(theirs)} {verb} to an ancestor domain and can only be relinked there.)"
     return [local, f"Or: {reach[0].lower()}{reach[1:]}"]
 
@@ -455,7 +464,15 @@ def register(reg: ToolRegistrar) -> None:
                 "next": "fmc_deploy to the devices whose access policy uses this DNS policy",
             }
 
-        inherited = await inherited_blockers(app, p, domain, wanted, action, mode, rules.items)
+        inherited = await inherited_blockers(
+            app,
+            p,
+            domain,
+            rules.items,
+            then=("fmc_dns_block", {"policy": NEW_POLICY, "domains": wanted, "mode": mode})
+            if action == "block"
+            else None,
+        )
         return await fmc_preview(
             ctx,
             tool="fmc_dns_block",
