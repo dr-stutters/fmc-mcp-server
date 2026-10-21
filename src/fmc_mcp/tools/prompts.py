@@ -351,7 +351,30 @@ around a failed registration or deployment.
 """
 
 
-def _health_review_text(domain: str | None, device: str | None, lookback_hours: int) -> str:
+def _drift_step(compare_with: str, d: str) -> str:
+    """Step 10 of the health review when it compares the devices with a reference configuration."""
+    ref = _q(compare_with, "compare_with")
+    diff = tool_ref("fmc_diff_device_config")
+    if re.fullmatch(r"[\w.@+-]+\.ya?ml", compare_with.strip()):
+        call = f"{diff} with a={ref}{d}:\n   the stored export against its device as it is now."
+    else:
+        call = (
+            f"{diff} with a=<device>, b={ref}{d}\n   for each device in scope, at most three (each call "
+            "reads both sides, about 30 requests per device)."
+        )
+    return f"""
+10. Configuration drift against {ref}: {call}
+   `b` may be another device or HA pair, a stored export or a device template. A difference in
+   assigned policies, routing, NAT, VPN membership or interface zones is a warning (the device
+   doesn't run what its reference does); addresses, VTI peers and object overrides that differ per
+   site are info. Give each difference with its section, key and from/to values; `identical: true`
+   is an info finding of its own. Sections under `not_compared` weren't checked: say which.
+"""
+
+
+def _health_review_text(
+    domain: str | None, device: str | None, lookback_hours: int, compare_with: str | None = None
+) -> str:
     """The fmc_firewall_health_review instructions."""
     if not 1 <= lookback_hours <= 720:
         raise InvalidRequest(f"lookback_hours must be 1-720, not {lookback_hours}.")
@@ -372,6 +395,8 @@ def _health_review_text(domain: str | None, device: str | None, lookback_hours: 
         inventory = f"{tool_ref('fmc_list_devices')}{wd}"
         keep = ""
         cert_keep = ""
+    drift = _drift_step(compare_with, d) if compare_with else ""
+    report = 11 if compare_with else 10
     return f"""Review the health of {scope} and of the FMC itself over the last
 {lookback_hours} hours, and write one ranked report with next steps. Every step is read-only:
 change, deploy or back up nothing; the report only proposes next steps.
@@ -448,8 +473,8 @@ note it and carry on.
    with FMC (critical while current). Only for a critical finding where you need to know what
    changed just before it: {tool_ref("fmc_recent_activity")} with since_minutes={minutes},
    device=<name>{d} (audit records and deployments around it).
-
-10. Report: one list, critical first, then warning, then info; within a level, what affects
+{drift}
+{report}. Report: one list, critical first, then warning, then info; within a level, what affects
    traffic (devices, HA, VPN and their certificates) comes before what affects management
    (licences, content, backups).
    Merge findings with one cause (a red device and its INTERFACE alerts). Each finding gives:
@@ -1579,14 +1604,22 @@ def register(reg: ToolRegistrar) -> None:
         lookback_hours: Annotated[
             int, Field(ge=1, le=720, description="How far back to read health alerts and deployments")
         ] = 24,
+        compare_with: Annotated[
+            str | None,
+            Field(
+                description="Also compare the devices' configuration with this: a device or HA pair, a "
+                "device template, or a stored export's file name in FMC_BUNDLE_DIR (fmc_diff_device_config)"
+            ),
+        ] = None,
     ) -> str:
         """Is the firewall estate healthy? Reviews device health and connectivity (with CPU, memory,
         throughput and drops over the review window for the devices that need it), HA pairs and
         clusters, the deployment backlog and failed deployments, licences, software and VDB/SRU/LSP
         content age, backups, certificate expiry, VPN tunnels and recent health alerts with the
-        aggregate tools, and writes one ranked report (critical, warning, info), each finding with
-        its evidence and a concrete next step. Read-only."""
-        return _health_review_text(domain, device, lookback_hours)
+        aggregate tools, optionally configuration drift against a reference device, template or
+        stored export (compare_with), and writes one ranked report (critical, warning, info), each
+        finding with its evidence and a concrete next step. Read-only."""
+        return _health_review_text(domain, device, lookback_hours, compare_with)
 
     @reg.prompt(
         title="Review a rule change",

@@ -7,7 +7,8 @@
       "arguments": [
         "domain",
         "device",
-        "lookback_hours"
+        "lookback_hours",
+        "compare_with"
       ],
       "references": [
         "fmc_list_devices",
@@ -27,6 +28,7 @@
         "fmc_list_vpn_tunnels",
         "fmc_list_health_alerts",
         "fmc_recent_activity",
+        "fmc_diff_device_config",
         "fmc_run_show_command",
         "fmc_deploy",
         "fmc_backup_devices"
@@ -730,6 +732,10 @@
       "tier": "read",
       "title": "Device metrics over time"
     },
+    "fmc_diff_device_config": {
+      "tier": "read",
+      "title": "Compare device configurations"
+    },
     "fmc_diff_policy_bundle": {
       "tier": "read",
       "title": "Diff policy bundles"
@@ -745,6 +751,10 @@
     "fmc_export_access_rules": {
       "tier": "read",
       "title": "Export access rules"
+    },
+    "fmc_export_device_config": {
+      "tier": "read",
+      "title": "Export a device configuration"
     },
     "fmc_export_policy_bundle": {
       "tier": "read",
