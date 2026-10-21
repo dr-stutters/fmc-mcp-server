@@ -15,7 +15,9 @@ FMC 10.0.1 behaviour this relies on (recorded 2026-10-20 on an unassigned probe 
 - FMC can answer 200 and keep a field (recorded live 2026-10-21): log='none' on a MONITOR rule left logEnd and
   sendEventsToFMC on (MONITOR rules always log the connection end to FMC; its timestamp didn't move). So the
   preview leaves those two fields of MONITOR rules alone, and after the PUTs one GET of the rules checks
-  every sent field: rules FMC left unchanged are reported in `kept_by_fmc`, not as applied.
+  every sent field, the comment too (the history must hold it once more than before): the fields FMC kept are
+  reported in `kept_by_fmc` (a rule that took none of them is not applied; one that took others is, with
+  `applied_fields`), and a sent rule the GET doesn't hold (gone, or past the read cap) in `not_verified`.
 - Hit counts: `DELETE policy/{accesspolicies|prefilterpolicies}/{id}/operational/hitcounts?filter=
   deviceId:{uuid};ids:{..}` (no body) answers `{}`. Without ids it clears every rule of the policy on that
   device, and the default action's counter too (recorded live 2026-10-21).
@@ -273,33 +275,66 @@ def _shown(field: str, value: Any) -> Any:
     return value
 
 
+def _comments(rule: dict[str, Any] | None, text: str) -> int:
+    """How often a comment is in a rule's comment history (FMC appends `newComments` there)."""
+    t = text.strip()
+    return sum(
+        1
+        for c in (rule or {}).get("commentHistoryList") or []
+        if isinstance(c, dict) and str(c.get("comment") or "").strip() == t
+    )
+
+
 async def kept_by_fmc(
-    app: FmcApp, path: str, bodies: list[dict[str, Any]], names: dict[str, str]
-) -> tuple[list[dict[str, Any]], str | None]:
-    """Re-read the rules and list those FMC left (partly) unchanged although it answered 200: one row per
-    rule with the fields FMC kept. The second value says why nothing could be checked."""
+    app: FmcApp,
+    path: str,
+    bodies: list[dict[str, Any]],
+    names: dict[str, str],
+    before: dict[str, dict[str, Any]] | None = None,
+) -> dict[str, Any]:
+    """Re-read the rules and check every sent field, the comment included (`before`: the rules as read for
+    the preview, by lower-case id, for the comment count). Returns `kept` (one row per rule FMC left
+    partly or wholly unchanged although it answered 200: the fields it kept, and `applied_fields` when
+    others did change), `missing` (sent rules the re-read doesn't hold, so not verified), `incomplete`
+    (the re-read stopped at the cap) or `error` (the re-read failed: nothing verified)."""
     try:
         after = await all_rules(app, path)
     except UpstreamError as e:
-        return [], f"Not verified: re-reading the rules failed ({e}); check with fmc_list_access_rules."
+        return {
+            "error": f"Not verified: re-reading the rules failed ({e}); check with fmc_list_access_rules."
+        }
     by_id = {str(r.get("id", "")).lower(): r for r in after.items}
-    out: list[dict[str, Any]] = []
+    kept: list[dict[str, Any]] = []
+    missing: list[str] = []
     for b in bodies:
-        rule = by_id.get(str(b["id"]).lower())
+        rid = str(b["id"]).lower()
+        rule = by_id.get(rid)
         if rule is None:
+            missing.append(names[b["id"]])
             continue
         fields = {
             k: {"sent": _shown(k, v), "fmc_has": _shown(k, rule.get(k))}
             for k, v in b.items()
             if k not in ("id", "type", "newComments") and not _same(k, v, rule.get(k))
         }
+        for text in b.get("newComments") or []:
+            if _comments(rule, text) <= _comments((before or {}).get(rid), text):
+                fields["newComments"] = {"sent": text, "fmc_has": "not in the rule's comment history"}
         if fields:
-            out.append({"rule": names[b["id"]], "fields": fields})
-    return out, None
+            row: dict[str, Any] = {"rule": names[b["id"]], "fields": fields}
+            took = [k for k in b if k not in ("id", "type") and k not in fields]
+            if took:
+                row["applied_fields"] = took
+            kept.append(row)
+    return {"kept": kept, "missing": missing, "incomplete": not after.complete}
 
 
 async def apply_chunks(
-    app: FmcApp, path: str, bodies: list[dict[str, Any]], names: dict[str, str]
+    app: FmcApp,
+    path: str,
+    bodies: list[dict[str, Any]],
+    names: dict[str, str],
+    before: dict[str, dict[str, Any]] | None = None,
 ) -> dict[str, Any]:
     """PUT the partial bodies in chunks; on a rejected chunk find the rule by halving, stop there."""
     done: list[dict[str, Any]] = []
@@ -345,21 +380,41 @@ async def apply_chunks(
             getattr(s.error, "status_code", None),
         ) from s.error
     app.invalidate_cache()
-    kept, unverified = await kept_by_fmc(app, path, done, names)
-    kept_names = {k["rule"] for k in kept}
-    out: dict[str, Any] = {
-        "applied": len(done) - len(kept),
-        "requests": puts,
-        "rules": [names[b["id"]] for b in done if names[b["id"]] not in kept_names],
-    }
+    check = await kept_by_fmc(app, path, done, names, before)
+    kept: list[dict[str, Any]] = check.get("kept") or []
+    missing: list[str] = check.get("missing") or []
+    nothing = {k["rule"] for k in kept if not k.get("applied_fields")}  # FMC kept every sent field
+    rules = [names[b["id"]] for b in done if names[b["id"]] not in nothing and names[b["id"]] not in missing]
+    out: dict[str, Any] = {"applied": len(rules), "requests": puts, "rules": rules}
+    warnings: list[str] = []
     if kept:
         out["kept_by_fmc"] = kept
-        out["warning"] = (
-            f"FMC answered 200 but left {len(kept)} rule(s) without the change (the fields under "
-            "kept_by_fmc). Check them with fmc_get_access_rule; MONITOR rules always keep their "
-            "end-of-connection logging."
+        partly = len(kept) - len(nothing)
+        warnings.append(
+            f"FMC answered 200 but kept some sent fields on {len(kept)} rule(s) (under kept_by_fmc"
+            + (f"; {partly} of them took the other fields, applied_fields" if partly else "")
+            + "). Check them with fmc_get_access_rule; MONITOR rules always keep their end-of-connection "
+            "logging."
         )
-    out["verified"] = unverified or "one GET of the policy's rules after the change"
+    if missing:
+        out["not_verified"] = missing
+        why = (
+            "the re-read stopped at the rule cap"
+            if check.get("incomplete")
+            else "they are not in the policy's rules any more"
+        )
+        warnings.append(
+            f"{len(missing)} rule(s) FMC answered 200 for could not be checked: {why}. Look at them with "
+            "fmc_get_access_rule."
+        )
+    if warnings:
+        out["warning"] = " ".join(warnings)
+    if check.get("error"):
+        out["verified"] = check["error"]
+    else:
+        out["verified"] = "one GET of the policy's rules after the change" + (
+            f", {len(missing)} sent rule(s) not in it (not_verified)" if missing else ""
+        )
     out["next"] = "fmc_deploy (fmc_pending_changes shows the diff); fmc_list_access_rules shows the rules"
     return out
 
@@ -424,6 +479,7 @@ def register(reg: ToolRegistrar) -> None:
             ips = {"id": found["id"], "type": "IntrusionPolicy", "name": found.get("name")}
         rows: list[dict[str, Any]] = []
         bodies: list[dict[str, Any]] = []
+        before = {str(r["id"]).lower(): r for r in selected if r.get("id")}  # comments are counted after
         unchanged: list[str] = []
         skipped: list[dict[str, Any]] = []
         names: dict[str, str] = {}
@@ -495,7 +551,7 @@ def register(reg: ToolRegistrar) -> None:
                     MOVE_NOTE,
                 ],
             ),
-            apply=lambda: apply_chunks(app, path, bodies, names),
+            apply=lambda: apply_chunks(app, path, bodies, names, before),
         )
 
     @reg.write(title="Clear rule hit counts", destructive=True)

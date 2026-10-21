@@ -14,6 +14,7 @@ from fastmcp import Context
 from fmc_mcp._core import Plan, get_client, preview_or_apply
 from fmc_mcp.acp_structure import lock_findings
 from fmc_mcp.client import FmcApp
+from fmc_mcp.tools.common import is_builtin_object
 
 REROUTE_FRESH = 300.0  # seconds; older entries on a reused task are not this call's
 
@@ -61,8 +62,14 @@ async def fmc_preview(
     for obj in owned:
         dom = owner_domain(obj)
         if dom and str(dom["id"]).lower() != uuid.lower():
-            where = await app.domain_name(str(dom["id"]))
             label = (obj or {}).get("name") or (obj or {}).get("id")
+            if is_builtin_object(obj or {}):
+                # FMC's own (fixed-id) objects: read-only in Global too, so no domain to send the user to
+                plan.blockers.append(
+                    f"{label!r} is an FMC built-in (system) object, read-only in every domain."
+                )
+                continue
+            where = await app.domain_name(str(dom["id"]))
             plan.blockers.append(
                 f"{label!r} is defined in domain {where!r} and only inherited by {name!r}, where FMC "
                 f"won't change it. Repeat with domain={where!r} (it then applies to every domain below)."

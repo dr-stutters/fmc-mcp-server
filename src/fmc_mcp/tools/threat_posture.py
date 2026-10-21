@@ -378,7 +378,7 @@ async def threat_posture(app: FmcApp, policy: str, domain: str | None) -> dict[s
                 why = (
                     f"it belongs to domain {await app.domain_name(str(owner['id']))!r}, read-only here"
                     if owner and str(owner["id"]).lower() != here.lower()
-                    else "it is FMC's read-only default policy"
+                    else "it is read-only in this domain"
                 )
                 findings.append(
                     _finding(

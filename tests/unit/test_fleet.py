@@ -642,7 +642,9 @@ async def test_update_group_preview_shows_rename_and_description(fleet: respx.Mo
     p = preview["preview"]
     assert p["name"] == {"from": "branches", "to": "spokes"}
     assert p["description"] == {"from": "old text", "to": "new text"}
-    assert "description changed" in only_desc["action"] and only_desc["status"] == "preview"
+    # FMC 10.0.1 keeps no group description (#254): the title says it is sent, not that it changed (#273)
+    assert "description sent (FMC 10.0.1 doesn't keep it)" in only_desc["action"]
+    assert "description changed" not in only_desc["action"] and only_desc["status"] == "preview"
     body = json.loads(put.calls.last.request.content)
     assert body["name"] == "spokes" and body["description"] == "new text" and len(body["members"]) == 3
 
@@ -723,3 +725,14 @@ async def test_licences_by_group_say_what_was_applied_when_one_fails(fleet: resp
     assert "'ftd-b' failed" in msg and "Applied: ['ftd-a']" in msg
     assert "not applied: ['ftd-b', 'fw-ha-a', 'fw-ha-b']" in msg
     assert all(r.call_count == 0 for r in later)
+
+
+def test_kept_description_ignores_surrounding_whitespace() -> None:
+    """#273: the check was an exact ==, so an FMC that trims the text read as one that dropped it."""
+    from fmc_mcp.tools.device_groups import DESCRIPTION_DROPPED, kept_description
+
+    assert kept_description({"description": "W6 F68"}, " W6 F68 \n") == {"description": "W6 F68"}
+    assert kept_description({"name": "g"}, "W6 F68")["warning"] == DESCRIPTION_DROPPED
+    assert kept_description({"description": "other"}, "W6 F68")["warning"] == DESCRIPTION_DROPPED
+    assert kept_description({"name": "g"}, "   ") == {"name": "g"}  # nothing meaningful sent
+    assert kept_description({"name": "g"}, None) == {"name": "g"}

@@ -184,8 +184,38 @@ async def test_a_huge_pending_change_is_cut_to_fit(fmc: respx.MockRouter) -> Non
     rows = {r["entity"]: r for r in data["results"]}
     assert set(rows) == {"Balanced Security and Connectivity", "mcp-w6-acp", "mcp-w6-tr-now"}  # none dropped
     (line,) = rows["Balanced Security and Connectivity"]["changes"]
-    assert line.startswith("inspectorData: {") and line.endswith(" more characters]")
-    assert len(line) < CHANGE_TEXT_CAP + 50
+    # each side is cut on its own (#273): the old value no longer hides the new one
+    old_side, new_side = line.split(" -> ")
+    assert old_side.startswith("inspectorData: {") and old_side.endswith(" more characters]")
+    assert new_side.startswith('{"inspectors"') and new_side.endswith(" more characters]")
+    assert len(line) < CHANGE_TEXT_CAP + 100
     assert len(rows["mcp-w6-acp"]["changes"]) == CHANGES_PER_ROW and rows["mcp-w6-acp"]["changes_total"] == 45
     assert "changes_total" not in rows["mcp-w6-tr-now"]
     assert "deployment preview shows them whole" in data["note"]
+
+
+def test_each_side_of_a_change_is_cut_on_its_own() -> None:
+    """#273: the 400-character cap cut the whole 'old -> new' line, so a long old value hid the new one."""
+    from fmc_mcp.tools.deploy import VALUE_CAP, cut_note, pending_row
+
+    row = pending_row(
+        {
+            "entityName": "p",
+            "valueUpdated": [
+                {"fieldName": "description", "oldValue": "o" * 1000, "newValue": "the new text"}
+            ],
+            "valueAdded": [{"fieldName": "literal", "newValue": "n" * 300}],
+            "valueDeleted": [{"fieldName": "gone", "oldValue": "d" * 1000}],
+        }
+    )
+    added, updated, deleted = row["changes"]
+    assert added == "literal: " + "n" * 300  # a single value keeps the whole budget
+    assert (
+        updated == f"description: {'o' * VALUE_CAP}... [{1000 - VALUE_CAP:,} more characters] -> the new text"
+    )
+    assert deleted.startswith("-gone: ddd") and deleted.endswith("[600 more characters]")
+    assert "each side of 'old -> new'" in str(cut_note([row]))
+    assert (
+        cut_note([pending_row({"entityName": "p", "valueAdded": [{"fieldName": "a", "newValue": "b"}]})])
+        is None
+    )

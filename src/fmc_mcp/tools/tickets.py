@@ -23,7 +23,7 @@ from fmc_mcp._core import (
 from fmc_mcp.client import FmcApp
 from fmc_mcp.preview import fmc_preview
 from fmc_mcp.tools.common import Domain
-from fmc_mcp.tools.deploy import pending_row
+from fmc_mcp.tools.deploy import cut_note, pending_row
 from fmc_mcp.tools.render import object_reply
 
 TICKETS = "changemanagement/tickets"
@@ -102,6 +102,9 @@ def register(reg: ToolRegistrar) -> None:
             checks = await app.all(f"{path}/{t['id']}/validationresults", cap=500)
             out["ticket"] = ticket_row(t)
             out["changes"] = [pending_row(c) for c in changes.items]
+            cut = cut_note(out["changes"])
+            if cut:
+                out["changes_note"] = cut
             out["validation"] = [
                 {"level": v.get("level"), "message": v.get("message") or v.get("description")}
                 for v in checks.items
