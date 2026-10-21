@@ -104,16 +104,16 @@ def days_until(end: datetime | None, now: datetime) -> int | None:
 
 
 def bundled(obj: dict[str, Any]) -> bool:
-    """One of FMC's bundled public root CAs (not one somebody imported). FMC marks them read-only; in a
-    child domain FMC 10.0.1 also marks Global's own objects read-only with no reason, so without a reason
-    the id decides: FMC names the bundled roots with name-derived (version 3) UUIDs, and objects created
-    on FMC get time-based or FMC-style ids."""
+    """One of FMC's bundled public root CAs (not one somebody imported). FMC marks them read-only with
+    reason SYSTEM in Global. Any other read-only says nothing about the object itself: in a child domain
+    FMC 10.0.1 marks Global's own objects read-only with no reason (or DOMAIN), and an API user without
+    write rights sees every object read-only with reason RBAC. Then the id decides: FMC names the bundled
+    roots with name-derived (version 3) UUIDs, and objects created on FMC get time-based or FMC-style ids."""
     ro = (obj.get("metadata") or {}).get("readOnly")
     if not (isinstance(ro, dict) and ro.get("state")):
         return False
-    reason = ro.get("reason")
-    if reason:
-        return bool(reason != "DOMAIN")
+    if ro.get("reason") == "SYSTEM":
+        return True
     try:
         return uuid.UUID(str(obj.get("id"))).version == 3
     except ValueError:

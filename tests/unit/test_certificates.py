@@ -96,7 +96,12 @@ def test_bundled_roots_in_a_leaf_domain() -> None:
     # FMC 10.0.1 in a child domain: every Global object read-only with no reason; the id decides
     assert bundled(comodo) and bundled(fnmt) and not bundled(lab_ca)
     assert bundled({**lab_ca, "metadata": {"readOnly": {"state": True, "reason": "SYSTEM"}}})
-    assert not bundled({**comodo, "metadata": {"readOnly": {"state": True, "reason": "DOMAIN"}}})
+    # DOMAIN (inherited) and RBAC (an API user without write rights) say nothing about the object: the id
+    # still decides, so a read-only user's listing keeps the lab CA and still hides the bundled roots.
+    for reason in ("DOMAIN", "RBAC"):
+        ro = {"metadata": {"readOnly": {"state": True, "reason": reason}}}
+        assert bundled({**comodo, **ro}) and bundled({**fnmt, **ro}), reason
+        assert not bundled({**lab_ca, **ro}), reason
     assert not bundled({**comodo, "metadata": {}})
     assert not bundled({"id": "not-a-uuid", "metadata": {"readOnly": {"state": True}}})
 
@@ -169,6 +174,19 @@ async def test_lists_every_kind_hides_bundled_roots(fmc: respx.MockRouter) -> No
     assert "unavailable" not in out
     text = json.dumps(out)
     assert "********" not in text and "privateKey" not in text and "BEGIN CERTIFICATE" not in text
+
+
+async def test_read_only_api_user_still_sees_the_lab_ca(fmc: respx.MockRouter) -> None:
+    """An API user without write rights gets every object read-only with reason RBAC: the custom CA
+    must stay listed (it is the one LDAPS / ISE trust depends on), the bundled roots stay hidden."""
+    trusted = copy.deepcopy(FX["trusted_cas"])
+    for c in trusted["items"]:
+        c["metadata"]["readOnly"] = {"state": True, "reason": "RBAC"}
+    mock_all(fmc, trusted=trusted)
+    async with Client(server()) as c:
+        out = await run(c, {"kind": "trusted_ca"})
+    assert [r["name"] for r in out["results"]] == ["mcp-test-lab-CA"]
+    assert out["bundled_roots_hidden"] == 2
 
 
 async def test_include_bundled_and_kind(fmc: respx.MockRouter) -> None:
