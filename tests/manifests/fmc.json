@@ -143,7 +143,8 @@
         "nat_policy",
         "platform_settings",
         "test_destination",
-        "template"
+        "template",
+        "devices"
       ],
       "references": [
         "fmc_status",
@@ -154,10 +155,10 @@
         "cml_build_recipe",
         "cml_wait_for_converged",
         "cml_verify_recipe",
-        "fmc_register_device",
+        "fmc_register_devices",
         "fmc_get_device",
-        "fmc_get_device_template",
         "fmc_apply_device_template",
+        "fmc_get_device_template",
         "fmc_pending_changes",
         "fmc_get_vpn_topology",
         "fmc_list_device_interfaces",
@@ -1020,6 +1021,10 @@
     "fmc_register_device": {
       "tier": "dangerous",
       "title": "Register device"
+    },
+    "fmc_register_devices": {
+      "tier": "dangerous",
+      "title": "Register several devices"
     },
     "fmc_release_host": {
       "tier": "write",

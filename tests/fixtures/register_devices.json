@@ -1,0 +1,41 @@
+{
+  "_source": "F74. bulk_response: FMC 10.0.1 spec, POST devicerecords 202 'Response Example 4 (Bulk Registration of devices)', links dropped (one TaskStatus for a two-device batch; replace with the Stage 2 live capture). registration_task and initial_deployment_job: live FMC 10.0.1 shapes (2026-10-19 registration), device name and UUID replaced.",
+  "bulk_response": {
+    "items": [
+      {
+        "id": "30064772170",
+        "type": "TaskStatus",
+        "name": "DEVICE_REGISTRATION",
+        "version": "6.0.1",
+        "keepLocalEvents": false
+      }
+    ]
+  },
+  "registration_task": {
+    "id": "30064772170",
+    "type": "TaskStatus",
+    "taskType": "DEVICE_REGISTRATION",
+    "description": "Device is registered successfully.",
+    "message": "DEVICE_SUCCESSFULLY_REGISTERED",
+    "status": "SUCCESS"
+  },
+  "initial_deployment_job": {
+    "id": "00000000-0000-0ed3-0000-021474919584",
+    "jobName": "Deploy_Job_107",
+    "jobStatus": "DEPLOYED",
+    "jobType": "DEPLOYMENT",
+    "startTime": "2026-10-19T00:04:08Z",
+    "endTime": "2026-10-19T00:05:29Z",
+    "user": "System",
+    "deploymentNote": "Deployment after registration",
+    "deviceList": [
+      {
+        "deviceName": "ftd-a",
+        "deviceUUID": "aaaaaaaa-0000-4000-8000-000000000001",
+        "deploymentStatus": "SUCCEEDED",
+        "deployedVersion": 1
+      }
+    ],
+    "type": "JobHistory"
+  }
+}

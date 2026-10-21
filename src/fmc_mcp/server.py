@@ -55,6 +55,7 @@ from fmc_mcp.tools import (
     prefilter,
     prompts,
     prove,
+    registration,
     routing,
     rule_io,
     sdwan,
@@ -84,7 +85,8 @@ Workflows:
   (logical name, zone, IP) -> fmc_create_static_route -> fmc_assign_policy (NAT, platform settings)
   -> fmc_deploy -> verify with fmc_run_show_command ('show route', 'show interface ip brief').
   Loopbacks, VTIs, EtherChannels and BVIs: fmc_create_interface (then fmc_update_interface /
-  fmc_delete_interface like any interface).
+  fmc_delete_interface like any interface). Several FTDs at once (a lab or PoC rebuild):
+  fmc_register_devices (one preview, one bulk request, one wait for all, a result per device).
 - Roll out a branch from a device template (FMC 7.6+): fmc_create_device_template (from a working
   branch with source_device) -> fmc_get_device_template (variables, interfaces, VPN/SD-WAN settings)
   -> fmc_register_device (the new FTD) -> fmc_apply_device_template(template, device, variables)
@@ -256,6 +258,7 @@ REGISTER: list[Callable[[ToolRegistrar], None]] = [
     policy_writes.register,
     bulk_rules.register,
     dangerous.register,
+    registration.register,
     troubleshoot.register,
     metrics.register,
     live.register,

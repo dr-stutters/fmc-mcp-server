@@ -222,6 +222,7 @@ MD5 password, because FMC returns it masked and a PUT would replace it, unless y
 | `fmc_deploy` | Deploys pending changes and waits for the deployment task to finish. |
 | `fmc_rollback_deployment` | Rolls a device back to an earlier successful deployment. |
 | `fmc_register_device` | Registers a device with FMC and waits for the initial deployment. |
+| `fmc_register_devices` | Registers several FTDs in one call (a lab or PoC rebuild): one preview for every row, one bulk request (one per device where FMC refuses bulk), one wait under one deadline for every registration and initial deployment, a result per device. Every row uses `FMC_FTD_REG_KEY` unless it has its own key; keys are never shown. An MCP background task with `MCP_TASKS=true`. |
 | `fmc_delete_device` | Removes a device from FMC. |
 | `fmc_create_ha_pair` | Forms an HA pair: the failover link, and state replication over it or over a separate state link (`state_interface`). |
 | `fmc_ha_action` | Breaks, switches or deletes an HA pair. |
@@ -235,7 +236,9 @@ MD5 password, because FMC returns it masked and a PUT would replace it, unless y
 - **Onboard an FTD:** on the device, `configure manager add <fmc> <key>`; then `fmc_register_device`
   -> `fmc_update_interface` (name, zone, IP) -> `fmc_create_static_route` -> NAT policy and rules ->
   `fmc_assign_policy` -> `fmc_deploy` -> `fmc_run_show_command` to verify. FMC needs Smart Licensing or
-  evaluation mode before it accepts devices.
+  evaluation mode before it accepts devices. Several FTDs (an SD-WAN or HA lab from a CML recipe):
+  `fmc_register_devices` registers them all in one call; the `fmc_onboard_ftd` prompt takes them as
+  `devices` (name=host pairs from the recipe's FMC hand-off).
 - **Change safely:** change -> `fmc_pending_changes` -> `fmc_deploy` -> verify ->
   `fmc_rollback_deployment` if needed.
 - **Why is this traffic blocked?** The `fmc_why_blocked` prompt runs `fmc_rule_lookup` ->
@@ -411,6 +414,7 @@ including nested groups, to ranges, then walk the rules in order. The results ar
 | `MCP_ENABLE_WRITES`, `MCP_ENABLE_DANGEROUS` | `false` | Tool tiers |
 | `MCP_CONFIRM_TTL` | `600` | Seconds a confirm token stays valid |
 | `MCP_TASK_TIMEOUT` | `600` | Seconds to wait for deployment, registration and HA tasks |
+| `MCP_TASKS`, `MCP_TASKS_URL` | `false`, `memory://` | Run the long tools that support it (`fmc_register_devices`) as MCP background tasks: a client that supports tasks gets a handle at once and polls it for progress; others call them as usual (core `docs/PRODUCTION.md`, C12). `redis://...` keeps queued tasks across restarts. |
 | `MCP_CACHE_DIR` | `~/.cache/fmc-mcp-server` | Cache for the indexed API spec. Set it to `""` to disable the cache. |
 | `MCP_MAX_RESPONSE_CHARS` | `40000` | Maximum size of one tool response |
 | `MCP_AUDIT_LOG`, `LOG_LEVEL` | `stderr`, `INFO` | Where the audit log goes, and the log level |

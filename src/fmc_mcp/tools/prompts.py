@@ -132,6 +132,42 @@ gives a definite answer that the later steps cannot change. All steps before ste
 """
 
 
+MAX_ONBOARD_DEVICES = 32
+
+
+def _device_rows(devices: str, name: str, host: str | None) -> list[tuple[str, str]]:
+    """'name=host' pairs (commas, semicolons or new lines between them), as a recipe's FMC hand-off
+    lists its FTDs. `name` must be one of them (steps 3-7 configure it), with the same host if given."""
+    rows: list[tuple[str, str]] = []
+    for item in re.split(r"[,;\n]+", devices):
+        if not item.strip():
+            continue
+        dev, sep, addr = item.partition("=")
+        if not sep:
+            raise InvalidRequest(f"devices: {item.strip()!r} is not name=host (e.g. 'mcp-ftd2=192.0.2.11').")
+        json.loads(_q(dev, "devices name"))  # refuses characters that could carry instructions
+        try:
+            ipaddress.ip_address(addr.strip())
+        except ValueError:
+            raise InvalidRequest(
+                f"devices: {addr.strip()!r} (for {dev.strip()!r}) is not an IP address."
+            ) from None
+        rows.append((dev.strip(), addr.strip()))
+    if not 1 <= len(rows) <= MAX_ONBOARD_DEVICES:
+        raise InvalidRequest(f"devices: give 1-{MAX_ONBOARD_DEVICES} name=host pairs.")
+    for i, what in ((0, "name"), (1, "host")):
+        values = [r[i].lower() for r in rows]
+        dup = sorted({v for v in values if values.count(v) > 1})
+        if dup:
+            raise InvalidRequest(f"devices: the same {what} twice ({', '.join(dup)}).")
+    by_name = dict(rows)
+    if name.strip() not in by_name:
+        raise InvalidRequest(f"name {name.strip()!r} must be one of devices (steps 3-7 configure it).")
+    if host and host.strip() != by_name[name.strip()]:
+        raise InvalidRequest(f"host {host.strip()} differs from {name.strip()}'s address in devices.")
+    return rows
+
+
 def _onboard_text(
     name: str,
     host: str | None,
@@ -146,8 +182,12 @@ def _onboard_text(
     platform_settings: str | None,
     test_destination: str | None,
     template: str | None = None,
+    devices: str | None = None,
 ) -> str:
     """The fmc_onboard_ftd instructions."""
+    rows = _device_rows(devices, name, host) if devices else None
+    if rows:
+        host = host or dict(rows)[name.strip()]
     if not host and not recipe:
         raise InvalidRequest("Give the FTD's management `host`, or a CML `recipe` to build it from.")
     try:
@@ -197,6 +237,17 @@ def _onboard_text(
             "the 'show managers' probe must show the FMC as pending. The recipe's fmc_side and "
             "credentials sections give the management IP and registration key."
         )
+        if not rows:
+            build += (
+                " If that FMC hand-off (fmc_side / address_plan) lists several FTDs (an SD-WAN or HA "
+                "recipe), register them all at once in step 2."
+            )
+    elif rows:
+        build = (
+            f"1. The {len(rows)} FTDs exist at the addresses in step 2. Each must point at this FMC: on its "
+            "CLI, `show managers` lists the FMC (status Pending). If not, run `configure manager add "
+            f"<fmc-ip> <reg-key>` on that FTD (in CML: {tool_ref('cml_configure_node')} with mode='exec')."
+        )
     else:
         build = (
             f"1. The FTD exists at {host_q}. It must point at this FMC: on its CLI, `show managers` lists "
@@ -219,6 +270,35 @@ def _onboard_text(
         if psp
         else ""
     )
+    single = f"""2. Register: {tool_ref("fmc_register_device")} with name={dev}, host={host_q},
+   access_policy={acp}, wait=true; leave out reg_key when the server has FMC_FTD_REG_KEY (the preview
+   says where the key comes from), otherwise ask the user for the registration key. This waits for the
+   registration task and FMC's initial deployment (5-10 minutes). Then {tool_ref("fmc_get_device")}
+   name={dev}: it must be connected, with its model and version. A failure saying the device is
+   unreachable or the key is wrong means the FTD's `configure manager add` does not match: fix it
+   (step 1) and retry."""
+    if rows:
+        rows_q = json.dumps([{"name": n, "host": h} for n, h in rows])
+        registered_q = "any of " + ", ".join(json.dumps(n) for n, _ in rows)
+    else:
+        rows_q = '[{"name": <FTD name>, "host": <its management IP>}, ...] (one row per FTD of the hand-off)'
+        registered_q = dev
+    several = f"""{tool_ref("fmc_register_devices")} with devices={rows_q},
+   access_policy={acp} and NO reg_key (every row uses the server's FMC_FTD_REG_KEY; the preview says so per
+   row and blocks duplicate names or hosts). It sends one bulk request and waits for every registration
+   and initial deployment under one deadline (timeout_minutes); a client that supports MCP tasks runs it
+   in the background, so report its progress. The result has a row per device (deployed / registered /
+   failed / refused / running) and the wall-clock time; {tool_ref("fmc_get_device")} name={dev} must then
+   be connected. A failed or refused row: fix that FTD (step 1) and call {tool_ref("fmc_register_devices")}
+   again with only the rows that did not register. Steps 3-7 configure {dev}; for each other FTD run
+   this prompt again with its name and addresses (it is registered by then: skip steps 0-2), or pass
+   template=... so one {tool_ref("fmc_apply_device_template")} per FTD does steps 3-5."""
+    if rows:
+        register_step = f"2. Register all {len(rows)} FTDs in one call: {several}"
+    elif recipe:
+        register_step = f"{single}\n   Several FTDs in the hand-off? Register them all in ONE call: {several}"
+    else:
+        register_step = single
     return f"""Onboard the FTD {dev} into this FMC and bring it to a working, verified deployment.
 Every write below is preview-first: show each preview and wait for the user's approval before
 confirming. Keep notes of what each step returned. Stop and report if a step fails; don't improvise
@@ -226,7 +306,7 @@ around a failed registration or deployment.
 
 0. Preconditions. {tool_ref("fmc_status")} (FMC reachable, API user). {tool_ref("fmc_license_status")}:
    FMC must be registered with Smart Licensing or be in evaluation mode, otherwise registration fails
-   ("license" errors). {tool_ref("fmc_list_devices")}: if {dev} is already registered, stop and ask
+   ("license" errors). {tool_ref("fmc_list_devices")}: if {registered_q} is already registered, stop and ask
    the user whether to delete and re-register it. To re-register: {tool_ref("fmc_delete_device")},
    wait 1-2 minutes until the FTD's `show managers` no longer says "in the process of
    Unregistration", then run `configure manager add <fmc-ip> <reg-key>` on the FTD again.
@@ -234,12 +314,7 @@ around a failed registration or deployment.
 
 {build}
 
-2. Register: {tool_ref("fmc_register_device")} with name={dev}, host={host_q}, access_policy={acp},
-   wait=true; leave out reg_key when the server has FMC_FTD_REG_KEY (the preview says where the key
-   comes from), otherwise ask the user for the registration key. This waits for the registration task
-   and FMC's initial deployment (5-10 minutes). Then {tool_ref("fmc_get_device")} name={dev}: it must be
-   connected, with its model and version. A failure saying the device is unreachable or the key is wrong
-   means the FTD's `configure manager add` does not match: fix it (step 1) and retry.
+{register_step}
 {template_step}
 3. Interfaces and zones: {tool_ref("fmc_list_device_interfaces")} device={dev} (FTDv names them
    Ethernet0/0, Ethernet0/1, ...). Create zones if they don't exist
@@ -1423,6 +1498,7 @@ def register(reg: ToolRegistrar) -> None:
             "nat_policy": "mcp-test-ha-nat",
             "platform_settings": "mcp-test-ps",
             "template": "mcp-sdwan-spoke-tmpl",
+            "devices": "mcp-ftd2=198.18.128.161, mcp-ftd3=198.18.128.162",
         },
     )
     def fmc_onboard_ftd(
@@ -1455,13 +1531,22 @@ def register(reg: ToolRegistrar) -> None:
                 "e.g. an SD-WAN spoke template"
             ),
         ] = None,
+        devices: Annotated[
+            str | None,
+            Field(
+                description="Several FTDs to register in one call (fmc_register_devices), as name=host pairs "
+                "from a recipe's FMC hand-off, e.g. 'mcp-ftd2=192.0.2.11, mcp-ftd3=192.0.2.12'; `name` "
+                "is one of them (the steps after registration configure it)"
+            ),
+        ] = None,
     ) -> str:
         """Onboard an FTD end to end: optionally build it in CML from a recipe, check licensing,
         register it with FMC, set outside/inside interfaces and zones, default route and NAT, assign
         policies, deploy, and verify with show commands, packet tracer and real traffic. With
         `template`, a device template sets the interfaces, routing, policies and SD-WAN/VPN membership
-        in one call (fmc_apply_device_template). Explains the `configure manager add` step for
-        re-registration."""
+        in one call (fmc_apply_device_template). With `devices` (or a recipe whose hand-off lists
+        several FTDs), every FTD is registered in one fmc_register_devices call. Explains the
+        `configure manager add` step for re-registration."""
         return _onboard_text(
             name,
             host,
@@ -1476,6 +1561,7 @@ def register(reg: ToolRegistrar) -> None:
             platform_settings,
             test_destination,
             template,
+            devices,
         )
 
     @reg.prompt(
