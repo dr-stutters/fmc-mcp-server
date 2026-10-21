@@ -304,6 +304,7 @@ CATALOGUE: dict[str, tuple[str, tuple[str, ...]]] = {
             "fmc_set_decryption_policy",
             "fmc_tls_decryption_check",
             "fmc_update_decryption_policy",
+            "fmc_update_decryption_rule",
         ),
     ),
     "troubleshoot": (

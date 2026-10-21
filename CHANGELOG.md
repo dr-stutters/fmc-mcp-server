@@ -15,6 +15,18 @@
   `default_log` (FMC 10.0.1 keeps it only through the policy's `logging`, not `defaultAction.eventLogAction`);
   `fmc_get_decryption_policy` shows both and `fmc_tls_decryption_check` says which action a session that can't be
   decrypted gets, or which cipher Block rule stops RC4 first.
+- **Change an existing decryption rule** (F82, #276, last scope item): new `fmc_update_decryption_rule` sets a rule's
+  `tls_versions` and `cipher_suite_lists` (BLOCK, BLOCK_WITH_RESET and MONITOR rules only, as on create), `enabled` and
+  `log`, or moves it (`insert_before`: just above the rule now at that index; the rule count + 1 = the end). It sends the
+  whole rule back (FMC's PUT replaces it), previews each field from/to, warns when the result leaves a decrypt rule above an
+  overlapping TLS version / cipher suite Block rule, and the confirm token covers the rule, the policy's order and the
+  lists' suites. FMC 10.0.1 answers a rule PUT with `insertBefore` or `insertAfter` with 500 "JsonNull" but moves the rule;
+  the tool reads the rule back and reports where it landed. A Do-not-decrypt or Decrypt-Resign rule FMC stored with no
+  version selected (it then refuses the deploy) gets every version on its next update.
+- **`fmc_delete_object` deletes cipher suite lists** (`type='cipher_suite_list'`; GET and DELETE by id work on FMC 10.0.1
+  though the spec lists only the collection). FMC's usage API refuses the type, so the delete reads the decryption rules
+  of the domain and every domain below the list's own, and is refused while one uses the list (naming it).
+  `fmc_update_object` refuses cipher suite lists (no PUT in FMC's API).
 
 ### Fixed
 - **`fmc_find_object` read hyphenated names as ports**: `value='sdwan-single'` searched port objects for protocol
