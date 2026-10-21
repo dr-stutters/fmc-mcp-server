@@ -1,0 +1,644 @@
+{
+ "_source": "Recorded read-only 2026-10-20 from FMC 10.0.1 (login domain Global/mcp-test-leaf) with fmc_api_call GET: /api/fmc_platform/v1/license/devicelicenses (19 rows, id only, as the F46 eval saw them; HA units carry MALWARE_DEFENSE_HA / IPS_HA / URL_HA while their device records say MALWARE_DEFENSE / IPS / URL) and devices/devicerecords?expanded=true, trimmed to the fields fmc_license_status reads (name, accessPolicy, license_caps, isConnected, metadata.domain/containerDetails). The access policies' rules are not recorded here (the tests give them intrusion/file/URL settings).",
+ "devicelicenses": {
+  "items": [
+   {
+    "licenseTypes": [
+     "ESSENTIALS"
+    ],
+    "performanceTier": "FTDv5",
+    "id": "0c7a00e4-caf9-11f1-a329-a5594ad4d7df",
+    "type": "DeviceLicense"
+   },
+   {
+    "licenseTypes": [
+     "ESSENTIALS"
+    ],
+    "performanceTier": "FTDv5",
+    "id": "1010c922-caf9-11f1-96b6-d3ea1594a29a",
+    "type": "DeviceLicense"
+   },
+   {
+    "licenseTypes": [
+     "ESSENTIALS"
+    ],
+    "performanceTier": "FTDv5",
+    "id": "1bcefc02-ca81-11f1-9c58-8639fcd7b26d",
+    "type": "DeviceLicense"
+   },
+   {
+    "licenseTypes": [
+     "ESSENTIALS"
+    ],
+    "performanceTier": "FTDv5",
+    "id": "1e6635ca-ca81-11f1-8e8d-ed7d3abe955e",
+    "type": "DeviceLicense"
+   },
+   {
+    "licenseTypes": [
+     "ESSENTIALS"
+    ],
+    "performanceTier": "FTDv5",
+    "id": "1f48942e-ca81-11f1-acc4-d99580e40529",
+    "type": "DeviceLicense"
+   },
+   {
+    "licenseTypes": [
+     "ESSENTIALS"
+    ],
+    "performanceTier": "FTDv5",
+    "id": "2d9af100-ca83-11f1-a882-d9fd30b1d53c",
+    "type": "DeviceLicense"
+   },
+   {
+    "licenseTypes": [
+     "ESSENTIALS",
+     "IPS",
+     "URL",
+     "MALWARE_DEFENSE"
+    ],
+    "performanceTier": "FTDv5",
+    "id": "43d57cc8-c9c6-11f1-858d-a03accd83568",
+    "type": "DeviceLicense"
+   },
+   {
+    "licenseTypes": [
+     "ESSENTIALS"
+    ],
+    "performanceTier": "FTDv5",
+    "id": "4fc3908a-ca73-11f1-aef7-f44b5515d8ea",
+    "type": "DeviceLicense"
+   },
+   {
+    "licenseTypes": [
+     "ESSENTIALS",
+     "MALWARE_DEFENSE_HA",
+     "IPS_HA",
+     "URL_HA"
+    ],
+    "performanceTier": "FTDv5",
+    "id": "503133d6-c9c6-11f1-b434-883d23e0134a",
+    "type": "DeviceLicense"
+   },
+   {
+    "licenseTypes": [
+     "ESSENTIALS",
+     "MALWARE_DEFENSE_HA",
+     "IPS_HA",
+     "URL_HA"
+    ],
+    "performanceTier": "FTDv5",
+    "id": "532a591e-c9c6-11f1-adb7-e0cf54ff7bd5",
+    "type": "DeviceLicense"
+   },
+   {
+    "licenseTypes": [
+     "ESSENTIALS"
+    ],
+    "performanceTier": "FTDv5",
+    "id": "6b495956-ca79-11f1-8f9c-dce560457e9f",
+    "type": "DeviceLicense"
+   },
+   {
+    "licenseTypes": [
+     "ESSENTIALS"
+    ],
+    "performanceTier": "FTDv5",
+    "id": "6f935994-ca79-11f1-b14f-9be37119887f",
+    "type": "DeviceLicense"
+   },
+   {
+    "licenseTypes": [
+     "ESSENTIALS",
+     "IPS",
+     "URL",
+     "MALWARE_DEFENSE"
+    ],
+    "performanceTier": "FTDv5",
+    "id": "71f24ba4-c9c6-11f1-b39a-f8b1a0356797",
+    "type": "DeviceLicense"
+   },
+   {
+    "licenseTypes": [
+     "ESSENTIALS"
+    ],
+    "performanceTier": "FTDv5",
+    "id": "7516a060-ca79-11f1-ab98-d1a1d78192b6",
+    "type": "DeviceLicense"
+   },
+   {
+    "licenseTypes": [
+     "ESSENTIALS"
+    ],
+    "performanceTier": "FTDv5",
+    "id": "7dc6bec0-ca79-11f1-93b3-9fe9e23b362e",
+    "type": "DeviceLicense"
+   },
+   {
+    "licenseTypes": [
+     "ESSENTIALS"
+    ],
+    "performanceTier": "FTDv5",
+    "id": "983e1c7c-ca82-11f1-ae1f-a9025946c992",
+    "type": "DeviceLicense"
+   },
+   {
+    "licenseTypes": [
+     "ESSENTIALS"
+    ],
+    "performanceTier": "FTDv5",
+    "id": "bac748ea-ca82-11f1-a240-91fc18bec45c",
+    "type": "DeviceLicense"
+   },
+   {
+    "licenseTypes": [
+     "ESSENTIALS"
+    ],
+    "performanceTier": "FTDv5",
+    "id": "dc0d1aac-ca82-11f1-82bc-ca1afe70919b",
+    "type": "DeviceLicense"
+   },
+   {
+    "licenseTypes": [
+     "ESSENTIALS"
+    ],
+    "performanceTier": "FTDv5",
+    "id": "f706b55e-cb4d-11f1-a68f-c97bc7530305",
+    "type": "DeviceLicense"
+   }
+  ],
+  "paging": {
+   "offset": 0,
+   "limit": 100,
+   "count": 19,
+   "pages": 1
+  }
+ },
+ "devicerecords": {
+  "items": [
+   {
+    "id": "1e6635ca-ca81-11f1-8e8d-ed7d3abe955e",
+    "type": "Device",
+    "name": "mcp-sdwan-t1-spoke2",
+    "accessPolicy": {
+     "name": "mcp-sdwan-acp",
+     "id": "00000000-0000-0ed3-0000-021474856047",
+     "type": "AccessPolicy"
+    },
+    "license_caps": [
+     "ESSENTIALS"
+    ],
+    "isConnected": false,
+    "metadata": {
+     "domain": {
+      "name": "mcp-test-leaf",
+      "id": "a1c73df0-8353-8db7-1097-000000000000",
+      "type": "Domain"
+     }
+    }
+   },
+   {
+    "id": "6b495956-ca79-11f1-8f9c-dce560457e9f",
+    "type": "Device",
+    "name": "mcp-sdwan-t2-spoke1",
+    "accessPolicy": {
+     "name": "mcp-sdwan-acp",
+     "id": "00000000-0000-0ed3-0000-021474856047",
+     "type": "AccessPolicy"
+    },
+    "license_caps": [
+     "ESSENTIALS"
+    ],
+    "isConnected": false,
+    "metadata": {
+     "domain": {
+      "name": "mcp-test-leaf",
+      "id": "a1c73df0-8353-8db7-1097-000000000000",
+      "type": "Domain"
+     }
+    }
+   },
+   {
+    "id": "532a591e-c9c6-11f1-adb7-e0cf54ff7bd5",
+    "type": "Device",
+    "name": "mcp-ftd3",
+    "accessPolicy": {
+     "name": "mcp-test-ha-acp",
+     "id": "00000000-0000-0ed3-0000-021474837244",
+     "type": "AccessPolicy"
+    },
+    "license_caps": [
+     "ESSENTIALS",
+     "MALWARE_DEFENSE",
+     "IPS",
+     "URL"
+    ],
+    "isConnected": true,
+    "metadata": {
+     "domain": {
+      "name": "mcp-test-leaf",
+      "id": "a1c73df0-8353-8db7-1097-000000000000",
+      "type": "Domain"
+     },
+     "containerDetails": {
+      "id": "9b895d5c-c9d2-11f1-8e93-9a786f180443",
+      "type": "DeviceHAPair",
+      "name": "mcp-test-ha",
+      "role": "SECONDARY",
+      "status": "Standby"
+     },
+     "isPartOfContainer": true
+    }
+   },
+   {
+    "id": "7dc6bec0-ca79-11f1-93b3-9fe9e23b362e",
+    "type": "Device",
+    "name": "mcp-sdwan-t2-hub2",
+    "accessPolicy": {
+     "name": "mcp-sdwan-acp",
+     "id": "00000000-0000-0ed3-0000-021474856047",
+     "type": "AccessPolicy"
+    },
+    "license_caps": [
+     "ESSENTIALS"
+    ],
+    "isConnected": false,
+    "metadata": {
+     "domain": {
+      "name": "mcp-test-leaf",
+      "id": "a1c73df0-8353-8db7-1097-000000000000",
+      "type": "Domain"
+     }
+    }
+   },
+   {
+    "id": "1010c922-caf9-11f1-96b6-d3ea1594a29a",
+    "type": "Device",
+    "name": "mcp-fw-ha-b",
+    "accessPolicy": {
+     "name": "mcp-fw-base-acp",
+     "id": "00000000-0000-0ed3-0000-021474903666",
+     "type": "AccessPolicy"
+    },
+    "license_caps": [
+     "ESSENTIALS"
+    ],
+    "isConnected": true,
+    "metadata": {
+     "domain": {
+      "name": "mcp-test-leaf",
+      "id": "a1c73df0-8353-8db7-1097-000000000000",
+      "type": "Domain"
+     },
+     "containerDetails": {
+      "id": "03e0cc6c-cb56-11f1-85ee-4ce46f180443",
+      "type": "DeviceHAPair",
+      "name": "mcp-fw-ha",
+      "role": "SECONDARY",
+      "status": "Standby"
+     },
+     "isPartOfContainer": true
+    }
+   },
+   {
+    "id": "bac748ea-ca82-11f1-a240-91fc18bec45c",
+    "type": "Device",
+    "name": "mcp-sdwan-t3-spoke2",
+    "accessPolicy": {
+     "name": "mcp-sdwan-acp",
+     "id": "00000000-0000-0ed3-0000-021474856047",
+     "type": "AccessPolicy"
+    },
+    "license_caps": [
+     "ESSENTIALS"
+    ],
+    "isConnected": false,
+    "metadata": {
+     "domain": {
+      "name": "mcp-test-leaf",
+      "id": "a1c73df0-8353-8db7-1097-000000000000",
+      "type": "Domain"
+     }
+    }
+   },
+   {
+    "id": "2d9af100-ca83-11f1-a882-d9fd30b1d53c",
+    "type": "Device",
+    "name": "mcp-sdwan-t3-hub2",
+    "accessPolicy": {
+     "name": "mcp-sdwan-acp",
+     "id": "00000000-0000-0ed3-0000-021474856047",
+     "type": "AccessPolicy"
+    },
+    "license_caps": [
+     "ESSENTIALS"
+    ],
+    "isConnected": false,
+    "metadata": {
+     "domain": {
+      "name": "mcp-test-leaf",
+      "id": "a1c73df0-8353-8db7-1097-000000000000",
+      "type": "Domain"
+     },
+     "containerDetails": {
+      "id": "8d3840c2-caa1-11f1-a4e0-98786f180443",
+      "type": "DeviceCluster",
+      "name": "mcp-sdwan-t3-cluster",
+      "role": "Data"
+     },
+     "isPartOfContainer": true
+    }
+   },
+   {
+    "id": "1f48942e-ca81-11f1-acc4-d99580e40529",
+    "type": "Device",
+    "name": "mcp-sdwan-t1-spoke3",
+    "accessPolicy": {
+     "name": "mcp-sdwan-acp",
+     "id": "00000000-0000-0ed3-0000-021474856047",
+     "type": "AccessPolicy"
+    },
+    "license_caps": [
+     "ESSENTIALS"
+    ],
+    "isConnected": false,
+    "metadata": {
+     "domain": {
+      "name": "mcp-test-leaf",
+      "id": "a1c73df0-8353-8db7-1097-000000000000",
+      "type": "Domain"
+     }
+    }
+   },
+   {
+    "id": "0c7a00e4-caf9-11f1-a329-a5594ad4d7df",
+    "type": "Device",
+    "name": "mcp-fw-ha-a",
+    "accessPolicy": {
+     "name": "mcp-fw-base-acp",
+     "id": "00000000-0000-0ed3-0000-021474903666",
+     "type": "AccessPolicy"
+    },
+    "license_caps": [
+     "ESSENTIALS"
+    ],
+    "isConnected": false,
+    "metadata": {
+     "domain": {
+      "name": "mcp-test-leaf",
+      "id": "a1c73df0-8353-8db7-1097-000000000000",
+      "type": "Domain"
+     },
+     "containerDetails": {
+      "id": "03e0cc6c-cb56-11f1-85ee-4ce46f180443",
+      "type": "DeviceHAPair",
+      "name": "mcp-fw-ha",
+      "role": "PRIMARY",
+      "status": "Active"
+     },
+     "isPartOfContainer": true
+    }
+   },
+   {
+    "id": "71f24ba4-c9c6-11f1-b39a-f8b1a0356797",
+    "type": "Device",
+    "name": "mcp-ftd-identity",
+    "accessPolicy": {
+     "name": "mcp-fw-threat-acp",
+     "id": "00000000-0000-0ed3-0000-021474901848",
+     "type": "AccessPolicy"
+    },
+    "license_caps": [
+     "ESSENTIALS",
+     "MALWARE_DEFENSE",
+     "IPS",
+     "URL"
+    ],
+    "isConnected": true,
+    "metadata": {
+     "domain": {
+      "name": "mcp-test-leaf",
+      "id": "a1c73df0-8353-8db7-1097-000000000000",
+      "type": "Domain"
+     }
+    }
+   },
+   {
+    "id": "1bcefc02-ca81-11f1-9c58-8639fcd7b26d",
+    "type": "Device",
+    "name": "mcp-sdwan-t1-spoke1",
+    "accessPolicy": {
+     "name": "mcp-sdwan-acp",
+     "id": "00000000-0000-0ed3-0000-021474856047",
+     "type": "AccessPolicy"
+    },
+    "license_caps": [
+     "ESSENTIALS"
+    ],
+    "isConnected": false,
+    "metadata": {
+     "domain": {
+      "name": "mcp-test-leaf",
+      "id": "a1c73df0-8353-8db7-1097-000000000000",
+      "type": "Domain"
+     }
+    }
+   },
+   {
+    "id": "503133d6-c9c6-11f1-b434-883d23e0134a",
+    "type": "Device",
+    "name": "mcp-ftd2",
+    "accessPolicy": {
+     "name": "mcp-test-ha-acp",
+     "id": "00000000-0000-0ed3-0000-021474837244",
+     "type": "AccessPolicy"
+    },
+    "license_caps": [
+     "ESSENTIALS",
+     "MALWARE_DEFENSE",
+     "IPS",
+     "URL"
+    ],
+    "isConnected": false,
+    "metadata": {
+     "domain": {
+      "name": "mcp-test-leaf",
+      "id": "a1c73df0-8353-8db7-1097-000000000000",
+      "type": "Domain"
+     },
+     "containerDetails": {
+      "id": "9b895d5c-c9d2-11f1-8e93-9a786f180443",
+      "type": "DeviceHAPair",
+      "name": "mcp-test-ha",
+      "role": "PRIMARY",
+      "status": "Active"
+     },
+     "isPartOfContainer": true
+    }
+   },
+   {
+    "id": "dc0d1aac-ca82-11f1-82bc-ca1afe70919b",
+    "type": "Device",
+    "name": "mcp-sdwan-t3-hub",
+    "accessPolicy": {
+     "name": "mcp-sdwan-acp",
+     "id": "00000000-0000-0ed3-0000-021474856047",
+     "type": "AccessPolicy"
+    },
+    "license_caps": [
+     "ESSENTIALS"
+    ],
+    "isConnected": false,
+    "metadata": {
+     "domain": {
+      "name": "mcp-test-leaf",
+      "id": "a1c73df0-8353-8db7-1097-000000000000",
+      "type": "Domain"
+     },
+     "containerDetails": {
+      "id": "8d3840c2-caa1-11f1-a4e0-98786f180443",
+      "type": "DeviceCluster",
+      "name": "mcp-sdwan-t3-cluster",
+      "role": "Control"
+     },
+     "isPartOfContainer": true
+    }
+   },
+   {
+    "id": "6f935994-ca79-11f1-b14f-9be37119887f",
+    "type": "Device",
+    "name": "mcp-sdwan-t2-spoke2",
+    "accessPolicy": {
+     "name": "mcp-sdwan-acp",
+     "id": "00000000-0000-0ed3-0000-021474856047",
+     "type": "AccessPolicy"
+    },
+    "license_caps": [
+     "ESSENTIALS"
+    ],
+    "isConnected": false,
+    "metadata": {
+     "domain": {
+      "name": "mcp-test-leaf",
+      "id": "a1c73df0-8353-8db7-1097-000000000000",
+      "type": "Domain"
+     }
+    }
+   },
+   {
+    "id": "7516a060-ca79-11f1-ab98-d1a1d78192b6",
+    "type": "Device",
+    "name": "mcp-sdwan-t2-hub",
+    "accessPolicy": {
+     "name": "mcp-sdwan-acp",
+     "id": "00000000-0000-0ed3-0000-021474856047",
+     "type": "AccessPolicy"
+    },
+    "license_caps": [
+     "ESSENTIALS"
+    ],
+    "isConnected": false,
+    "metadata": {
+     "domain": {
+      "name": "mcp-test-leaf",
+      "id": "a1c73df0-8353-8db7-1097-000000000000",
+      "type": "Domain"
+     }
+    }
+   },
+   {
+    "id": "4fc3908a-ca73-11f1-aef7-f44b5515d8ea",
+    "type": "Device",
+    "name": "mcp-sdwan-t1-hub",
+    "accessPolicy": {
+     "name": "mcp-sdwan-acp",
+     "id": "00000000-0000-0ed3-0000-021474856047",
+     "type": "AccessPolicy"
+    },
+    "license_caps": [
+     "ESSENTIALS"
+    ],
+    "isConnected": false,
+    "metadata": {
+     "domain": {
+      "name": "mcp-test-leaf",
+      "id": "a1c73df0-8353-8db7-1097-000000000000",
+      "type": "Domain"
+     }
+    }
+   },
+   {
+    "id": "983e1c7c-ca82-11f1-ae1f-a9025946c992",
+    "type": "Device",
+    "name": "mcp-sdwan-t3-spoke1",
+    "accessPolicy": {
+     "name": "mcp-sdwan-acp",
+     "id": "00000000-0000-0ed3-0000-021474856047",
+     "type": "AccessPolicy"
+    },
+    "license_caps": [
+     "ESSENTIALS"
+    ],
+    "isConnected": false,
+    "metadata": {
+     "domain": {
+      "name": "mcp-test-leaf",
+      "id": "a1c73df0-8353-8db7-1097-000000000000",
+      "type": "Domain"
+     }
+    }
+   },
+   {
+    "id": "43d57cc8-c9c6-11f1-858d-a03accd83568",
+    "type": "Device",
+    "name": "mcp-ftd1",
+    "accessPolicy": {
+     "name": "mcp-test-ftd-acp",
+     "id": "00000000-0000-0ed3-0000-021474837072",
+     "type": "AccessPolicy"
+    },
+    "license_caps": [
+     "ESSENTIALS",
+     "MALWARE_DEFENSE",
+     "IPS",
+     "URL"
+    ],
+    "isConnected": false,
+    "metadata": {
+     "domain": {
+      "name": "mcp-test-leaf",
+      "id": "a1c73df0-8353-8db7-1097-000000000000",
+      "type": "Domain"
+     }
+    }
+   },
+   {
+    "id": "f706b55e-cb4d-11f1-a68f-c97bc7530305",
+    "type": "Device",
+    "name": "mcp-fw-branch1",
+    "accessPolicy": {
+     "name": "mcp-fw-base-acp",
+     "id": "00000000-0000-0ed3-0000-021474903666",
+     "type": "AccessPolicy"
+    },
+    "license_caps": [
+     "ESSENTIALS"
+    ],
+    "isConnected": false,
+    "metadata": {
+     "domain": {
+      "name": "mcp-test-leaf",
+      "id": "a1c73df0-8353-8db7-1097-000000000000",
+      "type": "Domain"
+     }
+    }
+   }
+  ],
+  "paging": {
+   "offset": 0,
+   "limit": 100,
+   "count": 19,
+   "pages": 1
+  }
+ }
+}

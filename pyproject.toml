@@ -1,6 +1,6 @@
 [project]
 name = "fmc-mcp-server"
-version = "0.14.1"
+version = "0.14.2"
 description = "MCP server for Cisco Secure Firewall Management Center (FMC)"
 readme = "README.md"
 license = "MIT"

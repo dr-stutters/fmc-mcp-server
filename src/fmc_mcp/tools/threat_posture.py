@@ -12,10 +12,12 @@ from pydantic import Field
 
 from fmc_mcp._core import InvalidRequest, ToolRegistrar, UpstreamError, get_client
 from fmc_mcp.client import FmcApp
+from fmc_mcp.licensing import licence_needs, licences
+from fmc_mcp.preview import owner_domain
 from fmc_mcp.tools.common import Domain, is_system, ref_label, resolve_in
 from fmc_mcp.tools.devices import DEVICES, HA_PAIRS
 from fmc_mcp.tools.dns import DNS
-from fmc_mcp.tools.hygiene import SEVERITY, _call, _finding, _ref
+from fmc_mcp.tools.hygiene import SEVERITY, _call, _finding, _ref, no_intrusion
 from fmc_mcp.tools.intrusion import IPS
 from fmc_mcp.tools.policies import ACCESS, POLICY_KINDS, PREFILTER, all_rules, policy_assignments
 from fmc_mcp.tools.security_intel import _si_policy, _si_rows
@@ -53,9 +55,9 @@ SUGGESTED = {
 }
 BALANCED = "Balanced Security and Connectivity"
 NO_RULES = "No Rules Active"
+RULES_LISTED = 20  # rule names in an aggregated finding
 # DNS rule actions that stop a lookup (the 10.0.1 spec says BLOCK, FMC also answers DROP).
 DNS_BLOCKING = ("NXDOMAIN", "BLOCK", "DROP", "SINKHOLE")
-LICENCE_ALIASES = {"THREAT": "IPS", "MALWARE": "MALWARE_DEFENSE", "URLFILTER": "URL"}
 DEVICE_CAP = 10
 RULE_ROWS_CAP = 100
 
@@ -75,14 +77,6 @@ EARLY_IPS_NOTE = (
 def talos_name(name: str | None) -> bool:
     n = re.sub(r"^(url|dns)\s+", "", str(name or "").strip().lower())
     return n.replace(" ", "_") in TALOS
-
-
-def _licences(caps: list[Any] | None) -> set[str]:
-    out = set()
-    for c in caps or []:
-        up = str(c).upper()
-        out.add(LICENCE_ALIASES.get(up, up))
-    return out
 
 
 async def _devices(app: FmcApp, acp_id: str, domain: str | None) -> tuple[list[dict[str, Any]], list[str]]:
@@ -119,7 +113,7 @@ async def _devices(app: FmcApp, acp_id: str, domain: str | None) -> tuple[list[d
         rows.append(
             {
                 "name": label,
-                "licences": sorted(_licences(d.get("license_caps"))),
+                "licences": sorted(licences(d.get("license_caps"))),
                 "snort": d.get("snortEngine"),
                 "connected": d.get("isConnected"),
             }
@@ -260,6 +254,22 @@ async def threat_posture(app: FmcApp, policy: str, domain: str | None) -> dict[s
                     rule=_ref(r),
                 )
             )
+    # ALLOW rules without an intrusion policy: the same check as fmc_policy_audit's no_intrusion (#207),
+    # as one finding (a policy can hold hundreds of such rules).
+    no_ips = [f["rule"]["name"] for f in no_intrusion(name, allow)]
+    if no_ips:
+        findings.append(
+            _finding(
+                "allow_no_intrusion",
+                "medium",
+                f"{len(no_ips)} ALLOW rule(s) carry no intrusion policy, so the traffic they allow is not "
+                "inspected for exploits.",
+                "Add one per rule: "
+                + _call("fmc_update_access_rule", policy=name, rule=no_ips[0], intrusion_policy=BALANCED)
+                + (", and the same for the others" if len(no_ips) > 1 else ""),
+                rules=no_ips[:RULES_LISTED],
+            )
+        )
     no_file = [r for r in allow if not r.get("filePolicy")]
     if no_file:
         findings.append(
@@ -270,7 +280,7 @@ async def threat_posture(app: FmcApp, policy: str, domain: str | None) -> dict[s
                 "or blocked by type.",
                 "Pick a file policy (fmc_list_policies(kind='file')) and add it per rule with "
                 "fmc_update_access_rule (file_policy argument), starting with web and mail traffic.",
-                rules=[r.get("name") for r in no_file][:20],
+                rules=[r.get("name") for r in no_file][:RULES_LISTED],
             )
         )
     prefilter = acp.get("prefilterPolicySetting") or {}
@@ -357,16 +367,25 @@ async def threat_posture(app: FmcApp, policy: str, domain: str | None) -> dict[s
                 for r in blocking
                 for o in ((r.get("dnsLists") or {}).get("objects") or [])
             )
+            if dpol.get("name"):  # its own name, not the one in the SI reference (#204)
+                si_rows["dns_policy"] = dpol["name"]
             si_rows["dns_policy_system"] = is_system(dpol) if dpol else None
             si_rows["dns_blocking_rules"] = len(blocking)
             if dpol and not talos_dns:
                 own = not is_system(dpol)
+                owner = owner_domain(dpol)
+                here = await app.domain_uuid(domain)
+                why = (
+                    f"it belongs to domain {await app.domain_name(str(owner['id']))!r}, read-only here"
+                    if owner and str(owner["id"]).lower() != here.lower()
+                    else "it is FMC's read-only default policy"
+                )
                 findings.append(
                     _finding(
                         "dns_no_talos",
                         "low",
                         f"DNS policy {dpol.get('name')!r} blocks no Talos DNS category"
-                        + ("" if own else " (it is FMC's read-only default policy)")
+                        + ("" if own else f" ({why})")
                         + ".",
                         (
                             ""
@@ -430,11 +449,7 @@ async def threat_posture(app: FmcApp, policy: str, domain: str | None) -> dict[s
     # Licences on the assigned devices.
     devices, dev_notes = await _devices(app, str(acp["id"]), domain)
     notes += dev_notes
-    needs = {
-        "IPS": bool(used),
-        "MALWARE_DEFENSE": any(r.get("filePolicy") for r in allow),
-        "URL": any((r.get("urls") or {}).get("urlCategoriesWithReputation") for r in enabled),
-    }
+    needs = licence_needs(acp, rules)  # IPS / MALWARE_DEFENSE / URL -> why
     for d in devices:
         missing = [lic for lic, need in needs.items() if need and lic not in d["licences"]]
         if missing:

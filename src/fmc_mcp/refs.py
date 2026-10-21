@@ -4,6 +4,7 @@ group condition blocks: {"objects": [refs], "literals": [values]}."""
 from __future__ import annotations
 
 import ipaddress
+import re
 from typing import Any
 
 from fmc_mcp._core import InvalidRequest, NotFound
@@ -16,6 +17,7 @@ PORT_TYPES = ["port", "port_group", "icmpv4", "icmpv6"]
 URL_TYPES = ["url", "url_group"]
 ZONE_TYPES = ["security_zone", "interface_group"]
 DYNAMIC_TYPES = ["dynamic_object"]
+VLAN_TYPES = ["vlan_tag", "vlan_group"]
 REALM_GROUPS = "object/realmusergroups"
 REALM_USERS = "object/realmusers"
 
@@ -123,6 +125,17 @@ def port_literal(text: str) -> dict[str, str] | None:
     return {"type": "PortLiteral", "protocol": proto, "port": str(lo) if lo == hi else f"{lo}-{hi}"}
 
 
+def vlan_literal(text: str) -> dict[str, Any] | None:
+    """A VlanTagLiteral for '10' or '100-110' (802.1Q VLAN ids 1-4094); None if it isn't one."""
+    m = re.fullmatch(r"\s*(\d+)\s*(?:-\s*(\d+)\s*)?", text)
+    if not m:
+        return None
+    lo, hi = int(m.group(1)), int(m.group(2) or m.group(1))
+    if not (1 <= lo <= hi <= 4094):
+        raise InvalidRequest(f"Invalid VLAN tag {text.strip()!r}: use 1-4094, or a range like 100-110.")
+    return {"type": "VlanTagLiteral", "startTag": lo, "endTag": hi}
+
+
 def url_literal(text: str) -> dict[str, str] | None:
     t = text.strip()
     if "://" in t:
@@ -152,8 +165,8 @@ class RefResolver:
         return self._cache[key]
 
     async def block(self, values: list[str] | None, kind: str) -> dict[str, Any] | None:
-        """{"objects": [...], "literals": [...]} for networks, ports, urls, zones or realm users/groups;
-        None if no values."""
+        """{"objects": [...], "literals": [...]} for networks, ports, urls, zones, VLAN tags or realm
+        users/groups; None if no values."""
         if not values:
             return None
         objects: list[dict[str, Any]] = []
@@ -169,6 +182,8 @@ class RefResolver:
                 lit = port_literal(v)
             elif kind == "url":
                 lit = url_literal(v)
+            elif kind == "vlan":
+                lit = vlan_literal(v)
             if lit is not None:
                 literals.append(lit)
                 continue
@@ -181,6 +196,7 @@ class RefResolver:
                 "url": URL_TYPES,
                 "zone": ZONE_TYPES,
                 "dynamic": DYNAMIC_TYPES,
+                "vlan": VLAN_TYPES,
             }[kind]
             objects.append(await self.obj(v, types))
         out: dict[str, Any] = {}

@@ -606,3 +606,37 @@ async def test_packet_tracer_accepts_an_ha_pair_and_flags_a_standby_trace(lab: r
     tracer(lab, lambda b: dropped("(fo-standby) Dropped by standby unit", "ROUTE-LOOKUP", True))
     out = await call_tool(create_server(make_settings()), "fmc_packet_tracer", {"device": "mcp-ftd1", **args})
     assert "standby unit" in out["note"] and "says nothing about the policy" in out["note"], out
+
+
+async def test_packet_tracer_standby_note_matches_what_the_caller_named(lab: respx.MockRouter) -> None:
+    """#228 review: the pair's name traced on FMC's 'active' unit that answers as standby means FMC's
+    failover state is stale, not 'give the HA pair's name' (the caller did); a standby unit named directly
+    gets the hint to name the pair. Same wording as fmc_prove_policy's error rows."""
+    ha_lab(lab)
+    tracer(lab, lambda b: dropped("(fo-standby) Dropped by standby unit", "ROUTE-LOOKUP", True))
+    args = {"protocol": "icmp", "source_ip": "10.99.1.10", "destination_ip": "192.0.2.10"}
+    server = create_server(make_settings())
+    out = await call_tool(server, "fmc_packet_tracer", {"device": "mcp-fw-ha", **args})
+    assert "FMC lists it as the active unit of mcp-fw-ha" in out["note"], out
+    assert "give the HA pair's name" not in out["note"]
+    (row,) = (await call({"device": "mcp-fw-ha", "flows": [ICMP]}))["results"]
+    assert row["result"] == "error" and row["note"] == out["note"]
+    standby = {**as_unit("mcp-fw-ha-b"), "name": "mcp-fw-ha-b"}  # FMC's record: SECONDARY, Standby
+    lab.get(f"{CFG}/devices/devicerecords").mock(return_value=items([standby]))
+    out = await call_tool(server, "fmc_packet_tracer", {"device": "mcp-fw-ha-b", **args})
+    assert out["device"] == "mcp-fw-ha (mcp-fw-ha-b, standby)"
+    assert out["note"].endswith("trace on the active unit, or give the HA pair's name"), out
+
+
+async def test_a_device_that_fails_to_resolve_is_read_once(lab: respx.MockRouter) -> None:
+    """#228 review: an unknown device named by several flows is looked up once, every row an error."""
+    listing = lab.get(f"{CFG}/devices/devicerecords").mock(return_value=items([DEV]))
+    tracer(lab, lambda b: ALLOW)
+    flows = [{**ICMP, "device": "no-such-ftd"}, {**ICMP, "device": "no-such-ftd"}, ICMP]
+    rows = (await call({"device": "mcp-ftd1", "flows": flows}))["results"]
+    assert [r["result"] for r in rows] == ["error", "error", "pass"]
+    assert "no-such-ftd" in rows[0]["note"] and rows[1]["note"] == rows[0]["note"]
+    # no-such-ftd: the name lookup and the pair/cluster lookup once (not again for the second flow), then
+    # mcp-ftd1's name lookup
+    reads = [c for c in listing.calls if c.request.url.params.get("expanded") == "true"]
+    assert len(reads) == 3

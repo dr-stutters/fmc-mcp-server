@@ -149,13 +149,17 @@ CATALOGUE: dict[str, tuple[str, tuple[str, ...]]] = {
     "objects": (
         "network/port/URL objects and groups, zones, dynamic objects, overrides, where an address is used",
         (
+            "fmc_create_application_filter",
             "fmc_create_dynamic_object",
             "fmc_create_group",
             "fmc_create_object",
             "fmc_create_security_zone",
+            "fmc_create_time_range",
             "fmc_delete_dynamic_object",
             "fmc_delete_object",
+            "fmc_delete_objects",
             "fmc_find_address",
+            "fmc_find_application",
             "fmc_find_object",
             "fmc_get_object",
             "fmc_import_objects",
@@ -163,6 +167,7 @@ CATALOGUE: dict[str, tuple[str, tuple[str, ...]]] = {
             "fmc_list_object_overrides",
             "fmc_list_objects",
             "fmc_map_dynamic_object",
+            "fmc_replace_object",
             "fmc_set_object_override",
             "fmc_unused_objects",
             "fmc_update_group",
@@ -171,8 +176,11 @@ CATALOGUE: dict[str, tuple[str, tuple[str, ...]]] = {
         ),
     ),
     "platform": (
-        "platform settings: syslog, connection logging, NTP, SNMP, SSH access",
+        "platform settings: syslog, connection logging, NTP, SNMP, DNS, NetFlow, SSH/HTTPS/ICMP, banner",
         (
+            "fmc_configure_dns",
+            "fmc_configure_mgmt_access",
+            "fmc_configure_netflow",
             "fmc_configure_ntp",
             "fmc_configure_snmp",
             "fmc_configure_ssh_access",
@@ -180,12 +188,15 @@ CATALOGUE: dict[str, tuple[str, tuple[str, ...]]] = {
             "fmc_create_platform_settings_policy",
             "fmc_get_platform_settings",
             "fmc_set_access_logging",
+            "fmc_set_banner",
         ),
     ),
     "policy": (
         "access control, NAT and prefilter policies and rules, assignments, rule hygiene",
         (
             "fmc_assign_policy",
+            "fmc_bulk_update_access_rules",
+            "fmc_clear_hit_counts",
             "fmc_create_access_policy",
             "fmc_create_access_rule",
             "fmc_create_nat_policy",
@@ -255,7 +266,7 @@ CATALOGUE: dict[str, tuple[str, tuple[str, ...]]] = {
         ),
     ),
     "tls": (
-        "TLS decryption policies and rules, internal CAs and certificates, readiness check",
+        "TLS decryption policies and rules, certificates (all kinds, days left), readiness check",
         (
             "fmc_create_decryption_policy",
             "fmc_create_decryption_rule",
@@ -266,6 +277,7 @@ CATALOGUE: dict[str, tuple[str, tuple[str, ...]]] = {
             "fmc_get_decryption_policy",
             "fmc_import_certificate_files",
             "fmc_install_internal_ca_cert",
+            "fmc_list_certificates",
             "fmc_set_decryption_policy",
             "fmc_tls_decryption_check",
             "fmc_update_decryption_policy",
