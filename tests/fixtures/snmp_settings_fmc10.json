@@ -1,0 +1,61 @@
+{
+ "_about": "FMC 10.0.1 (build 1), Global/mcp-test-leaf, 2026-10-21 (W6N live-A, F80 #175): SNMP settings of platform settings policy mcp-w6-ps. links dropped; the community FMC echoed in its 400 is replaced.",
+ "put_refused": {
+  "_source": "PUT .../snmpsettings/<id> with a community containing '-': FMC's 400 (it echoes the value)",
+  "status": 400,
+  "description": "Invalid Community String: <the community sent>. The Community String is a case-sensitive alphanumeric string of up to 32 characters; spaces and special characters are not permitted."
+ },
+ "snmpsettings_v2c": {
+  "_source": "GET .../snmpsettings/<id> with SNMP on, a v2c community and one manager (FMC masks the community at both levels with a fixed mask)",
+  "type": "FTDSNMPPlatformSettings",
+  "id": "00000000-0000-0ed3-0000-021474965445",
+  "enableSNMPServers": true,
+  "communityString": "********",
+  "port": "161",
+  "snmpMgmtHosts": [
+   {
+    "ipAddress": {
+     "name": "mcp-w6-syslog-host",
+     "id": "00000000-0000-0ed3-0000-021474979396",
+     "type": "Network"
+    },
+    "snmpVersion": "SNMPv2c",
+    "communityString": "********",
+    "poll": true,
+    "trap": true,
+    "port": "162",
+    "ifSnmpHostMgmt": false,
+    "interfaces": {
+     "objects": [
+      {
+       "name": "mcp-test-ftd-in",
+       "id": "d06d930e-c9d6-11f1-a4e0-98786f180443",
+       "type": "SecurityZone"
+      }
+     ]
+    }
+   }
+  ],
+  "snmpTrap": {
+   "linkUp": true,
+   "syslog": false,
+   "cputhresholdValueInPercent": "70",
+   "cputhresholdIntervalInMins": "1",
+   "memThresholdValueInPercent": "70",
+   "linkDown": true,
+   "coldStart": true,
+   "warmStart": true,
+   "fruinsert": false,
+   "fruremove": false,
+   "entityConfigChange": false,
+   "connLimitReached": false,
+   "natPacketDiscard": false,
+   "cputhreshold": false,
+   "memoryThreshold": false,
+   "peerFlap": false,
+   "authentication": true,
+   "failoverState": false,
+   "clusterState": false
+  }
+ }
+}
