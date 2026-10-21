@@ -349,13 +349,16 @@ def register(reg: ToolRegistrar) -> None:
         ] = None,
         default_originate: Annotated[
             bool | None,
-            Field(description="Send `neighbor` a default route (neighbor default-originate); false stops it"),
+            Field(
+                description="Send `neighbor` a default route (neighbor default-originate) with "
+                "default_originate_route_map (FMC 10.0.1 keeps it only with a route map); false stops it"
+            ),
         ] = None,
         default_originate_route_map: Annotated[
             str | None,
             Field(
-                description="Send that default route only while this route map (name/UUID) matches; 'none' "
-                "removes the condition"
+                description="Route map (name/UUID) for default_originate: the default route is sent while it "
+                "matches (one permit entry with no match = always); turns default-originate on"
             ),
         ] = None,
         redistribute: Annotated[
@@ -378,7 +381,8 @@ def register(reg: ToolRegistrar) -> None:
         fmc_run_show_command('show route') and the peer ('show bgp summary').
 
         Route policy on a neighbor (F77): inbound/outbound route maps and prefix lists (objects from
-        fmc_create_route_map / fmc_create_prefix_list), a maximum-prefix limit and default-originate;
+        fmc_create_route_map / fmc_create_prefix_list), a maximum-prefix limit and default-originate
+        (with a route map: FMC 10.0.1 drops it without one);
         redistribution of connected, static or OSPF routes into BGP with a route map and metric. FMC
         replaces the whole BGP model on every change, so only the named neighbor and sources change and
         the preview shows just that diff. Check with fmc_get_routing, then after the deploy

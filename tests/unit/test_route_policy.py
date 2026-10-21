@@ -373,6 +373,7 @@ async def test_neighbor_filters_preview_shows_only_that_neighbor(fmc: respx.Mock
         "neighbor_prefix_list_out": "pl-inside",
         "max_prefix": 500,
         "default_originate": True,
+        "default_originate_route_map": "rm-default",  # FMC 10.0.1 drops default-originate without one
     }
     async with Client(server()) as c:
         preview = await run(c, "fmc_configure_bgp", args)
@@ -385,7 +386,7 @@ async def test_neighbor_filters_preview_shows_only_that_neighbor(fmc: respx.Mock
             "route_map_in": {"from": None, "to": "rm-peer-in"},
             "prefix_list_out": {"from": None, "to": "pl-inside"},
             "max_prefix": {"from": None, "to": {"limit": 500, "threshold_percent": 75}},
-            "default_originate": {"from": None, "to": True},
+            "default_originate": {"from": None, "to": {"route_map": "rm-default"}},
         },
     }
     assert d["unchanged"] == {"other_neighbors": 1, "networks": 1}
@@ -405,7 +406,9 @@ async def test_neighbor_filters_preview_shows_only_that_neighbor(fmc: respx.Mock
             }
         ],
         "neighborMaximumPrefix": {"maxPrefixLimit": 500, "thresholdValue": 75},
-        "neighborDefaultOriginate": {},
+        "neighborDefaultOriginate": {
+            "routeMap": {"id": RM_DEF["id"], "type": "RouteMap", "name": "rm-default"}
+        },
     }
     # everything else of the touched neighbour, the other neighbour and the networks: as FMC sent them
     rec = FX["bgp_recorded"]["addressFamilyIPv4"]
@@ -583,7 +586,8 @@ async def test_neighbor_named_with_only_redistribute_is_not_blocked(fmc: respx.M
 
 async def test_bgp_from_scratch_with_route_policy(fmc: respx.MockRouter) -> None:
     """A device without BGP (the Stage 2 iBGP pair): one call sets up BGP, a neighbour with
-    default-originate, an advertised network and redistribution through a route map."""
+    default-originate (through a route map: FMC 10.0.1 drops it without one), an advertised network and
+    redistribution through a route map."""
     mount(fmc)
     fmc.get(f"{R}/bgpgeneralsettings").mock(return_value=empty())
     fmc.get(f"{R}/bgp").mock(return_value=empty())
@@ -599,6 +603,7 @@ async def test_bgp_from_scratch_with_route_policy(fmc: respx.MockRouter) -> None
         "advertise": ["inside-net"],
         "redistribute": [{"protocol": "connected", "route_map": "rm-default"}],
         "default_originate": True,
+        "default_originate_route_map": "rm-default",
     }
     async with Client(server()) as c:
         preview = await run(c, "fmc_configure_bgp", args)
@@ -606,7 +611,10 @@ async def test_bgp_from_scratch_with_route_policy(fmc: respx.MockRouter) -> None
     d = preview["preview"]
     assert d["steps"] == ["create bgp general settings", "create bgp"]
     assert d["before"] is None and d["after"]["networks"] == ["inside-net"]  # the full view: BGP is new
-    assert d["neighbor_changes"]["changes"]["default_originate"] == {"from": None, "to": True}
+    assert d["neighbor_changes"]["changes"]["default_originate"] == {
+        "from": None,
+        "to": {"route_map": "rm-default"},
+    }
     assert d["redistribute_changes"] == {"added": [{"protocol": "connected", "route_map": "rm-default"}]}
     assert done["result"]["applied"] == ["create bgp general settings", "create bgp"]
     assert body(gen)["asNumber"] == "65110" and body(gen)["routerId"] == "198.51.100.1"
@@ -619,7 +627,11 @@ async def test_bgp_from_scratch_with_route_policy(fmc: respx.MockRouter) -> None
             "ipv4Address": "192.0.2.5",
             "remoteAs": "65110",
             "neighborGeneral": {"enableAddress": True, "shutdown": False, "description": "spoke"},
-            "neighborFiltering": {"neighborDefaultOriginate": {}},
+            "neighborFiltering": {
+                "neighborDefaultOriginate": {
+                    "routeMap": {"id": RM_DEF["id"], "type": "RouteMap", "name": "rm-default"}
+                }
+            },
         }
     ]
     assert af["networks"] == [{"ipv4Address": {"id": NET["id"], "type": "Network", "name": "inside-net"}}]

@@ -1,0 +1,260 @@
+{
+ "_source": "FMC 10.0.1 (build 1), domain Global/mcp-test-leaf, 2026-10-21 (W6N live-B, F77 on the t1 hub; neighbour address replaced with 192.0.2.2, links dropped). post_without_route_map: the POST routing/bgp fmc_configure_bgp(default_originate=True) built (neighborFiltering {neighborDefaultOriginate: {}}) and the model FMC stored (answer and re-GET: neighborFiltering {}). put_type_only: a PUT with {neighborDefaultOriginate: {type: neighbordefaultoriginate}}, also stored as {}. stored_with_route_map: the stored hub model with the neighborFiltering FMC answered to the PUT with default_originate_route_map (neighborDefaultOriginate {routeMap, type}; only that part was recorded from the PUT), deployed as 'neighbor ... default-originate route-map mcp-w6-t1-rm-default'. route_map_permit_all: the route map used (one PERMIT entry, no match).",
+ "post_without_route_map": {
+  "request": {
+   "type": "bgp",
+   "asNumber": "65110",
+   "addressFamilyIPv4": {
+    "type": "afipv4",
+    "redistributeProtocols": [
+     {
+      "type": "RedistributeConnected",
+      "routeMap": {
+       "id": "00000000-0000-0ed3-0000-021475073171",
+       "type": "RouteMap",
+       "name": "mcp-w6-t1-rm-conn"
+      }
+     }
+    ],
+    "neighbors": [
+     {
+      "type": "neighboripv4",
+      "ipv4Address": "192.0.2.2",
+      "remoteAs": "65110",
+      "neighborGeneral": {
+       "enableAddress": true,
+       "shutdown": false,
+       "description": "spoke1 transport"
+      },
+      "neighborFiltering": {
+       "neighborDefaultOriginate": {}
+      }
+     }
+    ],
+    "networks": [
+     {
+      "ipv4Address": {
+       "id": "00000000-0000-0ed3-0000-021475073095",
+       "type": "Network",
+       "name": "mcp-w6-t1-hub-inside"
+      }
+     }
+    ]
+   }
+  },
+  "stored": {
+   "addressFamilyIPv4": {
+    "distance": {
+     "externalDistance": 20,
+     "internalDistance": 200,
+     "localDistance": 200,
+     "type": "afbgpdistance"
+    },
+    "defaultInformationOrginate": false,
+    "bgpSupressInactive": true,
+    "synchronization": false,
+    "bgpRedistributeInternal": false,
+    "maximumPaths": [
+     {
+      "value": 1,
+      "type": "afmaximumpaths"
+     }
+    ],
+    "neighbors": [
+     {
+      "neighborGeneral": {
+       "description": "spoke1 transport",
+       "shutdown": false,
+       "fallOverBFD": "NONE",
+       "enableAddress": true,
+       "type": "neighborgeneral"
+      },
+      "neighborAdvanced": {
+       "neighborHops": {
+        "maxHopCount": 1,
+        "disableConnectedCheck": false,
+        "type": "neighborebgpmultihop"
+       },
+       "neighborVersion": 0,
+       "nextHopSelf": false,
+       "neighborWeight": 0,
+       "sendCommunity": false,
+       "neighborTransportConnectionMode": {
+        "establishTCPSession": false,
+        "type": "neighbortransportconnectionmode"
+       },
+       "neighborTransportPathMTUDiscovery": {
+        "disable": true,
+        "type": "neighbortransportpathmtudiscovery"
+       },
+       "type": "neighboradvanced"
+      },
+      "neighborRoutes": {
+       "removePrivateAs": false
+      },
+      "neighborFiltering": {},
+      "type": "neighboripv4",
+      "remoteAs": "65110",
+      "ipv4Address": "192.0.2.2"
+     }
+    ],
+    "redistributeProtocols": [
+     {
+      "routeMap": {
+       "type": "RouteMap",
+       "name": "mcp-w6-t1-rm-conn",
+       "overridable": false,
+       "id": "00000000-0000-0ed3-0000-021475073171"
+      },
+      "routeMetric": {},
+      "type": "RedistributeConnected"
+     }
+    ],
+    "autoSummary": false,
+    "id": "00000000-0000-0ed3-0001-792202030296",
+    "type": "afipv4",
+    "networks": [
+     {
+      "ipv4Address": {
+       "type": "Network",
+       "overridable": false,
+       "name": "mcp-w6-t1-hub-inside",
+       "id": "00000000-0000-0ed3-0000-021475073095"
+      }
+     }
+    ],
+    "ebgp": 1,
+    "ibgp": 1
+   },
+   "asNumber": "65110",
+   "name": "bgp",
+   "id": "00000000-0000-0ed3-0001-792202030295",
+   "type": "bgp"
+  }
+ },
+ "put_type_only": {
+  "sent": {
+   "neighborDefaultOriginate": {
+    "type": "neighbordefaultoriginate"
+   }
+  },
+  "stored": {}
+ },
+ "stored_with_route_map": {
+  "addressFamilyIPv4": {
+   "distance": {
+    "externalDistance": 20,
+    "internalDistance": 200,
+    "localDistance": 200,
+    "type": "afbgpdistance"
+   },
+   "defaultInformationOrginate": false,
+   "bgpSupressInactive": true,
+   "synchronization": false,
+   "bgpRedistributeInternal": false,
+   "maximumPaths": [
+    {
+     "value": 1,
+     "type": "afmaximumpaths"
+    }
+   ],
+   "neighbors": [
+    {
+     "neighborGeneral": {
+      "description": "spoke1 transport",
+      "shutdown": false,
+      "fallOverBFD": "NONE",
+      "enableAddress": true,
+      "type": "neighborgeneral"
+     },
+     "neighborAdvanced": {
+      "neighborHops": {
+       "maxHopCount": 1,
+       "disableConnectedCheck": false,
+       "type": "neighborebgpmultihop"
+      },
+      "neighborVersion": 0,
+      "nextHopSelf": false,
+      "neighborWeight": 0,
+      "sendCommunity": false,
+      "neighborTransportConnectionMode": {
+       "establishTCPSession": false,
+       "type": "neighbortransportconnectionmode"
+      },
+      "neighborTransportPathMTUDiscovery": {
+       "disable": true,
+       "type": "neighbortransportpathmtudiscovery"
+      },
+      "type": "neighboradvanced"
+     },
+     "neighborRoutes": {
+      "removePrivateAs": false
+     },
+     "neighborFiltering": {
+      "neighborDefaultOriginate": {
+       "routeMap": {
+        "type": "RouteMap",
+        "name": "mcp-w6-t1-rm-default",
+        "overridable": false,
+        "id": "00000000-0000-0ed3-0000-021475073306"
+       },
+       "type": "neighbordefaultoriginate"
+      }
+     },
+     "type": "neighboripv4",
+     "remoteAs": "65110",
+     "ipv4Address": "192.0.2.2"
+    }
+   ],
+   "redistributeProtocols": [
+    {
+     "routeMap": {
+      "type": "RouteMap",
+      "name": "mcp-w6-t1-rm-conn",
+      "overridable": false,
+      "id": "00000000-0000-0ed3-0000-021475073171"
+     },
+     "routeMetric": {},
+     "type": "RedistributeConnected"
+    }
+   ],
+   "autoSummary": false,
+   "id": "00000000-0000-0ed3-0001-792202030296",
+   "type": "afipv4",
+   "networks": [
+    {
+     "ipv4Address": {
+      "type": "Network",
+      "overridable": false,
+      "name": "mcp-w6-t1-hub-inside",
+      "id": "00000000-0000-0ed3-0000-021475073095"
+     }
+    }
+   ],
+   "ebgp": 1,
+   "ibgp": 1
+  },
+  "asNumber": "65110",
+  "name": "bgp",
+  "id": "00000000-0000-0ed3-0001-792202030295",
+  "type": "bgp"
+ },
+ "route_map_permit_all": {
+  "entries": [
+   {
+    "extendedCommunityAdditive": false,
+    "specificIPsIPV4Setting": [
+     " "
+    ],
+    "specificIPsIPV6Setting": [
+     " "
+    ],
+    "sequence": 10,
+    "action": "PERMIT"
+   }
+  ],
+  "type": "RouteMap",
+  "name": "mcp-w6-t1-rm-default",
+  "id": "00000000-0000-0ed3-0000-021475073306"
+ }
+}
