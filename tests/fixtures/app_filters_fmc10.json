@@ -1,0 +1,153 @@
+{
+ "_source": "FMC 10.0.1 (build 1), Global/mcp-test-leaf, 2026-10-21 (W6 live-B1, F66): fmc_create_application_filter POST answers (201) for an attribute-only filter and one with an explicit application; the list and GET by id right after (empty / 404, also in Global; DELETE by id 404 too); the GET of a rule created by raw POST with applications.applicationFilters [{id, type, name}] (201). Filter ids: node part replaced; rule destination: documentation address.",
+ "create_answer": {
+  "name": "mcp-w6-appfilter",
+  "id": "17e78568-cd11-11f1-885b-00000000a001",
+  "type": "ApplicationFilter",
+  "metadata": {},
+  "appConditions": [
+   {
+    "search": "Risks:High, Very High",
+    "risks": [
+     {
+      "type": "ApplicationRisk",
+      "name": "High",
+      "id": "HIGH"
+     },
+     {
+      "type": "ApplicationRisk",
+      "name": "Very High",
+      "id": "VERY_HIGH"
+     }
+    ]
+   }
+  ]
+ },
+ "create_answer_explicit_app": {
+  "name": "mcp-w6-appfilter2",
+  "id": "881148ec-cd11-11f1-9947-00000000a002",
+  "type": "ApplicationFilter",
+  "metadata": {},
+  "applications": [
+   {
+    "appProductivity": {
+     "name": "Medium",
+     "id": "MEDIUM",
+     "type": "ApplicationProductivity",
+     "metadata": {}
+    },
+    "appCategories": [
+     {
+      "name": "network protocols/services",
+      "id": "10",
+      "type": "ApplicationCategory",
+      "metadata": {}
+     },
+     {
+      "name": "security management",
+      "id": "34",
+      "type": "ApplicationCategory",
+      "metadata": {}
+     },
+     {
+      "name": "remote administration",
+      "id": "50",
+      "type": "ApplicationCategory",
+      "metadata": {}
+     }
+    ],
+    "applicationTags": [
+     {
+      "name": "encrypts communications",
+      "id": "15",
+      "type": "ApplicationTag",
+      "metadata": {}
+     }
+    ],
+    "type": "Application",
+    "name": "SSH",
+    "risk": {
+     "type": "ApplicationRisk",
+     "name": "High",
+     "id": "HIGH"
+    },
+    "applicationTypes": [
+     {
+      "type": "ApplicationType",
+      "metadata": {},
+      "name": "Client",
+      "id": "CLIENT"
+     },
+     {
+      "type": "ApplicationType",
+      "metadata": {},
+      "name": "Server",
+      "id": "SERVER"
+     }
+    ]
+   }
+  ]
+ },
+ "list_after_create": {
+  "paging": {
+   "offset": 0,
+   "limit": 0,
+   "count": 0,
+   "pages": 0
+  }
+ },
+ "get_by_id_after_create": {
+  "status": 404
+ },
+ "rule_with_filter": {
+  "metadata": {
+   "ruleIndex": 6,
+   "section": "Default",
+   "category": "--Undefined--",
+   "timestamp": 1792561150355,
+   "domain": "Global \\ mcp-test-leaf"
+  },
+  "enabled": true,
+  "advancedLogging": {},
+  "sendEventsToFMC": true,
+  "enableSyslog": false,
+  "applications": {
+   "applicationDefaultPort": false,
+   "applicationFilters": [
+    {
+     "name": "mcp-w6-appfilter",
+     "id": "17e78568-cd11-11f1-885b-00000000a001",
+     "type": "ApplicationFilter"
+    }
+   ]
+  },
+  "destinationDynamicObjects": {},
+  "logBegin": false,
+  "logEnd": true,
+  "logFiles": false,
+  "sourceDynamicObjects": {},
+  "sourceNetworks": {
+   "objects": [
+    {
+     "type": "Network",
+     "overridable": false,
+     "name": "mcp-test-ftd-inside-net",
+     "id": "00000000-0000-0ed3-0000-021474841321"
+    }
+   ]
+  },
+  "destinationNetworks": {
+   "literals": [
+    {
+     "type": "Host",
+     "value": "198.51.100.35"
+    }
+   ]
+  },
+  "vlanTags": {},
+  "action": "ALLOW",
+  "type": "AccessRule",
+  "name": "mcp-w6-appfilter-rule",
+  "id": "00000000-0000-0ed3-0000-000268434528"
+ }
+}
