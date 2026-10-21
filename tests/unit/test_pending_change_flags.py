@@ -67,3 +67,34 @@ def test_empty_secret_values_stay_empty() -> None:
         {"entityName": "x", "valueUpdated": [{"fieldName": "Password", "oldValue": "", "newValue": "abc"}]}
     )
     assert row["changes"] == ["Password:  -> ********"]
+
+
+# Review of #308: only an allow-listed flag label shows true/false; any other secret-named field is masked
+# whatever its value, a community, password or key that reads "false" or "true" included.
+@pytest.mark.parametrize(
+    ("field", "value"),
+    [
+        ("SNMP Community", "false"),
+        ("SNMP Community", "true"),
+        ("Community String", "false"),
+        ("Community", "true"),
+        ("Read Community", "TRUE"),
+        ("Password", "true"),
+        ("Pre-shared Key", "false"),
+        ("Secret", "False"),
+        ("Authentication Key", "true"),
+        ("Send Community String to this neighbor", "false"),  # not the allow-listed label
+        ("Password", True),
+    ],
+)
+def test_flag_looking_values_of_other_secret_fields_stay_masked(field: str, value: object) -> None:
+    row = pending_row({"entityName": "x", "valueAdded": [{"fieldName": field, "newValue": value}]})
+    assert row["changes"] == [f"{field}: ********"]
+
+
+def test_the_allow_listed_label_matches_without_case_or_extra_spaces() -> None:
+    field = "send  community Attribute to this Neighbor"
+    row = pending_row({"entityName": "x", "valueAdded": [{"fieldName": field, "newValue": "true"}]})
+    assert row["changes"] == [f"{field}: true"]
+    row = pending_row({"entityName": "x", "valueAdded": [{"fieldName": field, "newValue": "s3cr3t"}]})
+    assert row["changes"] == [f"{field}: ********"]  # not a flag value: masked
