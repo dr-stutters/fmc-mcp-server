@@ -281,7 +281,8 @@ async def test_packet_tracer_flows_are_left_out_and_counted(ftd: respx.MockRoute
     data = await call("fmc_live_connections", {"device": "mcp-ftd1", "host": "10.99.1.10"})
     assert [r["id"] for r in data["results"]] == ["29"]
     assert data["results"][0]["started"] == "2026-10-18T23:00:57Z"
-    assert data["packet_tracer_flows"] == 1 and "packet-tracer simulation" in data["note"]
+    assert data["packet_tracer_flows"] == 1
+    assert "1 packet-tracer flow(s) hidden" in data["note"] and "'packet injection'" in data["note"]
     md = await call_tool(
         create_server(make_settings()),
         "fmc_live_connections",
@@ -325,3 +326,61 @@ async def test_right_now_lists_open_connections_first_without_simulations(ftd: r
     assert [(r["id"], r["state"]) for r in data["results"]] == [("132", "open"), ("128", "closed")]
     assert data["results"][0]["last_seen"] == "2026-10-19T04:56:20Z"
     assert data["packet_tracer_flows"] == 2 and data["open"] == 1
+    assert "simulated" not in data["results"][0]
+    # include_simulated: the hidden ones come back, marked (and as a markdown column)
+    data = await call(
+        "fmc_live_connections", {"device": "mcp-ftd1", "host": "10.99.1.10", "include_simulated": True}
+    )
+    marked = {r["id"]: r.get("simulated", False) for r in data["results"]}
+    assert marked == {"132": False, "130": True, "128": False, "126": True}
+    assert data["packet_tracer_flows"] == 2 and "listed, marked simulated" in data["note"]
+    assert (
+        "1 torn down with 'packet injection'" in data["note"] and "1 torn down with no bytes" in data["note"]
+    )
+    md = await call_tool(
+        create_server(make_settings()),
+        "fmc_live_connections",
+        {"device": "mcp-ftd1", "include_simulated": True, "response_format": "markdown"},
+    )
+    assert "| last_seen | simulated |" in str(md)
+
+
+def _lines(*lines: str) -> str:
+    """Log lines in FTD 10.0.0's format (as in the recorded fixture); hand-made cases."""
+    return "\n".join(f"2026-10-19T05:00:0{i}Z: {line}" for i, line in enumerate(lines))
+
+
+BUILT_IN = (
+    "%FTD-6-302013: Built inbound TCP connection {id} for inside:10.99.1.10/{port} (192.0.2.1/{port}) "
+    "to outside:192.0.2.80/443 (192.0.2.80/443){tail}"
+)
+DOWN_IN = (
+    "%FTD-6-302014: Teardown TCP connection {id} for inside:10.99.1.10/{port} to outside:192.0.2.80/443 "
+    "duration 0:00:30 bytes {bytes} {reason}{tail}"
+)
+
+
+def test_only_a_zero_byte_teardown_ending_0_0_counts_as_simulated() -> None:
+    """The ' 0 0' / ' -1 -1' pair is undocumented: real zero-byte flows (SYN timeouts, resets) ending
+    ' -1 -1', a ' 0 0' flow that carried bytes, a ' 0 0' Built line and open flows are real traffic."""
+    text = _lines(
+        BUILT_IN.format(id=1, port=50001, tail=" -1 -1"),
+        DOWN_IN.format(id=1, port=50001, bytes=0, reason="SYN Timeout", tail=" -1 -1"),
+        BUILT_IN.format(id=2, port=50002, tail=" 0 0"),
+        DOWN_IN.format(id=2, port=50002, bytes=1520, reason="TCP FINs from inside", tail=" 0 0"),
+        BUILT_IN.format(id=3, port=50003, tail=" 0 0"),
+        DOWN_IN.format(id=3, port=50003, bytes=0, reason="TCP Reset-O from outside", tail=" -1 -1"),
+        BUILT_IN.format(id=4, port=50004, tail=" 0 0"),
+        BUILT_IN.format(id=5, port=50005, tail=""),
+        DOWN_IN.format(id=5, port=50005, bytes=0, reason="SYN Timeout", tail=""),
+        BUILT_IN.format(id=6, port=50006, tail=" -1 -1"),
+        DOWN_IN.format(id=6, port=50006, bytes=0, reason="No valid adjacency", tail=" 0 0"),
+    )
+    rows = {c.conn_id: c for c in parse_log_buffer(text)[0]}
+    assert [k for k, c in rows.items() if c.simulated] == ["6"]
+    assert rows["1"].reason == "SYN Timeout" and rows["1"].bytes == 0  # real, zero bytes, ' -1 -1'
+    assert rows["2"].bytes == 1520  # ' 0 0' but it carried data
+    assert rows["3"].reason == "TCP Reset-O from outside"  # ' 0 0' only on the Built line
+    assert rows["4"].state == "open"  # open flows are never marked
+    assert rows["5"].reason == "SYN Timeout"  # no tail at all (older FTD)
+    assert rows["6"].simulated_by == "tail"

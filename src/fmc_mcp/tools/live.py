@@ -103,8 +103,10 @@ NUM_TAIL = re.compile(r"(?:\s+-?\d+)+\s*$")
 TAIL_PAIR = re.compile(r"\s(-?\d+)\s+(-?\d+)\s*$")
 # The flow packet tracer (fmc_packet_tracer, fmc_prove_policy) injects is a simulation. Its teardown reads
 # 'Free the flow created as result of packet injection', or the reason the trace dropped it ('No valid
-# adjacency'). FTD 10 ends every line of such a flow with ' 0 0', and real traffic's with ' -1 -1' (seen on
-# FTD 10.0.0 via FMC 10.0.1, #202): a closed flow with that tail and no bytes is a simulation too.
+# adjacency'). On FTD 10.0.0 (via FMC 10.0.1, #202) every line of such a flow ended ' 0 0' and every line of
+# real traffic ' -1 -1'. What the pair means is not documented, so only a teardown that ends ' 0 0' with no
+# bytes counts (the Built line's pair is not used), and such rows are hidden, not dropped:
+# include_simulated lists them, marked.
 INJECTED = "packet injection"
 SIMULATED_TAIL = ("0", "0")
 
@@ -136,7 +138,7 @@ class Conn:
     seq: int = 0  # line of the buffer that last mentioned it (newest activity sorts first)
     last_seen: str | None = None  # the time of that line
     simulated: bool = False  # a packet-tracer flow, not real traffic
-    zero_tail: bool = False  # FTD 10's ' 0 0' line ending (packet tracer's flows)
+    simulated_by: str | None = None  # 'packet injection' (teardown reason) or 'tail' (' 0 0', no bytes)
 
     def row(self) -> dict[str, Any]:
         out = {
@@ -156,6 +158,7 @@ class Conn:
             "started": self.started,
             "ended": self.ended,
             "last_seen": self.last_seen,
+            "simulated": True if self.simulated else None,
             "id": self.conn_id,
         }
         return {k: v for k, v in out.items() if v not in (None, "")}
@@ -217,7 +220,6 @@ def parse_log_buffer(text: str) -> tuple[list[Conn], bool]:
                 conn_id=b["id"],
                 user=_user(b["auser"], b["buser"]),
                 started=when,
-                zero_tail=_zero_tail(body),
             )
             by_id[b["id"]] = c
             order.append(c)
@@ -241,12 +243,14 @@ def parse_log_buffer(text: str) -> tuple[list[Conn], bool]:
                 order.append(c)
             c.state, c.ended = "closed", when
             c.duration, c.bytes = t["duration"], int(t["bytes"])
-            c.zero_tail = c.zero_tail or _zero_tail(t["rest"])
             rest = TEARDOWN_USER.match(NUM_TAIL.sub("", t["rest"] or ""))
             if rest:
                 c.reason = rest["reason"] or None
                 c.user = c.user or _user(rest["user"], t["auser"], t["buser"])
-            c.simulated = INJECTED in (c.reason or "").lower() or (c.zero_tail and not c.bytes)
+            if INJECTED in (c.reason or "").lower():
+                c.simulated, c.simulated_by = True, INJECTED
+            elif _zero_tail(t["rest"]) and not c.bytes:
+                c.simulated, c.simulated_by = True, "tail"
         elif msg in ("302020", "302021"):
             i = ICMP.match(body)
             if not i:
@@ -618,6 +622,13 @@ def register(reg: ToolRegistrar) -> None:
             Literal["open", "closed"] | None,
             Field(description="Only open (no teardown yet) or closed connections"),
         ] = None,
+        include_simulated: Annotated[
+            bool,
+            Field(
+                description="Also list packet-tracer flows (fmc_packet_tracer / fmc_prove_policy runs), "
+                "marked simulated: true; hidden and counted by default"
+            ),
+        ] = False,
         domain: Domain = None,
         limit: Annotated[int, Field(ge=1, le=1000)] = 100,
         offset: Annotated[int, Field(ge=0)] = 0,
@@ -632,8 +643,8 @@ def register(reg: ToolRegistrar) -> None:
         lists 'show conn' (read from its spec at run time) the live connection table is used instead.
         From the buffer, open connections come first, then the most recently active, with `started` and
         `last_seen` (the newest log line about it; `ended` for a teardown) when the device timestamps
-        its logs; packet-tracer simulations are left out (counted in `packet_tracer_flows`); filter by
-        host, user, port, protocol or state. The buffer needs the
+        its logs; packet-tracer flows are hidden and counted in `packet_tracer_flows` (include_simulated
+        lists them, marked `simulated`); filter by host, user, port, protocol or state. The buffer needs the
         device's platform settings to log to the internal buffer at informational, with the connection
         messages 302013-302021 enabled (FTD ships them off) and a buffer larger than the 4 KiB default;
         fmc_get_platform_settings shows the destinations. Pair with fmc_packet_tracer (why a flow is
@@ -678,7 +689,7 @@ def register(reg: ToolRegistrar) -> None:
                 return list_result(page_of([], limit=limit, offset=offset), fmt=response_format, extra=off)
 
         rows = []
-        simulated = 0
+        simulated: dict[str, int] = {}
         for c in conns:
             ips = c.ips()
             if net is not None and not any(_in(net, ip) for ip in ips):
@@ -694,8 +705,10 @@ def register(reg: ToolRegistrar) -> None:
                 if not named and not (user_ips & set(ips)):
                     continue
             if c.simulated:
-                simulated += 1
-                continue
+                why = c.simulated_by or INJECTED
+                simulated[why] = simulated.get(why, 0) + 1
+                if not include_simulated:
+                    continue
             rows.append(c.row())
         extra: dict[str, Any] = {
             "device": dev.get("name"),
@@ -708,11 +721,26 @@ def register(reg: ToolRegistrar) -> None:
             if ips_from:
                 extra["sessions_domain"] = ips_from
         if simulated:
-            extra["packet_tracer_flows"] = simulated
+            total = sum(simulated.values())
+            extra["packet_tracer_flows"] = total
+            how = (
+                [f"{simulated[INJECTED]} torn down with 'packet injection'"]
+                if simulated.get(INJECTED)
+                else []
+            )
+            if simulated.get("tail"):
+                how.append(
+                    f"{simulated['tail']} torn down with no bytes and FTD 10's ' 0 0' ending, which packet "
+                    "tracer's flows carry (a trace the device dropped, e.g. 'No valid adjacency')"
+                )
+            shown = (
+                "listed, marked simulated"
+                if include_simulated
+                else "hidden (include_simulated=true lists them)"
+            )
             notes.append(
-                f"{simulated} packet-tracer simulation(s) left out: fmc_packet_tracer and fmc_prove_policy "
-                "inject a flow the device logs like a connection (torn down with 'packet injection', or "
-                "with the reason the trace dropped it; FTD 10 ends those lines with ' 0 0')."
+                f"{total} packet-tracer flow(s) {shown}: {'; '.join(how)}. fmc_packet_tracer and "
+                "fmc_prove_policy inject a flow the device logs like a connection."
             )
         if source.startswith("syslog"):
             notes.append(
@@ -734,6 +762,8 @@ def register(reg: ToolRegistrar) -> None:
             "started",
             "last_seen",
         ]
+        if include_simulated:
+            columns.append("simulated")
         if source.startswith("show conn"):
             columns = ["protocol", "initiator", "responder", "flags", "idle", "duration", "bytes", "rule"]
         return list_result(
