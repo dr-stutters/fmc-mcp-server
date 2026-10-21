@@ -151,6 +151,122 @@ async def put_base(
     return out
 
 
+# --- the child's Logging settings ------------------------------------------------------------------------
+# FMC 10.0.1 keeps a policy's own Logging settings (loggingsettings: syslog from the platform settings or
+# not, IPS / file syslog) when it gets a base policy through the REST API; the FMC UI ticks "Inherit from
+# base policy" for a new child. Recorded live (W6N live-A): a child created with POST + PUT
+# inheritancesettings had {syslogConfigFromPlatformSetting false, inheritFromParent false}, and its first
+# deployment failed FMC's validation (400 "Access Control Policy Logging configuration is invalid. Access
+# Control rules inherited from base policy '<base>' have syslog configured to use Logging configuration")
+# because the base's rules send syslog through the Logging settings. PUT loggingsettings/<id>
+# {..., inheritFromParent: true} fixed it: FMC answered with the base's setting (its id,
+# metadata.inheritedPolicy) and the deployment passed. Clearing the base brings the policy's own back.
+
+LoggingMode = Literal["inherit", "own"]
+SYSLOG_FIELDS = (
+    "syslogConfigFromPlatformSetting",
+    "syslogConfig",
+    "enableipsSyslog",
+    "ipsSyslogConfig",
+    "enableFileAndMalwareSyslog",
+    "fileAndMalwareSyslogConfig",
+)
+
+
+async def logging_setting(app: FmcApp, policy_id: str, domain: str | None) -> dict[str, Any] | None:
+    """The access policy's Logging settings object, or None when FMC lists none."""
+    page = await app.all(await app.config_path(f"{ACCESS}/{policy_id}/loggingsettings", domain), cap=10)
+    return next((s for s in page.items if isinstance(s, dict) and s.get("id")), None)
+
+
+def sends_syslog(setting: dict[str, Any]) -> bool:
+    """Whether the policy's own Logging settings send syslog anywhere (FMC's defaults for a new policy
+    don't): then they are someone's choice and a base change keeps them unless asked."""
+    return any(setting.get(k) for k in SYSLOG_FIELDS)
+
+
+def own_logging(setting: dict[str, Any]) -> str:
+    """What the policy's own Logging settings send, in words."""
+    on = [
+        label
+        for key, label in (
+            ("syslogConfigFromPlatformSetting", "connection syslog to the platform-settings servers"),
+            ("syslogConfig", "connection syslog to an alert"),
+            ("enableipsSyslog", "intrusion syslog"),
+            ("enableFileAndMalwareSyslog", "file/malware syslog"),
+        )
+        if setting.get(key)
+    ]
+    return ", ".join(on) if on else "no syslog destination: FMC's defaults"
+
+
+def logging_plan(setting: dict[str, Any] | None, asked: bool | None) -> tuple[LoggingMode | None, str | None]:
+    """(what to do with the policy's Logging settings when it gets a base, a note for the preview).
+    asked: inherit_logging (None: inherit unless its own settings send syslog somewhere)."""
+    if setting is None:
+        return None, "FMC lists no Logging settings for the policy: they are left as they are."
+    if setting.get("inheritFromParent"):
+        return None, None
+    if asked is False or (asked is None and sends_syslog(setting)):
+        why = "" if asked is False else " because they send syslog (inherit_logging=True replaces them)"
+        return "own", (
+            f"Keeps its own Logging settings ({own_logging(setting)}){why}. If the base's rules send syslog "
+            "through the base's Logging settings, FMC refuses the deployment until this policy has a syslog "
+            "destination (fmc_set_access_logging use_platform_syslog=True) or inherits them."
+        )
+    return "inherit", None
+
+
+async def inherit_base_logging(app: FmcApp, policy_id: str, domain: str | None) -> dict[str, Any]:
+    """PUT the policy's Logging settings to inherit from its base (after the base is set); returns
+    {logging} or {logging, logging_warning}. Never raises: the base is set either way."""
+    try:
+        cur = await logging_setting(app, policy_id, domain)
+        if cur is None or cur.get("inheritFromParent"):
+            return {"logging": "inherited from the base policy" if cur else "not listed by FMC"}
+        path = await app.config_path(f"{ACCESS}/{policy_id}/loggingsettings/{cur['id']}", domain)
+        got = await app.api.put(path, {**editable(cur), "inheritFromParent": True})
+    except UpstreamError as e:
+        return {
+            "logging": "its own (unchanged)",
+            "logging_warning": f"FMC refused to make the policy inherit its base's Logging settings ({e}). "
+            "If the base's rules send syslog, FMC refuses the deployment until this policy has a syslog "
+            "destination: fmc_set_access_logging(use_platform_syslog=True), or tick 'Inherit from base "
+            "policy' on its Logging tab in the FMC UI.",
+        }
+    finally:
+        app.invalidate_cache()
+    if isinstance(got, dict) and got.get("inheritFromParent"):
+        src = ((got.get("metadata") or {}).get("inheritedPolicy") or {}).get("name")
+        return {"logging": f"inherited from {src!r}" if src else "inherited from the base policy"}
+    return {
+        "logging": "its own (FMC kept it)",
+        "logging_warning": "FMC answered the Logging settings change but doesn't report them inherited; "
+        "check the policy's Logging tab before deploying.",
+    }
+
+
+def logging_change(setting: dict[str, Any], mode: LoggingMode | None, base_name: str) -> dict[str, str]:
+    """The preview's Logging settings line: now and after the base change."""
+    if setting.get("inheritFromParent"):
+        now = "inherited from the base policy"
+    else:
+        now = f"its own ({own_logging(setting)})"
+    return {"now": now, "after": f"inherited from {base_name!r}" if mode == "inherit" else now}
+
+
+INHERITS_FROM_NOW = (
+    "Its Logging settings inherit from the base from now on (its own stay stored in FMC and come back if "
+    "the base is removed): with its own and no syslog destination FMC refuses the deployment when the "
+    "base's rules send syslog."
+)
+LOGGING_INHERIT_NOTE = (
+    "The policy's Logging settings inherit from the base (loggingsettings inheritFromParent, as the FMC UI "
+    "does for a new child): with its own defaults FMC refuses the first deployment when the base's rules "
+    "send syslog."
+)
+
+
 def inheritance_effect(base_name: str) -> str:
     return (
         f"Traffic is checked against {base_name!r}'s Mandatory rules first, then this policy's own rules, "
@@ -483,6 +599,15 @@ def register(reg: ToolRegistrar) -> None:
                 "base from an ancestor domain (a Global corporate policy for a leaf-domain site) works"
             ),
         ],
+        inherit_logging: Annotated[
+            bool | None,
+            Field(
+                description="With a base: make the policy's Logging settings (syslog) inherit from it. "
+                "Default: yes unless its own Logging settings send syslog somewhere (then they are kept). "
+                "FMC refuses to deploy a child whose base's rules send syslog while the child has no syslog "
+                "destination"
+            ),
+        ] = None,
         domain: Domain = None,
         confirm: Confirm = None,
     ) -> dict[str, Any]:
@@ -491,8 +616,11 @@ def register(reg: ToolRegistrar) -> None:
         them, so a corporate parent's mandatory rules apply at every site. The preview shows the base chain
         before and after, what the new base hands down (rules per section, default action) and the
         devices that get it on their next deployment; a loop (the base inherits from this policy) is
-        refused."""
+        refused. With a base its Logging settings inherit from it too, unless its own send syslog
+        (inherit_logging)."""
         app: FmcApp = get_client(ctx)
+        if inherit_logging is not None and base.strip().lower() == "none":
+            raise InvalidRequest("inherit_logging goes with a base policy, not base='none'.")
         p = await resolve_policy(app, "access", policy, domain)
         before = await base_chain(app, str(p["id"]), domain)
         new: dict[str, Any] | None = None
@@ -535,10 +663,26 @@ def register(reg: ToolRegistrar) -> None:
                 + ".",
             )
         side += scan_notes
+        logging: dict[str, Any] | None = None
+        mode: LoggingMode | None = None
         if new and not blockers:
             details["inherited_from_base"] = await rules_summary(app, new, domain)
             details["own_default_action"] = (p.get("defaultAction") or {}).get("action")
             side.insert(0, inheritance_effect(str(new.get("name"))))
+            try:
+                logging = await logging_setting(app, str(p["id"]), domain)
+            except UpstreamError as e:
+                side.append(
+                    f"The policy's Logging settings couldn't be read ({e}): they are left as they are."
+                )
+            else:
+                mode, note = logging_plan(logging, inherit_logging)
+                if logging is not None:
+                    details["logging"] = logging_change(logging, mode, str(new.get("name")))
+                if mode == "inherit":
+                    side.append(INHERITS_FROM_NOW)
+                if note:
+                    side.append(note)
         elif not new and current:
             side.insert(0, f"The policy stops getting {chain_from[1]!r}'s rules.")
         target = {"id": new["id"], "name": new.get("name")} if new else None
@@ -547,21 +691,39 @@ def register(reg: ToolRegistrar) -> None:
             if new
             else f"Remove the base policy of {p.get('name')!r}"
         )
+
+        async def apply() -> Any:
+            out = await put_base(app, str(p["id"]), target, domain)
+            if mode == "inherit":
+                done = await inherit_base_logging(app, str(p["id"]), domain)
+                out["logging"] = done["logging"]
+                if done.get("logging_warning"):
+                    out["warning"] = " ".join(w for w in (out.get("warning"), done["logging_warning"]) if w)
+            return out
+
+        args: dict[str, Any] = {"policy": policy, "base": base, "domain": domain}
+        if inherit_logging is not None:
+            args["inherit_logging"] = inherit_logging
         return await fmc_preview(
             ctx,
             tool="fmc_set_base_policy",
             owned=[p],
-            args={"policy": policy, "base": base, "domain": domain},
+            args=args,
             confirm=confirm,
             plan=Plan(
                 summary,
                 details={**details, "body": base_body(str(p["id"]), target)},
-                fingerprint={"policy": p["id"], "before": before, "to": (new or {}).get("id")},
+                fingerprint={
+                    "policy": p["id"],
+                    "before": before,
+                    "to": (new or {}).get("id"),
+                    "logging": editable(logging) if logging else None,
+                },
                 blockers=blockers,
                 side_effects=side,
                 blast_radius=len(devices) + len(reached),
             ),
-            apply=lambda: put_base(app, str(p["id"]), target, domain),
+            apply=apply,
         )
 
     @reg.write(title="Lock or unlock an access policy")
