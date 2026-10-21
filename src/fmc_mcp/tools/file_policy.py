@@ -20,7 +20,6 @@ from fmc_mcp._core import (
     ToolRegistrar,
     get_client,
     list_result,
-    object_result,
 )
 from fmc_mcp._core.http import page_of
 from fmc_mcp.client import FmcApp
@@ -28,6 +27,7 @@ from fmc_mcp.preview import fmc_preview
 from fmc_mcp.tools.common import Domain, ref_label, resolve_in
 from fmc_mcp.tools.object_writes import applied
 from fmc_mcp.tools.policies import all_rules
+from fmc_mcp.tools.render import object_reply
 
 FILE_POLICIES = "policy/filepolicies"
 FILE_TYPES = "object/filetypes"
@@ -180,7 +180,7 @@ def register(reg: ToolRegistrar) -> None:
         }
         if not rules.items:
             out["note"] = "No file rules yet: add them with fmc_create_file_rule."
-        return object_result({k: v for k, v in out.items() if v is not None}, fmt=response_format)
+        return object_reply({k: v for k, v in out.items() if v is not None}, fmt=response_format)
 
     @reg.write(title="Create file policy")
     async def fmc_create_file_policy(

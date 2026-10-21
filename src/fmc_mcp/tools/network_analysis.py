@@ -17,13 +17,13 @@ from fmc_mcp._core import (
     ToolRegistrar,
     get_client,
     list_result,
-    object_result,
 )
 from fmc_mcp._core.http import page_of
 from fmc_mcp.client import FmcApp
 from fmc_mcp.preview import fmc_preview
 from fmc_mcp.tools.common import Domain, ref_label, resolve_in
 from fmc_mcp.tools.object_writes import applied
+from fmc_mcp.tools.render import object_reply
 
 NAP = "policy/networkanalysispolicies"
 # FMC 10.0.1 has no REST field for an access policy's default network analysis policy (the AccessPolicy
@@ -102,7 +102,7 @@ def register(reg: ToolRegistrar) -> None:
             if not access_policies_using(p):
                 out["note"] = "No access policy uses it yet. " + LINK_IN_UI
         out["id"] = p.get("id")
-        return object_result({k: v for k, v in out.items() if v is not None}, fmt=response_format)
+        return object_reply({k: v for k, v in out.items() if v is not None}, fmt=response_format)
 
     @reg.write(title="Create network analysis policy")
     async def fmc_create_network_analysis_policy(

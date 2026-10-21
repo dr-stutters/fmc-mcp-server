@@ -19,12 +19,12 @@ from fmc_mcp._core import (
     ToolRegistrar,
     UpstreamError,
     get_client,
-    object_result,
 )
 from fmc_mcp.client import FmcApp
 from fmc_mcp.preview import fmc_preview
 from fmc_mcp.tools.common import Domain
 from fmc_mcp.tools.deploy import pending_row
+from fmc_mcp.tools.render import object_reply
 
 TICKETS = "changemanagement/tickets"
 
@@ -86,7 +86,7 @@ def register(reg: ToolRegistrar) -> None:
             ) from e
         except UpstreamError as e:
             if "not enabled" in str(e).lower():
-                return object_result(
+                return object_reply(
                     {"change_management": "off", "current_ticket": app.ticket_id, "tickets": []},
                     fmt=response_format,
                 )
@@ -106,7 +106,7 @@ def register(reg: ToolRegistrar) -> None:
                 {"level": v.get("level"), "message": v.get("message") or v.get("description")}
                 for v in checks.items
             ]
-        return object_result(out, fmt=response_format)
+        return object_reply(out, fmt=response_format)
 
     @reg.write(title="Open, submit or discard a ticket")
     async def fmc_ticket(
