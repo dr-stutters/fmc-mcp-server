@@ -35,7 +35,7 @@ from fmc_mcp.tools.dangerous import task_id_of, wait_task
 from fmc_mcp.tools.device_config import device_interfaces, pick_interface, resolve_device
 from fmc_mcp.tools.devices import DeviceRef, Membership, resolve_unit
 from fmc_mcp.tools.policies import ACCESS, PREFILTER, all_rules, resolve_policy
-from fmc_mcp.tools.show_commands import Supported, check_command, supported_commands
+from fmc_mcp.tools.show_commands import Supported, check_command
 from fmc_mcp.tools.system import iso
 
 MAX_OUTPUT_LINES = 400
@@ -65,9 +65,11 @@ def split_command(command: str, supported: Supported | None = None) -> tuple[str
     return check_command(command, supported)
 
 
+# 'Key version : A' in show version is no secret (F68: it masked a line on every device of a fleet run).
 SECRET = re.compile(
     r"(?i)\b(password|passwd|secret|key|pre-shared-key|community|key-string|authentication-key|"
-    r"auth-key|priv(?:\s+(?:aes\s+\d+|3des|des))?|auth\s+(?:md5|sha\S*))(\s+(?:\d+\s+|encrypted\s+|ascii\s+|hex\s+)?)(\S+)"
+    r"auth-key|priv(?:\s+(?:aes\s+\d+|3des|des))?|auth\s+(?:md5|sha\S*))(?!\s+version\b)"
+    r"(\s+(?:\d+\s+|encrypted\s+|ascii\s+|hex\s+)?)(\S+)"
 )
 
 
@@ -299,16 +301,25 @@ def _json(resp: Any) -> Any:
 
 
 async def run_show(
-    app: FmcApp, device_id: str, command: str, domain: str | None, supported: Supported | None = None
+    app: FmcApp,
+    device_id: str,
+    command: str,
+    domain: str | None,
+    supported: Supported | None = None,
+    *,
+    retry: bool | None = None,
 ) -> str:
     """Run one show command through FMC. `supported` is FMC's allowlist (show_commands.supported_commands;
-    the built-in FMC 10.0.1 list when None): an unsupported command is refused before any call."""
+    the built-in FMC 10.0.1 list when None): an unsupported command is refused before any call.
+    retry=False sends it once (fleet runs: an unreachable device's HTTP 500 is not retried)."""
     head, rest = split_command(command, supported)
     params: dict[str, Any] = {"command": head}
     if rest:
         params["parameters"] = rest
     path = await app.config_path(f"devices/devicerecords/{device_id}/operational/commands", domain)
-    resp = await app.api.request("GET", path, params=params, timeout=120, expect="response", ok_status={404})
+    resp = await app.api.request(
+        "GET", path, params=params, timeout=120, expect="response", ok_status={404}, retry=retry
+    )
     if resp.status_code == 404:
         detail = fmc_error_detail(_json(resp)) or ""
         if "command is invalid" in detail.lower():
@@ -481,59 +492,6 @@ async def packet_trace(
 
 
 def register(reg: ToolRegistrar) -> None:
-    @reg.read(title="Run a show command on a device")
-    async def fmc_run_show_command(
-        ctx: Context,
-        device: DeviceRef,
-        command: Annotated[
-            str,
-            Field(
-                description="A 'show' command FMC passes through, e.g. 'show route', 'show route bgp', "
-                "'show interface ip brief', 'show running-config nat', 'show crypto ikev2 sa', "
-                "'show failover'"
-            ),
-        ],
-        match: Annotated[
-            str | None, Field(description="Keep only output lines containing this text (case-insensitive)")
-        ] = None,
-        max_lines: Annotated[int, Field(ge=1, le=2000, description="Maximum lines returned")] = 200,
-        domain: Domain = None,
-    ) -> dict[str, Any]:
-        """Run a read-only 'show' command on a managed FTD through FMC and return its output, to verify
-        that a deployment landed. FMC only passes through the CLIs its API spec lists for
-        operational/commands (read from the spec at run time; FMC 10.0.1: show version, failover, route
-        <option>, crypto <option>, ip, logging, snmp-server, ssl, vpn-sessiondb, access-list <name>, rule,
-        aaa-server, ntp, banner, network, firewall, dhcpd state, snort3 status), plus show interface and
-        show running-config <section>. Anything else (show bgp, show ospf, show path-monitoring, show
-        policy-route, show conn, show xlate, show nat, show arp, plain show running-config) is refused here
-        with the alternatives, before FMC is called. Words after the second go to FMC as parameters
-        ('show route bgp' = 'show route' + 'bgp'). One command per device at a time; `match` filters
-        the lines."""
-        app: FmcApp = get_client(ctx)
-        supported = await supported_commands(ctx)
-        split_command(command, supported)  # refuse an unsupported command before resolving the device
-        dev = await resolve_device(app, device, domain)
-        text, redacted = redact(await run_show(app, dev["id"], command, domain, supported))
-        if re.match(r"show\s+(ipv6\s+)?route\b", command.strip(), re.I):
-            text = ROUTE_LEGEND.sub("", text)
-        output, total, truncated = filter_lines(text, match, max_lines)
-        out: dict[str, Any] = {
-            "device": dev.get("name"),
-            "command": " ".join(command.split()),
-            "output": output,
-        }
-        if not text.strip():
-            out["note"] = "The command printed nothing."
-        if match:
-            out["matched_lines"] = total
-        if redacted:
-            out["redacted"] = (
-                f"{redacted} secret value(s) (passwords, keys, communities) replaced with ********"
-            )
-        if truncated:
-            out["note"] = f"Output truncated to {max_lines} of {total} lines; narrow it with `match`."
-        return out
-
     @reg.read(title="Packet tracer")
     async def fmc_packet_tracer(
         ctx: Context,

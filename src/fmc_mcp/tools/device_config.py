@@ -29,6 +29,7 @@ from fmc_mcp.client import FmcApp, is_uuid
 from fmc_mcp.preview import fmc_preview
 from fmc_mcp.refs import RefResolver
 from fmc_mcp.tools.common import Domain, ref_label, ref_of, resolve_in, resolve_object
+from fmc_mcp.tools.device_groups import DeviceOrGroup, expand_devices
 from fmc_mcp.tools.devices import (
     DEVICES,
     INTERFACE_KINDS,
@@ -604,7 +605,7 @@ def register(reg: ToolRegistrar) -> None:
     @reg.write(title="Set device licences")
     async def fmc_set_device_licenses(
         ctx: Context,
-        device: DeviceRef,
+        device: DeviceOrGroup,
         add: Annotated[
             list[LicenseCap] | None, Field(description="Licences to add, e.g. IPS for intrusion policies")
         ] = None,
@@ -612,22 +613,31 @@ def register(reg: ToolRegistrar) -> None:
         domain: Domain = None,
         confirm: Confirm = None,
     ) -> dict[str, Any]:
-        """Add or remove a device's licence capabilities (ESSENTIALS, IPS, MALWARE_DEFENSE, URL, CARRIER).
-        Intrusion policies on access rules need IPS, file policies MALWARE_DEFENSE, URL categories URL;
-        without them the deploy fails validation ("requires a Threat license"). Uses the FMC's Smart
+        """Add or remove a device's licence capabilities (ESSENTIALS, IPS, MALWARE_DEFENSE, URL, CARRIER),
+        or those of every device in a device group (one preview; members that already match are left
+        alone). Intrusion policies on access rules need IPS, file policies MALWARE_DEFENSE, URL categories
+        URL; without them the deploy fails validation ("requires a Threat license"). Uses the FMC's Smart
         Licensing (or evaluation) entitlements; takes effect with the next deployment."""
         app: FmcApp = get_client(ctx)
         if set(add or []) & set(remove or []):
             raise InvalidRequest("A licence can't be in both add and remove.")
-        d = await resolve_in(app, DEVICES, device, "device", domain)
-        path = await app.config_path(f"{DEVICES}/{d['id']}", domain)
-        cur = await app.api.get(path)
-        have = list(cur.get("license_caps") or [])
-        want = [c for c in have if c not in (remove or [])] + [c for c in (add or []) if c not in have]
-        if "ESSENTIALS" not in want:
-            raise InvalidRequest("ESSENTIALS is the base licence and can't be removed.")
+        fleet = await expand_devices(app, [device], domain, units=True)
+        rows: list[tuple[str, dict[str, Any], list[str], list[str]]] = []  # (path, record, have, want)
+        for ref in fleet.refs:
+            if fleet.from_group(ref):  # a group member: its UUID
+                path = await app.config_path(f"{DEVICES}/{ref}", domain)
+            else:
+                d = await resolve_in(app, DEVICES, ref, "device", domain)
+                path = await app.config_path(f"{DEVICES}/{d['id']}", domain)
+            cur = await app.api.get(path)
+            have = list(cur.get("license_caps") or [])
+            want = [c for c in have if c not in (remove or [])] + [c for c in (add or []) if c not in have]
+            if "ESSENTIALS" not in want:
+                raise InvalidRequest("ESSENTIALS is the base licence and can't be removed.")
+            rows.append((path, cur, have, want))
+        changing = [r for r in rows if r[2] != r[3]]
 
-        async def apply() -> Any:
+        async def put(path: str, want: list[str]) -> Any:
             now = await app.api.get(path)  # rebuilt from the current record: the PUT replaces it
             body = {
                 "id": now["id"],
@@ -640,24 +650,52 @@ def register(reg: ToolRegistrar) -> None:
                 body["performanceTier"] = now["performanceTier"]
             return await applied(app, lambda: app.api.put(path, body))
 
-        dropped = [c for c in have if c not in want]
+        group = next(iter(fleet.groups), None)
+        if not rows:
+            raise InvalidRequest(f"Device group {group!r} has no devices.")
+
+        async def apply() -> Any:
+            if group is None:
+                return await put(rows[0][0], rows[0][3])
+            done = []
+            for path, cur, _, want in changing:
+                await put(path, want)
+                done.append({"device": cur.get("name"), "license_caps": want})
+            return {"group": group, "updated": done}
+
+        dropped = sorted({c for _, _, h, w in changing for c in h if c not in w})
+        side = ["Consumes the licences from Smart Licensing; effective after the next deploy."]
+        if dropped:
+            side.append(
+                f"Rules that need {', '.join(dropped)} (intrusion/file/URL) will fail the next deploy."
+            )
+        if group is not None:
+            plan = Plan(
+                f"Licences of {len(changing)} of the {len(rows)} device(s) in group {group!r}",
+                details={
+                    "changes": [{"device": c.get("name"), "from": h, "to": w} for _, c, h, w in changing],
+                    "unchanged": [c.get("name") for _, c, h, w in rows if h == w],
+                },
+                fingerprint=[(c.get("id"), h) for _, c, h, _ in rows],
+                blockers=[] if changing else ["Nothing to change."],
+                blast_radius=len(changing),
+                side_effects=side,
+            )
+        else:
+            _, cur, have, want = rows[0]
+            plan = Plan(
+                f"Licences of {cur.get('name')!r}: {', '.join(have)} -> {', '.join(want)}",
+                details={"from": have, "to": want},
+                fingerprint=have,
+                blockers=[] if want != have else ["Nothing to change."],
+                side_effects=side,
+            )
         return await fmc_preview(
             ctx,
             tool="fmc_set_device_licenses",
             args={"device": device, "add": add, "remove": remove, "domain": domain},
             confirm=confirm,
-            plan=Plan(
-                f"Licences of {cur.get('name')!r}: {', '.join(have)} -> {', '.join(want)}",
-                details={"from": have, "to": want},
-                fingerprint=have,
-                blockers=[] if want != have else ["Nothing to change."],
-                side_effects=["Consumes the licences from Smart Licensing; effective after the next deploy."]
-                + (
-                    [f"Rules that need {', '.join(dropped)} (intrusion/file/URL) will fail the next deploy."]
-                    if dropped
-                    else []
-                ),
-            ),
+            plan=plan,
             apply=apply,
         )
 
@@ -1286,12 +1324,17 @@ def register(reg: ToolRegistrar) -> None:
         ],
         policy: Annotated[str, Field(description="Policy name or UUID")],
         devices: Annotated[
-            list[str], Field(min_length=1, description="Device (or HA pair/cluster) names/UUIDs")
+            list[str],
+            Field(
+                min_length=1,
+                description="Device (or HA pair/cluster) names/UUIDs, or device groups ('group:<name>')",
+            ),
         ],
         domain: Domain = None,
         confirm: Confirm = None,
     ) -> dict[str, Any]:
-        """Assign an access control, NAT or platform settings policy to devices. A device has one policy
+        """Assign an access control, NAT or platform settings policy to devices (or every device of a
+        device group). A device has one policy
         of each type, so this replaces its current one (the preview's `from`, also when it is a policy
         inherited from an ancestor domain). The new policy reaches the device on the next fmc_deploy.
         Current assignments: fmc_list_policy_assignments."""
@@ -1299,7 +1342,8 @@ def register(reg: ToolRegistrar) -> None:
         pol = await resolve_in(app, POLICY_KINDS[kind], policy, f"{kind} policy", domain)
         targets: list[dict[str, Any]] = []
         records: dict[str, dict[str, Any]] = {}
-        for ref in dict.fromkeys(d.strip() for d in devices):
+        fleet = await expand_devices(app, devices, domain)
+        for ref in fleet.refs:
             try:
                 d = await resolve_device(app, ref, domain)
             except NotFound:
@@ -1353,7 +1397,11 @@ def register(reg: ToolRegistrar) -> None:
             confirm=confirm,
             plan=Plan(
                 f"Assign {kind} policy {pol.get('name')!r} to {len(new)} device(s)",
-                details={"changes": changes, **({"policy_domain": owner} if owner else {})},
+                details={
+                    "changes": changes,
+                    **({"policy_domain": owner} if owner else {}),
+                    **({"groups": fleet.groups} if fleet.groups else {}),
+                },
                 fingerprint={"assignment": mine and editable(mine), "current": current},
                 blockers=blockers,
                 side_effects=["The devices get the new policy on the next deployment."]

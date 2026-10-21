@@ -185,6 +185,11 @@ def show(client: Client[Any], device: str, command: str) -> Any:
     return call(client, "fmc_run_show_command", {"device": device, "command": command, **domain_args()})
 
 
+def show_fleet(client: Client[Any], devices: list[str], command: str) -> Any:
+    """One call for several devices (F68): a row per device with its output or error."""
+    return call(client, "fmc_run_show_command", {"devices": devices, "command": command, **domain_args()})
+
+
 # --- C1 build, deploy, teardown ---------------------------------------------------------------------
 
 
@@ -226,9 +231,9 @@ async def test_c2_overlay_routing(client: Client[Any], topology: dict[str, Any])
         pytest.skip("FMC_LIVE_SDWAN_OSPF_NETWORKS not set (docs/live-tests.md)")
     await ospf(client, topology["devices"], add=True)
     try:
-        for device in [hub, *topology["spokes"]]:
-            route = await show(client, device, "show route ospf")
-            assert "O " in str(route), f"{device} has no OSPF routes: {route}"
+        fleet = await show_fleet(client, [hub, *topology["spokes"]], "show route ospf")
+        for row in fleet["results"]:
+            assert row["ok"] and "O " in row["output"], f"{row['device']} has no OSPF routes: {row}"
     finally:
         await ospf(client, topology["devices"], add=False)
 
