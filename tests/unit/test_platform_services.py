@@ -663,6 +663,36 @@ async def test_http_access_needs_a_network_object(fmc: respx.MockRouter) -> None
     ]
 
 
+async def test_removing_the_last_https_entry_says_the_server_stays_on(fmc: respx.MockRouter) -> None:
+    """#273 (Wave 6 live-B2): FMC keeps enableHttpServer true when the last HTTPS entry is removed; the
+    preview says so and how to turn it off; with http_server=False there is nothing to warn about."""
+    net = {"id": "22222222-0000-4000-8000-000000000001", "name": "mcp-w6-admin-net", "type": "Network"}
+    entry = {"ipAddress": net, "interfaces": {"objects": [ZONE]}}
+    other = {
+        "ipAddress": {**net, "id": "22222222-0000-4000-8000-000000000002", "name": "o"},
+        "interfaces": {},
+    }
+    fmc.get(f"{CFG}/object/hosts").mock(return_value=empty())
+    fmc.get(f"{CFG}/object/networks").mock(return_value=items([{**net, "value": "198.51.100.0/24"}]))
+    on = {**HTTP_DEFAULT, "enableHttpServer": True, "httpConfiguration": [entry]}
+    rm = {"policy": "mcp-w6-ps", "kind": "http", "action": "remove", "networks": ["198.51.100.0/24"]}
+    mock_ps(fmc, httpaccesssettings=on)
+    async with Client(server()) as c:
+        last = await run(c, "fmc_configure_mgmt_access", rm)
+        off = await run(c, "fmc_configure_mgmt_access", {**rm, "http_server": False})
+    assert any("the HTTPS server stays on" in s and "http_server=False" in s for s in last["side_effects"])
+    assert (
+        last["preview"]["changes"]["httpConfiguration"]["to"] == []
+        and "enableHttpServer" not in last["preview"]["changes"]
+    )
+    assert not any("stays on" in s for s in off["side_effects"])
+    assert off["preview"]["changes"]["enableHttpServer"] == {"from": True, "to": False}
+    mock_ps(fmc, httpaccesssettings={**on, "httpConfiguration": [entry, other]})
+    async with Client(server()) as c:
+        one_left = await run(c, "fmc_configure_mgmt_access", rm)
+    assert not any("stays on" in s for s in one_left["side_effects"])  # another entry still uses it
+
+
 async def test_mgmt_access_needs_interfaces(fmc: respx.MockRouter) -> None:
     mock_ps(fmc)
     async with Client(server()) as c:
