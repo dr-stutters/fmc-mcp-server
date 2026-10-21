@@ -1,0 +1,944 @@
+{
+ "bgp_add_neighbor": {
+  "body": {
+   "addressFamilyIPv4": {
+    "autoSummary": false,
+    "bgpRedistributeInternal": false,
+    "bgpSupressInactive": true,
+    "defaultInformationOrginate": false,
+    "distance": {
+     "externalDistance": 20,
+     "internalDistance": 200,
+     "localDistance": 200,
+     "type": "afbgpdistance"
+    },
+    "ebgp": 1,
+    "ibgp": 1,
+    "id": "00000000-0000-0ed3-0001-000000000222",
+    "neighbors": [
+     {
+      "ipv4Address": "192.0.2.2",
+      "neighborAdvanced": {
+       "neighborHops": {
+        "disableConnectedCheck": false,
+        "maxHopCount": 1,
+        "type": "neighborebgpmultihop"
+       },
+       "neighborTransportConnectionMode": {
+        "establishTCPSession": false,
+        "type": "neighbortransportconnectionmode"
+       },
+       "neighborTransportPathMTUDiscovery": {
+        "disable": true,
+        "type": "neighbortransportpathmtudiscovery"
+       },
+       "neighborVersion": 0,
+       "neighborWeight": 0,
+       "nextHopSelf": false,
+       "sendCommunity": false,
+       "type": "neighboradvanced"
+      },
+      "neighborFiltering": {},
+      "neighborGeneral": {
+       "description": "peer1",
+       "enableAddress": true,
+       "fallOverBFD": "NONE",
+       "shutdown": false,
+       "type": "neighborgeneral"
+      },
+      "neighborRoutes": {
+       "removePrivateAs": false
+      },
+      "remoteAs": "65001",
+      "type": "neighboripv4"
+     },
+     {
+      "ipv4Address": "192.0.2.3",
+      "neighborGeneral": {
+       "enableAddress": true,
+       "shutdown": false
+      },
+      "remoteAs": "65002",
+      "type": "neighboripv4"
+     }
+    ],
+    "networks": [
+     {
+      "ipv4Address": {
+       "id": "00000000-0000-0ed3-0000-000000000101",
+       "name": "inside-net",
+       "overridable": false,
+       "type": "Network"
+      }
+     },
+     {
+      "ipv4Address": {
+       "id": "00000000-0000-0ed3-0000-000000000102",
+       "name": "lab-net",
+       "type": "Network"
+      }
+     }
+    ],
+    "synchronization": false,
+    "type": "afipv4"
+   },
+   "asNumber": "65000",
+   "id": "00000000-0000-0ed3-0001-000000000221",
+   "name": "bgp",
+   "type": "bgp"
+  },
+  "preview": {
+   "action": "Change BGP on ftd-edge (global table)",
+   "expires_in_seconds": 600,
+   "preview": {
+    "after": {
+     "neighbors": [
+      {
+       "address": "192.0.2.2",
+       "bfd": null,
+       "description": "peer1",
+       "ebgp_multihop": 1,
+       "enabled": true,
+       "password_set": null,
+       "remote_as": "65001",
+       "update_source": null
+      },
+      {
+       "address": "192.0.2.3",
+       "bfd": null,
+       "description": null,
+       "ebgp_multihop": null,
+       "enabled": true,
+       "password_set": null,
+       "remote_as": "65002",
+       "update_source": null
+      }
+     ],
+     "networks": [
+      "inside-net",
+      "lab-net"
+     ]
+    },
+    "before": {
+     "as": "65000",
+     "id": "00000000-0000-0ed3-0001-000000000221",
+     "ipv4": {
+      "default_originate": null,
+      "maximum_paths": [
+       1
+      ],
+      "neighbors": [
+       {
+        "address": "192.0.2.2",
+        "bfd": null,
+        "description": "peer1",
+        "ebgp_multihop": 1,
+        "enabled": true,
+        "password_set": null,
+        "remote_as": "65001",
+        "update_source": null
+       }
+      ],
+      "networks": [
+       "inside-net"
+      ],
+      "redistribute": null
+     },
+     "ipv6": null,
+     "router_id": "AUTOMATIC"
+    },
+    "domain": "Global",
+    "steps": [
+     "update bgp"
+    ]
+   },
+   "side_effects": [
+    "Takes effect on the device after the next deployment."
+   ],
+   "status": "preview"
+  },
+  "result": {
+   "action": "Change BGP on ftd-edge (global table)",
+   "result": {
+    "applied": [
+     "update bgp"
+    ],
+    "next": "fmc_deploy, then check 'show route' on the device"
+   },
+   "status": "applied"
+  }
+ },
+ "bgp_describe": {
+  "body": {
+   "addressFamilyIPv4": {
+    "autoSummary": false,
+    "bgpRedistributeInternal": false,
+    "bgpSupressInactive": true,
+    "defaultInformationOrginate": false,
+    "distance": {
+     "externalDistance": 20,
+     "internalDistance": 200,
+     "localDistance": 200,
+     "type": "afbgpdistance"
+    },
+    "ebgp": 1,
+    "ibgp": 1,
+    "id": "00000000-0000-0ed3-0001-000000000222",
+    "neighbors": [
+     {
+      "ipv4Address": "192.0.2.2",
+      "neighborAdvanced": {
+       "neighborHops": {
+        "disableConnectedCheck": false,
+        "maxHopCount": 1,
+        "type": "neighborebgpmultihop"
+       },
+       "neighborTransportConnectionMode": {
+        "establishTCPSession": false,
+        "type": "neighbortransportconnectionmode"
+       },
+       "neighborTransportPathMTUDiscovery": {
+        "disable": true,
+        "type": "neighbortransportpathmtudiscovery"
+       },
+       "neighborVersion": 0,
+       "neighborWeight": 0,
+       "nextHopSelf": false,
+       "sendCommunity": false,
+       "type": "neighboradvanced"
+      },
+      "neighborFiltering": {},
+      "neighborGeneral": {
+       "description": "edge peer",
+       "enableAddress": true,
+       "fallOverBFD": "NONE",
+       "shutdown": false,
+       "type": "neighborgeneral"
+      },
+      "neighborRoutes": {
+       "removePrivateAs": false
+      },
+      "remoteAs": "65001",
+      "type": "neighboripv4"
+     }
+    ],
+    "networks": [
+     {
+      "ipv4Address": {
+       "id": "00000000-0000-0ed3-0000-000000000101",
+       "name": "inside-net",
+       "overridable": false,
+       "type": "Network"
+      }
+     }
+    ],
+    "synchronization": false,
+    "type": "afipv4"
+   },
+   "asNumber": "65000",
+   "id": "00000000-0000-0ed3-0001-000000000221",
+   "name": "bgp",
+   "type": "bgp"
+  },
+  "preview": {
+   "action": "Change BGP on ftd-edge (global table)",
+   "expires_in_seconds": 600,
+   "preview": {
+    "after": {
+     "neighbors": [
+      {
+       "address": "192.0.2.2",
+       "bfd": null,
+       "description": "edge peer",
+       "ebgp_multihop": 1,
+       "enabled": true,
+       "password_set": null,
+       "remote_as": "65001",
+       "update_source": null
+      }
+     ],
+     "networks": [
+      "inside-net"
+     ]
+    },
+    "before": {
+     "as": "65000",
+     "id": "00000000-0000-0ed3-0001-000000000221",
+     "ipv4": {
+      "default_originate": null,
+      "maximum_paths": [
+       1
+      ],
+      "neighbors": [
+       {
+        "address": "192.0.2.2",
+        "bfd": null,
+        "description": "peer1",
+        "ebgp_multihop": 1,
+        "enabled": true,
+        "password_set": null,
+        "remote_as": "65001",
+        "update_source": null
+       }
+      ],
+      "networks": [
+       "inside-net"
+      ],
+      "redistribute": null
+     },
+     "ipv6": null,
+     "router_id": "AUTOMATIC"
+    },
+    "domain": "Global",
+    "steps": [
+     "update bgp"
+    ]
+   },
+   "side_effects": [
+    "Takes effect on the device after the next deployment."
+   ],
+   "status": "preview"
+  },
+  "result": {
+   "action": "Change BGP on ftd-edge (global table)",
+   "result": {
+    "applied": [
+     "update bgp"
+    ],
+    "next": "fmc_deploy, then check 'show route' on the device"
+   },
+   "status": "applied"
+  }
+ },
+ "bgp_duplicate": {
+  "action": "Change BGP on ftd-edge (global table)",
+  "blockers": [
+   "Neighbor 192.0.2.2 is already configured that way."
+  ],
+  "note": "This change can't be applied as it stands; nothing was changed.",
+  "preview": {
+   "after": {
+    "neighbors": [
+     {
+      "address": "192.0.2.2",
+      "bfd": null,
+      "description": "peer1",
+      "ebgp_multihop": 1,
+      "enabled": true,
+      "password_set": null,
+      "remote_as": "65001",
+      "update_source": null
+     }
+    ],
+    "networks": [
+     "inside-net"
+    ]
+   },
+   "before": {
+    "as": "65000",
+    "id": "00000000-0000-0ed3-0001-000000000221",
+    "ipv4": {
+     "default_originate": null,
+     "maximum_paths": [
+      1
+     ],
+     "neighbors": [
+      {
+       "address": "192.0.2.2",
+       "bfd": null,
+       "description": "peer1",
+       "ebgp_multihop": 1,
+       "enabled": true,
+       "password_set": null,
+       "remote_as": "65001",
+       "update_source": null
+      }
+     ],
+     "networks": [
+      "inside-net"
+     ],
+     "redistribute": null
+    },
+    "ipv6": null,
+    "router_id": "AUTOMATIC"
+   },
+   "domain": "Global",
+   "steps": [
+    "update bgp"
+   ]
+  },
+  "side_effects": [
+   "Takes effect on the device after the next deployment."
+  ],
+  "status": "blocked"
+ },
+ "bgp_remove": {
+  "body": null,
+  "preview": {
+   "action": "Remove BGP on ftd-edge (global table)",
+   "expires_in_seconds": 600,
+   "preview": {
+    "after": null,
+    "before": {
+     "as": "65000",
+     "id": "00000000-0000-0ed3-0001-000000000221",
+     "ipv4": {
+      "default_originate": null,
+      "maximum_paths": [
+       1
+      ],
+      "neighbors": [
+       {
+        "address": "192.0.2.2",
+        "bfd": null,
+        "description": "peer1",
+        "ebgp_multihop": 1,
+        "enabled": true,
+        "password_set": null,
+        "remote_as": "65001",
+        "update_source": null
+       }
+      ],
+      "networks": [
+       "inside-net"
+      ],
+      "redistribute": null
+     },
+     "ipv6": null,
+     "router_id": "AUTOMATIC"
+    },
+    "domain": "Global",
+    "steps": [
+     "delete bgp",
+     "delete bgp general settings"
+    ]
+   },
+   "side_effects": [
+    "Takes effect on the device after the next deployment."
+   ],
+   "status": "preview"
+  },
+  "result": {
+   "action": "Remove BGP on ftd-edge (global table)",
+   "result": {
+    "applied": [
+     "delete bgp",
+     "delete bgp general settings"
+    ],
+    "next": "fmc_deploy, then check 'show route' on the device"
+   },
+   "status": "applied"
+  }
+ },
+ "bgp_remove_neighbor": {
+  "body": {
+   "addressFamilyIPv4": {
+    "autoSummary": false,
+    "bgpRedistributeInternal": false,
+    "bgpSupressInactive": true,
+    "defaultInformationOrginate": false,
+    "distance": {
+     "externalDistance": 20,
+     "internalDistance": 200,
+     "localDistance": 200,
+     "type": "afbgpdistance"
+    },
+    "ebgp": 1,
+    "ibgp": 1,
+    "id": "00000000-0000-0ed3-0001-000000000222",
+    "neighbors": [],
+    "networks": [
+     {
+      "ipv4Address": {
+       "id": "00000000-0000-0ed3-0000-000000000101",
+       "name": "inside-net",
+       "overridable": false,
+       "type": "Network"
+      }
+     }
+    ],
+    "synchronization": false,
+    "type": "afipv4"
+   },
+   "asNumber": "65000",
+   "id": "00000000-0000-0ed3-0001-000000000221",
+   "name": "bgp",
+   "type": "bgp"
+  },
+  "preview": {
+   "action": "Change BGP on ftd-edge (global table)",
+   "expires_in_seconds": 600,
+   "preview": {
+    "after": {
+     "neighbors": [],
+     "networks": [
+      "inside-net"
+     ]
+    },
+    "before": {
+     "as": "65000",
+     "id": "00000000-0000-0ed3-0001-000000000221",
+     "ipv4": {
+      "default_originate": null,
+      "maximum_paths": [
+       1
+      ],
+      "neighbors": [
+       {
+        "address": "192.0.2.2",
+        "bfd": null,
+        "description": "peer1",
+        "ebgp_multihop": 1,
+        "enabled": true,
+        "password_set": null,
+        "remote_as": "65001",
+        "update_source": null
+       }
+      ],
+      "networks": [
+       "inside-net"
+      ],
+      "redistribute": null
+     },
+     "ipv6": null,
+     "router_id": "AUTOMATIC"
+    },
+    "domain": "Global",
+    "steps": [
+     "update bgp"
+    ]
+   },
+   "side_effects": [
+    "Takes effect on the device after the next deployment."
+   ],
+   "status": "preview"
+  },
+  "result": {
+   "action": "Change BGP on ftd-edge (global table)",
+   "result": {
+    "applied": [
+     "update bgp"
+    ],
+    "next": "fmc_deploy, then check 'show route' on the device"
+   },
+   "status": "applied"
+  }
+ },
+ "bgp_withdraw": {
+  "body": {
+   "addressFamilyIPv4": {
+    "autoSummary": false,
+    "bgpRedistributeInternal": false,
+    "bgpSupressInactive": true,
+    "defaultInformationOrginate": false,
+    "distance": {
+     "externalDistance": 20,
+     "internalDistance": 200,
+     "localDistance": 200,
+     "type": "afbgpdistance"
+    },
+    "ebgp": 1,
+    "ibgp": 1,
+    "id": "00000000-0000-0ed3-0001-000000000222",
+    "neighbors": [
+     {
+      "ipv4Address": "192.0.2.2",
+      "neighborAdvanced": {
+       "neighborHops": {
+        "disableConnectedCheck": false,
+        "maxHopCount": 1,
+        "type": "neighborebgpmultihop"
+       },
+       "neighborTransportConnectionMode": {
+        "establishTCPSession": false,
+        "type": "neighbortransportconnectionmode"
+       },
+       "neighborTransportPathMTUDiscovery": {
+        "disable": true,
+        "type": "neighbortransportpathmtudiscovery"
+       },
+       "neighborVersion": 0,
+       "neighborWeight": 0,
+       "nextHopSelf": false,
+       "sendCommunity": false,
+       "type": "neighboradvanced"
+      },
+      "neighborFiltering": {},
+      "neighborGeneral": {
+       "description": "peer1",
+       "enableAddress": true,
+       "fallOverBFD": "NONE",
+       "shutdown": false,
+       "type": "neighborgeneral"
+      },
+      "neighborRoutes": {
+       "removePrivateAs": false
+      },
+      "remoteAs": "65001",
+      "type": "neighboripv4"
+     }
+    ],
+    "networks": [],
+    "synchronization": false,
+    "type": "afipv4"
+   },
+   "asNumber": "65000",
+   "id": "00000000-0000-0ed3-0001-000000000221",
+   "name": "bgp",
+   "type": "bgp"
+  },
+  "preview": {
+   "action": "Change BGP on ftd-edge (global table)",
+   "expires_in_seconds": 600,
+   "preview": {
+    "after": {
+     "neighbors": [
+      {
+       "address": "192.0.2.2",
+       "bfd": null,
+       "description": "peer1",
+       "ebgp_multihop": 1,
+       "enabled": true,
+       "password_set": null,
+       "remote_as": "65001",
+       "update_source": null
+      }
+     ],
+     "networks": []
+    },
+    "before": {
+     "as": "65000",
+     "id": "00000000-0000-0ed3-0001-000000000221",
+     "ipv4": {
+      "default_originate": null,
+      "maximum_paths": [
+       1
+      ],
+      "neighbors": [
+       {
+        "address": "192.0.2.2",
+        "bfd": null,
+        "description": "peer1",
+        "ebgp_multihop": 1,
+        "enabled": true,
+        "password_set": null,
+        "remote_as": "65001",
+        "update_source": null
+       }
+      ],
+      "networks": [
+       "inside-net"
+      ],
+      "redistribute": null
+     },
+     "ipv6": null,
+     "router_id": "AUTOMATIC"
+    },
+    "domain": "Global",
+    "steps": [
+     "update bgp"
+    ]
+   },
+   "side_effects": [
+    "Takes effect on the device after the next deployment."
+   ],
+   "status": "preview"
+  },
+  "result": {
+   "action": "Change BGP on ftd-edge (global table)",
+   "result": {
+    "applied": [
+     "update bgp"
+    ],
+    "next": "fmc_deploy, then check 'show route' on the device"
+   },
+   "status": "applied"
+  }
+ },
+ "get_routing": {
+  "bgp": {
+   "as": "65000",
+   "id": "00000000-0000-0ed3-0001-000000000221",
+   "ipv4": {
+    "default_originate": null,
+    "maximum_paths": [
+     1
+    ],
+    "neighbors": [
+     {
+      "address": "192.0.2.2",
+      "bfd": null,
+      "description": "peer1",
+      "ebgp_multihop": 1,
+      "enabled": true,
+      "password_set": null,
+      "remote_as": "65001",
+      "update_source": null
+     }
+    ],
+    "networks": [
+     "inside-net"
+    ],
+    "redistribute": null
+   },
+   "ipv6": null,
+   "router_id": "AUTOMATIC"
+  },
+  "device": "ftd-edge",
+  "ospfv2": [
+   {
+    "areas": [
+     {
+      "area": "0",
+      "authentication": null,
+      "networks": [
+       "inside-net"
+      ],
+      "type": "normal"
+     }
+    ],
+    "enabled_as": "PROCESS_1",
+    "id": "00000000-0000-0ed3-0001-000000000226",
+    "process": "1",
+    "redistribute": null,
+    "router_id": null
+   }
+  ],
+  "static_routes": 0,
+  "table": "global"
+ },
+ "ospf_add": {
+  "body": {
+   "areas": [
+    {
+     "areaId": "0",
+     "areaNetworks": [
+      {
+       "id": "00000000-0000-0ed3-0000-000000000101",
+       "name": "inside-net",
+       "overridable": false,
+       "type": "Network"
+      },
+      {
+       "id": "00000000-0000-0ed3-0000-000000000102",
+       "name": "lab-net",
+       "type": "Network"
+      }
+     ],
+     "areaType": {
+      "type": "normal"
+     }
+    }
+   ],
+   "enableProcess": "PROCESS_1",
+   "id": "00000000-0000-0ed3-0001-000000000226",
+   "logAdjacencyChanges": {
+    "logType": "DEFAULT"
+   },
+   "processConfiguration": {
+    "administrativeDistance": {
+     "external": 110,
+     "interArea": 110,
+     "intraArea": 110
+    },
+    "ignoreLsaMospf": false,
+    "rfc1583Compatible": false,
+    "timers": {
+     "lsaGroup": 240
+    }
+   },
+   "processId": "1",
+   "type": "OspfRoute"
+  },
+  "preview": {
+   "action": "Change OSPF process 1 on ftd-edge (global table)",
+   "expires_in_seconds": 600,
+   "preview": {
+    "after": {
+     "areas": [
+      {
+       "area": "0",
+       "authentication": null,
+       "networks": [
+        "inside-net",
+        "lab-net"
+       ],
+       "type": "normal"
+      }
+     ],
+     "enabled_as": "PROCESS_1",
+     "id": "00000000-0000-0ed3-0001-000000000226",
+     "process": "1",
+     "redistribute": null,
+     "router_id": null
+    },
+    "before": {
+     "areas": [
+      {
+       "area": "0",
+       "authentication": null,
+       "networks": [
+        "inside-net"
+       ],
+       "type": "normal"
+      }
+     ],
+     "enabled_as": "PROCESS_1",
+     "id": "00000000-0000-0ed3-0001-000000000226",
+     "process": "1",
+     "redistribute": null,
+     "router_id": null
+    },
+    "domain": "Global"
+   },
+   "side_effects": [
+    "Takes effect on the device after the next deployment."
+   ],
+   "status": "preview"
+  },
+  "result": {
+   "action": "Change OSPF process 1 on ftd-edge (global table)",
+   "result": {},
+   "status": "applied"
+  }
+ },
+ "ospf_new_area": {
+  "body": {
+   "areas": [
+    {
+     "areaId": "0",
+     "areaNetworks": [
+      {
+       "id": "00000000-0000-0ed3-0000-000000000101",
+       "name": "inside-net",
+       "overridable": false,
+       "type": "Network"
+      }
+     ],
+     "areaType": {
+      "type": "normal"
+     }
+    },
+    {
+     "areaId": "1",
+     "areaNetworks": [
+      {
+       "id": "00000000-0000-0ed3-0000-000000000102",
+       "name": "lab-net",
+       "type": "Network"
+      }
+     ],
+     "areaType": {
+      "type": "normal"
+     }
+    }
+   ],
+   "enableProcess": "PROCESS_1",
+   "id": "00000000-0000-0ed3-0001-000000000226",
+   "logAdjacencyChanges": {
+    "logType": "DEFAULT"
+   },
+   "processConfiguration": {
+    "administrativeDistance": {
+     "external": 110,
+     "interArea": 110,
+     "intraArea": 110
+    },
+    "ignoreLsaMospf": false,
+    "rfc1583Compatible": false,
+    "timers": {
+     "lsaGroup": 240
+    }
+   },
+   "processId": "1",
+   "type": "OspfRoute"
+  },
+  "preview": {
+   "action": "Change OSPF process 1 on ftd-edge (global table)",
+   "expires_in_seconds": 600,
+   "preview": {
+    "after": {
+     "areas": [
+      {
+       "area": "0",
+       "authentication": null,
+       "networks": [
+        "inside-net"
+       ],
+       "type": "normal"
+      },
+      {
+       "area": "1",
+       "authentication": null,
+       "networks": [
+        "lab-net"
+       ],
+       "type": "normal"
+      }
+     ],
+     "enabled_as": "PROCESS_1",
+     "id": "00000000-0000-0ed3-0001-000000000226",
+     "process": "1",
+     "redistribute": null,
+     "router_id": null
+    },
+    "before": {
+     "areas": [
+      {
+       "area": "0",
+       "authentication": null,
+       "networks": [
+        "inside-net"
+       ],
+       "type": "normal"
+      }
+     ],
+     "enabled_as": "PROCESS_1",
+     "id": "00000000-0000-0ed3-0001-000000000226",
+     "process": "1",
+     "redistribute": null,
+     "router_id": null
+    },
+    "domain": "Global"
+   },
+   "side_effects": [
+    "Takes effect on the device after the next deployment."
+   ],
+   "status": "preview"
+  },
+  "result": {
+   "action": "Change OSPF process 1 on ftd-edge (global table)",
+   "result": {},
+   "status": "applied"
+  }
+ },
+ "ospf_remove_process": {
+  "action": "Delete OSPF process 1 on ftd-edge (global table)",
+  "expires_in_seconds": 600,
+  "preview": {
+   "after": null,
+   "before": {
+    "areas": [
+     {
+      "area": "0",
+      "authentication": null,
+      "networks": [
+       "inside-net"
+      ],
+      "type": "normal"
+     }
+    ],
+    "enabled_as": "PROCESS_1",
+    "id": "00000000-0000-0ed3-0001-000000000226",
+    "process": "1",
+    "redistribute": null,
+    "router_id": null
+   },
+   "domain": "Global"
+  },
+  "side_effects": [
+   "Takes effect on the device after the next deployment."
+  ],
+  "status": "preview"
+ }
+}

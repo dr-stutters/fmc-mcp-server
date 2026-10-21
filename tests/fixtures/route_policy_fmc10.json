@@ -1,0 +1,392 @@
+{
+ "_source": "bgp_recorded/ospf_recorded: FMC 10.0.1 GET devicerecords/{id}/routing/bgp and ospfv2routes ?expanded=true (2026-10-21, addresses and ids replaced). The rest follows the 10.0.1 spec examples and the CiscoDevNet terraform provider's definitions (no route maps or prefix lists existed on the lab FMC to record): bgp_filtered = the recorded model with neighborFiltering and redistributeProtocols set; prefix lists and route maps as the POST response example shows them (type IPV4PrefixList).",
+ "bgp_recorded": {
+  "addressFamilyIPv4": {
+   "distance": {
+    "externalDistance": 20,
+    "internalDistance": 200,
+    "localDistance": 200,
+    "type": "afbgpdistance"
+   },
+   "defaultInformationOrginate": false,
+   "bgpSupressInactive": true,
+   "synchronization": false,
+   "bgpRedistributeInternal": false,
+   "maximumPaths": [
+    {
+     "value": 1,
+     "type": "afmaximumpaths"
+    }
+   ],
+   "neighbors": [
+    {
+     "neighborGeneral": {
+      "description": "peer1",
+      "shutdown": false,
+      "fallOverBFD": "NONE",
+      "enableAddress": true,
+      "type": "neighborgeneral"
+     },
+     "neighborAdvanced": {
+      "neighborHops": {
+       "maxHopCount": 1,
+       "disableConnectedCheck": false,
+       "type": "neighborebgpmultihop"
+      },
+      "neighborVersion": 0,
+      "nextHopSelf": false,
+      "neighborWeight": 0,
+      "sendCommunity": false,
+      "neighborTransportConnectionMode": {
+       "establishTCPSession": false,
+       "type": "neighbortransportconnectionmode"
+      },
+      "neighborTransportPathMTUDiscovery": {
+       "disable": true,
+       "type": "neighbortransportpathmtudiscovery"
+      },
+      "type": "neighboradvanced"
+     },
+     "neighborRoutes": {
+      "removePrivateAs": false
+     },
+     "neighborFiltering": {},
+     "type": "neighboripv4",
+     "remoteAs": "65001",
+     "ipv4Address": "192.0.2.2"
+    }
+   ],
+   "autoSummary": false,
+   "id": "00000000-0000-0ed3-0001-000000000222",
+   "type": "afipv4",
+   "networks": [
+    {
+     "ipv4Address": {
+      "type": "Network",
+      "overridable": false,
+      "name": "inside-net",
+      "id": "00000000-0000-0ed3-0000-000000000101"
+     }
+    }
+   ],
+   "ebgp": 1,
+   "ibgp": 1
+  },
+  "asNumber": "65000",
+  "name": "bgp",
+  "id": "00000000-0000-0ed3-0001-000000000221",
+  "type": "bgp"
+ },
+ "ospf_recorded": {
+  "processId": "1",
+  "enableProcess": "PROCESS_1",
+  "processConfiguration": {
+   "rfc1583Compatible": false,
+   "ignoreLsaMospf": false,
+   "timers": {
+    "lsaGroup": 240
+   },
+   "administrativeDistance": {
+    "interArea": 110,
+    "intraArea": 110,
+    "external": 110
+   }
+  },
+  "logAdjacencyChanges": {
+   "logType": "DEFAULT"
+  },
+  "areas": [
+   {
+    "areaId": "0",
+    "areaType": {
+     "type": "normal"
+    },
+    "areaNetworks": [
+     {
+      "type": "Network",
+      "overridable": false,
+      "name": "inside-net",
+      "id": "00000000-0000-0ed3-0000-000000000101"
+     }
+    ]
+   }
+  ],
+  "id": "00000000-0000-0ed3-0001-000000000226",
+  "type": "OspfRoute"
+ },
+ "bgp_filtered": {
+  "addressFamilyIPv4": {
+   "distance": {
+    "externalDistance": 20,
+    "internalDistance": 200,
+    "localDistance": 200,
+    "type": "afbgpdistance"
+   },
+   "defaultInformationOrginate": false,
+   "bgpSupressInactive": true,
+   "synchronization": false,
+   "bgpRedistributeInternal": false,
+   "maximumPaths": [
+    {
+     "value": 1,
+     "type": "afmaximumpaths"
+    }
+   ],
+   "neighbors": [
+    {
+     "neighborGeneral": {
+      "description": "peer1",
+      "shutdown": false,
+      "fallOverBFD": "NONE",
+      "enableAddress": true,
+      "type": "neighborgeneral"
+     },
+     "neighborAdvanced": {
+      "neighborHops": {
+       "maxHopCount": 1,
+       "disableConnectedCheck": false,
+       "type": "neighborebgpmultihop"
+      },
+      "neighborVersion": 0,
+      "nextHopSelf": false,
+      "neighborWeight": 0,
+      "sendCommunity": false,
+      "neighborTransportConnectionMode": {
+       "establishTCPSession": false,
+       "type": "neighbortransportconnectionmode"
+      },
+      "neighborTransportPathMTUDiscovery": {
+       "disable": true,
+       "type": "neighbortransportpathmtudiscovery"
+      },
+      "type": "neighboradvanced"
+     },
+     "neighborRoutes": {
+      "removePrivateAs": false
+     },
+     "neighborFiltering": {
+      "neighborRouteMap": [
+       {
+        "routeMap": {
+         "type": "RouteMap",
+         "name": "rm-peer-in",
+         "overridable": false,
+         "id": "00000000-0000-0ed3-0000-000000000301"
+        },
+        "filterUpdateAction": "IN"
+       }
+      ],
+      "ipv4PrefixListFilter": [
+       {
+        "ipv4PrefixList": {
+         "type": "IPV4PrefixList",
+         "name": "pl-inside",
+         "overridable": false,
+         "id": "00000000-0000-0ed3-0000-000000000401"
+        },
+        "filterUpdateAction": "OUT"
+       }
+      ],
+      "neighborMaximumPrefix": {
+       "maxPrefixLimit": 100,
+       "thresholdValue": 75
+      },
+      "neighborDefaultOriginate": {
+       "routeMap": {
+        "id": "00000000-0000-0ed3-0000-000000000302",
+        "type": "RouteMap"
+       }
+      }
+     },
+     "type": "neighboripv4",
+     "remoteAs": "65001",
+     "ipv4Address": "192.0.2.2"
+    }
+   ],
+   "autoSummary": false,
+   "id": "00000000-0000-0ed3-0001-000000000222",
+   "type": "afipv4",
+   "networks": [
+    {
+     "ipv4Address": {
+      "type": "Network",
+      "overridable": false,
+      "name": "inside-net",
+      "id": "00000000-0000-0ed3-0000-000000000101"
+     }
+    }
+   ],
+   "ebgp": 1,
+   "ibgp": 1,
+   "redistributeProtocols": [
+    {
+     "routeMap": {
+      "type": "RouteMap",
+      "name": "rm-peer-in",
+      "overridable": false,
+      "id": "00000000-0000-0ed3-0000-000000000301"
+     },
+     "routeMetric": {
+      "metricValue": 5
+     },
+     "type": "RedistributeConnected"
+    }
+   ]
+  },
+  "asNumber": "65000",
+  "name": "bgp",
+  "id": "00000000-0000-0ed3-0001-000000000221",
+  "type": "bgp"
+ },
+ "network": {
+  "id": "00000000-0000-0ed3-0000-000000000101",
+  "name": "inside-net",
+  "type": "Network",
+  "value": "198.51.100.0/24"
+ },
+ "prefix_lists": [
+  {
+   "type": "IPV4PrefixList",
+   "entries": [
+    {
+     "sequence": 5,
+     "action": "PERMIT",
+     "ipAddress": "203.0.113.2/32"
+    }
+   ],
+   "name": "pl-lo2",
+   "overridable": false,
+   "description": " ",
+   "id": "00000000-0000-0ed3-0000-000000000402",
+   "metadata": {
+    "timestamp": 0,
+    "lastUser": {
+     "name": "apiuser"
+    },
+    "domain": {
+     "name": "Global",
+     "id": "e276abec-e0f2-11e3-8169-6d9ed49b625f",
+     "type": "Domain"
+    }
+   }
+  },
+  {
+   "type": "IPV4PrefixList",
+   "entries": [
+    {
+     "sequence": 5,
+     "action": "PERMIT",
+     "ipAddress": "198.51.100.0/24"
+    },
+    {
+     "sequence": 10,
+     "action": "DENY",
+     "ipAddress": "0.0.0.0/0",
+     "maxPrefixLength": 32
+    }
+   ],
+   "name": "pl-inside",
+   "overridable": false,
+   "description": " ",
+   "id": "00000000-0000-0ed3-0000-000000000401",
+   "metadata": {
+    "timestamp": 0,
+    "lastUser": {
+     "name": "apiuser"
+    },
+    "domain": {
+     "name": "Global",
+     "id": "e276abec-e0f2-11e3-8169-6d9ed49b625f",
+     "type": "Domain"
+    }
+   }
+  }
+ ],
+ "route_maps": [
+  {
+   "type": "RouteMap",
+   "name": "rm-peer-in",
+   "overridable": false,
+   "id": "00000000-0000-0ed3-0000-000000000301",
+   "metadata": {
+    "timestamp": 0,
+    "lastUser": {
+     "name": "apiuser"
+    },
+    "domain": {
+     "name": "Global",
+     "id": "e276abec-e0f2-11e3-8169-6d9ed49b625f",
+     "type": "Domain"
+    }
+   },
+   "entries": [
+    {
+     "sequence": 10,
+     "action": "DENY",
+     "ipv4PrefixListAddresses": [
+      {
+       "id": "00000000-0000-0ed3-0000-000000000402",
+       "type": "IPV4PrefixList",
+       "name": "pl-lo2"
+      }
+     ]
+    },
+    {
+     "sequence": 20,
+     "action": "PERMIT"
+    }
+   ]
+  },
+  {
+   "type": "RouteMap",
+   "name": "rm-default",
+   "overridable": false,
+   "id": "00000000-0000-0ed3-0000-000000000302",
+   "metadata": {
+    "timestamp": 0,
+    "lastUser": {
+     "name": "apiuser"
+    },
+    "domain": {
+     "name": "Global",
+     "id": "e276abec-e0f2-11e3-8169-6d9ed49b625f",
+     "type": "Domain"
+    }
+   },
+   "entries": [
+    {
+     "sequence": 10,
+     "action": "PERMIT"
+    }
+   ]
+  }
+ ],
+ "standard_community_lists": [
+  {
+   "type": "StandardCommunityList",
+   "name": "cl-transit",
+   "id": "00000000-0000-0ed3-0000-000000000501",
+   "entries": [
+    {
+     "sequence": 1,
+     "action": "PERMIT",
+     "communities": "65001:100"
+    }
+   ]
+  }
+ ],
+ "as_path_lists": [
+  {
+   "type": "ASPathList",
+   "name": 261,
+   "id": "00000000-0000-0ed3-0000-000000000601",
+   "entries": [
+    {
+     "sequence": 1,
+     "action": "PERMIT",
+     "regularExpression": "^65001$"
+    }
+   ]
+  }
+ ]
+}
