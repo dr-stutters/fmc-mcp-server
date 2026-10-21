@@ -1,8 +1,8 @@
 """Device configuration and troubleshooting tools, against responses recorded from a real FTDv 10.0
 managed by FMC 10.0.1 (tests/fixtures/ftd_*.json, captured by scripts/capture_fixtures.py --ftd)."""
 
+import asyncio
 import json
-import time
 from typing import Any
 
 import httpx
@@ -12,6 +12,7 @@ from fastmcp import Client
 from fastmcp.exceptions import ToolError
 
 from fmc_mcp.server import create_server
+from fmc_mcp.tools import dangerous
 from fmc_mcp.tools.deploy import pending_row
 from fmc_mcp.tools.device_config import ipv4_block
 from fmc_mcp.tools.troubleshoot import filter_lines, redact, split_command, summarize_trace
@@ -651,7 +652,13 @@ async def test_register_failure_explains_licensing(fmc: respx.MockRouter) -> Non
     assert "REGISTRATION_FAILED - To add Firepower" in str(err.value)
 
 
-async def test_register_waits_for_initial_deployment(fmc: respx.MockRouter) -> None:
+async def test_register_waits_for_initial_deployment(
+    fmc: respx.MockRouter, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    # The wall clock frozen (#274): the job used to say time.time() + 1 at setup, and a registration sent
+    # more than ~6 s later on a slow runner took it for an older job and polled until the task timeout.
+    frozen = 1792368000
+    monkeypatch.setattr(dangerous, "wall_clock", lambda: frozen)
     fmc.get(f"{CFG}/policy/accesspolicies").mock(return_value=items([ACP]))
     post = fmc.post(f"{CFG}/devices/devicerecords").mock(
         return_value=httpx.Response(202, json={"metadata": {"task": {"id": "r2"}}})
@@ -678,13 +685,14 @@ async def test_register_waits_for_initial_deployment(fmc: respx.MockRouter) -> N
                     "jobName": "Deploy_Job_1",
                     "jobStatus": "DEPLOYED",
                     "deploymentNote": "after reg",
-                    "startTime": int(time.time()) + 1,
+                    "startTime": frozen + 1,
                 },
             ]
         )
     )
     args = {"name": "mcp-ftd1", "host": "10.0.0.9", "reg_key": "k", "access_policy": "mcp-test-ftd-acp"}
-    _, done = await confirm("fmc_register_device", args)
+    async with asyncio.timeout(60):  # a hang fails fast instead of waiting out the task timeout
+        _, done = await confirm("fmc_register_device", args)
     assert done["result"]["initial_deployment"] == {
         "device_id": DEV_ID,
         "job": "Deploy_Job_1",

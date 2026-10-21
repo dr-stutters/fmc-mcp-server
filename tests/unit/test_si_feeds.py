@@ -357,7 +357,10 @@ async def test_monitor_only_is_dns_only(fmc: respx.MockRouter) -> None:
     assert out["status"] == "blocked" and out["blockers"] == [MONITOR_GAP]
 
 
-async def test_dns_lists_need_an_own_dns_policy(fmc: respx.MockRouter) -> None:
+async def test_dns_lists_in_a_read_only_dns_policy_of_the_domain(fmc: respx.MockRouter) -> None:
+    """A DNS policy the domain owns but FMC marks read-only: a DNS policy of its own first. Not 'FMC's
+    read-only default' (#250): Global's own view of FMC's Default DNS Policy is writable (FMC 10.0.1, live
+    2026-10-21: readOnly {state: false} in Global, {state: true} with no reason in the leaf)."""
     mock_policy(fmc, si_policy())
     mock_catalogs(fmc, {"dns": [dns_feed()]}, {})
     fmc.get(f"{CFG}/policy/dnspolicies/{DEFAULT_DNS['id']}").mock(
@@ -368,7 +371,28 @@ async def test_dns_lists_need_an_own_dns_policy(fmc: respx.MockRouter) -> None:
     )
     async with Client(server()) as c:
         out = await run(c, "fmc_set_si_lists", {"policy": ACP["name"], "names": ["DNS Malware"]})
-    assert out["status"] == "blocked" and "read-only default DNS policy" in out["blockers"][0]
+    assert out["status"] == "blocked"
+    assert out["blockers"] == [
+        "'Default DNS Policy' is read-only in this domain: create a DNS policy (fmc_create_dns_policy), link "
+        "it to 'mcp-fw-threat-acp' (fmc_set_dns_policy), then repeat."
+    ]
+
+
+async def test_dns_lists_in_globals_default_dns_policy_from_global(fmc: respx.MockRouter) -> None:
+    """Global's view of its Default DNS Policy (live 2026-10-21): writable, so the rule is previewed."""
+    writable = {**DEFAULT_DNS, "metadata": {**DEFAULT_DNS["metadata"], "readOnly": {"state": False}}}
+    mock_policy(fmc, si_policy())
+    mock_catalogs(fmc, {"dns": [dns_feed()]}, {})
+    fmc.get(f"{CFG}/policy/dnspolicies/{DEFAULT_DNS['id']}").mock(
+        return_value=httpx.Response(200, json=writable)
+    )
+    fmc.get(f"{CFG}/policy/dnspolicies/{DEFAULT_DNS['id']}/dnsrules").mock(
+        return_value=httpx.Response(200, json=REC["dns_rules"])
+    )
+    async with Client(server()) as c:
+        out = await run(c, "fmc_set_si_lists", {"policy": ACP["name"], "names": ["DNS Malware"]})
+    assert out["status"] == "preview", out
+    assert out["preview"]["rule"] == "mcp-si-dns-block (new, appended after FMC's Global rules)"
 
 
 async def test_dns_monitor_rule_with_feed_and_category(fmc: respx.MockRouter) -> None:

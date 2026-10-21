@@ -147,6 +147,13 @@ def _as_int(v: Any) -> int:
         return 0
 
 
+def wall_clock() -> int:
+    """Now, in epoch seconds: what the registration waits compare FMC's deployment job start times with
+    (the "Deployment after registration" job must start after the request). fmc_register_device and
+    fmc_register_devices read the wall clock only through this function, so tests can freeze it (#274)."""
+    return int(time.time())
+
+
 def job_epoch(v: Any) -> int:
     """A deployment job's startTime as epoch seconds. FMC 10.0.1 sends ISO 8601 strings
     ("2026-10-19T00:04:08Z"); older releases (and the spec) epoch seconds or milliseconds. 0 if unknown."""
@@ -326,7 +333,7 @@ async def _wait_initial_deploy(
             dev = await resolve_in(app, DEVICES, name, "device", domain)
         except NotFound:
             return {}
-        flt = f"deviceUUID:{dev['id']};startTime:{since - 60};endTime:{int(time.time()) + 60}"
+        flt = f"deviceUUID:{dev['id']};startTime:{since - 60};endTime:{wall_clock() + 60}"
         page = await app.page(jobs, {"filter": flt}, limit=25)
         # Only jobs started after the registration request, newest first (a re-registered device
         # also has older jobs).
@@ -731,7 +738,7 @@ def register(reg: ToolRegistrar) -> None:
 
         async def apply() -> Any:
             check_deploy_window(get_settings(ctx), "fmc_register_device")
-            started = int(time.time())
+            started = wall_clock()
             resp = await app.api.post(path, body)
             try:
                 result = await finish(ctx, app, resp, wait, domain, "device registration")

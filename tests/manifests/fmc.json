@@ -514,6 +514,10 @@
       "tier": "write",
       "title": "Create application filter"
     },
+    "fmc_create_cipher_suite_list": {
+      "tier": "write",
+      "title": "Create cipher suite list"
+    },
     "fmc_create_decryption_policy": {
       "tier": "write",
       "title": "Create decryption policy"
@@ -933,6 +937,10 @@
     "fmc_list_certificates": {
       "tier": "read",
       "title": "List certificates with days left"
+    },
+    "fmc_list_cipher_suite_lists": {
+      "tier": "read",
+      "title": "Cipher suite lists"
     },
     "fmc_list_clusters": {
       "tier": "read",

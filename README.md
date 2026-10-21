@@ -106,7 +106,7 @@ Changes made in FMC reach the firewalls only after a **deployment** (`fmc_deploy
 
 ## Tools
 
-There are 200 tools when every tier is enabled (85 read, 102 write, 13 dangerous; the dangerous tier turns `fmc_api_call` into a raw call), and eleven workflow prompts (`fmc_why_blocked`, `fmc_firewall_health_review`, `fmc_sdwan_troubleshoot`, `fmc_vpn_troubleshoot`, `fmc_threat_defense_review`, `fmc_prove_user_policy`; `fmc_rule_change_review` and `fmc_policy_cleanup`, write tier; `fmc_onboard_ftd`, `fmc_onboard_branch` and `fmc_ha_failover_check`, dangerous tier). `FMC_TOOLSETS` loads only some areas of them (see "Toolsets").
+There are 202 tools when every tier is enabled (86 read, 103 write, 13 dangerous; the dangerous tier turns `fmc_api_call` into a raw call), and eleven workflow prompts (`fmc_why_blocked`, `fmc_firewall_health_review`, `fmc_sdwan_troubleshoot`, `fmc_vpn_troubleshoot`, `fmc_threat_defense_review`, `fmc_prove_user_policy`; `fmc_rule_change_review` and `fmc_policy_cleanup`, write tier; `fmc_onboard_ftd`, `fmc_onboard_branch` and `fmc_ha_failover_check`, dangerous tier). `FMC_TOOLSETS` loads only some areas of them (see "Toolsets").
 
 **Read**
 
@@ -121,7 +121,7 @@ There are 200 tools when every tier is enabled (85 read, 102 write, 13 dangerous
 | Policies | `fmc_list_policies`, `fmc_get_access_policy`, `fmc_list_access_rules`, `fmc_get_access_rule`, `fmc_list_nat_rules`, `fmc_list_prefilter_rules`, `fmc_list_policy_assignments` |
 | Objects | `fmc_list_objects`, `fmc_get_object`, `fmc_find_object`, `fmc_where_used`, `fmc_unused_objects`, `fmc_list_dynamic_objects`, `fmc_find_address` (one IP, network or range across objects and groups, dynamic-object mappings, access, prefilter and NAT rules, static routes and VPN endpoints, ranked), `fmc_find_application` (an application by exact name or app id with its risk, business relevance and categories; application filters; attribute values for `fmc_create_application_filter`) |
 | Security Intelligence | `fmc_get_security_intelligence` (block and do-not-block lists, the DNS policy's rules, and each feed's and custom list's entries, last update and status; without a policy: every SI feed and custom list) |
-| Decryption / DNS | `fmc_get_decryption_policy` (rules, trusted CAs, TLS 1.3, access policies using it, `readiness`), `fmc_get_certificate` (internal CAs, internal certificates, trusted CAs: expiry, pending CSR, PEM to install on clients, where used; private keys never shown), `fmc_list_certificates` (every certificate FMC holds: device enrolments with their deployment and identity/CA status, internal certificates and CAs, trusted CAs, external certificates; ISO, OpenSSL and epoch dates normalised to `days_left` and a severity, critical at 30 days and warning at 90; `expiring_within_days`), `fmc_tls_decryption_check` (what decryption does to one flow and what a decrypt-resign rollout still lacks), `fmc_get_dns_policy` |
+| Decryption / DNS | `fmc_get_decryption_policy` (rules in order with their TLS versions and cipher suite lists, trusted CAs, TLS 1.3, undecryptable actions, default-action logging, access policies using it, `readiness`), `fmc_list_cipher_suite_lists` (each list's weak and strong suites; `known_suites` lists what can go in one), `fmc_get_certificate` (internal CAs, internal certificates, trusted CAs: expiry, pending CSR, PEM to install on clients, where used; private keys never shown), `fmc_list_certificates` (every certificate FMC holds: device enrolments with their deployment and identity/CA status, internal certificates and CAs, trusted CAs, external certificates; ISO, OpenSSL and epoch dates normalised to `days_left` and a severity, critical at 30 days and warning at 90; `expiring_within_days`), `fmc_tls_decryption_check` (what decryption does to one flow, what TLS version and cipher suite rules would match, which undecryptable action applies when the flow can't be decrypted, and what a decrypt-resign rollout still lacks), `fmc_get_dns_policy` |
 | Identity (AD/LDAP, ISE) | `fmc_get_realm` (directories, downloaded users and groups), `fmc_test_realm` (bind test from FMC; needs `FMC_UI_USERNAME`), `fmc_get_identity_policy` (rules, access policies using it), `fmc_get_identity_sources` (ISE/pxGrid connection, SGT download, realms, identity policies, sessions by source, per-device user-IP bindings, certificate expiry, what to fix), `fmc_user_ip_lookup` (who is on an IP / where a user is, with the user's realm groups) |
 | Intrusion (Snort 3) | `fmc_get_intrusion_policy` (base, mode, usage, overridden rules), `fmc_find_intrusion_rules` (gid:sid, SID or text; per-policy state) |
 | File / malware, network analysis | `fmc_get_file_policy` (settings and file rules; `catalog=true` lists file categories and types), `fmc_get_network_analysis_policy` (base, mode, access policies using it, inspector overrides) |
@@ -189,7 +189,7 @@ Notes on some read tools:
 | Area | Tools |
 |---|---|
 | Objects | `fmc_create_object`, `fmc_update_object`, `fmc_delete_object`, `fmc_create_group`, `fmc_update_group`, `fmc_create_security_zone`, `fmc_import_objects` (bulk, validated; `mode='sync'` takes an IPAM export or CSV as the desired state: create, update, unchanged, group members, orphans under a prefix), `fmc_replace_object` (A becomes B in every access and prefilter rule, group, NAT rule and static route, found through FMC's usage API; optionally deletes A), `fmc_create_time_range` (absolute window plus daily or weekly recurrences), `fmc_create_application_filter` (applications plus risk, business relevance, category, tag and type) |
-| Access control | `fmc_create_access_policy`, `fmc_create_access_rule`, `fmc_update_access_rule` (both take URL categories with a reputation level: `url_categories=[{category, reputation}]`, and `applications=`, `application_filters=`, `vlan_tags=`, `time_range=`, `source_sgts=` / `destination_sgts=` (ISE or custom SGTs by name or tag number, shown with their tag in the preview); VLAN tags match only on inline sets), `fmc_delete_access_rule`, `fmc_import_access_rules` (bulk, validated) |
+| Access control | `fmc_create_access_policy`, `fmc_create_access_rule`, `fmc_update_access_rule` (both take URL categories with a reputation level: `url_categories=[{category, reputation}]`, and `applications=`, `application_filters=`, `inline_app_filter={risks, business_relevance, categories, tags, types}` (an inline filter, no filter object), `vlan_tags=`, `time_range=`, `source_sgts=` / `destination_sgts=` (ISE or custom SGTs by name or tag number, shown with their tag in the preview); VLAN tags match only on inline sets), `fmc_delete_access_rule`, `fmc_import_access_rules` (bulk, validated) |
 | Prefilter | `fmc_create_prefilter_policy`, `fmc_set_prefilter_policy` (link to an access policy), `fmc_create_prefilter_rule`, `fmc_update_prefilter_rule`, `fmc_delete_prefilter_rule` (FASTPATH / ANALYZE / BLOCK) |
 | Bulk rule edits | `fmc_bulk_update_access_rules` (select rules by names, ids, text, action, enabled, section, category or no hits in N days; set enabled, logging, action, intrusion policy, extra source zones or a comment; one preview with every rule's diff, partial bulk PUTs of 50, stops at the first rule FMC refuses), `fmc_clear_hit_counts` (one device; the preview lists the counts that are lost) |
 | NAT | `fmc_create_nat_policy`, `fmc_create_nat_rule`, `fmc_update_nat_rule`, `fmc_delete_nat_rule` |
@@ -202,7 +202,7 @@ Notes on some read tools:
 | Network analysis | `fmc_create_network_analysis_policy` (on a base policy; an access policy selects it in the UI, FMC's REST API has no field for that) |
 | Intrusion tuning | `fmc_set_intrusion_rule_state` (ALERT/BLOCK/DROP/REJECT/PASS/DISABLE/DEFAULT per policy), `fmc_create_intrusion_policy`, `fmc_create_intrusion_rule` / `fmc_delete_intrusion_rule` (custom Snort 3 rules); `fmc_update_access_rule(intrusion_policy=...)` |
 | Change management | `fmc_ticket` (open / submit / discard / release; an open ticket is sent as `ticket-id` with every change) |
-| Decryption | `fmc_create_decryption_policy` / `fmc_update_decryption_policy` (default action, trusted CAs, TLS 1.3 decryption, untrusted issuers), `fmc_create_decryption_rule` (DECRYPT_RESIGN with an internal CA, DECRYPT_KNOWN_KEY, DO_NOT_DECRYPT, BLOCK, MONITOR; `insert_before`), `fmc_delete_decryption_rule`, `fmc_set_decryption_policy` |
+| Decryption | `fmc_create_decryption_policy` / `fmc_update_decryption_policy` (default action and its logging, trusted CAs, TLS 1.3 decryption, untrusted issuers, undecryptable actions such as Unsupported Cipher Suite), `fmc_create_decryption_rule` (DECRYPT_RESIGN with an internal CA, DECRYPT_KNOWN_KEY, DO_NOT_DECRYPT, BLOCK, MONITOR; `tls_versions` and `cipher_suite_lists` on Block and Monitor rules; `insert_before`; warns when a decrypt rule would sit above a TLS Block rule), `fmc_create_cipher_suite_list` (IANA names or codes checked against FMC's predefined suites; `preset='weak'`), `fmc_delete_decryption_rule`, `fmc_set_decryption_policy` |
 | TLS certificates | `fmc_create_internal_ca` (FMC generates the key: self-signed, or a CSR for your CA), `fmc_install_internal_ca_cert` (the signed certificate for that CSR), `fmc_import_certificate_files` (an existing CA or server certificate + key read from `FMC_PKI_DIR` on the server host; only file names pass through MCP), `fmc_delete_certificate` |
 | Identity (AD/LDAP) | `fmc_create_trusted_ca` (CA for LDAPS), `fmc_create_realm` (bind password write-only), `fmc_download_realm` (users and groups now; needs `FMC_UI_USERNAME`), `fmc_delete_realm`, `fmc_create_identity_policy`, `fmc_create_identity_rule` (PASSIVE / ACTIVE / NO), `fmc_delete_identity_rule`; access rules on users and groups: `fmc_create_access_rule` / `fmc_update_access_rule` `users=[...]` |
 | DNS | `fmc_create_dns_policy`, `fmc_set_dns_policy`, `fmc_dns_block` (block/unblock domains via custom SI DNS lists; NXDOMAIN or drop) |
@@ -317,6 +317,13 @@ MD5 password, because FMC returns it masked and a PUT would replace it, unless y
   `fmc_deploy`; `fmc_tls_decryption_check` says what one flow gets and what is missing. An existing CA or
   server key: `fmc_import_certificate_files` reads it from `FMC_PKI_DIR`, so a private key never travels
   through MCP arguments or results.
+- **Block old TLS and weak ciphers** (no decryption; FTD matches the version and suite the server picks, and
+  logs them once a decryption policy is linked): `fmc_create_cipher_suite_list` (`preset='weak'`) ->
+  `fmc_create_decryption_rule` (BLOCK_WITH_RESET with `tls_versions=['sslv3','tls10','tls11']`, another with
+  `cipher_suite_lists`, both above any DECRYPT_RESIGN rule) -> `fmc_update_decryption_policy`
+  (`undecryptable={'unsupported_cipher_suite': 'BLOCK_WITH_RESET'}`, else RC4 passes a resign rule
+  undecrypted) -> `fmc_deploy`. FTD doesn't step a weak suite up: Decrypt-Resign gives the client the suite
+  the server chose, though it strips RC4 from the ClientHello it forwards.
 - **PoC to production:** `fmc_export_policy_bundle` -> `fmc_plan_policy_bundle_import` in the target domain or
   FMC -> `fmc_import_policy_bundle` -> `fmc_diff_policy_bundle` -> assign and `fmc_deploy`.
 - **Rules on AD users and groups:** `fmc_create_trusted_ca` (for LDAPS) -> `fmc_create_realm` ->
@@ -481,7 +488,7 @@ of the server, and FMC's 120 requests/minute are shared by every API user of tha
 
 ### Toolsets (`FMC_TOOLSETS`, F46)
 
-With every tier on, the server registers 200 tools, and a client sends all their descriptions to the
+With every tier on, the server registers 202 tools, and a client sends all their descriptions to the
 model on every turn. Some clients also cap the number of tools. `FMC_TOOLSETS` loads only the areas you
 name:
 
@@ -520,7 +527,7 @@ checks it against the registered tools.
 | `routing` | 8 (2/6/0) | static routes, BGP, OSPF, VRFs |  |
 | `sdwan` | 7 (1/6/0) | SD-WAN hub and spoke topologies, WAN interfaces, application-aware routing, branch health | `fmc_onboard_branch`, `fmc_sdwan_troubleshoot` |
 | `threat` | 13 (5/8/0) | intrusion (IPS), file/malware and network analysis policies, an ACP's threat posture | `fmc_threat_defense_review` |
-| `tls` | 13 (4/9/0) | TLS decryption policies and rules, certificates (all kinds, days left), readiness check |  |
+| `tls` | 15 (5/10/0) | TLS decryption policies and rules, cipher suite lists, certificates (all kinds, days left), readiness check |  |
 | `troubleshoot` | 10 (10/0/0) | why is traffic blocked: packet tracer, rule lookup, hit counts, show commands, live state | `fmc_firewall_health_review`, `fmc_prove_user_policy`, `fmc_why_blocked` |
 | `vpn` | 7 (5/2/0) | site-to-site VPN topologies, tunnel status and troubleshooting, remote access VPN (read) | `fmc_vpn_troubleshoot` |
 

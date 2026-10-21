@@ -14,6 +14,7 @@ from fastmcp.tools import ToolResult
 from pydantic import Field
 
 from fmc_mcp._core import (
+    AuthError,
     Confirm,
     InvalidRequest,
     NotFound,
@@ -26,7 +27,7 @@ from fmc_mcp._core import (
 )
 from fmc_mcp._core.http import page_of
 from fmc_mcp.client import FmcApp, is_uuid
-from fmc_mcp.preview import fmc_preview
+from fmc_mcp.preview import fmc_preview, owner_domain
 from fmc_mcp.refs import RefResolver
 from fmc_mcp.tools.common import Domain, ref_label, ref_of, resolve_in, resolve_object
 from fmc_mcp.tools.device_groups import DeviceOrGroup, expand_devices
@@ -39,7 +40,7 @@ from fmc_mcp.tools.devices import (
     zone_names,
 )
 from fmc_mcp.tools.object_writes import applied, editable
-from fmc_mcp.tools.policies import POLICY_KINDS, policy_assignments
+from fmc_mcp.tools.policies import ASSIGNMENTS, POLICY_KINDS, policy_assignments
 
 # Interface kinds an interface reference is searched in (in this order).
 NAMED_KINDS = ["physical", "subinterface", "etherchannel", "vlan", "vti", "loopback", "bridge_group"]
@@ -551,6 +552,46 @@ def plan_logical_interface(
 
 
 LicenseCap = Literal["ESSENTIALS", "IPS", "MALWARE_DEFENSE", "URL", "CARRIER"]
+
+
+async def _assignment_domain(app: FmcApp, pol: dict[str, Any], here: str, listed_in: str | None) -> str:
+    """The domain to write a policy's assignment in: the policy's owner (its metadata.domain, else the
+    ancestor whose list holds its assignment) when that is an ancestor of the calling domain (FMC refuses
+    it below), else the calling domain."""
+    dom = owner_domain(pol)
+    owner = str(dom["id"]).lower() if dom else ""
+    if not owner and listed_in:
+        owner = (await app.domain_uuid(listed_in)).lower()
+    if owner and owner != here and owner in {d.lower() for d in await app.domain_ancestors(here)}:
+        return owner
+    return here
+
+
+async def _device_domain_assignments(
+    app: FmcApp, records: dict[str, dict[str, Any]], here: str, seen_rows: list[dict[str, Any]]
+) -> list[dict[str, Any]]:
+    """Assignments listed only in the devices' own (descendant) domains: called from Global for a leaf
+    device, Global's list lacks the leaf-owned policy it runs (FMC lists a domain's own policies'
+    assignments), so the preview's `from` would be empty. One list per such domain; unreadable ones are
+    skipped."""
+    seen = {str(a.get("id")) for a in seen_rows}
+    out: list[dict[str, Any]] = []
+    below: list[str] = []
+    for rec in records.values():
+        dom = owner_domain(rec)
+        uuid = str(dom["id"]).lower() if dom else ""
+        if uuid and uuid != here and uuid not in below and here in await app.domain_ancestors(uuid):
+            below.append(uuid)
+    for uuid in below:
+        try:
+            page = await app.all(await app.config_path(ASSIGNMENTS, uuid), cap=5000)
+        except (AuthError, NotFound):
+            continue
+        for a in page.items:
+            if str(a.get("id")) not in seen:
+                seen.add(str(a.get("id")))
+                out.append(a)
+    return out
 
 
 def register(reg: ToolRegistrar) -> None:
@@ -1345,9 +1386,12 @@ def register(reg: ToolRegistrar) -> None:
         """Assign an access control, NAT or platform settings policy to devices (or every device of a
         device group). A device has one policy
         of each type, so this replaces its current one (the preview's `from`, also when it is a policy
-        inherited from an ancestor domain). The new policy reaches the device on the next fmc_deploy.
-        Current assignments: fmc_list_policy_assignments."""
+        inherited from an ancestor domain or one the device's own child domain owns). A policy owned by
+        an ancestor domain (e.g. a Global policy for a leaf device) is assigned in that domain, the only
+        one where FMC takes it (the preview's `assigned_in`). The new policy reaches the device on the
+        next fmc_deploy. Current assignments: fmc_list_policy_assignments."""
         app: FmcApp = get_client(ctx)
+        here = (await app.domain_uuid(domain)).lower()
         pol = await resolve_in(app, POLICY_KINDS[kind], policy, f"{kind} policy", domain)
         targets: list[dict[str, Any]] = []
         records: dict[str, dict[str, Any]] = {}
@@ -1365,12 +1409,12 @@ def register(reg: ToolRegistrar) -> None:
         mine = {k: v for k, v in found.items() if k != "_domain"} if found else None
         policy_type = ASSIGNABLE[kind]
         current: dict[str, str] = {}
-        for a in assignments:
+        for a in assignments + await _device_domain_assignments(app, records, here, assignments):
             p = a.get("policy") or {}
             if p.get("type") != policy_type:
                 continue
             for t in a.get("targets") or []:
-                current[str(t.get("id"))] = str(p.get("name"))
+                current.setdefault(str(t.get("id")), str(p.get("name")))
         if kind == "access":  # the device record names its access policy even when no list shows it
             for tid, rec in records.items():
                 acp = rec.get("accessPolicy") or {}
@@ -1388,17 +1432,46 @@ def register(reg: ToolRegistrar) -> None:
             + [{"id": t["id"], "type": t["type"]} for t in new],
         }
         owner = (found or {}).get("_domain")
+        # FMC 10.0.1 takes an assignment of an ancestor's policy only in the policy's own domain: the POST
+        # in the child domain answered 406 "You do not have the required authorization to do this
+        # operation." (Global policy, leaf device, final-live 2026-10-21); the same call in Global worked.
+        write_in = await _assignment_domain(app, pol, here, owner)
+        write_name = await app.domain_name(write_in)
+        elsewhere = write_in.lower() != here
         if mine:
             body["id"] = mine["id"]
-            path = await app.config_path(f"assignment/policyassignments/{mine['id']}", domain)
+            path = await app.config_path(f"{ASSIGNMENTS}/{mine['id']}", write_in)
         else:
-            path = await app.config_path("assignment/policyassignments", domain)
+            path = await app.config_path(ASSIGNMENTS, write_in)
 
         async def apply() -> Any:
-            if mine:
-                return await applied(app, lambda: app.api.put(path, body))
-            return await applied(app, lambda: app.api.post(path, body))
+            try:
+                if mine:
+                    return await applied(app, lambda: app.api.put(path, body))
+                return await applied(app, lambda: app.api.post(path, body))
+            except UpstreamError as e:
+                if elsewhere and (isinstance(e, AuthError) or e.status_code in (403, 406)):
+                    raise UpstreamError(
+                        f"FMC refused the assignment in domain {write_name!r}, which owns "
+                        f"{pol.get('name')!r}: {e}. FMC takes this policy's assignments only there, so "
+                        f"the account needs write access to {write_name!r}; or assign a policy of "
+                        f"{await app.domain_name(here)!r} instead.",
+                        e.status_code,
+                    ) from e
+                raise
 
+        side_effects = ["The devices get the new policy on the next deployment."]
+        if elsewhere:
+            side_effects.append(
+                f"{pol.get('name')!r} belongs to domain {write_name!r}: the assignment is made there (FMC "
+                f"10.0.1 refuses it in {await app.domain_name(here)!r} with 406 'You do not have the "
+                "required authorization'). Same devices, same effect."
+            )
+        if owner:
+            side_effects.append(
+                f"{pol.get('name')} belongs to domain {owner!r} (inherited here); its assignment "
+                f"keeps its {len(existing)} other target(s)."
+            )
         return await fmc_preview(
             ctx,
             tool="fmc_assign_policy",
@@ -1409,19 +1482,16 @@ def register(reg: ToolRegistrar) -> None:
                 details={
                     "changes": changes,
                     **({"policy_domain": owner} if owner else {}),
+                    **({"assigned_in": write_name} if elsewhere else {}),
                     **({"groups": fleet.groups} if fleet.groups else {}),
                 },
-                fingerprint={"assignment": mine and editable(mine), "current": current},
+                fingerprint={
+                    "assignment": mine and editable(mine),
+                    "current": current,
+                    "write_in": write_in.lower(),
+                },
                 blockers=blockers,
-                side_effects=["The devices get the new policy on the next deployment."]
-                + (
-                    [
-                        f"{pol.get('name')} belongs to domain {owner!r} (inherited here); its assignment "
-                        f"keeps its {len(existing)} other target(s)."
-                    ]
-                    if owner
-                    else []
-                ),
+                side_effects=side_effects,
             ),
             apply=apply,
         )
