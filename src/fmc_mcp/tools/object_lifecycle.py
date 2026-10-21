@@ -334,8 +334,9 @@ class Gather:
         """System and inherited objects, and objects the API user's role may not change (readOnly reason
         RBAC, #249), are refused whatever else is selected. The owner domain is checked before FMC's
         read-only flag: in a child domain FMC 10.0.1 marks an ancestor's objects read-only, sometimes without
-        a reason, so they would otherwise read as built-ins. FMC's own built-ins (fixed ids, is_builtin_object)
-        are said to be built-in there too, not "defined in Global": deleting them in Global is refused as well."""
+        a reason, so they would otherwise read as built-ins. FMC's own built-ins (fixed ids,
+        is_builtin_object) are said to be built-in there too, not "defined in Global": deleting them in
+        Global is refused as well."""
         owner = inherited_from(c.obj, self.here)
         if owner and is_builtin_object(c.obj):
             c.refuse("FMC built-in (system) object, read-only in every domain", in_use=False)
