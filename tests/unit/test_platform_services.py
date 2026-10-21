@@ -261,7 +261,7 @@ async def test_dns_creates_the_server_group(fmc: respx.MockRouter) -> None:
         "servers": ["192.0.2.53", "198.51.100.53"],
     }
     assert p["preview"]["changes"]["pollTimerInMins"] == {"from": None, "to": 240}
-    assert done["result"]["applied"] == ["dns"]
+    assert done["result"]["applied"] == ["server group mcp-w6-ps-dns", "dns"]
     group = json.loads(post.calls.last.request.content)
     assert group == {
         "name": "mcp-w6-ps-dns",
@@ -368,7 +368,33 @@ async def test_netflow_first_collector_creates_host_and_default_class(fmc: respx
             "exportFlows": [{"collectorHost": ref, "eventType": ["ALL"]}],
         }
     ]
-    assert done["result"]["applied"] == ["netflow"]
+    assert done["result"]["applied"] == ["host mcp-w6-nf", "netflow"]
+
+
+async def test_a_failed_put_reports_the_object_it_created(fmc: respx.MockRouter) -> None:
+    """The server group (or collector host) POST and the settings PUT are separate steps: when the PUT
+    fails, the error says the object exists, and a repeat reuses it instead of failing on the name."""
+    puts = mock_ps(fmc)
+    fmc.get(f"{CFG}/object/dnsservergroups").mock(return_value=empty())
+    fmc.post(f"{CFG}/object/dnsservergroups").mock(
+        return_value=httpx.Response(201, json={**GROUP_1, "name": "mcp-w6-ps-dns"})
+    )
+    puts["dnssettings"].mock(
+        return_value=httpx.Response(422, json={"error": {"messages": [{"description": "bad timers"}]}})
+    )
+    args = {"policy": "mcp-w6-ps", "servers": ["192.0.2.53"]}
+    async with Client(server()) as c:
+        p = await run(c, "fmc_configure_dns", args)
+        with pytest.raises(ToolError) as err:
+            await run(c, "fmc_configure_dns", {**args, "confirm": p["confirm"]})
+    msg = str(err.value)
+    assert "Step 'dns' failed" in msg and "Applied: ['server group mcp-w6-ps-dns']" in msg
+    assert "not applied: ['dns']" in msg
+    # the repeat finds the group it made (same name, same servers) and only PUTs
+    fmc.get(f"{CFG}/object/dnsservergroups").mock(return_value=items([{**GROUP_1, "name": "mcp-w6-ps-dns"}]))
+    async with Client(server()) as c:
+        again = await run(c, "fmc_configure_dns", args)
+    assert again["status"] == "preview" and again["preview"]["creates_server_group"] is None
 
 
 async def test_netflow_traffic_classes_and_remove(fmc: respx.MockRouter) -> None:
@@ -634,6 +660,22 @@ async def test_update_rule_and_group_member_warn(lab: respx.MockRouter) -> None:
         "mcp-w6-fqdn (in group mcp-w6-saas-grp)" in warning
         and "mcp-ftd1 (no platform settings policy)" in warning
     )
+
+
+async def test_fqdn_warning_names_ten_devices_and_counts_the_rest(fmc: respx.MockRouter) -> None:
+    devices = [{"id": f"d0000000-0000-4000-8000-0000000000{i:02d}", "name": f"ftd{i:02d}"} for i in range(13)]
+    fmc.get(f"{CFG}/object/fqdns").mock(return_value=empty())
+    fmc.get(f"{CFG}/object/hosts").mock(return_value=empty())
+    fmc.get(f"{CFG}/assignment/policyassignments").mock(
+        return_value=items([{**ACP_ASSIGNMENT, "targets": devices}])  # no platform settings anywhere
+    )
+    async with Client(server()) as c:
+        p = await run(
+            c, "fmc_create_object", {"type": "fqdn", "name": "mcp-w6-fqdn", "value": "www.example.com"}
+        )
+    (warning,) = p["preview"]["warnings"]
+    assert "ftd09 (no platform settings policy)" in warning and "ftd10" not in warning
+    assert "and 3 more devices" in warning
 
 
 async def test_create_fqdn_object_warns_and_a_failed_check_is_silent(fmc: respx.MockRouter) -> None:

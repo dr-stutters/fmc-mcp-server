@@ -21,6 +21,7 @@ NETWORK_GROUPS = "object/networkgroups"
 PS = "policy/ftdplatformsettingspolicies"  # not imported from platform_settings: object_writes imports this
 MAX_GROUPS = 10  # network groups opened to look for FQDN members
 MAX_POLICIES = 10  # platform settings policies whose DNS is read
+MAX_NAMED = 10  # devices named in the warning; the rest are counted
 
 
 async def fqdn_dns_check(
@@ -40,6 +41,9 @@ async def fqdn_dns_check(
         return {}
     if not gaps:
         return {}
+    named = "; ".join(gaps[:MAX_NAMED]) + (
+        f"; and {len(gaps) - MAX_NAMED} more devices" if len(gaps) > MAX_NAMED else ""
+    )
     fix = (
         f"fmc_configure_dns policy={ps_names[0]!r} servers=[...]"
         if len(ps_names) == 1
@@ -49,7 +53,7 @@ async def fqdn_dns_check(
         "warnings": [
             f"FQDN {', '.join(fqdns)}: a device resolves FQDN objects with the DNS server group of its "
             f"platform settings, and {'this device has' if len(gaps) == 1 else 'these devices have'} none: "
-            f"{'; '.join(gaps)}. The change deploys, but rules never match these objects until DNS is set "
+            f"{named}. The change deploys, but rules never match these objects until DNS is set "
             f"({fix}, then fmc_deploy)."
         ]
     }

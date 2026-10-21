@@ -122,7 +122,8 @@ def register(reg: ToolRegistrar) -> None:
             list[str] | None,
             Field(
                 description="DNS server IPs (up to 6). Creates the DNS server group (named server_group, "
-                "default '<policy>-dns') on confirm, or reuses one with exactly these servers"
+                "default '<policy>-dns') on confirm, or reuses the group of that name when it has exactly "
+                "these servers"
             ),
         ] = None,
         server_group: Annotated[
@@ -157,8 +158,9 @@ def register(reg: ToolRegistrar) -> None:
         """DNS for the FTDs using a platform settings policy: the DNS server group they resolve FQDN
         objects with (an FQDN rule deploys fine and never matches without one), the interfaces lookups use,
         lookups through management, and the poll/expiry timers. Give `servers` to create the group (or
-        reuse one with the same servers) or `server_group` for an existing one; it becomes the default
-        group. Deploy afterwards; verify with fmc_run_show_command('show running-config dns')."""
+        reuse the same-named one when it has the same servers) or `server_group` for an existing one; it
+        becomes the default group. Deploy afterwards; verify with
+        fmc_run_show_command('show running-config dns')."""
         app: FmcApp = get_client(ctx)
         if disable and (servers or server_group):
             raise InvalidRequest("Give servers / server_group, or disable=true, not both.")
@@ -231,16 +233,29 @@ def register(reg: ToolRegistrar) -> None:
         if not desired.get("dnsServerGroups") and not disable and not blockers:
             blockers.append("No DNS server group: give servers or server_group.")
 
+        made: dict[str, Any] = {}  # the server group created on confirm
+
         async def put_settings() -> Any:
             body = dict(desired)
-            if create is not None:
-                made = await app.api.post(await app.config_path(DNS_GROUPS, domain), create)
-                ref = _ref({**made, "name": made.get("name") or create["name"]}, "DNSServerGroupObject")
+            if "ref" in made:
                 body["dnsServerGroups"] = [
-                    {**g, "dnsServerGroup": ref} if not g["dnsServerGroup"].get("id") else g
+                    {**g, "dnsServerGroup": made["ref"]} if not g["dnsServerGroup"].get("id") else g
                     for g in body["dnsServerGroups"]
                 ]
             return await app.api.put(path, body)
+
+        # Separate steps: a failed PUT after the POST reports the group as created (a repeat reuses it).
+        steps: list[tuple[str, Callable[[], Awaitable[Any]]]] = [("dns", put_settings)]
+        if create is not None:
+            group_body: dict[str, Any] = create
+
+            async def create_group() -> None:
+                obj = await app.api.post(await app.config_path(DNS_GROUPS, domain), group_body)
+                made["ref"] = _ref(
+                    {**obj, "name": obj.get("name") or group_body["name"]}, "DNSServerGroupObject"
+                )
+
+            steps.insert(0, (f"server group {group_body['name']}", create_group))
 
         return await fmc_preview(
             ctx,
@@ -270,7 +285,7 @@ def register(reg: ToolRegistrar) -> None:
                 blockers=blockers,
                 side_effects=[DEPLOY_NOTE],
             ),
-            apply=lambda: _apply_steps(app, [("dns", put_settings)]),
+            apply=lambda: _apply_steps(app, steps),
         )
 
     @reg.write(title="Configure NetFlow export (platform settings)")
@@ -413,13 +428,25 @@ def register(reg: ToolRegistrar) -> None:
         if not changes and not blockers:
             blockers.append("Nothing to change.")
 
+        made: dict[str, Any] = {}  # the collector host object created on confirm
+
         async def put_netflow() -> Any:
             body = dict(desired)
-            if create_host is not None:
-                made = await app.api.post(await app.config_path("object/hosts", domain), create_host)
-                ref = {"id": made["id"], "type": "Host", "name": made.get("name") or create_host["name"]}
-                body = _fill_host(body, create_host["name"], ref)
+            if "ref" in made:
+                body = _fill_host(body, made["placeholder"], made["ref"])
             return await app.api.put(path, body)
+
+        # Separate steps: a failed PUT after the POST reports the host as created (a repeat reuses it).
+        steps: list[tuple[str, Callable[[], Awaitable[Any]]]] = [("netflow", put_netflow)]
+        if create_host is not None:
+            host_body: dict[str, Any] = create_host
+
+            async def create_collector_host() -> None:
+                obj = await app.api.post(await app.config_path("object/hosts", domain), host_body)
+                ref = {"id": obj["id"], "type": "Host", "name": obj.get("name") or host_body["name"]}
+                made.update(placeholder=host_body["name"], ref=ref)
+
+            steps.insert(0, (f"host {host_body['name']}", create_collector_host))
 
         return await fmc_preview(
             ctx,
@@ -451,7 +478,7 @@ def register(reg: ToolRegistrar) -> None:
                 blockers=blockers,
                 side_effects=[DEPLOY_NOTE],
             ),
-            apply=lambda: _apply_steps(app, [("netflow", put_netflow)]),
+            apply=lambda: _apply_steps(app, steps),
         )
 
     @reg.write(title="Configure ICMP / HTTPS management access")
