@@ -50,6 +50,11 @@ def deployable_row(d: dict[str, Any]) -> dict[str, Any]:
 
 
 SECRET_FIELD = re.compile(r"password|secret|key|community|psk", re.I)
+# One pending change can be huge: FMC 10.0.1 listed a Snort 3 network analysis policy UPDATE whose
+# inspectorData value was 115 KB (seen live 2026-10-21), over the response budget on its own; the list
+# result only drops whole rows, so each row's change lines are capped here.
+CHANGE_TEXT_CAP = 400  # characters per change line
+CHANGES_PER_ROW = 30  # change lines per row
 
 
 def _change_text(v: dict[str, Any], verb: str) -> str:
@@ -65,19 +70,28 @@ def _change_text(v: dict[str, Any], verb: str) -> str:
     return f"{field}: {new if new is not None else old}"
 
 
+def _capped(text: str) -> str:
+    if len(text) <= CHANGE_TEXT_CAP:
+        return text
+    return f"{text[:CHANGE_TEXT_CAP]}... [{len(text) - CHANGE_TEXT_CAP:,} more characters]"
+
+
 def pending_row(c: dict[str, Any]) -> dict[str, Any]:
-    """One pending change with its field values flattened to 'Field: old -> new' strings."""
+    """One pending change with its field values flattened to 'Field: old -> new' strings, each capped at
+    CHANGE_TEXT_CAP characters and the row at CHANGES_PER_ROW lines (`changes_total` then counts them)."""
     changes: list[str] = []
     for key, verb in (("valueAdded", "added"), ("valueUpdated", "updated"), ("valueDeleted", "deleted")):
         for v in c.get(key) or []:
             if isinstance(v, dict):
                 changes.append(_change_text(v, verb))
+    shown = [_capped(t) for t in changes[:CHANGES_PER_ROW]]
     row = {
         "entity": c.get("entityName"),
         "type": c.get("entityType"),
         "action": c.get("action"),
         "changed_by": ", ".join(ref_label(u) for u in c.get("lastUpdatedByUsers") or []) or None,
-        "changes": changes or None,
+        "changes": shown or None,
+        "changes_total": len(changes) if len(changes) > CHANGES_PER_ROW else None,
         "message": c.get("message"),
     }
     return {k: v for k, v in row.items() if v not in (None, "")}
@@ -251,7 +265,8 @@ def register(reg: ToolRegistrar) -> None:
     ) -> ToolResult:
         """Show what the next deployment would push to one device: each changed entity (policy,
         rule, object) with the action (added/updated/deleted), who changed it and the changed
-        values. Use before fmc_deploy to review the blast radius."""
+        values (long values cut, e.g. a Snort 3 policy's inspector data). Use before fmc_deploy to
+        review the blast radius."""
         app: FmcApp = get_client(ctx)
         d = await resolve_in(app, DEVICES, device, "device", domain)
         path = await app.config_path(f"{DEPLOYABLE}/{d['id']}/pendingchanges", domain)
@@ -264,6 +279,14 @@ def register(reg: ToolRegistrar) -> None:
         notes = []
         if not everything.complete:
             notes.append("Only the first 5000 change entries were read.")
+        if any(
+            r.get("changes_total") or any("more characters]" in t for t in r.get("changes") or [])
+            for r in rows
+        ):
+            notes.append(
+                f"Long change values are cut at {CHANGE_TEXT_CAP} characters and rows at {CHANGES_PER_ROW} "
+                "changes (changes_total counts them); the FMC UI's deployment preview shows them whole."
+            )
         if rows and not await is_deployable(app, str(d["id"]), domain):
             notes.append(NOT_DEPLOYABLE_NOTE)
         if notes:
