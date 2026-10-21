@@ -166,8 +166,18 @@ async def compat_run(fmc: respx.MockRouter) -> dict[str, Any]:
     return out
 
 
+def without_requests(x: Any) -> Any:
+    """`x` less the previews' `requests` (method, path and body of each request; added in 0.16 after
+    W6N live-B, test_routing_preview_requests.py): an added key, everything else as in 0.15.0."""
+    if isinstance(x, dict):
+        return {k: without_requests(v) for k, v in x.items() if k != "requests"}
+    if isinstance(x, list):
+        return [without_requests(v) for v in x]
+    return x
+
+
 async def test_existing_callers_get_what_they_got_in_015(fmc: respx.MockRouter) -> None:
-    assert await compat_run(fmc) == json.loads(COMPAT.read_text())
+    assert without_requests(await compat_run(fmc)) == json.loads(COMPAT.read_text())
 
 
 async def test_existing_calls_keep_ui_made_filters_untouched(fmc: respx.MockRouter) -> None:
@@ -183,7 +193,7 @@ async def test_existing_calls_keep_ui_made_filters_untouched(fmc: respx.MockRout
     src = FX["bgp_filtered"]["addressFamilyIPv4"]
     assert af["neighbors"][0] == src["neighbors"][0]
     assert af["redistributeProtocols"] == src["redistributeProtocols"]
-    assert set(preview["preview"]) == {"domain", "steps", "before", "after"}
+    assert set(preview["preview"]) == {"domain", "steps", "before", "after", "requests"}
 
 
 # --- read view ---------------------------------------------------------------------------------
