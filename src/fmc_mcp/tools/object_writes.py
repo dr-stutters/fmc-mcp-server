@@ -278,7 +278,7 @@ def register(reg: ToolRegistrar) -> None:
         return await fmc_preview(
             ctx,
             tool="fmc_delete_object",
-            owned=[current],
+            owned=[] if is_system(current) else [current],  # a built-in is read-only in Global too
             args={"object": object, "type": type, "domain": domain},
             confirm=confirm,
             plan=plan,
