@@ -23,6 +23,7 @@ permission, not as a credentials problem.
 # No `from __future__ import annotations`: FastMCP inspects signatures at runtime.
 import asyncio
 import contextlib
+import logging
 import re
 import time
 from dataclasses import dataclass
@@ -49,6 +50,8 @@ from fmc_mcp.preview import fmc_preview
 from fmc_mcp.tools.common import Domain
 from fmc_mcp.tools.devices import Membership, resolve_unit
 from fmc_mcp.tools.render import object_reply
+
+log = logging.getLogger(__name__)
 
 DEVICES = "devices/devicerecords"
 SNORT_MINUTES = (1, 60)  # ours: FMC's rule profiler has no duration (start, wait, stop)
@@ -175,11 +178,13 @@ async def latest(app: FmcApp, base: str) -> dict[str, Any] | None:
 
 
 async def read_file(app: FmcApp, base: str, name: str) -> dict[str, Any]:
+    """One profiler file by name. The spec's example of this answer has no `profilerFileName` (only the list
+    answer carries it), so the name asked for is kept on it."""
     data = await app.api.get(f"{base}/{name}")
     item = first_item(data)
     if item is None:
         raise NotFound(f"FMC returned no profiler file {name!r}.", 404)
-    return item
+    return {**item, "profilerFileName": item.get("profilerFileName") or name}
 
 
 def running(item: dict[str, Any] | None) -> bool:
@@ -229,6 +234,51 @@ async def hold(ctx: Context, seconds: float, message: str) -> None:
         done += step
         with contextlib.suppress(Exception):
             await ctx.report_progress(progress=done, total=seconds, message=message)
+
+
+STOPS: set["asyncio.Task[Any]"] = set()  # stop POSTs in flight: the loop keeps only weak references
+
+
+def _stop_done(task: "asyncio.Task[Any]") -> None:
+    STOPS.discard(task)
+    if not task.cancelled() and (err := task.exception()) is not None:
+        log.warning("Stopping the Snort rule profiler failed: %s", err)
+
+
+async def stop_anyway(app: FmcApp, base: str) -> None:
+    """POST status DISABLED however the call ends. The POST is its own task, kept referenced and shielded:
+    a cancelled call (tasks/cancel, a client that went away, cancelled again while it waits here) still
+    sends it. Its errors are logged, not raised (the call is already failing)."""
+    task = asyncio.ensure_future(app.api.post(base, body(SNORT, "DISABLED"), timeout=60))
+    STOPS.add(task)
+    task.add_done_callback(_stop_done)
+    with contextlib.suppress(Exception):
+        await asyncio.shield(task)
+
+
+async def snort_window(ctx: Context, app: FmcApp, base: str, minutes: int, dev_name: str) -> None:
+    """Start the rule profiler, wait `minutes`, stop it. FMC's rule profiler has no duration, so a wait that
+    fails or is cancelled stops it too; a start FMC refused (REFUSED) sends no stop."""
+    on = True  # the profiler may be running: stop it however this ends
+    try:
+        try:
+            await post(app, base, SNORT, body(SNORT, "ENABLED"))
+        except UpstreamError as e:
+            on = e.status_code not in REFUSED  # FMC refused it: nothing started
+            raise
+        await hold(ctx, minutes * 60.0, f"Snort rule profiling on {dev_name}")
+        try:
+            await post(app, base, SNORT, body(SNORT, "DISABLED"))
+        except UpstreamError as e:
+            raise UpstreamError(
+                f"Profiled for {minutes} min, but FMC refused the stop: {e} The rule profiler may still be "
+                f"running on {dev_name}: fmc_snort_profile(device='{dev_name}', action='stop').",
+                e.status_code,
+            ) from e
+        on = False
+    finally:
+        if on:  # cancelled (tasks/cancel, client gone) or failed: never leave it running
+            await stop_anyway(app, base)
 
 
 async def collect(
@@ -653,28 +703,7 @@ def register(reg: ToolRegistrar) -> None:
         async def apply() -> dict[str, Any]:
             start = now()
             if action == "run":
-                on = True  # the profiler may be running: stop it however this ends
-                try:
-                    try:
-                        await post(app, t.base, SNORT, body(SNORT, "ENABLED"))
-                    except UpstreamError as e:
-                        on = e.status_code not in REFUSED  # FMC refused it: nothing started
-                        raise
-                    await hold(ctx, minutes * 60.0, f"Snort rule profiling on {dev_name}")
-                    try:
-                        await post(app, t.base, SNORT, body(SNORT, "DISABLED"))
-                    except UpstreamError as e:
-                        raise UpstreamError(
-                            f"Profiled for {minutes} min, but FMC refused the stop: {e} The rule profiler "
-                            f"may still be running on {dev_name}: fmc_snort_profile(device='{dev_name}', "
-                            "action='stop').",
-                            e.status_code,
-                        ) from e
-                    on = False
-                finally:
-                    if on:  # cancelled (tasks/cancel, client gone) or failed: never leave it running
-                        with contextlib.suppress(Exception):
-                            await asyncio.shield(app.api.post(t.base, body(SNORT, "DISABLED"), timeout=60))
+                await snort_window(ctx, app, t.base, minutes, dev_name)
             else:
                 await post(app, t.base, SNORT, body(SNORT, "DISABLED"))
             item, last = await collect(app, t.base, SNORT, before)
@@ -872,15 +901,15 @@ def register(reg: ToolRegistrar) -> None:
         a profiler is still running. For a run that fmc_cpu_profile(wait=false) started, or one whose wait
         ended early. Read-only, one or two requests. Needs an FMC role with the Snort 3 profiling
         permission (403 otherwise; the answer says which). New runs: fmc_snort_profile, fmc_cpu_profile."""
+        if file is not None and not FILE_NAME.match(file.strip()):
+            raise InvalidRequest(
+                f"{file!r} is not a profiler file name (e.g. rule_profiling.1685458415.json)."
+            )
         app: FmcApp = get_client(ctx)
         prof = PROFILERS[profiler]
         dev, member = await resolve_unit(app, device, domain)
         label = member.label(str(dev.get("name"))) if member else str(dev.get("name"))
         base = await profiler_base(app, prof, dev, domain)
-        if file is not None and not FILE_NAME.match(file.strip()):
-            raise InvalidRequest(
-                f"{file!r} is not a profiler file name (e.g. rule_profiling.1685458415.json)."
-            )
         try:
             item = await read_file(app, base, file.strip()) if file else await latest(app, base)
         except UpstreamError as e:

@@ -5,8 +5,10 @@ The profiler files are the FMC API spec's own examples (tests/fixtures/profilers
 (start = POST ENABLED, stop = POST DISABLED, poll filter=latest:true for a new file) follow the spec: the
 lab role could not record them live."""
 
+import asyncio
 import copy
 import json
+from types import SimpleNamespace
 from typing import Any
 
 import httpx
@@ -364,9 +366,77 @@ async def test_snort_run_reads_the_file_when_latest_has_no_rules(
     mock_device(fmc)
     bare = {k: v for k, v in finished_file().items() if k != "rules"}
     Profiler(None, bare).mount(fmc, SNORT_BASE)
-    file = fmc.get(f"{SNORT_BASE}/{NEW}").mock(return_value=httpx.Response(200, json=finished_file()))
+    # The spec's own example of the file GET: no profilerFileName in it (the list answer has it)
+    assert "profilerFileName" not in FIX["snort_file"]
+    file = fmc.get(f"{SNORT_BASE}/{NEW}").mock(return_value=httpx.Response(200, json=FIX["snort_file"]))
     _, out = await confirmed("fmc_snort_profile", {"device": "ftd-prof", "minutes": 1})
     assert file.called and out["result"]["rules"][0]["rule"] == "4:57"
+    assert out["result"]["profile"]["file"] == NEW  # kept, for fmc_get_profiler_results(file=...)
+
+
+class FakeApi:
+    """FMC's profiler POST, taking a few event-loop turns like a real request."""
+
+    def __init__(self, fail_stop: bool = False) -> None:
+        self.posts: list[str] = []
+        self.fail_stop = fail_stop
+
+    async def post(self, path: str, payload: dict[str, Any], **kw: Any) -> dict[str, Any]:
+        for _ in range(3):
+            await asyncio.sleep(0)
+        self.posts.append(payload["status"])
+        if self.fail_stop and payload["status"] == "DISABLED":
+            raise RuntimeError("FMC went away")
+        return {"type": "SnortProfiler", "status": payload["status"]}
+
+
+class FakeCtx:
+    async def report_progress(self, **kw: Any) -> None:
+        return None
+
+
+async def window_cancelled(monkeypatch: pytest.MonkeyPatch, api: FakeApi, times: int) -> "asyncio.Task[None]":
+    """Run snort_window until it waits, then cancel it `times` times (anyio cancels again at every await)."""
+    waiting = asyncio.Event()
+
+    async def forever(seconds: float) -> None:
+        waiting.set()
+        await asyncio.Event().wait()
+
+    monkeypatch.setattr(profiling, "pause", forever)
+    app = SimpleNamespace(api=api)
+    task = asyncio.create_task(profiling.snort_window(FakeCtx(), app, SNORT_BASE, 5, "ftd-prof"))  # type: ignore[arg-type]
+    await waiting.wait()
+    for _ in range(times):
+        task.cancel()
+        await asyncio.sleep(0)
+    with pytest.raises(asyncio.CancelledError):
+        await task
+    return task
+
+
+async def test_a_cancelled_run_stops_the_rule_profiler(monkeypatch: pytest.MonkeyPatch) -> None:
+    """tasks/cancel or a client that went away mid-window: the stop is sent before the call ends."""
+    api = FakeApi()
+    await window_cancelled(monkeypatch, api, times=1)
+    assert api.posts == ["ENABLED", "DISABLED"] and not profiling.STOPS
+
+
+async def test_a_stop_cancelled_again_still_reaches_fmc(
+    monkeypatch: pytest.MonkeyPatch, caplog: pytest.LogCaptureFixture
+) -> None:
+    """Cancelled again while the stop is in flight (anyio re-delivers cancellation): the stop POST still
+    completes on its own, and a failing stop is logged instead of hiding the cancellation."""
+    api = FakeApi()
+    await window_cancelled(monkeypatch, api, times=2)
+    assert api.posts == ["ENABLED"]  # the stop is still in flight, kept referenced
+    for _ in range(10):
+        await asyncio.sleep(0)
+    assert api.posts == ["ENABLED", "DISABLED"] and not profiling.STOPS
+    failing = FakeApi(fail_stop=True)
+    await window_cancelled(monkeypatch, failing, times=1)
+    assert failing.posts == ["ENABLED", "DISABLED"]
+    assert "Stopping the Snort rule profiler failed: FMC went away" in caplog.text
 
 
 async def test_snort_run_stops_the_profiler_when_the_wait_fails(
@@ -511,6 +581,15 @@ async def test_results_named_file_running_and_none(fmc: respx.MockRouter) -> Non
     assert named.called and one["modules"][0]["module"] == "daq"
     assert "No Snort rule profiler file on ftd-prof yet" in none["note"]
     assert "still running" in on["note"]
+
+
+async def test_a_bad_file_name_is_refused_before_any_fmc_request(fmc: respx.MockRouter) -> None:
+    async with Client(server()) as c:
+        with pytest.raises(ToolError) as e:
+            await c.call_tool("fmc_get_profiler_results", {"device": "ftd-prof", "file": "../x.json"})
+    assert "is not a profiler file name" in str(e.value)
+    urls = [str(call.request.url) for call in fmc.calls]  # the login's own requests only
+    assert [u for u in urls if "troubleshoot" in u or ("devicerecords" in u and "limit=1" not in u)] == []
 
 
 async def test_profilers_run_as_mcp_tasks(fmc: respx.MockRouter) -> None:
