@@ -35,7 +35,7 @@ from .conftest import ACP_ID, CFG, empty, fixture, items, make_settings
 FX = fixture("rule_conditions")
 RULES = f"{CFG}/policy/accesspolicies/{ACP_ID}/accessrules"
 HTTP = {"id": "676", "type": "Application", "name": "HTTP"}
-SSH = {"id": "90005", "type": "Application", "name": "SSH"}
+SSH = {"id": "846", "type": "Application", "name": "SSH"}
 EMPLOYEES = {"id": "93ad6890-8c01-11e6-996c-525400b48521", "type": "ISESecurityGroupTag", "name": "Employees"}
 PCI = {"id": "93f91790-8c01-11e6-996c-525400b48521", "type": "ISESecurityGroupTag", "name": "PCI_Servers"}
 EXPIRED = FX["timeranges"]["items"][0]
@@ -52,6 +52,8 @@ WORKDAY = {
         }
     ],
 }
+# The spec's list shape (metadata.count): FMC 10.0.1 lists no filter created over its API (the live list
+# stays empty, fixture applicationfilters_empty); its POST answer is applicationfilter_created.
 FILTER = {
     "id": "00000000-0000-0ed3-0000-021474960002",
     "type": "ApplicationFilter",
@@ -87,7 +89,7 @@ def body(fx: dict[str, Any]) -> httpx.Response:
 def conds(lab: respx.MockRouter) -> respx.MockRouter:
     lab.get(f"{CFG}/object/applications", name="apps").mock(return_value=body(FX["applications_page"]))
     lab.get(f"{CFG}/object/applications/676", name="http").mock(return_value=body(FX["application_http"]))
-    lab.get(f"{CFG}/object/applications/90005").mock(return_value=httpx.Response(200, json=SSH))
+    lab.get(f"{CFG}/object/applications/846").mock(return_value=body(FX["application_ssh"]))
     lab.get(f"{CFG}/object/applications/424242").mock(return_value=httpx.Response(404, json={}))
     lab.get(f"{CFG}/object/applicationfilters").mock(return_value=items([FILTER]))
     lab.get(f"{CFG}/object/applicationcategories").mock(return_value=body(FX["applicationcategories"]))
@@ -224,7 +226,7 @@ async def test_create_rule_with_every_new_condition(conds: respx.MockRouter) -> 
             "policy": "mcp-test-acp",
             "name": "mcp-w6-app",
             "action": "ALLOW",
-            "applications": ["http", "90005", "HTTP"],
+            "applications": ["http", "846", "HTTP"],
             "application_filters": ["mcp-w6-high-risk"],
             "vlan_tags": ["mcp-w6-vlan20", "10", "100-110"],
             "time_range": "mcp-w6-workday",
@@ -586,3 +588,73 @@ async def test_create_time_range_checks(conds: respx.MockRouter) -> None:
         ):
             with pytest.raises(ToolError, match=msg):
                 await run(c, "fmc_create_time_range", {"name": "x", **bad})
+
+
+# --- live FMC 10.0.1 shapes (W6 live-B1, 2026-10-21) ------------------------------------------------
+
+LIVE = FX["live_rules"]
+
+
+def test_live_rule_gets_read_back_as_authored() -> None:
+    """The rules fmc_create_access_rule made, as FMC 10.0.1 returns them: every condition shows by name."""
+    rows = {k: flatten_access_rule(v) for k, v in LIVE.items() if k != "_source"}
+    assert rows["app_ssh"]["applications"] == ["SSH"]
+    assert rows["time_now"]["time_ranges"] == ["mcp-w6-tr-now"] and rows["time_now"]["dst_ports"] == [
+        "TCP/443"
+    ]
+    assert rows["vlan"]["vlan_tags"] == ["VLAN 100"]
+    assert rows["app_filter"]["applications"] == ["filter:mcp-w6-appfilter"]
+    assert "vlan_tags" not in rows["app_ssh"]  # FMC's empty vlanTags {} is no condition
+
+
+async def test_update_keeps_fmcs_application_default_port_flag(conds: respx.MockRouter) -> None:
+    """FMC adds applicationDefaultPort: false to every applications block: a new list keeps it, [] drops the
+    whole block (the live GET then had no applications key) and the other conditions stay."""
+    rule = LIVE["app_ssh"]
+    conds.get(RULES).mock(return_value=items([rule]))
+    put = conds.put(f"{RULES}/{rule['id']}").mock(return_value=httpx.Response(200, json=rule))
+    base = {"policy": "mcp-test-acp", "rule": "mcp-w6-app-ssh"}
+    preview, _ = await preview_apply("fmc_update_access_rule", {**base, "applications": ["SSH", "HTTP"]})
+    assert preview["preview"]["changes"]["applications"] == {"from": ["SSH"], "to": ["SSH", "HTTP"]}
+    sent = json.loads(put.calls.last.request.content)
+    assert sent["applications"] == {"applicationDefaultPort": False, "applications": [SSH, HTTP]}
+    assert sent["destinationNetworks"] == rule["destinationNetworks"]
+    preview, _ = await preview_apply("fmc_update_access_rule", {**base, "applications": []})
+    assert preview["preview"]["changes"]["applications"] == {"from": ["SSH"], "to": "any"}
+    sent = json.loads(put.calls.last.request.content)
+    assert "applications" not in sent and sent["sourceNetworks"] == rule["sourceNetworks"]
+
+
+def test_time_range_fmc_stored_without_a_start() -> None:
+    """FMC answers effectiveStartDateTime 'Started' for a range created without a start."""
+    tr = {k: v for k, v in FX["timerange_started"].items() if k != "_source"}
+    row = time_range_row(tr, datetime(2026, 10, 21, 6, 0))
+    assert row == {
+        "name": "mcp-w6-tr-now",
+        "start": "Started",
+        "end": "2026-10-23T23:59",
+        "recurring": ["MON,TUE,WED,THU,FRI,SAT,SUN 00:00-23:59"],
+    }
+    assert time_range_row(tr, datetime(2026, 10, 24, 6, 0))["ended"] is True
+
+
+async def test_create_application_filter_live_body_and_answer(conds: respx.MockRouter) -> None:
+    """The live call: risks=['High', 'Very High'] sends no condition 'type' and FMC answers 201 with the
+    condition's 'search' text and an empty metadata."""
+    answer = {k: v for k, v in FX["applicationfilter_created"].items() if k != "_source"}
+    conds.get(f"{CFG}/object/applicationfilters").mock(return_value=body(FX["applicationfilters_empty"]))
+    post = conds.post(f"{CFG}/object/applicationfilters").mock(return_value=httpx.Response(201, json=answer))
+    _, done = await preview_apply(
+        "fmc_create_application_filter", {"name": "mcp-w6-appfilter", "risks": ["High", "Very High"]}
+    )
+    assert json.loads(post.calls.last.request.content) == {
+        "name": "mcp-w6-appfilter",
+        "type": "ApplicationFilter",
+        "appConditions": [{"risks": answer["appConditions"][0]["risks"]}],
+    }
+    assert done["status"] == "applied" and done["result"]["id"] == answer["id"]
+    assert filter_row(answer) == {
+        "name": "mcp-w6-appfilter",
+        "id": answer["id"],
+        "conditions": ["risk High or Very High"],
+    }
