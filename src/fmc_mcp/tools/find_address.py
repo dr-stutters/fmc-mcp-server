@@ -88,10 +88,11 @@ AREA_ORDER = {
 }
 COLUMNS = ["rank", "match", "area", "where", "side", "via", "value"]
 LIMITS = (
-    "FMC's configuration, read offline: per-device object overrides, inherited parent-policy rules, "
+    "FMC's configuration, read offline: per-device object overrides, "
     "virtual-router (VRF) routes, FQDN objects, route-based VPN tunnels (no protected networks), "
     "DHCP/PPPoE-assigned interface addresses, cluster address pools, DHCP server pools and "
-    "platform-settings hosts are not resolved. Matches only through 'any' (0.0.0.0/0, ::/0) are "
+    "platform-settings hosts are not resolved. A child access policy lists its base policy's rules too: "
+    "those rows say 'inherited from <base>'. Matches only through 'any' (0.0.0.0/0, ::/0) are "
     "counted, and FMC's built-in objects left out of the objects area, unless include_broad. Live "
     "state: fmc_packet_tracer / fmc_rule_lookup."
 )
@@ -326,12 +327,29 @@ class Search(Findings):
         return best, count
 
 
-def _rule_where(policy: str, rule: dict[str, Any], action: Any) -> str:
+def inherited_from(rule: dict[str, Any], policy_id: Any) -> str | None:
+    """The base policy of a rule FMC lists under a child policy, or None for the policy's own rules.
+    FMC 10.0.1 lists a child access policy's inherited rules in the child's accessrules, with the parent's
+    rule ids, the child's rule index and metadata.accessPolicy = the base (live 2026-10-21)."""
+    owner = (rule.get("metadata") or {}).get("accessPolicy") or {}
+    if not policy_id or not isinstance(owner, dict) or not owner.get("id"):
+        return None
+    if str(owner["id"]).lower() == str(policy_id).lower():
+        return None
+    return str(owner.get("name") or owner["id"])
+
+
+def _rule_where(policy: str, rule: dict[str, Any], action: Any, policy_id: Any = None) -> str:
+    """'<policy> #<index> <rule> (<action>)', with ' [disabled]' and, for a rule a child policy inherits,
+    ' [inherited from <base>]' (pass the searched policy's id)."""
     idx = (rule.get("metadata") or {}).get("ruleIndex")
     where = f"{policy} #{idx} {rule.get('name')}" if idx is not None else f"{policy}: {rule.get('name')}"
     where += f" ({action})"
     if rule.get("enabled") is False:
         where += " [disabled]"
+    base = inherited_from(rule, policy_id)
+    if base:
+        where += f" [inherited from {base}]"
     return where
 
 
@@ -389,7 +407,8 @@ async def _access_rules(s: Search, policies: list[dict[str, Any]]) -> None:
                     via = " > ".join(m.path) or "literal"
                     if n > 1:
                         via += f" (+{n - 1} more)"
-                    s.add("access_rules", m, _rule_where(str(p.get("name")), r, r.get("action")), side, via)
+                    where = _rule_where(str(p.get("name")), r, r.get("action"), p.get("id"))
+                    s.add("access_rules", m, where, side, via)
     s.searched["access_policies"] = len(policies)
     s.searched["access_rules"] = rules_read
 
