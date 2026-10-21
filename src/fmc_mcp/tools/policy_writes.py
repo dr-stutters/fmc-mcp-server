@@ -252,6 +252,52 @@ async def applied_rule(app: FmcApp, fn: Callable[[], Awaitable[Any]]) -> Any:
     return result
 
 
+def owned_by(rule: dict[str, Any], policy: dict[str, Any]) -> bool:
+    """Whether a listed rule belongs to `policy` itself: a child policy's rule list also holds its base
+    policy's rules, whose metadata.accessPolicy names the base (recorded on FMC 10.0.1)."""
+    owner = ((rule.get("metadata") or {}).get("accessPolicy") or {}).get("id")
+    return not owner or str(owner).lower() == str(policy.get("id", "")).lower()
+
+
+async def moved_into_category(
+    app: FmcApp,
+    base: str,
+    policy: dict[str, Any],
+    before: dict[str, Any],
+    desired: dict[str, Any],
+    answer: Any,
+) -> dict[str, Any]:
+    """The rule after a move into a category. FMC 10.0.1 re-creates a rule it moves into a category: the
+    old id answers 404, and the bulk PUT answers with an id that isn't the stored one either (recorded
+    live: 571 before the move, 0001-792202030173 in the answer, 573 in the list after). So the rule is
+    found again by its name among the policy's own rules."""
+    app.invalidate_cache()
+    name = str(desired.get("name") or before.get("name") or "")
+    rows = (await all_rules(app, base)).items
+    same = [r for r in rows if str(r.get("name", "")).casefold() == name.casefold()]
+    now = next((r for r in same if owned_by(r, policy)), None)
+    nxt = "fmc_deploy (fmc_pending_changes shows the diff)"
+    if now is None:
+        items = answer.get("items") if isinstance(answer, dict) else answer
+        echo = items[0] if isinstance(items, list) and items and isinstance(items[0], dict) else {}
+        return {
+            "rule": name,
+            "into": (echo.get("metadata") or {}).get("category"),
+            "warning": f"FMC accepted the move, but {policy.get('name')!r} lists no rule named {name!r} "
+            "afterwards; check with fmc_list_access_rules before repeating it.",
+            "next": nxt,
+        }
+    out: dict[str, Any] = {"rule": flatten_access_rule(now), "now_at": rule_place(now), "next": nxt}
+    old_id, new_id = str(before.get("id") or ""), str(now.get("id") or "")
+    if old_id and new_id and old_id.lower() != new_id.lower():
+        out["id_changed"] = {"from": old_id, "to": new_id}
+        out["note"] = (
+            "FMC gave the rule a new id when it moved it into the category (it re-creates the rule there; "
+            "the comment history stays): anything that kept the old id needs the new one."
+        )
+    return out
+
+
 def register(reg: ToolRegistrar) -> None:
     @reg.write(title="Create access control policy")
     async def fmc_create_access_policy(
@@ -618,7 +664,8 @@ def register(reg: ToolRegistrar) -> None:
         or inline_app_filter by attributes), URL categories, users, VLAN tags, the time range ('' removes it)
         and SGTs, add a comment, or move it to another position or into a rule category. Preview shows the
         field changes and the old/new index (a category move: the category's section and rule range; the
-        result shows where the rule landed)."""
+        result shows where the rule landed and its new id: FMC re-creates a rule it moves into a
+        category)."""
         app: FmcApp = get_client(ctx)
         if move_to and category:
             raise InvalidRequest("Give either move_to or category, not both.")
@@ -749,6 +796,10 @@ def register(reg: ToolRegistrar) -> None:
                     into = str(target_cat.get("name"))
                     place, row = rule_place(current), category_row(target_cat)
                     details["move"] = {"from": place, "into_category": row}
+                    move_note.append(
+                        "FMC re-creates the rule in the category: it gets a new id (the result shows it; "
+                        "name, conditions and comment history stay)."
+                    )
                     if row.get("section") and place.get("section") and row["section"] != place["section"]:
                         move_note.append(
                             f"The rule moves from the {place['section']} section into the {row['section']} "
@@ -760,13 +811,8 @@ def register(reg: ToolRegistrar) -> None:
         async def apply() -> Any:
             if into:
                 # FMC moves rules into a category through the bulk PUT with the category parameter
-                await app.api.put(base, [desired], params={"bulk": "true", "category": into})
-                now = await app.api.get(f"{base}/{current['id']}")
-                return {
-                    "rule": flatten_access_rule(now),
-                    "now_at": rule_place(now),
-                    "next": "fmc_deploy (fmc_pending_changes shows the diff)",
-                }
+                answer = await app.api.put(base, [desired], params={"bulk": "true", "category": into})
+                return await moved_into_category(app, base, p, current, desired, answer)
             if move_to and move_to != old_index:
                 # FMC moves rules through the bulk PUT with an insert position.
                 params: dict[str, Any] = {"bulk": "true"}
