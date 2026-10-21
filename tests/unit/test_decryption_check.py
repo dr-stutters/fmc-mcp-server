@@ -247,4 +247,7 @@ async def test_real_cert_conditions_stay_conditional(fmc: respx.MockRouter) -> N
     first = out["may_match_first"][0]
     assert first["name"] == "mcp-fw-resign"
     assert first["depends_on"] == ["certificateStatuses", "tlsVersions", "clientThreat"]
-    assert first["cert_conditions"] == ["certificateStatuses", "tlsVersions", "clientThreat"]
+    # F82: TLS versions have their own key, and the check says what they would match
+    assert first["cert_conditions"] == ["certificateStatuses", "clientThreat"]
+    assert first["tls_versions"] == ["tls11", "tls12", "tls13"]
+    assert first["matches_if"] == ["the session negotiates tls11, tls12, tls13"]
