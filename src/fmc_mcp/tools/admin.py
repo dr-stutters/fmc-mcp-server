@@ -25,6 +25,7 @@ from fmc_mcp.client import FmcApp
 from fmc_mcp.preview import fmc_preview
 from fmc_mcp.tools.common import Domain, ref_label, resolve_in, resolve_object, slim
 from fmc_mcp.tools.dangerous import Wait, finish
+from fmc_mcp.tools.device_groups import expand_devices
 from fmc_mcp.tools.devices import DEVICES, DeviceRef
 from fmc_mcp.tools.object_writes import applied, editable, value_fields
 from fmc_mcp.tools.render import object_reply
@@ -134,7 +135,13 @@ def register(reg: ToolRegistrar) -> None:
     async def fmc_backup_devices(
         ctx: Context,
         devices: Annotated[
-            list[str], Field(min_length=1, max_length=20, description="Device names or UUIDs to back up")
+            list[str],
+            Field(
+                min_length=1,
+                max_length=20,
+                description="Device names or UUIDs to back up, or device groups ('group:<name>'; HA pairs "
+                "and clusters in a group by their units)",
+            ),
         ],
         wait: Wait = True,
         domain: Domain = None,
@@ -145,9 +152,11 @@ def register(reg: ToolRegistrar) -> None:
         then answers "No devices found". List the result with fmc_list_backups."""
         app: FmcApp = get_client(ctx)
         refs = []
-        for d in dict.fromkeys(devices):
+        for d in (await expand_devices(app, devices, domain, units=True)).refs:
             dev = await resolve_in(app, DEVICES, d, "device", domain)
             refs.append({"type": "Device", "id": dev["id"], "name": dev.get("name")})
+        if len(refs) > 20:
+            raise InvalidRequest(f"{len(refs)} devices; back up at most 20 per call.")
         # the backup API looks devices up in its own domain (a leaf domain on multi-domain FMCs)
         where = {await app.device_domain(DEVICES, r["id"], await app.domain_uuid(domain)) for r in refs}
         if len(where) > 1:

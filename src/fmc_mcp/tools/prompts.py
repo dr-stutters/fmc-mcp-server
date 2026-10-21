@@ -373,17 +373,34 @@ def _drift_step(compare_with: str, d: str) -> str:
 
 
 def _health_review_text(
-    domain: str | None, device: str | None, lookback_hours: int, compare_with: str | None = None
+    domain: str | None,
+    device: str | None,
+    lookback_hours: int,
+    compare_with: str | None = None,
+    group: str | None = None,
 ) -> str:
     """The fmc_firewall_health_review instructions."""
     if not 1 <= lookback_hours <= 720:
         raise InvalidRequest(f"lookback_hours must be 1-720, not {lookback_hours}.")
     dom = _q(domain, "domain") if domain else None
     dev = _q(device, "device") if device else None
+    grp = _q(group, "group") if group else None
     d = f", domain={dom}" if dom else ""  # after a tool's other arguments
     wd = f" with domain={dom}" if dom else ""  # a tool's only argument
     minutes = lookback_hours * 60
-    if dev:
+    if grp:
+        named = f" whose name contains {dev}" if dev else ""
+        scope = f"the devices of device group {grp}{named}" + (f" in domain {dom}" if dom else "")
+        listing = f" with name={dev}{d}" if dev else wd
+        inventory = (
+            f"{tool_ref('fmc_list_device_groups')} with group={grp}{d} (its members), then "
+            f"{tool_ref('fmc_list_devices')}{listing} for their rows"
+        )
+        keep = f" Keep only the rows of the group's devices{named} (and, for alerts, the FMC's own)."
+        cert_keep = (
+            " Of the device rows keep those of the group's devices; the other certificates are FMC-wide."
+        )
+    elif dev:
         scope = f"the devices whose name contains {dev}" + (f" in domain {dom}" if dom else "")
         inventory = f"{tool_ref('fmc_list_devices')} with name={dev}{d}"
         keep = " Keep only the rows of the devices from step 1 (and, for alerts, the FMC's own)."
@@ -403,9 +420,11 @@ change, deploy or back up nothing; the report only proposes next steps.
 
 FMC allows about 120 API requests per minute, and each tool call costs one or more. Call each
 aggregate tool below once and drill into single devices only where a finding needs it: at most
-10 per-device calls in all; report any further devices from the aggregate rows. A tool that
-fails or times out is a finding of its own (a warning when it hides a whole check, else info):
-note it and carry on.
+10 per-device calls in all; report any further devices from the aggregate rows. Where several
+devices need the same check, make it one fleet call ({tool_ref("fmc_run_show_command")} with
+devices=[...] or group=..., up to 25 devices, one row per device) instead of one call per device.
+A tool that fails or times out is a finding of its own (a warning when it hides a whole check,
+else info): note it and carry on.
 
 1. Devices and connectivity: {inventory}. Note each device's health, connected, deployment
    status, version and access policy. A disconnected device is critical. For each device that is
@@ -418,13 +437,19 @@ note it and carry on.
    {tool_ref("fmc_device_metrics")} with device=<name>, since="{lookback_hours}h"{d} shows its load
    over the review window: CPU and memory peaks with their times, throughput, connections and drops.
    A peak at the time of an alert ties them together; sustained CPU or memory above the limits the
-   result flags is a finding of its own. These calls count towards the per-device limit.
+   result flags is a finding of its own. These calls count towards the per-device limit{
+        f"; device={json.dumps('group:' + group.strip())} runs it on every device of the group (at most "
+        "10) in one call"
+        if group
+        else ""
+    }.
 
 2. HA and clusters: {tool_ref("fmc_list_ha_pairs")}{wd} and {tool_ref("fmc_list_clusters")}{wd}. For
    each HA pair with a unit in scope, {tool_ref("fmc_get_ha_status")} with ha_pair=<name>{d}. One
    Active and one Standby unit is healthy; no active unit, two active units, or a failed or
    unknown standby is critical. Only the management interface monitored is info. A cluster with a
-   missing or disabled data node is critical.
+   missing or disabled data node is critical. Each unit's own view, for every pair in scope in one
+   call: {tool_ref("fmc_run_show_command")} with devices=[the pairs], command='show failover state'{d}.
 
 3. Deployments: {tool_ref("fmc_list_deployable_devices")}{wd}.{keep} A device with pending changes
    is a warning (it doesn't run what FMC holds). For up to three of them,
@@ -463,7 +488,11 @@ note it and carry on.
    certificate on FMC before days_left reaches 0.
 
 8. VPN: {tool_ref("fmc_list_vpn_tunnels")}{wd}.{keep} TUNNEL_DOWN is critical and UNKNOWN a
-   warning; no tunnels at all is info.
+   warning; no tunnels at all is info. For the devices with such a tunnel, their own IKE view in
+   one call: {tool_ref("fmc_run_show_command")} with devices=[those devices], command='show crypto ikev2 sa'{
+        d
+    }
+   (a device that is not connected fails its row: that is the finding, not the tool).
 
 9. Health alerts: {tool_ref("fmc_list_health_alerts")} with since_minutes={minutes}{d}.{keep}
    Repeats are collapsed with first/last seen and a count. An alert last seen in the last hour is
@@ -1611,6 +1640,9 @@ def register(reg: ToolRegistrar) -> None:
                 "device template, or a stored export's file name in FMC_BUNDLE_DIR (fmc_diff_device_config)"
             ),
         ] = None,
+        group: Annotated[
+            str | None, Field(description="Only the devices of this device group (fmc_list_device_groups)")
+        ] = None,
     ) -> str:
         """Is the firewall estate healthy? Reviews device health and connectivity (with CPU, memory,
         throughput and drops over the review window for the devices that need it), HA pairs and
@@ -1619,7 +1651,7 @@ def register(reg: ToolRegistrar) -> None:
         aggregate tools, optionally configuration drift against a reference device, template or
         stored export (compare_with), and writes one ranked report (critical, warning, info), each
         finding with its evidence and a concrete next step. Read-only."""
-        return _health_review_text(domain, device, lookback_hours, compare_with)
+        return _health_review_text(domain, device, lookback_hours, compare_with, group)
 
     @reg.prompt(
         title="Review a rule change",
