@@ -533,7 +533,8 @@ RATE_LABELS = {
 # (summarize), throughput 1 Mbit/s, connections 10 above the average, a drop reason 100 drops.
 MOVE_BPS = 1e6
 MOVE_CONNECTIONS = 10
-MOVE_DROPS = 100
+MOVE_DROPS = 100  # also the least rate-exceeded drops that make a device busy
+SEVERITY_ORDER = {"critical": 0, "warning": 1}
 
 
 def human(v: float, unit: str) -> str:
@@ -629,7 +630,7 @@ def limit_findings(result: dict[str, Any], dev: dict[str, Any], findings: list[d
                     }
                 )
     for r in (result.get("drops") or {}).get("asp_drops") or []:
-        if r.get("reason") == "rate-exceeded" and r.get("count"):
+        if r.get("reason") == "rate-exceeded" and r.get("count", 0) >= MOVE_DROPS:
             why = (
                 f"traffic over the {tier[0]} performance tier's {tier[1]} Mbit/s throughput limit"
                 if tier
@@ -639,8 +640,8 @@ def limit_findings(result: dict[str, Any], dev: dict[str, Any], findings: list[d
                 {
                     "severity": "warning",
                     "what": "drops rate-exceeded",
-                    "reason": f"{r['count']} packets dropped as rate-exceeded "
-                    f"({r.get('description') or 'rate limit'}): {why}",
+                    "reason": f"{r['count']} {'packet' if r['count'] == 1 else 'packets'} dropped as "
+                    f"rate-exceeded ({r.get('description') or 'rate limit'}): {why}",
                 }
             )
 
@@ -674,10 +675,11 @@ def summary(result: dict[str, Any], dev: dict[str, Any], findings: list[dict[str
             best[row.family] = (score, row)  # one per family: in and out of one burst are one movement
     top = [r for _, r in sorted(best.values(), key=lambda b: -b[0])][:3]
     out: dict[str, Any] = {}
-    flagged = [f["reason"] for f in findings]
+    worst_first = sorted(findings, key=lambda f: SEVERITY_ORDER.get(str(f.get("severity")), 9))
+    flagged = [f"{f['severity']}: {f['reason']}" for f in worst_first]
     if flagged:
         out["busy"] = True
-        out["verdict"] = f"Busy: {flagged[0]}."
+        out["verdict"] = f"Busy: {worst_first[0]['reason']}."
     else:
         out["busy"] = False
         level = headline(result)
@@ -687,9 +689,9 @@ def summary(result: dict[str, Any], dev: dict[str, Any], findings: list[dict[str
             out["verdict"] += f" Biggest movement: {m.metric} {human(m.s['max'], m.unit)} at {m.s['max_at']}."
         else:
             out["verdict"] += " No peaks: a steady window."
-    if top:
-        runs = [p for r in top for p in r.s["peaks"]]
-        out["peak_window"] = {"from": min(p["from"] for p in runs), "to": max(p["to"] for p in runs)}
+    if top:  # the biggest movement's highest peak run (other movements can be hours away)
+        run = max(top[0].s["peaks"], key=lambda p: p["value"])
+        out["peak_window"] = {"from": run["from"], "to": run["to"]}
         out["top_movements"] = [
             f"{r.metric}: {human(r.s['max'], r.unit)} at {r.s['max_at']} "
             f"(average {human(r.s['avg'], r.unit)}{f'; {r.drops} in the window' if r.drops else ''})"

@@ -389,9 +389,10 @@ async def test_burst_summary_names_the_tier_limit(
         "CPU data_plane: 10.3 % at 2026-10-18T23:06:00Z (average 1.88 %)",
     ]
     assert s["flagged"][-1] == (
-        "39873 packets dropped as rate-exceeded (output qos rate exceeded): traffic over the FTDv5 "
+        "warning: 39873 packets dropped as rate-exceeded (output qos rate exceeded): traffic over the FTDv5 "
         "performance tier's 100 Mbit/s throughput limit"
     )
+    assert s["flagged"][0].startswith("critical: throughput in reached 155.5 Mbit/s")
     assert s["performance_tier"] == "FTDv5 (100 Mbit/s)"
     assert [f["what"] for f in r["findings"]] == ["throughput in", "throughput out", "drops rate-exceeded"]
     rate = r["drops"]["asp_drops"][0]
@@ -418,6 +419,10 @@ async def test_burst_markdown_one_row_per_metric(
     md = r.content[0].text  # type: ignore[union-attr]
     assert md.startswith("**mcp-fw-ha-a**, 2026-10-18T22:55:00Z to 23:12:00Z, a sample every 60 s\n\n**Busy:")
     assert "- peak window: 23:05:00Z to 23:06:00Z" in md and "- performance tier: FTDv5 (100 Mbit/s)" in md
+    assert (
+        "  - critical: throughput in reached 155.5 Mbit/s" in md
+        and "  - warning: 39873 packets dropped" in md
+    )
     assert "| metric | min | avg | max | max at | last | peaks |" in md
     assert "| CPU data_plane | 0 % | 1.88 % | 10.3 % | 23:06:00Z | 0 % | 23:05:00Z-23:06:00Z |" in md
     assert (
@@ -453,3 +458,95 @@ def test_human_units_and_movements() -> None:
     assert metrics.moved(metrics.Row("throughput in", "bit/s", {**flat, "max": 2e6}, "throughput"))
     assert not metrics.moved(metrics.Row("ASP drops sp-security-failed", "/s", flat, "drops", drops=2))
     assert metrics.flat_zero([(1.0, 0.0), (2.0, 0.0)]) and not metrics.flat_zero([])
+
+
+T0 = 1792330800  # NOW - 20 minutes: 21 samples a minute apart
+
+
+def byte_counter(rates_bps: dict[int, float], base: float = 1_000.0) -> list[tuple[float, float]]:
+    """A bytes counter whose per-minute rate is `base` bit/s except at the given sample indexes."""
+    pts, value = [(float(T0), 0.0)], 0.0
+    for i in range(1, 21):
+        value += rates_bps.get(i, base) * 60 / 8
+        pts.append((float(T0 + i * 60), value))
+    return pts
+
+
+def all_row(inb: dict[int, float], outb: dict[int, float]) -> dict[str, Any]:
+    labels = {"interface": "all", "interface_name": "all", "interface_type": "All"}
+    return prom(
+        [
+            ({**labels, "description": "input_bytes"}, byte_counter(inb)),
+            ({**labels, "description": "output_bytes"}, byte_counter(outb)),
+        ]
+    )
+
+
+async def test_worst_finding_first_and_the_top_movements_peak(fmc: respx.MockRouter) -> None:
+    """A CPU warning early in the window and a burst over the FTDv5 limit late: the verdict names the
+    critical one, the peak window is the burst's (not 'from the CPU peak to the burst'), and a tier
+    warning below 100 % keeps its severity."""
+    cpu = prom([({"cpu": "system_avg"}, [(T0 + i * 60, 82.0 if i == 2 else 10.0) for i in range(21)])])
+    mount(fmc, {"cpu": cpu, "interface": all_row({15: 160e6}, {15: 85e6})})
+    fmc.get(f"{CFG}/devices/devicerecords").mock(return_value=items([{**DEVICE, "performanceTier": "FTDv5"}]))
+    async with Client(server()) as c:
+        r = await run(c, {"device": "mcp-ftd1", "since": "20m", "metric": "all"})
+        md = (await c.call_tool("fmc_device_metrics", {"device": "mcp-ftd1", "since": "20m"})).content[0].text  # type: ignore[union-attr]
+    burst = "2026-10-18T13:55:00Z"
+    assert [f["what"] for f in r["findings"]] == ["CPU system", "throughput in", "throughput out"]
+    s = r["summary"]
+    assert s["verdict"] == (
+        f"Busy: throughput in reached 160.0 Mbit/s at {burst}, 160 % of the FTDv5 performance tier's "
+        "100 Mbit/s limit."
+    )
+    assert [f.split(":")[0] for f in s["flagged"]] == ["critical", "warning", "warning"]
+    assert s["flagged"][1].startswith("warning: CPU system reached 82.0 %")
+    assert s["flagged"][2] == (
+        f"warning: throughput out reached 85.0 Mbit/s at {burst}, 85 % of the FTDv5 performance tier's "
+        "100 Mbit/s limit"
+    )
+    assert s["peak_window"] == {"from": burst, "to": burst}
+    assert [m.split(":")[0] for m in s["top_movements"]] == ["throughput in", "CPU system"]
+    assert "  - warning: throughput out reached 85.0 Mbit/s" in md
+
+
+@pytest.mark.parametrize(("count", "busy"), [(1, False), (150, True)])
+async def test_rate_exceeded_without_a_tier(fmc: respx.MockRouter, count: int, busy: bool) -> None:
+    """A device with no FTDv tier (hardware, or a record without it): rate-exceeded drops are a rate
+    limit of some kind; a single one is not 'busy'."""
+    drops = [(float(T0 + i * 60), 10.0 + (count if i >= 10 else 0)) for i in range(21)]
+    mount(
+        fmc,
+        {
+            "asp_drops": prom(
+                [({"asp_drops": "rate-exceeded", "description": "output qos rate exceeded"}, drops)]
+            )
+        },
+    )
+    async with Client(server()) as c:
+        r = await run(c, {"device": "mcp-ftd1", "since": "20m", "metric": "drops"})
+    assert r["drops"]["asp_drops"][0]["count"] == count
+    assert r["drops"]["asp_drops"][0]["meaning"] == metrics.ASP_MEANINGS["rate-exceeded"]
+    assert r["summary"]["busy"] is busy and "performance_tier" not in r["summary"]
+    if busy:
+        assert r["summary"]["verdict"] == (
+            "Busy: 150 packets dropped as rate-exceeded (output qos rate exceeded): traffic over a rate "
+            "limit (an FTDv's performance tier, or a QoS policy)."
+        )
+    else:
+        assert "findings" not in r and r["summary"]["verdict"].startswith("Not busy")
+
+
+async def test_not_busy_markdown(fmc: respx.MockRouter) -> None:
+    mount(fmc)
+    async with Client(server()) as c:
+        md = (await c.call_tool("fmc_device_metrics", {"device": "mcp-ftd1", "since": "20m"})).content[0].text  # type: ignore[union-attr]
+    assert md.startswith(
+        "**mcp-ftd1**, 2026-10-18T13:40:00Z to 14:00:00Z, a sample every 60 s\n\n"
+        "**Not busy: no threshold crossed; CPU at most 16 % (system), memory at most 40.26 % (data_plane), "
+        "throughput at most 1.0 kbit/s in / 212.8 bit/s out. No peaks: a steady window.**\n\n| metric |"
+    )
+    assert "- flagged:" not in md and "- peak window" not in md
+    assert "| CPU system | 9 % | 11.25 % | 16 % | 13:56:00Z | 10 % |  |" in md
+    assert "| acl-drop | 341 | denied by an access rule" in md
+    assert "- 6 series were 0 for the whole window and are left out: CPU data_plane" in md
