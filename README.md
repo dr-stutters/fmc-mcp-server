@@ -194,7 +194,7 @@ Notes on some read tools:
 | Bulk rule edits | `fmc_bulk_update_access_rules` (select rules by names, ids, text, action, enabled, section, category or no hits in N days; set enabled, logging, action, intrusion policy, extra source zones or a comment; one preview with every rule's diff, partial bulk PUTs of 50, stops at the first rule FMC refuses), `fmc_clear_hit_counts` (one device; the preview lists the counts that are lost) |
 | NAT | `fmc_create_nat_policy`, `fmc_create_nat_rule`, `fmc_update_nat_rule`, `fmc_delete_nat_rule` |
 | Device configuration | `fmc_update_interface`, `fmc_create_subinterface`, `fmc_create_interface` (loopback, VTI, EtherChannel, BVI), `fmc_delete_interface`, `fmc_create_static_route`, `fmc_delete_static_route`, `fmc_assign_policy` |
-| Routing | `fmc_configure_bgp`, `fmc_configure_ospf`, `fmc_create_vrf`, `fmc_delete_vrf` |
+| Routing | `fmc_configure_bgp` (neighbors, networks, and route policy: neighbor route maps and prefix lists in/out, maximum prefix, default-originate, redistribution of connected/static/OSPF with a route map and metric; the preview diffs only the touched neighbor), `fmc_configure_ospf` (area networks, redistribution), `fmc_create_prefix_list` (IPv4 lines with ge/le), `fmc_create_route_map` (match prefix lists, communities, AS paths; set local preference, metric, weight, communities, AS-path prepend), `fmc_create_vrf`, `fmc_delete_vrf` |
 | SD-WAN application-aware routing | `fmc_configure_wan_interface` (priority, ICMP path monitoring to the next hop or an IP, HTTP application monitoring), `fmc_configure_ecmp_zone`, `fmc_create_app_route` (applications, networks, ports or users out of the WAN link picked by order, priority, or lowest jitter / loss / RTT or highest MOS), `fmc_delete_app_route`; `fmc_get_routing` shows the routes and WAN settings |
 | Platform settings / logging | `fmc_create_platform_settings_policy`, `fmc_configure_syslog`, `fmc_set_access_logging`, `fmc_configure_ntp`, `fmc_configure_snmp` (v2c; community write-only), `fmc_configure_ssh_access`, `fmc_configure_dns` (the DNS server group FQDN objects resolve with, created from server IPs; lookup interfaces, timers), `fmc_configure_netflow` (collectors, traffic classes, on/off), `fmc_configure_mgmt_access` (ICMP and HTTPS access to the data interfaces), `fmc_set_banner` |
 | Dynamic objects | `fmc_create_dynamic_object`, `fmc_delete_dynamic_object`, `fmc_map_dynamic_object` |
@@ -524,7 +524,7 @@ checks it against the registered tools.
 | `objects` | 24 (9/14/1) | network/port/URL objects and groups, zones, dynamic objects, overrides, where an address is used |  |
 | `platform` | 11 (1/10/0) | platform settings: syslog, connection logging, NTP, SNMP, DNS, NetFlow, SSH/HTTPS/ICMP, banner |  |
 | `policy` | 26 (9/16/1) | access control, NAT and prefilter policies and rules, assignments, rule hygiene | `fmc_policy_cleanup`, `fmc_rule_change_review`, `fmc_why_blocked` |
-| `routing` | 8 (2/6/0) | static routes, BGP, OSPF, VRFs |  |
+| `routing` | 10 (2/8/0) | static routes, BGP, OSPF, VRFs, prefix lists and route maps |  |
 | `sdwan` | 7 (1/6/0) | SD-WAN hub and spoke topologies, WAN interfaces, application-aware routing, branch health | `fmc_onboard_branch`, `fmc_sdwan_troubleshoot` |
 | `threat` | 13 (5/8/0) | intrusion (IPS), file/malware and network analysis policies, an ACP's threat posture | `fmc_threat_defense_review` |
 | `tls` | 15 (5/10/0) | TLS decryption policies and rules, cipher suite lists, certificates (all kinds, days left), readiness check |  |

@@ -60,6 +60,7 @@ from fmc_mcp.tools import (
     prompts,
     prove,
     registration,
+    route_policy,
     routing,
     rule_io,
     sdwan,
@@ -119,6 +120,9 @@ Workflows:
   fmc_configure_mgmt_access, fmc_set_banner.
 - Dynamic routing: fmc_get_routing (BGP, OSPF, ECMP, PBR, VRFs) -> fmc_configure_bgp /
   fmc_configure_ospf / fmc_create_vrf -> fmc_deploy -> fmc_run_show_command('show route').
+  Route policy: fmc_create_prefix_list / fmc_create_route_map, then fmc_configure_bgp
+  (neighbor_route_map_in/out, neighbor_prefix_list_in/out, max_prefix, default_originate,
+  redistribute) or fmc_configure_ospf(redistribute) -> fmc_deploy -> 'show route bgp'.
 - SD-WAN (hub and spoke over VTIs): zone the WAN and inside interfaces (fmc_update_interface) ->
   fmc_create_sdwan_topology (hub DVTI, spoke pool, spokes, backup hub, iBGP overlay) -> fmc_deploy hubs
   and spokes -> fmc_get_vpn_topology / fmc_list_vpn_tunnels; add or remove branches and the backup hub
@@ -303,6 +307,7 @@ REGISTER: list[Callable[[ToolRegistrar], None]] = [
     platform_access.register,
     platform_services.register,
     routing.register,
+    route_policy.register,
     app_routing.register,
     intrusion.register,
     file_policy.register,

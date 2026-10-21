@@ -1,6 +1,8 @@
 """Dynamic routing on FTDs (F6): one readable view of BGP, OSPF, ECMP, PBR, BFD and VRFs, plus
-preview-first edits for the common cases (BGP neighbors and networks, OSPF areas, VRFs). Application
-routes, ECMP zones and WAN interface settings are in app_routing.
+preview-first edits for the common cases (BGP neighbors and networks, OSPF areas, VRFs) and, since F77,
+route policy on them (neighbor route maps and prefix lists, maximum prefix, default-originate,
+redistribution; the objects themselves are in route_policy). Application routes, ECMP zones and WAN
+interface settings are in app_routing.
 
 FMC's BGP and OSPF models are large nested objects that FMC replaces as a whole on PUT; these tools
 read the current object, change only the requested parts and send it back. Changes reach the device
@@ -37,6 +39,18 @@ from fmc_mcp.tools.device_config import (
 )
 from fmc_mcp.tools.devices import DeviceRef
 from fmc_mcp.tools.object_writes import applied, editable
+from fmc_mcp.tools.route_policy import (
+    NeighborFilters,
+    PolicyRefs,
+    Redistribution,
+    apply_filters,
+    apply_redistribution,
+    fill_names,
+    neighbor_diff,
+    neighbor_filters,
+    redistribution_row,
+    resolve_filters,
+)
 
 VrfParam = Annotated[
     str | None, Field(description="Virtual router (VRF) name/UUID; default the global table")
@@ -127,19 +141,23 @@ def neighbor_row(n: dict[str, Any]) -> dict[str, Any]:
         "update_source": ref_label(gen["updateSource"]) if gen.get("updateSource") else None,
         "ebgp_multihop": (adv.get("neighborHops") or {}).get("maxHopCount"),
         "password_set": bool(adv.get("neighborSecret")) or None,
+        **neighbor_filters(n),  # route maps, prefix lists, max prefix: only keys that are set
     }
 
 
 def af_summary(af: dict[str, Any] | None) -> dict[str, Any] | None:
     if not af:
         return None
-    return {
+    out = {
         "neighbors": [neighbor_row(n) for n in af.get("neighbors") or []],
         "networks": _names(af.get("networks")),
         "redistribute": [str(r.get("type")) for r in af.get("redistributeProtocols") or []] or None,
         "maximum_paths": [m.get("value") for m in af.get("maximumPaths") or []] or None,
         "default_originate": af.get("defaultInformationOrginate") or None,
     }
+    if af.get("redistributeProtocols"):  # F77: route map, metric, process per source
+        out["redistribution"] = [redistribution_row(r) for r in af["redistributeProtocols"]]
+    return out
 
 
 def bgp_summary(general: dict[str, Any] | None, bgp: dict[str, Any] | None) -> dict[str, Any] | None:
@@ -171,6 +189,11 @@ def ospf_summary(p: dict[str, Any]) -> dict[str, Any]:
         ],
         "redistribute": [str(r.get("type")) for r in p.get("redistributeProtocols") or []] or None,
         "id": p.get("id"),
+        **(
+            {"redistribution": [redistribution_row(r) for r in p["redistributeProtocols"]]}
+            if p.get("redistributeProtocols")
+            else {}
+        ),
     }
 
 
@@ -201,8 +224,9 @@ def register(reg: ToolRegistrar) -> None:
         ctx: Context, device: DeviceRef, virtual_router: VrfParam = None, domain: Domain = None
     ) -> dict[str, Any]:
         """One view of the dynamic routing FMC holds for a device (or one VRF): BGP (AS, router id,
-        neighbors with remote AS/state/BFD, advertised networks, redistribution, per address family),
-        OSPFv2 processes (areas, networks, redistribution), OSPF interface settings, ECMP zones,
+        neighbors with remote AS/state/BFD and their route maps, prefix lists, maximum prefix and
+        default-originate, advertised networks, redistribution with route map and metric, per address
+        family), OSPFv2 processes (areas, networks, redistribution), OSPF interface settings, ECMP zones,
         policy-based routes (application routes: match, egress interfaces and how one is picked), WAN
         interfaces (priority, path monitoring, HTTP application monitoring), BFD policies, VRFs and
         the static route count. Configuration, not the
@@ -219,6 +243,7 @@ def register(reg: ToolRegistrar) -> None:
         )
         bgp = next(iter(await _items(app, f"{base}/bgp", domain)), None)
         ospf = await _items(app, f"{base}/ospfv2routes", domain)
+        await fill_names(PolicyRefs(app, domain), bgp, ospf)  # route-map / prefix-list names
         out: dict[str, Any] = {
             "device": dev.get("name"),
             "table": vr_name or "global",
@@ -290,6 +315,57 @@ def register(reg: ToolRegistrar) -> None:
         remove_bgp: Annotated[
             bool, Field(description="Remove BGP from the device/VRF entirely (neighbors, networks, settings)")
         ] = False,
+        neighbor_route_map_in: Annotated[
+            str | None,
+            Field(description="Route map (name/UUID) on routes received from `neighbor`; 'none' removes it"),
+        ] = None,
+        neighbor_route_map_out: Annotated[
+            str | None,
+            Field(description="Route map (name/UUID) on routes sent to `neighbor`; 'none' removes it"),
+        ] = None,
+        neighbor_prefix_list_in: Annotated[
+            str | None,
+            Field(
+                description="IPv4 prefix list (name/UUID) on routes received from `neighbor`; 'none' "
+                "removes it"
+            ),
+        ] = None,
+        neighbor_prefix_list_out: Annotated[
+            str | None,
+            Field(description="IPv4 prefix list (name/UUID) on routes sent to `neighbor`; 'none' removes it"),
+        ] = None,
+        max_prefix: Annotated[
+            int | None,
+            Field(
+                ge=0,
+                le=2147483647,
+                description="Most prefixes `neighbor` may send: past it the session is torn down (warning at "
+                "75%); 0 removes the limit",
+            ),
+        ] = None,
+        max_prefix_warning_only: Annotated[
+            bool | None,
+            Field(description="With max_prefix: only log past the limit instead of tearing the session down"),
+        ] = None,
+        default_originate: Annotated[
+            bool | None,
+            Field(description="Send `neighbor` a default route (neighbor default-originate); false stops it"),
+        ] = None,
+        default_originate_route_map: Annotated[
+            str | None,
+            Field(
+                description="Send that default route only while this route map (name/UUID) matches; 'none' "
+                "removes the condition"
+            ),
+        ] = None,
+        redistribute: Annotated[
+            list[Redistribution] | None,
+            Field(
+                description="Redistribute into BGP, e.g. [{'protocol': 'connected', 'route_map': 'rm', "
+                "'metric': 10}] (ospf needs process_id); [{'protocol': 'static', 'remove': true}] stops one. "
+                "Sources not named are kept"
+            ),
+        ] = None,
         virtual_router: VrfParam = None,
         domain: Domain = None,
         confirm: Confirm = None,
@@ -299,7 +375,14 @@ def register(reg: ToolRegistrar) -> None:
         router id) when the device has none; the AS and router id are device-wide, so a VRF uses them
         too. remove_bgp deletes the whole BGP configuration. The preview shows the
         neighbor and network lists before and after. Deploy to apply; verify with
-        fmc_run_show_command('show route') and the peer ('show bgp summary')."""
+        fmc_run_show_command('show route') and the peer ('show bgp summary').
+
+        Route policy on a neighbor (F77): inbound/outbound route maps and prefix lists (objects from
+        fmc_create_route_map / fmc_create_prefix_list), a maximum-prefix limit and default-originate;
+        redistribution of connected, static or OSPF routes into BGP with a route map and metric. FMC
+        replaces the whole BGP model on every change, so only the named neighbor and sources change and
+        the preview shows just that diff. Check with fmc_get_routing, then after the deploy
+        fmc_run_show_command('show route bgp') here and the peer's BGP table for outbound filters."""
         app: FmcApp = get_client(ctx)
         dev = await resolve_device(app, device, domain)
         base, vr_name = await routing_base(app, dev, virtual_router, domain)
@@ -311,6 +394,21 @@ def register(reg: ToolRegistrar) -> None:
         steps: list[tuple[str, str, str, dict[str, Any] | None]] = []
         bgp_path = await app.config_path(f"{base}/bgp", domain)
         gen_path = await app.config_path(f"{root}/bgpgeneralsettings", domain)
+        filters = NeighborFilters(
+            route_map_in=neighbor_route_map_in,
+            route_map_out=neighbor_route_map_out,
+            prefix_list_in=neighbor_prefix_list_in,
+            prefix_list_out=neighbor_prefix_list_out,
+            max_prefix=max_prefix,
+            max_prefix_warning_only=max_prefix_warning_only,
+            default_originate=default_originate,
+            default_originate_route_map=default_originate_route_map,
+        )
+        policy = filters.given() or bool(redistribute)  # F77 route policy in this call
+        refs = PolicyRefs(app, domain)
+        resolved: dict[str, Any] = {}
+        touched: tuple[dict[str, Any] | None, str] | None = None  # (neighbor before, its address)
+        redist_diff: dict[str, Any] = {}
 
         if remove_bgp:
             if any(
@@ -323,6 +421,7 @@ def register(reg: ToolRegistrar) -> None:
                     router_id,
                     remove_neighbor,
                     neighbor_description,
+                    policy,
                 )
             ):
                 raise InvalidRequest("remove_bgp can't be combined with other changes.")
@@ -334,11 +433,21 @@ def register(reg: ToolRegistrar) -> None:
                 blockers.append(f"BGP isn't configured on {where}.")
             before = bgp_summary(general, bgp)
             after = None
+            view: dict[str, Any] = {"before": before, "after": after}
         else:
-            if not any((neighbor, advertise, withdraw)):
-                raise InvalidRequest("Give a neighbor, networks to advertise/withdraw, or remove_bgp.")
+            if filters.given() and (not neighbor or remove_neighbor):
+                raise InvalidRequest(
+                    "neighbor_route_map_*, neighbor_prefix_list_*, max_prefix and default_originate* "
+                    "apply to `neighbor` (added or kept, not removed)."
+                )
+            if not any((neighbor, advertise, withdraw, redistribute)):
+                raise InvalidRequest(
+                    "Give a neighbor, networks to advertise/withdraw, redistribute, or remove_bgp."
+                )
             if remove_neighbor and not neighbor:
                 raise InvalidRequest("remove_neighbor needs the neighbor address.")
+            if filters.given():
+                resolved = await resolve_filters(refs, filters)
             remote_as = check_as(remote_as, "remote_as")
             local_as = check_as(local_as, "local_as")
             rid = check_router_id(router_id)
@@ -391,6 +500,9 @@ def register(reg: ToolRegistrar) -> None:
                         }
                         if neighbor_description:
                             n["neighborGeneral"]["description"] = neighbor_description
+                        if filters.given():
+                            n = apply_filters(n, filters, resolved)
+                            touched = (None, addr)
                         neighbors.append(n)
                     else:
                         changed = dict(existing)
@@ -401,6 +513,9 @@ def register(reg: ToolRegistrar) -> None:
                                 **(existing.get("neighborGeneral") or {}),
                                 "description": neighbor_description,
                             }
+                        if filters.given():
+                            changed = apply_filters(changed, filters, resolved)
+                            touched = (existing, addr)
                         if changed == existing:
                             blockers.append(f"Neighbor {addr} is already configured that way.")
                         neighbors = [changed if x is existing else x for x in neighbors]
@@ -440,12 +555,55 @@ def register(reg: ToolRegistrar) -> None:
                         "editing BGP would replace it. Pass neighbor=<that address> with neighbor_password, "
                         "or change it in the FMC UI."
                     )
+            if redistribute:
+                redist, redist_diff, more = await apply_redistribution(
+                    list(af.get("redistributeProtocols") or []), redistribute, refs, target="bgp"
+                )
+                blockers += more
+                if redist:
+                    af["redistributeProtocols"] = redist
+                else:
+                    af.pop("redistributeProtocols", None)  # FMC leaves the key out when there are none
             af.pop("maximumPaths", None)  # FMC 10.0.1 echoes it on GET but rejects it on PUT (use ebgp/ibgp)
             af["neighbors"] = neighbors
             af["networks"] = networks
             desired["addressFamilyIPv4"] = af
             before = bgp_summary(general, bgp)
             after = {"neighbors": [neighbor_row(x) for x in neighbors], "networks": _names(networks)}
+            view = {"before": before, "after": after}
+            if policy:
+                extra: dict[str, Any] = {}
+                if touched is not None:
+                    old, addr = touched
+                    new: dict[str, Any] = next((x for x in neighbors if x.get("ipv4Address") == addr), {})
+                    extra["neighbor_changes"] = {
+                        "neighbor": addr,
+                        "changes": neighbor_diff(old and neighbor_row(old), neighbor_row(new)),
+                    }
+                if redistribute:
+                    extra["redistribute_changes"] = redist_diff
+                classic = any(
+                    (
+                        remote_as,
+                        remove_neighbor,
+                        neighbor_description,
+                        neighbor_password,
+                        advertise,
+                        withdraw,
+                        local_as,
+                        router_id,
+                    )
+                ) or bool(touched and touched[0] is None)
+                if classic:
+                    view.update(extra)
+                else:  # only route policy: show the touched neighbor/sources, not the whole model
+                    view = {
+                        **extra,
+                        "unchanged": {
+                            "other_neighbors": len(neighbors) - (1 if touched else 0),
+                            "networks": len(networks),
+                        },
+                    }
             if bgp:
                 steps.append(("update bgp", "PUT", f"{bgp_path}/{bgp['id']}", desired))
             else:
@@ -487,16 +645,34 @@ def register(reg: ToolRegistrar) -> None:
                 "local_as": local_as,
                 "router_id": router_id,
                 "remove_bgp": remove_bgp,
+                "neighbor_route_map_in": neighbor_route_map_in,
+                "neighbor_route_map_out": neighbor_route_map_out,
+                "neighbor_prefix_list_in": neighbor_prefix_list_in,
+                "neighbor_prefix_list_out": neighbor_prefix_list_out,
+                "max_prefix": max_prefix,
+                "max_prefix_warning_only": max_prefix_warning_only,
+                "default_originate": default_originate,
+                "default_originate_route_map": default_originate_route_map,
+                "redistribute": None if redistribute is None else [r.model_dump() for r in redistribute],
                 "virtual_router": virtual_router,
                 "domain": domain,
             },
             confirm=confirm,
             plan=Plan(
                 f"{'Remove' if remove_bgp else 'Change'} BGP on {where}",
-                details={"steps": [s[0] for s in steps], "before": before, "after": after},
-                fingerprint={"general": general and editable(general), "bgp": bgp and editable(bgp)},
+                details={"steps": [s[0] for s in steps], **view},
+                fingerprint={"general": general and editable(general), "bgp": bgp and editable(bgp)}
+                | ({"policy": [resolved, [s[3] for s in steps]]} if policy else {}),
                 blockers=blockers,
-                side_effects=["Takes effect on the device after the next deployment."],
+                side_effects=["Takes effect on the device after the next deployment."]
+                + (
+                    [
+                        "FMC replaces the whole BGP model: the other neighbors, networks and settings are "
+                        "sent back as they are."
+                    ]
+                    if policy
+                    else []
+                ),
             ),
             apply=apply,
         )
@@ -513,6 +689,15 @@ def register(reg: ToolRegistrar) -> None:
             str | None, Field(description="Router id when the process is created (default automatic)")
         ] = None,
         remove_process: Annotated[bool, Field(description="Delete the whole OSPF process")] = False,
+        redistribute: Annotated[
+            list[Redistribution] | None,
+            Field(
+                description="Redistribute into this process, e.g. [{'protocol': 'connected', 'route_map': "
+                "'rm', 'metric': 20}] (subnets on, metric type 2 unless given; bgp uses the device's AS, "
+                "ospf needs process_id); [{'protocol': 'static', 'remove': true}] stops one. Sources not "
+                "named are kept"
+            ),
+        ] = None,
         virtual_router: VrfParam = None,
         domain: Domain = None,
         confirm: Confirm = None,
@@ -520,7 +705,13 @@ def register(reg: ToolRegistrar) -> None:
         """Edit OSPFv2 on an FTD: add or remove networks (network objects) in an area, creating the
         process and area when needed, or delete a whole process. Interfaces whose address falls in an
         area network run OSPF in that area. The preview shows the areas before and after. Deploy to
-        apply; verify with fmc_run_show_command('show route') (O routes) and the neighbor's CLI."""
+        apply; verify with fmc_run_show_command('show route') (O routes) and the neighbor's CLI.
+
+        Redistribution (F77): connected, static, BGP or another OSPF process into this one, with a
+        route map (fmc_create_route_map) and metric; the preview shows only the sources that change.
+        OSPFv2 on FTD has no passive interfaces in FMC's model (only OSPFv3 processes do): to announce
+        a network without forming adjacencies on its interface, leave it out of the areas and
+        redistribute connected with a route map matching it."""
         app: FmcApp = get_client(ctx)
         dev = await resolve_device(app, device, domain)
         base, vr_name = await routing_base(app, dev, virtual_router, domain)
@@ -530,15 +721,18 @@ def register(reg: ToolRegistrar) -> None:
         path = await app.config_path(f"{base}/ospfv2routes", domain)
         blockers: list[str] = []
         method, target, body = "PUT", "", None
+        redist_diff: dict[str, Any] = {}
         if remove_process:
             if add_networks or remove_networks:
                 raise InvalidRequest("remove_process can't be combined with network changes.")
+            if redistribute:
+                raise InvalidRequest("remove_process can't be combined with redistribute.")
             if proc is None:
                 blockers.append(f"No OSPF process {process_id} on {where}.")
             method, target = "DELETE", f"{path}/{(proc or {}).get('id')}"
             after = None
         else:
-            if not add_networks and not remove_networks:
+            if not add_networks and not remove_networks and not redistribute:
                 raise InvalidRequest("Give add_networks or remove_networks (or remove_process).")
             if proc is None:
                 if len(procs) >= 2:
@@ -559,31 +753,57 @@ def register(reg: ToolRegistrar) -> None:
             else:
                 desired = editable(proc)
                 target = f"{path}/{proc['id']}"
-            areas = [dict(a) for a in desired.get("areas") or []]
-            want_area = area_key(area)
-            entry = next((a for a in areas if area_key(a.get("areaId")) == want_area), None)
-            if entry is None:
-                entry = {"areaId": str(area), "areaType": {"type": "normal"}, "areaNetworks": []}
-                areas.append(entry)
-            nets = list(entry.get("areaNetworks") or [])
-            have = {str(x.get("id")) for x in nets}
-            for ref in await network_refs(app, add_networks, domain):
-                if ref["id"] in have:
-                    blockers.append(f"{ref.get('name')} is already in area {area}.")
-                    continue
-                nets.append(ref)
-                have.add(ref["id"])
-            drop = {r["id"]: r for r in await network_refs(app, remove_networks, domain)}
-            for rid, ref in drop.items():
-                if rid not in have:
-                    blockers.append(f"{ref.get('name')} isn't in area {area}.")
-            nets = [x for x in nets if str(x.get("id")) not in drop]
-            entry["areaNetworks"] = nets
-            if not nets and not any(entry.get(k) for k in ("areaRanges", "virtualLinks", "filterList")):
-                areas = [a for a in areas if a is not entry]  # the edited area is now empty: drop it
-            if not areas:
-                blockers.append("That would leave the process with no networks; use remove_process instead.")
-            desired["areas"] = areas
+            if add_networks or remove_networks:
+                areas = [dict(a) for a in desired.get("areas") or []]
+                want_area = area_key(area)
+                entry = next((a for a in areas if area_key(a.get("areaId")) == want_area), None)
+                if entry is None:
+                    entry = {"areaId": str(area), "areaType": {"type": "normal"}, "areaNetworks": []}
+                    areas.append(entry)
+                nets = list(entry.get("areaNetworks") or [])
+                have = {str(x.get("id")) for x in nets}
+                for ref in await network_refs(app, add_networks, domain):
+                    if ref["id"] in have:
+                        blockers.append(f"{ref.get('name')} is already in area {area}.")
+                        continue
+                    nets.append(ref)
+                    have.add(ref["id"])
+                drop = {r["id"]: r for r in await network_refs(app, remove_networks, domain)}
+                for rid, ref in drop.items():
+                    if rid not in have:
+                        blockers.append(f"{ref.get('name')} isn't in area {area}.")
+                nets = [x for x in nets if str(x.get("id")) not in drop]
+                entry["areaNetworks"] = nets
+                if not nets and not any(entry.get(k) for k in ("areaRanges", "virtualLinks", "filterList")):
+                    areas = [a for a in areas if a is not entry]  # the edited area is now empty: drop it
+                if not areas:
+                    blockers.append(
+                        "That would leave the process with no networks; use remove_process instead."
+                    )
+                desired["areas"] = areas
+            elif proc is None:
+                blockers.append(
+                    f"No OSPF process {process_id} on {where}: create it with add_networks first."
+                )
+            if redistribute:
+                bgp_as = None
+                if any(r.protocol == "bgp" for r in redistribute):
+                    root = f"{base.split('/routing')[0]}/routing"
+                    general = next(iter(await _items(app, f"{root}/bgpgeneralsettings", domain)), None)
+                    bgp_as = (general or {}).get("asNumber")
+                redist, redist_diff, more = await apply_redistribution(
+                    list(desired.get("redistributeProtocols") or []),
+                    redistribute,
+                    PolicyRefs(app, domain),
+                    target="ospf",
+                    own_process=process_id,
+                    bgp_as=bgp_as,
+                )
+                blockers += more
+                if redist:
+                    desired["redistributeProtocols"] = redist
+                else:
+                    desired.pop("redistributeProtocols", None)
             body = desired
             after = ospf_summary(desired)
         before = ospf_summary(proc) if proc else None
@@ -606,13 +826,15 @@ def register(reg: ToolRegistrar) -> None:
                 "remove_networks": remove_networks,
                 "router_id": router_id,
                 "remove_process": remove_process,
+                "redistribute": None if redistribute is None else [r.model_dump() for r in redistribute],
                 "virtual_router": virtual_router,
                 "domain": domain,
             },
             confirm=confirm,
             plan=Plan(
                 f"{'Delete' if remove_process else 'Change'} OSPF process {process_id} on {where}",
-                details={"before": before, "after": after},
+                details={"before": before, "after": after}
+                | ({"redistribute_changes": redist_diff} if redistribute else {}),
                 fingerprint={"process": proc and editable(proc), "others": [p.get("id") for p in procs]},
                 blockers=blockers,
                 side_effects=["Takes effect on the device after the next deployment."],
