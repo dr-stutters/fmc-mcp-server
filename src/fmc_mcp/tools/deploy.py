@@ -94,6 +94,9 @@ def deployable_row(d: dict[str, Any]) -> dict[str, Any]:
 
 
 SECRET_FIELD = re.compile(r"password|secret|key|community|psk", re.I)
+# A field the pattern names but whose value is a flag: FMC 10.0.1 lists a BGP neighbour's "Send Community
+# attribute to this neighbor: false" (live 2026-10-21, W6N live-B), which is a setting, not an SNMP community.
+FLAG_VALUES = frozenset({"true", "false"})
 # One pending change can be huge: FMC 10.0.1 listed a Snort 3 network analysis policy UPDATE whose
 # inspectorData value was 115 KB (seen live 2026-10-21), over the response budget on its own; the list
 # result only drops whole rows, so each row's change lines are capped here.
@@ -110,14 +113,21 @@ def _cut(value: Any, cap: int) -> str:
     return f"{text[:cap]}... [{len(text) - cap:,}{CUT_MARK}"
 
 
+def _masked(value: Any) -> Any:
+    """A secret-named field's value as shown: masked, unless it is empty or a true/false flag."""
+    if value in (None, "") or isinstance(value, bool) or str(value).strip().lower() in FLAG_VALUES:
+        return value
+    return "********"
+
+
 def _change_text(v: dict[str, Any], verb: str) -> str:
     """'Field: old -> new' with each side cut at VALUE_CAP (a long old value no longer hides the new one),
     or 'Field: value' / '-Field: value' cut at CHANGE_TEXT_CAP."""
     field = v.get("fieldName") or "?"
     old, new = v.get("oldValue"), v.get("newValue")
     if SECRET_FIELD.search(str(field)):  # FMC shows encrypted secrets here (e.g. BGP neighbor passwords)
-        old = "********" if old not in (None, "") else old
-        new = "********" if new not in (None, "") else new
+        old = _masked(old)
+        new = _masked(new)
     if verb == "deleted":
         return f"-{field}: {_cut(old if old is not None else new, CHANGE_TEXT_CAP)}"
     if old is not None and new is not None:
