@@ -11,7 +11,6 @@ from fmc_mcp._core import (
     InvalidRequest,
     ResponseFormat,
     ToolRegistrar,
-    UpstreamError,
     ValidationFailed,
     get_client,
     list_result,
@@ -241,8 +240,6 @@ def register(reg: ToolRegistrar) -> None:
         ]
         rows: list[dict[str, Any]] = []
         skipped = []
-        unknown: list[str] = []
-        here = (await app.domain_uuid(domain)).lower()
         for key in keys:
             t = OBJECT_TYPES[key]
             if key not in FILTERABLE:
@@ -251,51 +248,10 @@ def register(reg: ToolRegistrar) -> None:
             page = await app.all(
                 await app.config_path(t.path, domain), {"filter": "unusedOnly:true"}, cap=20_000
             )
-            found = [o for o in page.items if not is_system(o)]
-            builtin, missed = await _inherited_builtins(app, t.path, found, here)
-            unknown += missed
-            rows += [
-                {"object_type": key, **object_summary(o)}
-                for o in found
-                if str(o.get("id", "")).lower() not in builtin
-            ]
-        notes = []
-        if skipped:
-            notes.append(f"Not checkable via FMC's unused filter: {', '.join(skipped)}")
-        if unknown:
-            notes.append(
-                f"Couldn't read {', '.join(sorted(set(unknown)))} to tell FMC's built-in objects from "
-                "user objects: rows inherited from there may include built-ins"
-            )
-        extra = {"note": ". ".join(notes)} if notes else None
+            # is_system also knows the built-ins a child domain inherits (they say DOMAIN there, #197).
+            rows += [{"object_type": key, **object_summary(o)} for o in page.items if not is_system(o)]
+        extra = {"note": f"Not checkable via FMC's unused filter: {', '.join(skipped)}"} if skipped else None
         return list_result(page_of(rows, limit=limit, offset=offset), fmt=response_format, extra=extra)
-
-
-async def _inherited_builtins(
-    app: FmcApp, path: str, objs: list[dict[str, Any]], here: str
-) -> tuple[set[str], list[str]]:
-    """Ids of FMC built-in objects among `objs` that the domain `here` inherits. A child domain sees
-    an ancestor's objects as readOnly with reason DOMAIN, built-ins included (FMC 10.0.1: AOL, HTTP, the
-    RFC1918 networks... all say DOMAIN in a child domain), so `is_system` can't tell them from
-    the ancestor's user objects. The owner domain's own listing still says SYSTEM: read that list once
-    per owner. Returns the built-in ids and the owner domains that couldn't be read."""
-    owners: set[str] = set()
-    for o in objs:
-        meta = o.get("metadata") or {}
-        reason = (meta.get("readOnly") or {}).get("reason")
-        owner = str(((meta.get("domain") or {}).get("id")) or "").lower()
-        if reason == "DOMAIN" and owner and owner != here:
-            owners.add(owner)
-    builtin: set[str] = set()
-    missed: list[str] = []
-    for owner in sorted(owners):
-        try:
-            page = await app.all(await app.config_path(path, owner), cap=20_000)
-        except UpstreamError:
-            missed.append(await app.domain_name(owner))
-            continue
-        builtin |= {str(o.get("id", "")).lower() for o in page.items if is_system(o)}
-    return builtin, missed
 
 
 def _looks_like_ip(v: str) -> bool:
