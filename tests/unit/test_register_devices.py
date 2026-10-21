@@ -4,10 +4,10 @@ The bulk answer, the batch task with its subTasks and the four initial deploymen
 answers to a four-FTDv call (Wave 6 Stage 2); the single-registration task and job are live captures
 too (tests/fixtures/register_devices.json)."""
 
+import asyncio
 import copy
 import json
 import logging
-import time
 from datetime import UTC, datetime
 from typing import Any
 
@@ -21,7 +21,7 @@ from fastmcp_tasks import call_tool_task
 from fmc_mcp._core.audit import redact_args
 from fmc_mcp._core.formatting import is_secret_key
 from fmc_mcp.server import create_server
-from fmc_mcp.tools import registration
+from fmc_mcp.tools import dangerous, registration
 from fmc_mcp.tools.dangerous import job_epoch
 from fmc_mcp.tools.registration import bulk_task_ids
 
@@ -49,8 +49,16 @@ def record(n: int) -> dict[str, Any]:
     return {"id": dev_id(n), "name": f"bulk-{n}", "hostName": f"192.0.2.1{n}", "type": "Device"}
 
 
+# The wall clock the run compares FMC's job start times with, frozen (#274): jobs used to be stamped with
+# time.time() when the test set them up, and a run that started more than ~6 s later (a loaded machine)
+# took them for older jobs and polled until its 30-minute deadline.
+FROZEN = 1792368000  # 2026-10-19T23:20:00Z
+BOUND = 60.0  # seconds: a confirm that takes longer fails instead of hanging the suite
+
+
 def iso_now(offset: int = 1) -> str:
-    return datetime.fromtimestamp(time.time() + offset, UTC).strftime("%Y-%m-%dT%H:%M:%SZ")
+    """A job start `offset` seconds after the (frozen) registration request."""
+    return datetime.fromtimestamp(FROZEN + offset, UTC).strftime("%Y-%m-%dT%H:%M:%SZ")
 
 
 def job(devices: list[tuple[int, str]], status: str = "DEPLOYED", start: str | None = None) -> dict[str, Any]:
@@ -81,7 +89,7 @@ async def run(c: Client[Any], args: dict[str, Any]) -> Any:
 
 
 async def confirm(args: dict[str, Any], **kw: Any) -> tuple[Any, Any]:
-    async with Client(server(**kw)) as c:
+    async with asyncio.timeout(BOUND), Client(server(**kw)) as c:
         preview = await run(c, args)
         assert preview["status"] == "preview", preview
         return preview, await run(c, {**args, "confirm": preview["confirm"]})
@@ -92,6 +100,13 @@ def fast_polls(monkeypatch: pytest.MonkeyPatch) -> None:
     monkeypatch.setattr(registration, "POLL_FIRST", 0.0)
     monkeypatch.setattr(registration, "POLL_MAX", 0.0)
     monkeypatch.setattr(registration, "REQUESTS_PER_MINUTE", 10**9)
+    monkeypatch.setattr(dangerous, "wall_clock", lambda: FROZEN)
+
+
+def test_the_run_reads_the_frozen_wall_clock() -> None:
+    """The registration waits read the wall clock through dangerous.wall_clock only (#274)."""
+    assert dangerous.wall_clock() == FROZEN
+    assert job_epoch(iso_now()) == FROZEN + 1
 
 
 def mock_policies(fmc: respx.MockRouter) -> None:
@@ -313,15 +328,12 @@ async def test_bulk_success_waits_for_a_device_fmc_lists_late(fmc: respx.MockRou
 async def test_bulk_success_but_never_listed_is_reported_running(
     fmc: respx.MockRouter, monkeypatch: pytest.MonkeyPatch
 ) -> None:
-    class Clock:
+    class Clock:  # monotonic only: the wall clock is frozen (fast_polls)
         now = 1000.0
 
         def monotonic(self) -> float:
             self.now += 20.0
             return self.now
-
-        def time(self) -> float:
-            return time.time()
 
     monkeypatch.setattr(registration, "time", Clock())
     mock_policies(fmc)
@@ -583,15 +595,12 @@ async def test_wait_false_returns_the_task_ids(fmc: respx.MockRouter) -> None:
 async def test_one_deadline_for_the_batch(fmc: respx.MockRouter, monkeypatch: pytest.MonkeyPatch) -> None:
     """A deployment that never finishes: the rows come back 'running' at the deadline, not an error."""
 
-    class Clock:
+    class Clock:  # monotonic only: the wall clock is frozen (fast_polls)
         now = 1000.0
 
         def monotonic(self) -> float:
             self.now += 20.0
             return self.now
-
-        def time(self) -> float:
-            return time.time()
 
     monkeypatch.setattr(registration, "time", Clock())
     mock_policies(fmc)

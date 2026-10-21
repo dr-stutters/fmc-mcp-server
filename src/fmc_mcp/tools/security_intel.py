@@ -32,7 +32,7 @@ from fmc_mcp._core import (
 from fmc_mcp.client import FmcApp, is_uuid
 from fmc_mcp.preview import fmc_preview
 from fmc_mcp.tools.common import Domain, is_system, resolve_in
-from fmc_mcp.tools.dns import DNS, DOMAIN_RE, dns_policy_name, upload_file
+from fmc_mcp.tools.dns import DNS, DOMAIN_RE, dns_policy_name, inherited_blockers, upload_file
 from fmc_mcp.tools.dns import MARKER as DNS_BLOCK_MARKER
 from fmc_mcp.tools.dns import rule_row as dns_rule_row
 from fmc_mcp.tools.object_writes import applied, editable
@@ -394,14 +394,26 @@ async def _set_dns_lists(
             f"{acp.get('name')!r} uses no DNS policy: fmc_create_dns_policy + fmc_set_dns_policy first."
         )
     pol = await resolve_in(app, DNS, str(dns_ref["id"]), "DNS policy", domain)
-    blockers: list[str] = []
-    if is_system(pol):
-        blockers.append(
-            f"{pol.get('name')!r} is FMC's read-only default DNS policy: create one (fmc_create_dns_policy), "
-            f"link it to {acp.get('name')!r} (fmc_set_dns_policy), then repeat."
-        )
     rules_path = await app.config_path(f"{DNS}/{pol['id']}/dnsrules", domain)
     rules = await all_rules(app, rules_path)
+    # A DNS policy the domain only inherits (FMC's Default DNS Policy is Global's, and read-only only below
+    # Global, FMC 10.0.1) gets #204's wording: the leaf way first, then the owner domain (#250).
+    then = {k: v for k, v in args.items() if k != "domain" and v is not None}
+    blockers = await inherited_blockers(
+        app,
+        pol,
+        domain,
+        rules.items,
+        then=("fmc_set_si_lists", then) if action == "add" else None,
+        goal=f"add these DNS feeds/lists to {acp.get('name')!r}",
+        relink=[acp],
+    )
+    inherited = bool(blockers)
+    if not inherited and is_system(pol):
+        blockers.append(
+            f"{pol.get('name')!r} is read-only in this domain: create a DNS policy (fmc_create_dns_policy), "
+            f"link it to {acp.get('name')!r} (fmc_set_dns_policy), then repeat."
+        )
     rule_name = DNS_RULE[which]
     wanted = {"block": dns_answer, "allow": "ALLOW", "monitor": "MONITOR"}[which]
     rule = next((r for r in rules.items if r.get("name") == rule_name), None)
@@ -491,7 +503,7 @@ async def _set_dns_lists(
         tool="fmc_set_si_lists",
         args=args,
         confirm=confirm,
-        owned=[pol],
+        owned=[] if inherited else [pol],  # inherited_blockers explains it, the leaf way first
         plan=Plan(
             f"DNS policy {pol.get('name')!r} (used by {acp.get('name')!r}): {action} {len(todo)} DNS "
             f"feed(s)/list(s) " + ("to" if action == "add" else "from") + f" rule {rule_name!r} ({wanted})",
@@ -948,8 +960,10 @@ def register(reg: ToolRegistrar) -> None:
         """Put Security Intelligence feeds and lists into an access policy (or take them out). Network and
         URL ones go into the policy's SI block or do-not-block list (SI drops matching traffic before any
         access rule and logs it); DNS ones go into a rule of the DNS policy the access policy uses
-        (mcp-si-dns-block / -allow / -monitor, appended after FMC's Global rules; link a DNS policy of your
-        own first with fmc_create_dns_policy + fmc_set_dns_policy, FMC's default one is read-only).
+        (mcp-si-dns-block / -allow / -monitor, appended after FMC's Global rules). A DNS policy the domain
+        only inherits (FMC's Default DNS Policy below Global) is read-only there: the preview gives the way
+        with a DNS policy of the domain's own (fmc_create_dns_policy + fmc_set_dns_policy), then the owner
+        domain.
         list_type='monitor' (log, don't block) works for DNS only: FMC's REST API has no monitor-only flag for
         network or URL SI. Needs a deployment. Check the result with fmc_get_security_intelligence."""
         app: FmcApp = get_client(ctx)

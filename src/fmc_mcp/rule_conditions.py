@@ -23,8 +23,9 @@ returned by any later REST read: `GET object/applicationfilters` answers `{"pagi
 id in an access rule (POST accessrules with `applications.applicationFilters: [{id, type, name}]` -> 201),
 and rule GETs carry it as {name, id, type}. So a filter name also resolves against the filters this server
 created (remembered from the POST answer, per server process) and the filters rules already use, and a UUID
-FMC answers 404 for is sent as given. Whether FMC refuses a rule naming an id that exists nowhere is not
-proven yet (only ids of filters that exist were sent live), so nothing here claims it does.
+FMC answers 404 for is sent as given. FMC checks that id when the rule is saved (recorded live 2026-10-21): a
+rule naming an id that exists nowhere is refused with 400 "Object for Type ApplicationFilter and UUID <id>
+is not found" and nothing is saved. A rule can also carry the attributes itself (inline filters, #272).
 """
 
 from __future__ import annotations
@@ -36,6 +37,8 @@ import time
 import weakref
 from datetime import UTC, datetime
 from typing import Any
+
+from pydantic import BaseModel, ConfigDict, Field
 
 from fmc_mcp._core import InvalidRequest, NotFound, UpstreamError
 from fmc_mcp.client import FmcApp, is_uuid
@@ -167,10 +170,15 @@ UNLISTED_FILTERS = (
     "FMC 10.0.1 doesn't return application filters created over its API: its list is empty and GET or "
     "DELETE by id answers 404, though access rules take them by id."
 )
+FILTER_ID_CHECKED = (
+    "FMC checks the id when the rule is saved: an id it doesn't know is refused (400 'Object for Type "
+    "ApplicationFilter and UUID ... is not found') and nothing is saved."
+)
 FILTER_BY_ID = (
     "pass the filter's UUID instead (the id in fmc_create_application_filter's result, or in "
-    "fmc_get_access_rule of a rule that uses it); it can't be checked against FMC's list beforehand, so "
-    "check the rule afterwards with fmc_get_access_rule"
+    "fmc_get_access_rule of a rule that uses it; fmc_find_application kind=filter lists the filters the "
+    "access policies' rules use); FMC checks it when the rule is saved. Or match the attributes in the rule "
+    "itself: inline_app_filter={risks, categories, ...}"
 )
 
 
@@ -211,6 +219,18 @@ def filter_refs_in_rules(rules: list[dict[str, Any]]) -> list[dict[str, Any]]:
                 and all(o["id"].lower() != str(f["id"]).lower() for o in out)
             ):
                 out.append(filter_ref(f))
+    return out
+
+
+def filters_used_by(rules: list[dict[str, Any]], policy: str) -> dict[str, dict[str, Any]]:
+    """{filter id (lower case): {ref, used_by: ['<policy> / <rule>', ...]}} for the named application filters
+    the rules use."""
+    out: dict[str, dict[str, Any]] = {}
+    for r in rules:
+        for f in (r.get("applications") or {}).get("applicationFilters") or []:
+            if isinstance(f, dict) and f.get("id"):
+                hit = out.setdefault(str(f["id"]).lower(), {"ref": filter_ref(f), "used_by": []})
+                hit["used_by"].append(f"{policy} / {r.get('name')}")
     return out
 
 
@@ -264,10 +284,7 @@ async def resolve_app_filters(
         if all(r["id"].lower() != ref["id"].lower() for r in out):
             out.append(ref)
             if unlisted and notes is not None:
-                notes.append(
-                    f"{unlisted} {UNLISTED_FILTERS} The id can't be checked beforehand: confirm the rule "
-                    "carries the filter with fmc_get_access_rule after saving."
-                )
+                notes.append(f"{unlisted} {UNLISTED_FILTERS} {FILTER_ID_CHECKED}")
     return out
 
 
@@ -275,14 +292,17 @@ def merge_app_block(
     current: dict[str, Any] | None,
     apps: list[dict[str, Any]] | None,
     filters: list[dict[str, Any]] | None,
+    inline: list[dict[str, Any]] | None = None,
 ) -> dict[str, Any]:
-    """A rule's `applications` block from its current one and new applications / filters (None = keep the
-    current ones, [] = none). Inline filters and other settings of the current block are kept."""
+    """A rule's `applications` block from its current one and new applications / filters / inline filters
+    (None = keep the current ones, [] = none). Other settings of the current block are kept."""
     cur = dict(current or {})
     if apps is not None:
         cur["applications"] = apps
     if filters is not None:
         cur["applicationFilters"] = filters
+    if inline is not None:
+        cur["inlineApplicationFilters"] = inline
     out = {k: v for k, v in cur.items() if v not in (None, [], {})}
     if not any(out.get(k) for k in ("applications", "applicationFilters", "inlineApplicationFilters")):
         return {}
@@ -326,6 +346,68 @@ def pick_facet(rows: list[dict[str, Any]], text: str, what: str) -> dict[str, An
             404,
         )
     return hit
+
+
+class InlineAppFilter(BaseModel):
+    """Application attributes matched inside one rule (FMC's inline application filter): every application
+    with all the given attributes, any value within one attribute. Unknown keys are refused: a misspelt one
+    ('risk') would otherwise leave the filter empty, which fmc_update_access_rule reads as "remove the rule's
+    inline filters"."""
+
+    model_config = ConfigDict(extra="forbid")
+
+    risks: list[str] | None = Field(
+        None, description="Risk levels: 'Very Low', 'Low', 'Medium', 'High', 'Very High'"
+    )
+    business_relevance: list[str] | None = Field(
+        None, description="Business relevance (FMC 'productivity'): 'Very Low' ... 'Very High'"
+    )
+    categories: list[str] | None = Field(
+        None, description="Application categories, e.g. 'file sharing', 'social networking'"
+    )
+    tags: list[str] | None = Field(None, description="Application tags, e.g. 'sends mail', 'opens port'")
+    types: list[str] | None = Field(None, description="Application types: 'Server', 'Client', 'Webapp'")
+
+
+async def app_condition(
+    app: FmcApp,
+    domain: str | None,
+    *,
+    risks: list[str] | None = None,
+    business_relevance: list[str] | None = None,
+    categories: list[str] | None = None,
+    tags: list[str] | None = None,
+    types: list[str] | None = None,
+) -> dict[str, Any]:
+    """One application condition (FMC's IAppCondition, as a named filter's `appConditions` entry and a rule's
+    `inlineApplicationFilters` entry take it) from attribute names: risks and business relevance from FMC's
+    fixed levels, types from its three types, categories and tags from FMC's lists (close-match hints).
+    {} when nothing is given."""
+    cond: dict[str, Any] = {}
+    if risks:
+        cond["risks"] = [
+            {"id": i, "type": "ApplicationRisk", "name": n}
+            for i, n in dict(pick_level(r, LEVELS, "risk") for r in risks).items()
+        ]
+    if business_relevance:
+        cond["productivities"] = [
+            {"id": i, "type": "ApplicationProductivity", "name": n}
+            for i, n in dict(pick_level(r, LEVELS, "business relevance") for r in business_relevance).items()
+        ]
+    if types:
+        cond["applicationTypes"] = [
+            {"id": i, "type": "ApplicationType", "name": n}
+            for i, n in dict(pick_level(t, APP_TYPES, "application type") for t in types).items()
+        ]
+    for given, key, path, fmc_type, what in (
+        (categories, "categories", APP_CATEGORIES, "ApplicationCategory", "category"),
+        (tags, "tags", APP_TAGS, "ApplicationTag", "tag"),
+    ):
+        if given:
+            rows = await facet(app, path, domain)
+            picked = {h["id"]: h for h in (pick_facet(rows, v, what) for v in given)}
+            cond[key] = [{"id": h["id"], "type": fmc_type, "name": h["name"]} for h in picked.values()]
+    return cond
 
 
 def app_row(a: dict[str, Any]) -> dict[str, Any]:
@@ -536,6 +618,10 @@ APP_NOTE = (
     "connection pass the rule's other conditions first); packet tracer can't simulate that, so verify "
     "with fmc_get_hit_counts or fmc_live_connections after real traffic."
 )
+INLINE_NOTE = (
+    "An inline filter lives in this rule only (no filter object to create or delete); FMC works out the "
+    "applications it matches from the VDB, so the set changes with VDB updates."
+)
 TIME_NOTE = "Time ranges are evaluated in each device's own time zone (platform settings; UTC unless set)."
 SGT_NOTE = (
     "SGT conditions match the tag on the connection: ISE SGTs from the session ISE publishes over pxGrid "
@@ -570,10 +656,26 @@ class ExtraConditions:
         source_sgts: list[str] | None = None,
         destination_sgts: list[str] | None = None,
         known_filters: list[dict[str, Any]] | None = None,
+        inline_app_filter: InlineAppFilter | None = None,
     ) -> ExtraConditions:
         """`known_filters`: application filter refs the policy's rules already use (filter_refs_in_rules),
-        so a name FMC doesn't list still resolves."""
-        if applications is not None or application_filters is not None:
+        so a name FMC doesn't list still resolves. `inline_app_filter` replaces the rule's inline filters
+        (one condition; one with no attributes removes them)."""
+        inline: list[dict[str, Any]] | None = None
+        if inline_app_filter is not None:
+            cond = await app_condition(self.app, self.domain, **inline_app_filter.model_dump())
+            inline = [cond] if cond else []
+            if cond:
+                self.details["inline_app_filter"] = {
+                    "matches": f"every application with {condition_text(cond)}",
+                    "note": INLINE_NOTE,
+                }
+            elif current is None:
+                raise InvalidRequest(
+                    "inline_app_filter needs at least one attribute (risks, business_relevance, categories, "
+                    "tags, types); on fmc_update_access_rule an empty one removes the rule's inline filters."
+                )
+        if applications is not None or application_filters is not None or inline is not None:
             apps = (
                 None
                 if applications is None
@@ -590,7 +692,7 @@ class ExtraConditions:
                     notes=self.warnings,
                 )
             )
-            block = merge_app_block((current or {}).get("applications"), apps, flts)
+            block = merge_app_block((current or {}).get("applications"), apps, flts, inline)
             self.fields["applications"] = block
             if block:
                 self.notes.append(APP_NOTE)

@@ -442,8 +442,11 @@ DESCRIPTION_DROPPED = (
 
 
 def kept_description(result: Any, description: str | None) -> Any:
-    """A create or update result, with a warning when FMC's answer lacks the description it was sent."""
-    if not description or not isinstance(result, dict) or result.get("description") == description:
+    """A create or update result, with a warning when FMC's answer lacks the description it was sent
+    (compared without surrounding whitespace, which FMC may trim)."""
+    if not description or not description.strip() or not isinstance(result, dict):
+        return result
+    if str(result.get("description") or "").strip() == description.strip():
         return result
     return {**result, "warning": DESCRIPTION_DROPPED}
 
@@ -607,7 +610,7 @@ def register(reg: ToolRegistrar) -> None:
             plan=Plan(
                 f"Change device group {g.get('name')!r}: +{len(new)} / -{len(dropped)} member(s)"
                 + (f", renamed to {name!r}" if renamed else "")
-                + (", description changed" if redescribed else ""),
+                + (", description sent (FMC 10.0.1 doesn't keep it)" if redescribed else ""),
                 details={
                     "added": _names(new),
                     "removed": _names(dropped),

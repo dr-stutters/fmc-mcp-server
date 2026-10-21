@@ -615,9 +615,11 @@ def register(reg: ToolRegistrar) -> None:
         phases. The live answer to "why is this traffic blocked?"; combine with fmc_rule_lookup
         (offline policy walk) and fmc_get_hit_counts. The ingress interface (it must have a logical
         name) is picked from the source IP unless given. An HA pair or cluster is traced on its active
-        unit (FMC's failover state) / control node; `device` names pair and unit."""
+        unit (FMC's failover state) / control node; `device` names pair and unit. A unit or node FMC
+        lists as disconnected is refused with its connected peers named (nothing is traced on a peer in
+        its place)."""
         app: FmcApp = get_client(ctx)
-        dev, member = await resolve_unit(app, device, domain)
+        dev, member = await resolve_unit(app, device, domain, traceable=True)
         out = await packet_trace(
             app,
             dev,
