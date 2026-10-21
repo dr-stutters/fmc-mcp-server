@@ -790,6 +790,10 @@
       "tier": "read",
       "title": "Find applications and application filters"
     },
+    "fmc_find_indicator": {
+      "tier": "read",
+      "title": "Find where a domain, URL or hash appears"
+    },
     "fmc_find_intrusion_rules": {
       "tier": "read",
       "title": "Find intrusion rules"

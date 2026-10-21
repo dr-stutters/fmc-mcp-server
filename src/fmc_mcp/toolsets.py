@@ -133,6 +133,7 @@ CATALOGUE: dict[str, tuple[str, tuple[str, ...]]] = {
             "fmc_create_si_feed",
             "fmc_delete_si_object",
             "fmc_dns_block",
+            "fmc_find_indicator",
             "fmc_get_dns_policy",
             "fmc_get_security_intelligence",
             "fmc_release_host",
