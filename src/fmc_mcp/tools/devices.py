@@ -144,27 +144,92 @@ def traffic_unit(units: list[tuple[dict[str, Any], Membership]]) -> dict[str, An
     raise NotFound("The HA pair or cluster has no units.", 404)
 
 
-async def resolve_unit(app: FmcApp, ref: str, domain: str | None) -> tuple[dict[str, Any], Membership | None]:
+class UnitDisconnected(InvalidRequest):
+    """An HA unit or cluster node that FMC lists as disconnected was asked to trace (resolve_unit with
+    `traceable`). The message says so and names the connected peers; `device` labels pair and unit."""
+
+    def __init__(self, message: str, device: str) -> None:
+        super().__init__(message)
+        self.device = device
+
+
+def disconnected_note(
+    dev: dict[str, Any], member: Membership, units: list[tuple[dict[str, Any], Membership]]
+) -> str:
+    """Why nothing can be traced on an HA unit / cluster node that FMC lists as disconnected, and what to do
+    instead: the connected peers by name; when the unit is the one FMC calls active (control), that FMC's
+    failover (cluster) state may be stale because a peer may have taken over. A peer is never picked
+    silently: a standby unit drops everything."""
+    name = str(dev.get("name"))
+    ha = member.kind == "ha"
+    what = "unit" if ha else "node"
+    head = f"{member.left_out(name, 'disconnected')}: FMC can't run packet tracer on it"
+    peers = [(d, m) for d, m in units if str(d.get("id")).lower() != str(dev.get("id")).lower()]
+    if not peers:
+        return f"{head}."
+    up = [(d, m) for d, m in peers if d.get("isConnected") is True]
+    if not up:
+        down = ", ".join(str(d.get("name")) for d, _ in peers)
+        return (
+            f"{head}, and no other {what} of {member.container} is connected ({down}): FMC can't reach "
+            f"the {'pair' if ha else 'cluster'}."
+        )
+    listed = ", ".join(f"{d.get('name')} ({m.role or 'member'} {what})" for d, m in up)
+    carrier = next((d for d, m in up if m.carries_traffic), None)
+    if carrier is not None:
+        return (
+            f"{head}. Connected: {listed}: trace on {carrier.get('name')}, or give {member.container}'s name."
+        )
+    state, check = ("failover", "fmc_get_ha_status") if ha else ("cluster", "fmc_list_clusters")
+    names = " or ".join(str(d.get("name")) for d, _ in up)
+    took_over = f"{names} may have taken over" if ha else f"{names} may have become the control node"
+    role = f"the {member.role} {what}" if member.role else f"the {what} to trace on"
+    why = ": a standby unit drops everything" if ha else ""
+    return (
+        f"{head}. Connected: {listed}. FMC still lists {name} as {role}, but FMC's {state} state may be "
+        f"stale ({took_over} while FMC lost {name}): check {check}, then trace on the "
+        f"{'active unit' if ha else 'control node'} by its name. No other {what} is traced on "
+        f"automatically{why}."
+    )
+
+
+async def resolve_unit(
+    app: FmcApp, ref: str, domain: str | None, *, traceable: bool = False
+) -> tuple[dict[str, Any], Membership | None]:
     """A device to run something on the device itself (packet tracer), by name or UUID; an HA pair's or
     cluster's name or UUID means its active unit / control node (traffic_unit). (device record, its
-    membership or None)."""
+    membership or None). With `traceable`, an HA unit or cluster node that FMC lists as disconnected is
+    refused (UnitDisconnected, naming the connected peers) instead of being sent a trace FMC answers
+    with a 503; a standalone device is left to FMC's own answer."""
+    units: list[tuple[dict[str, Any], Membership]] | None = None
     try:
         dev = await resolve_in(app, DEVICES, ref, "device", domain)
-        return dev, membership_of(dev)
     except (InvalidRequest, NotFound) as e:
         miss = e
-    page = await app.all(await app.config_path(DEVICES, domain), cap=1000)
-    members = await memberships(app, page.items, domain)
-    want = ref.strip().lower()
-    units = [
-        (d, m)
-        for d in page.items
-        if (m := members.get(str(d.get("id")).lower())) and want in (m.container.lower(), m.container_id)
-    ]
-    if not units:
-        raise miss
-    dev = traffic_unit(units)
-    return dev, members[str(dev.get("id")).lower()]
+        page = await app.all(await app.config_path(DEVICES, domain), cap=1000)
+        members = await memberships(app, page.items, domain)
+        want = ref.strip().lower()
+        units = [
+            (d, m)
+            for d in page.items
+            if (m := members.get(str(d.get("id")).lower())) and want in (m.container.lower(), m.container_id)
+        ]
+        if not units:
+            raise miss from None
+        dev = traffic_unit(units)
+        member: Membership | None = members[str(dev.get("id")).lower()]
+    else:
+        member = membership_of(dev)
+    if traceable and member is not None and dev.get("isConnected") is False:
+        if units is None:  # a unit named directly: its peers from the device list (this failure path only)
+            page = await app.all(await app.config_path(DEVICES, domain), cap=1000)
+            units = [
+                (d, m)
+                for d in page.items
+                if (m := membership_of(d)) is not None and m.container_id == member.container_id
+            ] or [(dev, member)]
+        raise UnitDisconnected(disconnected_note(dev, member, units), member.label(str(dev.get("name"))))
+    return dev, member
 
 
 def device_row(d: dict[str, Any]) -> dict[str, Any]:
