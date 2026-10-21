@@ -1057,10 +1057,9 @@ def register(reg: ToolRegistrar) -> None:
                         {"id": c["id"], "name": c.get("name"), "type": "CipherSuiteList"} for c in lists
                     ]
                 }
-            else:  # none = any suite: FMC's PUT replaces the rule, so omit the block
-                desired.pop("cipherSuiteLists", None)
-            before, after = _list_ids(cur), _list_ids(desired)
-            if before != after:
+            else:  # none = any suite, the empty block FMC 10.0.1 returns (and takes back) for it
+                desired["cipherSuiteLists"] = {}
+            if sorted(_list_ids(cur)) != sorted(_list_ids(desired)):
                 changes["cipher_suite_lists"] = {
                     "from": block_labels(cur.get("cipherSuiteLists")),
                     "to": [c.get("name") for c in lists],
@@ -1089,7 +1088,18 @@ def register(reg: ToolRegistrar) -> None:
                 position, params = insert_before - 1, {"insertAfter": insert_before - 1}
             if params:
                 changes["index"] = {"from": index, "to": position}
-        if changes and action != "DO_NOT_DECRYPT" and matches_all(desired):
+                anchor = next(
+                    (r for r in existing.items if _index(r) == (params.get("insertBefore") or position)), None
+                )
+                here, there = _category(cur), _category(anchor)
+                if anchor is not None and here != there:
+                    blockers.append(
+                        f"Rule {_index(anchor)} is in category {there!r} and {cur.get('name')!r} in "
+                        f"{here!r}; moves stay within a category (delete and re-create the rule to "
+                        "change it)."
+                    )
+        # a rule that already matches everything (a catch-all decrypt rule) can still be disabled or moved
+        if changes and action != "DO_NOT_DECRYPT" and matches_all(desired) and not matches_all(cur):
             blockers.append(
                 f"{cur.get('name')!r} ({action}) would have no condition left and match all TLS traffic."
             )
@@ -1101,28 +1111,40 @@ def register(reg: ToolRegistrar) -> None:
         item = f"{base}/{cur['id']}"
 
         async def apply() -> Any:
+            failed: UpstreamError | None = None
             try:
                 res = await app.api.put(item, desired, params=params)
             except UpstreamError as e:
                 if (e.status_code or 0) < 500:
                     raise
-                res = await app.api.get(item)
-                if not same_rule(res, desired):
-                    raise
+                failed, res = e, await app.api.get(item)
+            landed: int | None = None
+            if params:
+                rows = (await all_rules(app, base)).items
+                landed = _index(next((r for r in rows if r.get("id") == cur["id"]), {}))
+            if failed is not None:
+                # FMC 10.0.1 answers 500 "JsonNull" to a PUT that moves the rule, and moves it: the answer
+                # counts only when FMC holds the change and the rule sits where it should
+                if not same_rule(res, desired) or (params and landed != position):
+                    raise failed
                 res = {
                     **res,
-                    "warning": f"FMC answered {e.status_code} ({e}) but saved the change; check it with "
+                    "warning": f"FMC answered {failed.status_code} ({failed}) but saved the change; check it "
+                    "with fmc_get_decryption_policy.",
+                }
+            elif isinstance(res, dict) and res.get("id") and not same_rule(res, desired):
+                res = {
+                    **res,
+                    "warning": "FMC's answer doesn't show the change; check the rule with "
                     "fmc_get_decryption_policy.",
                 }
             if not params:
                 return res
-            rows = (await all_rules(app, base)).items
-            now: dict[str, Any] = next((r for r in rows if r.get("id") == cur["id"]), {})
-            res = {**(res if isinstance(res, dict) else {}), "index": _index(now)}
-            if _index(now) != position:
+            res = {**(res if isinstance(res, dict) else {}), "index": landed}
+            if landed != position:
                 res["warning"] = (
-                    f"{res.get('warning', '')} FMC put the rule at index {_index(now)}, not {position}; "
-                    "check the order with fmc_get_decryption_policy."
+                    f"{res.get('warning', '')} FMC put the rule at index {landed}, not {position}; check the "
+                    "order with fmc_get_decryption_policy."
                 ).strip()
             return res
 
@@ -1484,6 +1506,10 @@ async def cipher_list(app: FmcApp, ref: str, domain: str | None) -> dict[str, An
     if "literals" not in c:  # a by-name listing isn't expanded
         c = await app.api.get(f"{await app.config_path(CIPHER_LISTS, domain)}/{c['id']}")
     return c
+
+
+def _category(r: dict[str, Any] | None) -> str | None:
+    return (((r or {}).get("metadata") or {}).get("category") or {}).get("name")
 
 
 def _list_ids(r: dict[str, Any]) -> list[str]:
