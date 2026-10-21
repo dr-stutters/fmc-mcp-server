@@ -1022,3 +1022,25 @@ async def test_a_builtin_seen_from_a_leaf_is_refused_as_builtin(fmc: respx.MockR
     reasons = {r["name"]: r["reason"] for r in p["preview"]["refused"]}
     assert reasons["any-ipv4"] == "FMC built-in (system) object, read-only in every domain"
     assert reasons[global_own["name"]] == "defined in domain 'Global' (only inherited here; delete it there)"
+
+
+async def test_delete_objects_refuses_a_read_only_users_objects_for_the_role(fmc: respx.MockRouter) -> None:
+    """#249: a read-only API user sees its objects readOnly reason RBAC. They are no built-ins any more, so
+    the refusal names the role (FMC would answer 403); FMC's built-in stays a built-in."""
+
+    def rbac(o: dict[str, Any]) -> dict[str, Any]:
+        return {**o, "metadata": {"readOnly": {"state": True, "reason": "RBAC"}, "domain": HERE}}
+
+    hosts = [
+        rbac(obj("00000000-0000-0ed3-0000-0000000000e1", "mcp-w6-ro", "Host", value="192.0.2.1")),
+        rbac(obj("dde11d62-288b-4b4c-92e0-1dad0496f14b", "any-ipv6", "Host", value="::/0")),
+    ]
+    fmc.get(f"{CFG}/object/hosts").mock(side_effect=collection(hosts, unused={o["id"] for o in hosts}))
+    delete = fmc.delete(f"{CFG}/object/hosts")
+    async with Client(server()) as c:
+        p = await run(c, "fmc_delete_objects", {"names": ["mcp-w6-ro", "any-ipv6"], "types": ["host"]})
+    refused = {r["name"]: r["reason"] for r in p["preview"]["refused"]}
+    assert refused["mcp-w6-ro"].startswith("read-only for this API user's role (FMC: readOnly reason RBAC)")
+    assert "built-in" in refused["any-ipv6"]
+    assert not p["preview"].get("delete", {}).get("objects")
+    assert not delete.called

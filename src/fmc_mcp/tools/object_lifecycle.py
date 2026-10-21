@@ -44,6 +44,7 @@ from fmc_mcp.rules import flatten_nat_rule
 from fmc_mcp.tools.common import (
     FILTERABLE,
     OBJECT_TYPES,
+    ROLE_READ_ONLY,
     Domain,
     ObjectTypeName,
     ObjType,
@@ -54,6 +55,7 @@ from fmc_mcp.tools.common import (
     ref_label,
     ref_of,
     resolve_object,
+    role_read_only,
 )
 from fmc_mcp.tools.devices import DEVICES
 from fmc_mcp.tools.dynamic_objects import DYNAMIC
@@ -329,11 +331,11 @@ class Gather:
             c.users[str(u.get("id")).lower()] = label
 
     def _fixed(self, c: Candidate) -> bool:
-        """System and inherited objects are refused whatever else is selected. The owner domain is checked
-        before FMC's read-only flag: in a child domain FMC 10.0.1 marks an ancestor's objects read-only,
-        sometimes without a reason, so they would otherwise read as built-ins. FMC's own built-ins (fixed
-        ids, is_builtin_object) are said to be built-in there too, not "defined in Global": deleting them in
-        Global is refused as well."""
+        """System and inherited objects, and objects the API user's role may not change (readOnly reason
+        RBAC, #249), are refused whatever else is selected. The owner domain is checked before FMC's
+        read-only flag: in a child domain FMC 10.0.1 marks an ancestor's objects read-only, sometimes without
+        a reason, so they would otherwise read as built-ins. FMC's own built-ins (fixed ids, is_builtin_object)
+        are said to be built-in there too, not "defined in Global": deleting them in Global is refused as well."""
         owner = inherited_from(c.obj, self.here)
         if owner and is_builtin_object(c.obj):
             c.refuse("FMC built-in (system) object, read-only in every domain", in_use=False)
@@ -344,6 +346,8 @@ class Gather:
                 c.refuse("system-defined policy", in_use=False)
         elif is_system(c.obj):
             c.refuse("FMC built-in (system) object", in_use=False)
+        elif role_read_only(c.obj):
+            c.refuse(ROLE_READ_ONLY, in_use=False)
         return c.reason is not None
 
     async def zones(self) -> list[Candidate]:
@@ -1155,6 +1159,8 @@ def register(reg: ToolRegistrar) -> None:
             details["delete_old"] = True
             if is_system(cur_old):
                 blockers.append("delete_old: the old object is an FMC built-in and can't be deleted.")
+            elif role_read_only(cur_old):
+                blockers.append(f"delete_old: the old object is {ROLE_READ_ONLY}.")
             owner = inherited_from(cur_old, here)
             if owner:
                 blockers.append(

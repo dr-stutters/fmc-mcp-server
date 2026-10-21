@@ -211,7 +211,8 @@ async def test_assign_inherited_policy_keeps_its_other_targets(fmc: respx.MockRo
         return_value=items([assignment(LEAF_NAT, LEAF_DEV)])
     )
     fmc.get(f"{CFG}/assignment/policyassignments").mock(return_value=items([assignment(GLOBAL_NAT, SIBLING)]))
-    put = fmc.put(f"{CHILD_CFG}/assignment/policyassignments/{GLOBAL_NAT['id']}").mock(
+    # written where the assignment lives (Global): FMC refuses an ancestor policy's assignment below (#273)
+    put = fmc.put(f"{CFG}/assignment/policyassignments/{GLOBAL_NAT['id']}").mock(
         return_value=httpx.Response(200, json={})
     )
     args = {"kind": "nat", "policy": "global-nat", "devices": ["ftd-leaf"], "domain": "Branch"}
@@ -221,6 +222,7 @@ async def test_assign_inherited_policy_keeps_its_other_targets(fmc: respx.MockRo
             {"device": "ftd-leaf", "from": "leaf-nat", "to": "global-nat"}
         ]
         assert preview["preview"]["policy_domain"] == "Global"
+        assert preview["preview"]["assigned_in"] == "Global"
         assert any("keeps its 1 other target" in s for s in preview["side_effects"]), preview
         await run(c, "fmc_assign_policy", {**args, "confirm": preview["confirm"]})
     body = json.loads(put.calls.last.request.content)
@@ -461,3 +463,165 @@ async def test_delete_inherited_builtin_says_system_only(fmc: respx.MockRouter) 
     assert out["blockers"] == [
         "Read-only system object."
     ]  # not "repeat with domain='Global'": it is read-only there too
+
+
+# --- a read-only API user: every object says readOnly reason RBAC (#249) -------------------------------
+# bundle_acp.json was recorded in Global with a read-only API user: built-ins and the lab's own objects
+# alike carry readOnly {state: true, reason: RBAC}. Before #249 is_system() took every one of them for a
+# built-in, so fmc_list_objects(include_system=false), fmc_unused_objects, fmc_find_address and the hygiene
+# duplicate check hid every user object from such a login.
+
+READER: dict[str, Any] = fixture("bundle_acp")
+
+
+def reader_rows(*kinds: str) -> dict[str, dict[str, Any]]:
+    """The recorded read-only user's objects of these collections (object/<kind>), by name."""
+    return {
+        str(o["name"]): o
+        for path, page in READER.items()
+        for kind in kinds
+        if path.endswith(f"/object/{kind}")
+        for o in page["items"]
+    }
+
+
+def as_reader(page: dict[str, Any]) -> dict[str, Any]:
+    """A recorded page as the read-only user sees it: every item readOnly reason RBAC."""
+    import copy
+
+    out = copy.deepcopy(page)
+    for o in out.get("items") or []:
+        o.setdefault("metadata", {})["readOnly"] = {"state": True, "reason": "RBAC"}
+    return out
+
+
+def test_is_system_for_a_read_only_user_decides_by_type_and_id() -> None:
+    from fmc_mcp.tools.common import is_system, role_read_only
+
+    rows = reader_rows("hosts", "networks", "networkgroups", "protocolportobjects", "ranges", "urls")
+    assert {o["metadata"]["readOnly"]["reason"] for o in rows.values()} == {"RBAC"}
+    builtins = {
+        "any-ipv4",
+        "any-ipv6",
+        "any",
+        "IPv4-Private-All-RFC1918",
+        "IPv4-Private-10.0.0.0-8",
+        "AOL",
+        "HTTP",
+    }
+    assert all(is_system(rows[n]) for n in builtins)
+    own = [n for n in rows if n.startswith("mcp-test-")]
+    assert len(own) == 12 and not [n for n in own if is_system(rows[n])]
+    assert all(role_read_only(o) for o in rows.values())
+    # outside the object catalog (policies) there is no type/id rule: RBAC keeps them read-only, as before
+    (acp,) = [p for p in READER[f"{CFG}/policy/accesspolicies"]["items"] if p["name"] == "mcp-test-acp"]
+    assert is_system(acp)
+    # a writer's view of the same objects is not role-bound
+    writer = {**rows["mcp-test-db"], "metadata": {"readOnly": {"state": False}}}
+    assert not role_read_only(writer) and not is_system(writer)
+
+
+async def test_list_objects_for_a_read_only_user_keeps_user_objects(fmc: respx.MockRouter) -> None:
+    fmc.get(f"{CFG}/object/networkgroups").mock(
+        return_value=httpx.Response(200, json=READER[f"{CFG}/object/networkgroups"])
+    )
+    async with Client(server()) as c:
+        user = await run(
+            c,
+            "fmc_list_objects",
+            {"type": "network_group", "include_system": False, "response_format": "json"},
+        )
+        every = await run(c, "fmc_list_objects", {"type": "network_group", "response_format": "json"})
+    assert [r["name"] for r in user["results"]] == ["mcp-test-servers"]
+    rows = {r["name"]: r for r in every["results"]}
+    assert rows["any"]["system"] is True and "system" not in rows["mcp-test-servers"]
+
+
+async def test_unused_objects_for_a_read_only_user(fmc: respx.MockRouter) -> None:
+    hosts = reader_rows("hosts")
+    ports = reader_rows("protocolportobjects")
+    fmc.get(f"{CFG}/object/hosts", params={"filter": "unusedOnly:true"}).mock(
+        return_value=items([hosts["any-ipv6"], hosts["mcp-test-unused"]])
+    )
+    fmc.get(f"{CFG}/object/protocolportobjects", params={"filter": "unusedOnly:true"}).mock(
+        return_value=items([ports["AOL"], ports["Bittorrent"], ports["mcp-test-udp-5000s"]])
+    )
+    async with Client(server()) as c:
+        out = await run(c, "fmc_unused_objects", {"types": ["host", "port"], "response_format": "json"})
+    assert [r["name"] for r in out["results"]] == ["mcp-test-unused", "mcp-test-udp-5000s"], out
+
+
+async def test_find_address_for_a_read_only_user_leaves_out_builtins_only(lab: respx.MockRouter) -> None:
+    from fmc_mcp._core.testing import call_tool
+
+    from .conftest import as_leaf
+
+    as_leaf(lab)
+    for name in ("networkaddresses", "networkgroups"):
+        lab.get(f"{CFG}/object/{name}").mock(
+            return_value=httpx.Response(200, json=as_reader(LEAF_VIEW[name]))
+        )
+    args = {"address": "10.10.20.5", "areas": ["objects"], "response_format": "json"}
+    srv = create_server(make_settings())
+    out = await call_tool(srv, "fmc_find_address", args)
+    where = [r["where"] for r in out["results"] if r["area"] == "objects"]
+    assert where[0] == "Host mcp-test-db" and "Network mcp-test-app-net" in where, where
+    assert not [w for w in where if "IPv4-Private" in w], where
+    broad = await call_tool(srv, "fmc_find_address", {**args, "include_broad": True})
+    assert "Network IPv4-Private-10.0.0.0-8" in [r["where"] for r in broad["results"]]
+
+
+def test_hygiene_duplicates_for_a_read_only_user() -> None:
+    import copy
+    from typing import cast
+
+    from fmc_mcp.catalog import Catalog
+    from fmc_mcp.client import FmcApp
+    from fmc_mcp.tools.hygiene import duplicate_objects
+
+    rbac = {"state": True, "reason": "RBAC"}
+    objs = {str(o["id"]): o for o in as_reader({"items": list(leaf_rows().values())})["items"]}
+    ten = {
+        "id": "00000000-0000-0ed3-0000-000000000098",
+        "name": "lab-10",
+        "type": "Network",
+        "value": "10.0.0.0/8",
+    }
+    objs[ten["id"]] = {**ten, "metadata": {"readOnly": rbac}}
+    cat = Catalog(cast(FmcApp, None), None, objects=objs)
+    assert not duplicate_objects(cat, [])  # IPv4-Private-10.0.0.0-8 is FMC's: lab-10 has no duplicate
+    db = copy.deepcopy(leaf_rows()["mcp-test-db"])
+    twin = {
+        **db,
+        "id": "00000000-0000-0ed3-0000-000000000097",
+        "name": "lab-db",
+        "metadata": {"readOnly": rbac},
+    }
+    objs[twin["id"]] = twin
+    objs[str(db["id"])]["metadata"]["readOnly"] = rbac
+    (found,) = duplicate_objects(Catalog(cast(FmcApp, None), None, objects=objs), [])
+    assert sorted(found["objects"]) == ["lab-db", "mcp-test-db"], found
+
+
+async def test_writes_name_the_role_not_a_system_object(fmc: respx.MockRouter) -> None:
+    """Before #249 a read-only user's object was refused as 'a read-only system object'; it is still
+    refused (FMC would answer 403), now for what it is."""
+    db = reader_rows("hosts")["mcp-test-db"]
+    fmc.get(f"{CFG}/object/hosts").mock(return_value=items([db]))
+    fmc.get(f"{CFG}/object/operational/usage").mock(return_value=items([]))
+    put = fmc.put(f"{CFG}/object/hosts/{db['id']}")
+    async with Client(server()) as c:
+        upd = await c.call_tool(
+            "fmc_update_object",
+            {"object": "mcp-test-db", "type": "host", "value": "192.0.2.9"},
+            raise_on_error=False,
+        )
+        out = await run(c, "fmc_delete_object", {"object": "mcp-test-db", "type": "host"})
+    assert upd.is_error and "read-only for this API user's role" in upd.content[0].text  # type: ignore[union-attr]
+    assert "system object" not in upd.content[0].text  # type: ignore[union-attr]
+    assert out["status"] == "blocked"
+    assert out["blockers"] == [
+        "'mcp-test-db' is read-only for this API user's role (FMC: readOnly reason RBAC): use an account "
+        "whose role may modify it."
+    ]
+    assert not put.called
