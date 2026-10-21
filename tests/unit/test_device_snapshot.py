@@ -625,6 +625,57 @@ async def test_alert_readings_are_deltas_not_differences(fmc: respx.MockRouter) 
     assert worse["identical"] is False and worse["summary"] == {"health_alerts": {"changed": 1}}
 
 
+async def test_live_wan_down_is_one_readable_health_finding(fmc: respx.MockRouter) -> None:
+    """The Stage 2 recording (wan_down_live): on FTDv in CML the WAN link stop keeps carrier, so only the
+    INTERFACE alert changes; FMC joins its two interface messages with '<br>', which the snapshot and the
+    finding now show as '; '. Restored, the diff is identical again."""
+    st = lab(fmc)
+    live = FX["wan_down_live"]
+    assert live["ip_brief_Ethernet0/0"] in FX["show"]["show interface ip brief"]  # still up/up
+    out, _ = await snapshot(label="before")
+    before = out["snapshots"]["mcp-sdwan-t1-spoke1"]
+    row = next(a for a in st["alerts"]["items"] if a["moduleID"] == "INTERFACE")
+    row.update(live["INTERFACE"])
+    after_out, after = await snapshot(label="after")
+    e02, e00 = (f"Interface 'Ethernet0/{n}' is not receiving any packets" for n in (2, 0))
+    both = f"{e02}; {e00}"
+    assert after["health_alerts"]["INTERFACE"] == {"status": "RED", "details": both}
+    assert "<br>" not in after_out["snapshots"]["mcp-sdwan-t1-spoke1"]
+    diff = await call(
+        "fmc_diff_device_config", {"a": before, "b": after_out["snapshots"]["mcp-sdwan-t1-spoke1"]}
+    )
+    assert diff["summary"] == {"health_alerts": {"changed": 1}} and diff["total"] == 1
+    assert diff["findings"] == [f"health alert INTERFACE: details {e02} -> {both}"]
+    assert diff["findings"] != live["diff_findings_before_fix"]
+    # FMC lists the same two interfaces the other way round on its next run: no change
+    row["details"] = f"{e00}<br>{e02}"
+    same = await call("fmc_diff_device_config", {"a": after_out["snapshots"]["mcp-sdwan-t1-spoke1"]})
+    assert same["identical"] is True and "health_alerts" not in same["summary"]
+    # restored
+    row.update(next(a for a in FX["health/alerts"]["items"] if a["moduleID"] == "INTERFACE"))
+    again = await call("fmc_diff_device_config", {"a": before})
+    assert again["identical"] is True and again["total"] == 0
+
+
+def test_diff_alerts_reads_snapshots_that_kept_fmcs_br() -> None:
+    """A snapshot taken before this fix stored FMC's '<br>': compared with a new one, the same message."""
+    old = {
+        "INTERFACE": {
+            "status": "RED",
+            "details": "Interface 'Ethernet0/2' is down<br>Interface 'Ethernet0/0' is down",
+        }
+    }
+    new = {
+        "INTERFACE": {
+            "status": "RED",
+            "details": "Interface 'Ethernet0/2' is down; Interface 'Ethernet0/0' is down",
+        }
+    }
+    assert diff_alerts("health_alerts", old, new) == []
+    gone = diff_alerts("health_alerts", old, {})
+    assert gone[0]["value"]["details"] == new["INTERFACE"]["details"]
+
+
 def test_diff_alerts_keeps_what_the_message_says() -> None:
     """Interface names, addresses and plain counts are no readings: a change in them is a change."""
     rows = diff_alerts(
