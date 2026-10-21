@@ -67,10 +67,13 @@ async def test_a_recent_running_job_is_not_stuck_and_nothing_running_reads_no_hi
     jobs.mock(return_value=httpx.Response(200, json=recent))
     (row,) = (await call("fmc_list_deployable_devices", {}))["in_progress"]
     assert row["probably_stuck"] is False and row["running_for"] in ("4m", "5m")
-    # in progress per FMC but no running job in the history: flagged, with why
+    # in progress per FMC but no running job in the history (finished between the reads, or filed under
+    # another unit): unknown, never 'stuck'
     jobs.mock(return_value=items(LAB["jobhistories"]["items"][1:]))
-    (row,) = (await call("fmc_list_deployable_devices", {}))["in_progress"]
-    assert row["probably_stuck"] is True and "has no running job" in row["note"]
+    data = await call("fmc_list_deployable_devices", {})
+    (row,) = data["in_progress"]
+    assert row["probably_stuck"] is None and "lists no running job" in row["note"]
+    assert "probably_stuck" not in data
     # nothing in progress anywhere: no in_progress section, no job-history read
     idle = copy.deepcopy(LAB["devicerecords"])
     idle["items"][0]["deploymentStatus"] = "DEPLOYMENT_PENDING"
@@ -96,10 +99,52 @@ async def test_pending_changes_on_a_device_fmc_does_not_count_as_deployable(fmc:
     )
     data = await call("fmc_pending_changes", {"device": "mcp-ftd-identity"})
     assert data["results"][0]["entity"] == "mcp-pki-internal"
-    assert "does not count this device as deployable" in data["note"] and "DEPLOYED" in data["note"]
-    # a device FMC does list as pending: no such note
-    fmc.get(f"{CFG}/deployment/deployabledevices/503133d6-c9c6-11f1-b434-883d23e0134a/pendingchanges").mock(
-        return_value=items([change])
-    )
-    data = await call("fmc_pending_changes", {"device": "mcp-ftd2"})
-    assert "note" not in data
+    assert "does not list this device in its deployable devices" in data["note"]
+    # devices FMC does list as deployable, itself or as an HA member (mcp-ftd3 only in deviceMembers):
+    # no such note, whatever their record says
+    for dev_id, name in (
+        ("503133d6-c9c6-11f1-b434-883d23e0134a", "mcp-ftd2"),
+        ("532a591e-c9c6-11f1-adb7-e0cf54ff7bd5", "mcp-ftd3"),
+    ):
+        fmc.get(f"{CFG}/deployment/deployabledevices/{dev_id}/pendingchanges").mock(
+            return_value=items([change])
+        )
+        records = copy.deepcopy(LAB["devicerecords"])
+        records["items"] = [r for r in records["items"] if r["id"] != dev_id]
+        records["items"].append(
+            {"id": dev_id, "type": "Device", "name": name, "deploymentStatus": "DEPLOYED"}
+        )
+        fmc.get(f"{CFG}/devices/devicerecords").mock(return_value=httpx.Response(200, json=records))
+        data = await call("fmc_pending_changes", {"device": name})
+        assert "note" not in data, name
+
+
+async def test_a_failed_job_history_read_is_unknown_not_stuck(fmc: respx.MockRouter) -> None:
+    jobs = lab(fmc)
+    jobs.mock(return_value=httpx.Response(500, json={"error": {"messages": [{"description": "boom"}]}}))
+    data = await call("fmc_list_deployable_devices", {})
+    (row,) = data["in_progress"]
+    assert row["probably_stuck"] is None and row["note"].startswith("job history not readable")
+    assert row["device"] == "mcp-sdwan-t3-cluster (mcp-sdwan-t3-hub)" and "probably_stuck" not in data
+
+
+async def test_job_start_times_in_other_iso_forms(fmc: respx.MockRouter) -> None:
+    """Fractional seconds and an offset are read; a start time that can't be read leaves the age unknown
+    (probably_stuck null), never 'not stuck'."""
+    jobs = lab(fmc)
+    other = copy.deepcopy(LAB["jobhistories"])
+    other["items"][0]["startTime"] = "2026-10-18T14:11:39.250+11:00"  # = 03:11:39.25Z
+    jobs.mock(return_value=httpx.Response(200, json=other))
+    (row,) = (await call("fmc_list_deployable_devices", {}))["in_progress"]
+    assert row["probably_stuck"] is True and row["running_for"].split()[0].endswith("d")
+    recent = time.strftime("%Y-%m-%dT%H:%M:%S.123456", time.gmtime(time.time() - 120))  # no zone: UTC
+    other["items"][0]["startTime"] = recent
+    jobs.mock(return_value=httpx.Response(200, json=other))
+    (row,) = (await call("fmc_list_deployable_devices", {}))["in_progress"]
+    assert row["probably_stuck"] is False and row["running_for"] in ("1m", "2m")
+    other["items"][0]["startTime"] = "18/10/2026 03:11"
+    jobs.mock(return_value=httpx.Response(200, json=other))
+    data = await call("fmc_list_deployable_devices", {})
+    (row,) = data["in_progress"]
+    assert row["probably_stuck"] is None and "could not be read" in row["note"] and "running_for" not in row
+    assert "probably_stuck" not in data

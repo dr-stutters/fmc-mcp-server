@@ -24,10 +24,9 @@ RUNNING_JOB = re.compile(r"DEPLOYING|RUNNING|PROGRESS|QUEUED|PENDING|STARTED", r
 JOB_LOOKBACK_DAYS = 30  # how far back the running job of an in-progress device is looked for
 IN_PROGRESS_CAP = 10  # in-progress devices whose job history is read
 NOT_DEPLOYABLE_NOTE = (
-    "FMC does not count this device as deployable (its deployment status is {status} and it is not in "
-    "fmc_list_deployable_devices): FMC decides that from the device's out-of-date policies, so these "
-    "entries (e.g. a certificate or object changed in an ancestor domain) are pushed with the device's "
-    "next deployment, not on their own."
+    "FMC does not list this device in its deployable devices (fmc_list_deployable_devices), yet lists "
+    "these pending entries: FMC decides 'deployable' from the device's out-of-date policies, and these "
+    "entries (e.g. a certificate or object changed in an ancestor domain) have not made it out of date."
 )
 
 
@@ -89,15 +88,38 @@ async def deployable(app: FmcApp, domain: str | None) -> list[dict[str, Any]]:
     return page.items
 
 
-def _epoch(ts: Any) -> float | None:
-    """A job time (ISO 8601 or epoch seconds/milliseconds) as epoch seconds."""
-    text = iso(ts)
-    if not text:
-        return None
+async def is_deployable(app: FmcApp, device_id: str, domain: str | None) -> bool:
+    """Whether FMC's deployable list has the device (itself, or as a member of an HA pair or cluster).
+    True when the list can't be read: no claim either way."""
     try:
-        return datetime.strptime(text, "%Y-%m-%dT%H:%M:%SZ").replace(tzinfo=UTC).timestamp()
-    except ValueError:
+        pending = await deployable(app, domain)
+    except UpstreamError:
+        return True
+    want = device_id.lower()
+    for p in pending:
+        ids = [
+            (p.get("device") or {}).get("id"),
+            *((m or {}).get("id") for m in p.get("deviceMembers") or []),
+        ]
+        if want in {str(i).lower() for i in ids if i}:
+            return True
+    return False
+
+
+def _epoch(ts: Any) -> float | None:
+    """A job time as epoch seconds: ISO 8601 in any form (fractional seconds, Z or an offset; no zone
+    means UTC) or epoch seconds/milliseconds. None when it can't be read."""
+    if isinstance(ts, str) and "T" in ts:
+        try:
+            when = datetime.fromisoformat(ts.strip())
+        except ValueError:
+            return None
+        return (when if when.tzinfo else when.replace(tzinfo=UTC)).timestamp()
+    try:
+        n = float(ts)
+    except (TypeError, ValueError):
         return None
+    return n / 1000 if n > 10**11 else n
 
 
 def _age(seconds: float) -> str:
@@ -142,20 +164,20 @@ async def in_progress(
         try:
             jobs = (await app.page(await app.config_path(JOBS, domain), {"filter": filters}, limit=25)).items
         except UpstreamError as e:
-            notes.append(f"Job history of {row['device']} not readable ({e}).")
-            jobs = []
+            rows.append({**row, "probably_stuck": None, "note": f"job history not readable ({e})"})
+            continue
         job = next((j for j in jobs if RUNNING_JOB.search(str(j.get("jobStatus") or ""))), None)
         if job is None:
-            row["job"] = None
-            row["note"] = (
-                f"FMC says a deployment is in progress but its job history of the last {JOB_LOOKBACK_DAYS} "
-                "days has no running job"
+            note = (
+                f"FMC records a deployment in progress but lists no running job for this device in the last "
+                f"{JOB_LOOKBACK_DAYS} days: it may have finished between the two reads, or an HA pair's or "
+                "cluster's job may be filed under another unit (fmc_list_deployments)"
             )
-            row["probably_stuck"] = True
-            rows.append(row)
+            rows.append({**row, "probably_stuck": None, "note": note})
             continue
         started = _epoch(job.get("startTime"))
         age = now - started if started is not None else None
+        stuck = None if age is None else age > STUCK_AFTER_MINUTES * 60
         unit: dict[str, Any] = next(
             (x for x in job.get("deviceList") or [] if str(x.get("deviceUUID", "")).lower() == key), {}
         )
@@ -167,17 +189,34 @@ async def in_progress(
             started=iso(job.get("startTime")),
             running_for=_age(age) if age is not None else None,
             device_status=unit.get("deploymentStatus"),
-            probably_stuck=age is not None and age > STUCK_AFTER_MINUTES * 60,
             job_id=job.get("id"),
         )
-        rows.append({k: v for k, v in row.items() if v is not None})
+        row = {k: v for k, v in row.items() if v is not None}
+        row["probably_stuck"] = stuck
+        if stuck is None:
+            row["note"] = f"the job's start time {job.get('startTime')!r} could not be read: age unknown"
+        rows.append(row)
     if len(found) > IN_PROGRESS_CAP:
         notes.append(f"Only the first {IN_PROGRESS_CAP} of {len(found)} in-progress devices were looked up.")
     return rows, notes
 
 
+DEPLOYABLE_DESCRIPTION = (
+    "List devices that have configuration changes waiting to be deployed, with the out-of-date "
+    "policies, whether a deploy is possible and whether it interrupts traffic, plus `in_progress`: every "
+    "device whose deployment is running, with the job (name, note, user, start), how long it has run, and "
+    f"probably_stuck: true when that is over {STUCK_AFTER_MINUTES} minutes, false when under, null when "
+    "unknown (job history unreadable, no running job found, or a start time FMC wrote differently); "
+    "`probably_stuck` names the stuck ones ('is a deployment stuck?'). Empty results mean nothing is "
+    "waiting (or no devices are managed). FMC decides 'deployable' from out-of-date policies: "
+    "fmc_pending_changes can list entries (e.g. a certificate changed in an ancestor domain) for a device "
+    "that is not listed here; it says so. Details per device: fmc_pending_changes; history: "
+    "fmc_list_deployments."
+)
+
+
 def register(reg: ToolRegistrar) -> None:
-    @reg.read(title="List devices with undeployed changes")
+    @reg.read(title="List devices with undeployed changes", description=DEPLOYABLE_DESCRIPTION)
     async def fmc_list_deployable_devices(
         ctx: Context,
         domain: Domain = None,
@@ -185,15 +224,6 @@ def register(reg: ToolRegistrar) -> None:
         offset: Annotated[int, Field(ge=0)] = 0,
         response_format: ResponseFormat = "markdown",
     ) -> ToolResult:
-        """List devices that have configuration changes waiting to be deployed, with the
-        out-of-date policies, whether a deploy is possible and whether it interrupts traffic, plus
-        `in_progress`: every device whose deployment is running, with the job (name, note, user,
-        start), how long it has run, and probably_stuck when that is over 30 minutes ('is a
-        deployment stuck?'; stuck ones are in `probably_stuck`). Empty results mean nothing is
-        waiting (or no devices are managed). FMC decides 'deployable' from out-of-date policies:
-        fmc_pending_changes can list entries (e.g. a certificate changed in an ancestor domain) for a
-        device that is not listed here; it says so. Details per device: fmc_pending_changes; history:
-        fmc_list_deployments."""
         app: FmcApp = get_client(ctx)
         pending = await deployable(app, domain)
         rows = [deployable_row(d) for d in pending]
@@ -234,9 +264,8 @@ def register(reg: ToolRegistrar) -> None:
         notes = []
         if not everything.complete:
             notes.append("Only the first 5000 change entries were read.")
-        status = str(d.get("deploymentStatus") or "")
-        if rows and status and status.upper() not in ("DEPLOYMENT_PENDING", "DEPLOYMENT_IN_PROGRESS"):
-            notes.append(NOT_DEPLOYABLE_NOTE.format(status=status))
+        if rows and not await is_deployable(app, str(d["id"]), domain):
+            notes.append(NOT_DEPLOYABLE_NOTE)
         if notes:
             extra["note"] = " ".join(notes)
         return list_result(page_of(rows, limit=limit, offset=offset), fmt=response_format, extra=extra)
