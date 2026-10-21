@@ -38,6 +38,7 @@ from fmc_mcp.tools import (
     enrollment,
     file_policy,
     find_address,
+    find_indicator,
     fleet,
     ha,
     hygiene,
@@ -194,6 +195,8 @@ Workflows:
   domain) -> fmc_import_policy_bundle -> fmc_diff_policy_bundle against live -> assign + fmc_deploy.
 - "Where does 10.1.2.3 appear?": fmc_find_address (objects and groups, dynamic-object mappings, access,
   prefilter and NAT rules, static routes, VPN endpoints in one ranked call) -> fmc_where_used on an object.
+  A domain, URL or hash: fmc_find_indicator (FQDN/URL objects, access and decryption rules, SI URL lists,
+  DNS policy rules, SI feeds and lists).
 - Policy review: fmc_policy_audit ranks shadowed, permissive, unlogged, uninspected, unused and mergeable
   rules, expired time ranges and duplicate objects, each with a fix to preview; groups of identical fixes
   go through fmc_bulk_update_access_rules (one preview, every rule's diff; select by names or
@@ -286,6 +289,7 @@ REGISTER: list[Callable[[ToolRegistrar], None]] = [
     objects.register,
     analysis.register,
     find_address.register,
+    find_indicator.register,
     hygiene.register,
     threat_posture.register,
     deploy.register,
