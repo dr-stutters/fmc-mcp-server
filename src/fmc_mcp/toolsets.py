@@ -172,8 +172,11 @@ CATALOGUE: dict[str, tuple[str, tuple[str, ...]]] = {
         ),
     ),
     "platform": (
-        "platform settings: syslog, connection logging, NTP, SNMP, SSH access",
+        "platform settings: syslog, connection logging, NTP, SNMP, DNS, NetFlow, SSH/HTTPS/ICMP, banner",
         (
+            "fmc_configure_dns",
+            "fmc_configure_mgmt_access",
+            "fmc_configure_netflow",
             "fmc_configure_ntp",
             "fmc_configure_snmp",
             "fmc_configure_ssh_access",
@@ -181,6 +184,7 @@ CATALOGUE: dict[str, tuple[str, tuple[str, ...]]] = {
             "fmc_create_platform_settings_policy",
             "fmc_get_platform_settings",
             "fmc_set_access_logging",
+            "fmc_set_banner",
         ),
     ),
     "policy": (
@@ -256,7 +260,7 @@ CATALOGUE: dict[str, tuple[str, tuple[str, ...]]] = {
         ),
     ),
     "tls": (
-        "TLS decryption policies and rules, internal CAs and certificates, readiness check",
+        "TLS decryption policies and rules, certificates (all kinds, days left), readiness check",
         (
             "fmc_create_decryption_policy",
             "fmc_create_decryption_rule",
@@ -267,6 +271,7 @@ CATALOGUE: dict[str, tuple[str, tuple[str, ...]]] = {
             "fmc_get_decryption_policy",
             "fmc_import_certificate_files",
             "fmc_install_internal_ca_cert",
+            "fmc_list_certificates",
             "fmc_set_decryption_policy",
             "fmc_tls_decryption_check",
             "fmc_update_decryption_policy",

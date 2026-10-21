@@ -22,6 +22,8 @@
         "fmc_license_status",
         "fmc_upgrade_status",
         "fmc_list_backups",
+        "fmc_list_certificates",
+        "fmc_get_certificate",
         "fmc_list_vpn_tunnels",
         "fmc_list_health_alerts",
         "fmc_recent_activity",
@@ -429,6 +431,10 @@
       "tier": "write",
       "title": "Configure BGP"
     },
+    "fmc_configure_dns": {
+      "tier": "write",
+      "title": "Configure DNS (platform settings)"
+    },
     "fmc_configure_ecmp_zone": {
       "tier": "write",
       "title": "Configure ECMP zone"
@@ -436,6 +442,14 @@
     "fmc_configure_ha_monitoring": {
       "tier": "write",
       "title": "Configure HA monitored interface"
+    },
+    "fmc_configure_mgmt_access": {
+      "tier": "write",
+      "title": "Configure ICMP / HTTPS management access"
+    },
+    "fmc_configure_netflow": {
+      "tier": "write",
+      "title": "Configure NetFlow export (platform settings)"
     },
     "fmc_configure_ntp": {
       "tier": "write",
@@ -865,6 +879,10 @@
       "tier": "read",
       "title": "List backups"
     },
+    "fmc_list_certificates": {
+      "tier": "read",
+      "title": "List certificates with days left"
+    },
     "fmc_list_clusters": {
       "tier": "read",
       "title": "List clusters"
@@ -1013,6 +1031,10 @@
       "tier": "write",
       "title": "Set access policy logging (syslog)"
     },
+    "fmc_set_banner": {
+      "tier": "write",
+      "title": "Set login banner (platform settings)"
+    },
     "fmc_set_decryption_policy": {
       "tier": "write",
       "title": "Link decryption policy to access policy"
@@ -1134,5 +1156,5 @@
       "title": "Where is an object used"
     }
   },
-  "version": "0.14.1"
+  "version": "0.14.2"
 }

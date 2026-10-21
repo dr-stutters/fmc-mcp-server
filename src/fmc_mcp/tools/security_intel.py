@@ -32,7 +32,7 @@ from fmc_mcp._core import (
 from fmc_mcp.client import FmcApp, is_uuid
 from fmc_mcp.preview import fmc_preview
 from fmc_mcp.tools.common import Domain, is_system, resolve_in
-from fmc_mcp.tools.dns import DNS, DOMAIN_RE, upload_file
+from fmc_mcp.tools.dns import DNS, DOMAIN_RE, dns_policy_name, upload_file
 from fmc_mcp.tools.dns import MARKER as DNS_BLOCK_MARKER
 from fmc_mcp.tools.dns import rule_row as dns_rule_row
 from fmc_mcp.tools.object_writes import applied, editable
@@ -356,6 +356,15 @@ def _si_rows(si: dict[str, Any]) -> dict[str, Any]:
     }
 
 
+async def si_summary(app: FmcApp, si: dict[str, Any], domain: str | None) -> dict[str, Any]:
+    """_si_rows with the DNS policy's own name, not the SI reference's alias (#204)."""
+    rows = _si_rows(si)
+    ref = si.get("dnsPolicy") or {}
+    if ref.get("id"):
+        rows["dns_policy"] = await dns_policy_name(app, ref, domain)
+    return rows
+
+
 async def _si_policy(app: FmcApp, acp: dict[str, Any], domain: str | None) -> tuple[str, dict[str, Any]]:
     base = await app.config_path(f"{ACCESS}/{acp['id']}/securityintelligencepolicies", domain)
     page = await app.all(base)
@@ -548,7 +557,7 @@ def register(reg: ToolRegistrar) -> None:
             )
         acp = await resolve_in(app, ACCESS, policy, "access policy", domain)
         _, si = await _si_policy(app, acp, domain)
-        out: dict[str, Any] = {"policy": acp.get("name"), **_si_rows(si)}
+        out: dict[str, Any] = {"policy": acp.get("name"), **await si_summary(app, si, domain)}
         used: dict[str, list[str]] = {}
         for kind, (section, key) in SECTION.items():
             for which in ("blocklist", "allowlist"):
@@ -700,7 +709,7 @@ def register(reg: ToolRegistrar) -> None:
                         await app.api.delete(f"{paths[kind_of(ref)]}/{ref['id']}")
             return {
                 "policy": acp.get("name"),
-                "si": _si_rows(result if isinstance(result, dict) else body),
+                "si": await si_summary(app, result if isinstance(result, dict) else body, domain),
                 "next": "fmc_deploy to the devices using the policy",
             }
 
@@ -1013,7 +1022,7 @@ def register(reg: ToolRegistrar) -> None:
             result = await applied(app, lambda: app.api.put(path, body))
             return {
                 "policy": acp.get("name"),
-                "si": _si_rows(result if isinstance(result, dict) else body),
+                "si": await si_summary(app, result if isinstance(result, dict) else body, domain),
                 "next": "fmc_deploy to the devices using the policy",
             }
 

@@ -20,6 +20,7 @@ from fmc_mcp.tools import (
     app_routing,
     bundle,
     bundle_import,
+    certificates,
     containment,
     dangerous,
     decryption,
@@ -45,6 +46,7 @@ from fmc_mcp.tools import (
     objects,
     pki,
     platform_access,
+    platform_services,
     platform_settings,
     policies,
     policy_writes,
@@ -98,7 +100,10 @@ Workflows:
   the fmc_prove_user_policy prompt.
 - Send FTD logs to the customer's syslog/SIEM: fmc_get_platform_settings -> fmc_configure_syslog
   (servers, level, facility, RFC 5424) -> fmc_assign_policy(kind='platform_settings') -> fmc_deploy;
-  fmc_set_access_logging sends connection/intrusion events there too.
+  fmc_set_access_logging sends connection/intrusion events there too. NetFlow to a collector:
+  fmc_configure_netflow; DNS (FQDN objects in rules only match once the device has a DNS server group;
+  rule and FQDN object previews warn): fmc_configure_dns; ICMP/HTTPS access and the login banner:
+  fmc_configure_mgmt_access, fmc_set_banner.
 - Dynamic routing: fmc_get_routing (BGP, OSPF, ECMP, PBR, VRFs) -> fmc_configure_bgp /
   fmc_configure_ospf / fmc_create_vrf -> fmc_deploy -> fmc_run_show_command('show route').
 - SD-WAN (hub and spoke over VTIs): zone the WAN and inside interfaces (fmc_update_interface) ->
@@ -254,6 +259,7 @@ REGISTER: list[Callable[[ToolRegistrar], None]] = [
     activity.register,
     platform_settings.register,
     platform_access.register,
+    platform_services.register,
     routing.register,
     app_routing.register,
     intrusion.register,
@@ -267,6 +273,7 @@ REGISTER: list[Callable[[ToolRegistrar], None]] = [
     bundle_import.register,
     tickets.register,
     pki.register,
+    certificates.register,
     decryption.register,
     decryption_check.register,
     dns.register,

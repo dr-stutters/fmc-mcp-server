@@ -10,7 +10,7 @@ from fastmcp import Client
 
 from fmc_mcp.server import create_server
 
-from .conftest import CFG, CHILD, DOMAIN, items, make_settings
+from .conftest import CFG, CHILD, DOMAIN, fixture, items, make_settings
 
 CHILD_CFG = f"/api/fmc_config/v1/domain/{CHILD}"
 GLOBAL_REF = {"id": DOMAIN, "name": "Global", "type": "Domain"}
@@ -258,10 +258,12 @@ async def test_nat_policy_of_a_leaf_device_inherited_from_global(fmc: respx.Mock
         await app.aclose()
 
 
-# --- unused objects in a child domain (#197) ---------------------------------------------------------
+# --- FMC built-ins seen from a child domain (#197) ---------------------------------------------------
 # A child domain sees Global's objects as readOnly with reason DOMAIN, FMC's built-ins included; only
-# Global's own listing says SYSTEM (recorded in the lab, fixture unused_inherited_builtins.json).
+# Global's own listing says SYSTEM. The built-ins keep FMC's fixed ids; objects FMC creates get ...-0ed3-...
+# (recorded in the lab: unused_inherited_builtins.json, leaf_inherited_objects.json).
 
+LEAF_VIEW: dict[str, Any] = fixture("leaf_inherited_objects")
 UNUSED_TYPES = (
     "hosts",
     "networks",
@@ -274,8 +276,36 @@ UNUSED_TYPES = (
 )
 
 
+def leaf_rows() -> dict[str, dict[str, Any]]:
+    rows = LEAF_VIEW["networkaddresses"]["items"] + LEAF_VIEW["networkgroups"]["items"]
+    return {str(o["name"]): o for o in rows}
+
+
+def test_is_system_tells_inherited_builtins_from_globals_own_objects() -> None:
+    from fmc_mcp.tools.common import is_system
+
+    rows = leaf_rows()
+    rec = fixture("unused_inherited_builtins")
+    for o in [*rec["leaf_unused"], *rows.values()]:
+        assert (o["metadata"].get("readOnly") or {}).get("reason") in (None, "DOMAIN"), o["name"]
+    builtins = {"any-ipv4", "any-ipv6", "IPv4-Private-10.0.0.0-8", "any", "IPv4-Private-All-RFC1918"}
+    assert all(is_system(rows[n]) for n in builtins)
+    assert [is_system(o) for o in rec["leaf_unused"]] == [True, True, False]  # AOL, Bittorrent, a Global port
+    for name in ("mcp-test-db", "mcp-test-servers", "mcp-test-range", "mcp-fw-ha-inside-net"):
+        assert not is_system(rows[name]), name  # Global's own objects and the leaf's
+    assert all(is_system(o) for o in rec["global_list"][:2])  # Global itself says SYSTEM
+    # Only network and port objects are built-ins: an inherited zone (FMC gives zones v1 UUIDs) is not.
+    zone = {
+        "id": "20d5bbce-c9d6-11f1-8e93-9a786f180443",
+        "name": "mcp-test-identity-inside",
+        "type": "SecurityZone",
+        "metadata": {"readOnly": {"state": True, "reason": "DOMAIN"}, "domain": GLOBAL_REF},
+    }
+    assert not is_system(zone)
+
+
 def unused_mocks(fmc: respx.MockRouter) -> Any:
-    from .conftest import empty, fixture
+    from .conftest import empty
 
     rec = fixture("unused_inherited_builtins")
     leaf_own = {
@@ -295,20 +325,116 @@ def unused_mocks(fmc: respx.MockRouter) -> Any:
 
 
 async def test_unused_objects_in_child_domain_skip_inherited_builtins(fmc: respx.MockRouter) -> None:
-    rec = unused_mocks(fmc)
-    owner = fmc.get(f"{CFG}/object/protocolportobjects").mock(return_value=items(rec["global_list"]))
+    unused_mocks(fmc)
+    owner = fmc.get(f"{CFG}/object/protocolportobjects").mock(return_value=httpx.Response(403, json={}))
     async with Client(server()) as c:
         out = await run(c, "fmc_unused_objects", {"domain": "Branch", "response_format": "json"})
-    names = [r["name"] for r in out["results"]]
-    assert names == ["mcp-test-udp-5000s", "leaf-unused"], names  # AOL and Bittorrent are FMC built-ins
-    assert owner.call_count == 1  # one read of the owner's list per type, only for types with inherited rows
+    rows = {r["name"]: r for r in out["results"]}
+    assert list(rows) == ["mcp-test-udp-5000s", "leaf-unused"], rows  # AOL and Bittorrent are FMC built-ins
+    assert rows["mcp-test-udp-5000s"]["inherited_from"] == "Global"
+    assert "inherited_from" not in rows["leaf-unused"]
+    assert not owner.called  # decided from the objects themselves: no read of Global's lists
     assert "note" not in out
 
 
-async def test_unused_objects_owner_unreadable_keeps_rows_with_a_note(fmc: respx.MockRouter) -> None:
-    unused_mocks(fmc)
-    fmc.get(f"{CFG}/object/protocolportobjects").mock(return_value=httpx.Response(403, json={"error": "no"}))
+async def test_list_objects_in_child_domain_marks_builtins_system(fmc: respx.MockRouter) -> None:
+    fmc.get(f"{CHILD_CFG}/object/networkgroups").mock(
+        return_value=httpx.Response(200, json=LEAF_VIEW["networkgroups"])
+    )
     async with Client(server()) as c:
-        out = await run(c, "fmc_unused_objects", {"domain": "Branch", "response_format": "json"})
-    assert len(out["results"]) == 4
-    assert "Couldn't read Global" in out["note"], out
+        every = await run(
+            c, "fmc_list_objects", {"type": "network_group", "domain": "Branch", "response_format": "json"}
+        )
+        user = await run(
+            c,
+            "fmc_list_objects",
+            {"type": "network_group", "include_system": False, "domain": "Branch", "response_format": "json"},
+        )
+    rows = {r["name"]: r for r in every["results"]}
+    assert rows["any"]["system"] is True and "inherited_from" not in rows["any"]
+    assert rows["IPv4-Private-All-RFC1918"]["system"] is True
+    assert rows["mcp-test-servers"]["inherited_from"] == "Global" and "system" not in rows["mcp-test-servers"]
+    assert [r["name"] for r in user["results"]] == ["mcp-test-servers"]
+
+
+async def test_find_address_in_child_domain_leaves_out_builtins(lab: respx.MockRouter) -> None:
+    from fmc_mcp._core.testing import call_tool
+
+    from .conftest import as_leaf
+
+    as_leaf(lab)
+    for name in ("networkaddresses", "networkgroups"):
+        lab.get(f"{CFG}/object/{name}").mock(return_value=httpx.Response(200, json=LEAF_VIEW[name]))
+    args = {"address": "10.10.20.5", "areas": ["objects"], "response_format": "json"}
+    srv = create_server(make_settings())
+    out = await call_tool(srv, "fmc_find_address", args)
+    where = [r["where"] for r in out["results"] if r["area"] == "objects"]
+    assert where[0] == "Host mcp-test-db" and "Network mcp-test-app-net" in where
+    assert not [w for w in where if "IPv4-Private" in w], where  # FMC built-ins, as in Global
+    broad = await call_tool(srv, "fmc_find_address", {**args, "include_broad": True})
+    assert "Network IPv4-Private-10.0.0.0-8" in [r["where"] for r in broad["results"]]
+
+
+def test_hygiene_duplicates_in_child_domain_skip_builtins() -> None:
+    from typing import cast
+
+    from fmc_mcp.catalog import Catalog
+    from fmc_mcp.client import FmcApp
+    from fmc_mcp.tools.hygiene import duplicate_objects
+
+    objs = {str(o["id"]): o for o in leaf_rows().values()}
+    ten = {"id": "00000000-0000-0ed3-0000-000000000098", "name": "lab-10", "type": "Network"}
+    objs[ten["id"]] = {**ten, "value": "10.0.0.0/8", "metadata": {"domain": CHILD_REF}}
+    cat = Catalog(cast(FmcApp, None), "Branch", objects=objs)
+    found = duplicate_objects(cat, [])
+    assert not found, found  # IPv4-Private-10.0.0.0-8 is FMC's: not a duplicate to delete
+
+
+def test_bundle_in_child_domain_names_globals_objects_only() -> None:
+    from fmc_mcp.tools.bundle import object_entry
+
+    rows, here = leaf_rows(), "Global/mcp-test-leaf"  # what app.domain_name says for the leaf
+    assert object_entry(rows["mcp-test-db"], here)["domain"] == "Global"
+    assert "domain" not in object_entry(rows["IPv4-Private-10.0.0.0-8"], here)  # as in Global's export
+    # The leaf's own object: FMC's metadata calls the leaf 'Global \\ mcp-test-leaf'.
+    assert rows["mcp-fw-ha-inside-net"]["metadata"]["domain"]["name"] == "Global \\ mcp-test-leaf"
+    assert "domain" not in object_entry(rows["mcp-fw-ha-inside-net"], here)
+
+
+def test_bundle_entry_does_not_depend_on_the_exporting_users_role() -> None:
+    # A read-only API user sees every object as readOnly reason RBAC (bundle_acp.json, recorded with such a
+    # user): the bundle must still name Global's own objects and leave out FMC's built-ins, as for a writer.
+    import copy
+
+    from fmc_mcp.tools.bundle import object_entry
+
+    rec = fixture("bundle_acp")
+    ro_rows = {
+        str(o["name"]): o
+        for path, page in rec.items()
+        if path.endswith(("/object/hosts", "/object/protocolportobjects"))
+        for o in page["items"]
+    }
+    here = "Global/mcp-test-leaf"
+    assert ro_rows["mcp-test-db"]["metadata"]["readOnly"]["reason"] == "RBAC"
+    assert object_entry(ro_rows["mcp-test-db"], here)["domain"] == "Global"
+    assert "domain" not in object_entry(ro_rows["AOL"], here)
+    for name in ("mcp-test-db", "IPv4-Private-10.0.0.0-8", "mcp-test-servers"):
+        writer = leaf_rows()[name]  # reason DOMAIN
+        reader = copy.deepcopy(writer)
+        reader["metadata"]["readOnly"] = {"state": True, "reason": "RBAC"}
+        assert object_entry(reader, here) == object_entry(writer, here), name
+
+
+async def test_delete_inherited_builtin_says_system_only(fmc: respx.MockRouter) -> None:
+    aol = fixture("unused_inherited_builtins")["leaf_unused"][0]
+    fmc.get(f"{CHILD_CFG}/object/protocolportobjects").mock(return_value=items([aol]))
+    fmc.get(f"{CHILD_CFG}/object/operational/usage").mock(
+        return_value=httpx.Response(400, json={"error": {"messages": [{"description": "not supported"}]}})
+    )
+    async with Client(server()) as c:
+        out = await run(c, "fmc_delete_object", {"object": "AOL", "type": "port", "domain": "Branch"})
+    assert out["status"] == "blocked"
+    assert out["blockers"] == [
+        "Read-only system object."
+    ]  # not "repeat with domain='Global'": it is read-only there too
