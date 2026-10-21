@@ -113,12 +113,48 @@ async def test_move_up_and_down(fmc: respx.MockRouter) -> None:
     ]
 
 
-async def test_move_says_where_fmc_put_it(fmc: respx.MockRouter) -> None:
+async def test_move_that_did_not_happen(fmc: respx.MockRouter) -> None:
+    """A 500 counts as applied only when the rule really moved; a 200 that left it in place says so."""
     lab = Fmc(fmc, REC["rules_before"]["items"])
     lab.put(fmc, WEAK, "rules_before", status=500)  # 500 and nothing moved
+    a = args("block-weak-ciphers", insert_before=1)
     async with Client(server()) as c:
-        _, done = await apply(c, args("block-weak-ciphers", insert_before=1))
+        p = await run(c, "fmc_update_decryption_rule", a)
+        with pytest.raises(ToolError, match="500"):
+            await run(c, "fmc_update_decryption_rule", {**a, "confirm": p["confirm"]})
+        lab.put(fmc, WEAK, "rules_before")  # 200, nothing moved
+        _, done = await apply(c, a)
     assert "FMC put the rule at index 2, not 1" in done["result"]["warning"]
+
+
+async def test_move_to_the_end(fmc: respx.MockRouter) -> None:
+    """insert_before = rule count + 1: after the last rule (FMC's insertAfter, indexes before the move)."""
+    lab = Fmc(fmc, REC["rules_before"]["items"])
+    put = lab.put(fmc, OLD_TLS, "rules_before", status=500)
+    at_end = [
+        {**WEAK, "metadata": {**WEAK["metadata"], "ruleIndex": 1}},
+        {**RESIGN, "metadata": {**RESIGN["metadata"], "ruleIndex": 2}},
+        {**OLD_TLS, "metadata": {**OLD_TLS["metadata"], "ruleIndex": 3}},
+    ]
+    put.side_effect = lambda _: (setattr(lab, "rules", at_end), httpx.Response(500, json=REC["put_500"]))[1]
+    async with Client(server()) as c:
+        p, done = await apply(c, args("block-old-tls", insert_before=4))
+    assert p["preview"]["changes"] == {"index": {"from": 1, "to": 3}}
+    assert put.calls.last.request.url.params["insertAfter"] == "3"
+    assert done["result"]["index"] == 3
+    # a Block rule below the resign rule: the preview said so
+    assert any("above Block rule(s) 3 'block-old-tls'" in s for s in p["side_effects"])
+
+
+async def test_moves_stay_within_a_category(fmc: respx.MockRouter) -> None:
+    mine = {**OLD_TLS, "metadata": {"ruleIndex": 1, "category": {"name": "mandatory_block"}}}
+    Fmc(fmc, [mine, WEAK, RESIGN])
+    async with Client(server()) as c:
+        out = await run(c, "fmc_update_decryption_rule", args("block-old-tls", insert_before=4))
+    assert out["blockers"] == [
+        "Rule 3 is in category 'standard_category' and 'block-old-tls' in 'mandatory_block'; moves stay "
+        "within a category (delete and re-create the rule to change it)."
+    ]
 
 
 async def test_500_without_the_change_fails(fmc: respx.MockRouter) -> None:
@@ -230,6 +266,33 @@ async def test_order_warnings_and_position_blockers(fmc: respx.MockRouter) -> No
     assert not any("After this change" in s for s in swap["side_effects"])
 
 
+async def test_remove_cipher_lists(fmc: respx.MockRouter) -> None:
+    """[] sends the empty block FMC 10.0.1 returns for a rule without lists; an answer that still shows the
+    list is flagged."""
+    lab = Fmc(fmc, REC["rules_before"]["items"])
+    put = lab.put(fmc, WEAK, "rules_before")  # FMC answers with the rule unchanged
+    async with Client(server()) as c:
+        p, done = await apply(c, args("block-weak-ciphers", cipher_suite_lists=[]))
+    assert p["preview"]["changes"] == {"cipher_suite_lists": {"from": ["tls-weak-no-rc4"], "to": []}}
+    sent = json.loads(put.calls.last.request.content)
+    assert sent["cipherSuiteLists"] == {} == RESIGN["cipherSuiteLists"]
+    assert "doesn't show the change" in done["result"]["warning"]
+
+
+async def test_catch_all_rule_can_be_disabled_and_moved(fmc: respx.MockRouter) -> None:
+    """A catch-all Decrypt-Resign rule (no conditions, the usual last rule) isn't blocked for matching
+    everything: the update doesn't make it so."""
+    conditions = ("sourceZones", "destinationZones", "destinationPorts")
+    bare = {k: v for k, v in RESIGN.items() if k not in conditions}
+    Fmc(fmc, [OLD_TLS, WEAK, bare])
+    async with Client(server()) as c:
+        off = await run(c, "fmc_update_decryption_rule", args("resign-stepup", enabled=False))
+        up = await run(c, "fmc_update_decryption_rule", args("resign-stepup", insert_before=2))
+    assert off["status"] == "preview"
+    assert off["preview"]["changes"] == {"enabled": {"from": True, "to": False}}
+    assert up["status"] == "preview" and "blockers" not in up
+
+
 async def test_rule_left_without_conditions_is_blocked(fmc: respx.MockRouter) -> None:
     bare = {k: v for k, v in WEAK.items() if k not in ("sourceZones", "destinationZones")}
     Fmc(fmc, [OLD_TLS, bare, RESIGN])
@@ -259,7 +322,9 @@ async def test_token_covers_the_lists_suites(fmc: respx.MockRouter) -> None:
 def delete_mocks(fmc: respx.MockRouter, rules: str, child: list[dict[str, Any]] | None = None) -> respx.Route:
     """The lab's lists and rules; FMC's usage API refuses cipher suite lists (it must not be needed)."""
     Fmc(fmc, REC[rules]["items"])
-    fmc.get(f"{CFG}/object/operational/usage").mock(return_value=httpx.Response(400, json=REC["usage_400"]))
+    fmc.get(f"{CFG}/object/operational/usage", name="usage").mock(
+        return_value=httpx.Response(400, json=REC["usage_400"])
+    )
     if child is not None:
         kid = {"id": "c1", "name": "branch-dec", "type": "DecryptionPolicy"}
         fmc.get(CHILD_DEC).mock(return_value=items([kid]))
@@ -272,12 +337,13 @@ def delete_mocks(fmc: respx.MockRouter, rules: str, child: list[dict[str, Any]] 
 async def test_delete_unused_cipher_list(fmc: respx.MockRouter) -> None:
     """The live run's last write: tls-weak-preset, once block-weak-ciphers was back on tls-weak-no-rc4."""
     delete = delete_mocks(fmc, "rules_final")
+    usage = fmc.routes["usage"]
     a = {"object": "tls-weak-preset", "type": "cipher_suite_list"}
     async with Client(server()) as c:
         p = await run(c, "fmc_delete_object", a)
         assert p["status"] == "preview" and p["action"] == "Delete cipher_suite_list 'tls-weak-preset'"
         done = await run(c, "fmc_delete_object", {**a, "confirm": p["confirm"]})
-    assert done["status"] == "applied" and delete.called
+    assert done["status"] == "applied" and delete.called and not usage.called
     assert [x["name"] for x in REC["lists_final"]["items"]] == ["tls-weak-ciphers", "tls-weak-no-rc4"]
 
 
