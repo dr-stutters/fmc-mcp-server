@@ -27,7 +27,7 @@ sessions, so never the GUI `admin` or another integration's user.
 has a wheel with stutters-mcp-core bundled in; it needs only PyPI dependencies.
 
 ```bash
-WHEEL=https://github.com/dr-stutters/fmc-mcp-server/releases/download/v0.14.1/fmc_mcp_server-0.14.1-py3-none-any.whl
+WHEEL=https://github.com/dr-stutters/fmc-mcp-server/releases/download/v0.14.2/fmc_mcp_server-0.14.2-py3-none-any.whl
 export FMC_URL=https://fmc.example.com FMC_USERNAME=mcp-api-ro FMC_PASSWORD='...'
 uvx --from "$WHEEL" fmc-mcp-server check            # preflight: TLS, token, domains, role, version, rate limit
 claude mcp add fmc -e FMC_URL=$FMC_URL -e FMC_USERNAME=$FMC_USERNAME -e FMC_PASSWORD="$FMC_PASSWORD" \
@@ -41,7 +41,7 @@ Claude Desktop (`claude_desktop_config.json`), same idea:
   "mcpServers": {
     "fmc": {
       "command": "uvx",
-      "args": ["--from", "https://github.com/dr-stutters/fmc-mcp-server/releases/download/v0.14.1/fmc_mcp_server-0.14.1-py3-none-any.whl", "fmc-mcp-server"],
+      "args": ["--from", "https://github.com/dr-stutters/fmc-mcp-server/releases/download/v0.14.2/fmc_mcp_server-0.14.2-py3-none-any.whl", "fmc-mcp-server"],
       "env": {"FMC_URL": "https://fmc.example.com", "FMC_USERNAME": "mcp-api-ro", "FMC_PASSWORD": "..."}
     }
   }
@@ -121,7 +121,7 @@ There are 180 tools when every tier is enabled (79 read, 90 write, 11 dangerous;
 | Policies | `fmc_list_policies`, `fmc_get_access_policy`, `fmc_list_access_rules`, `fmc_get_access_rule`, `fmc_list_nat_rules`, `fmc_list_prefilter_rules`, `fmc_list_policy_assignments` |
 | Objects | `fmc_list_objects`, `fmc_get_object`, `fmc_find_object`, `fmc_where_used`, `fmc_unused_objects`, `fmc_list_dynamic_objects`, `fmc_find_address` (one IP, network or range across objects and groups, dynamic-object mappings, access, prefilter and NAT rules, static routes and VPN endpoints, ranked) |
 | Security Intelligence | `fmc_get_security_intelligence` (block and do-not-block lists, the DNS policy's rules, and each feed's and custom list's entries, last update and status; without a policy: every SI feed and custom list) |
-| Decryption / DNS | `fmc_get_decryption_policy` (rules, trusted CAs, TLS 1.3, access policies using it, `readiness`), `fmc_get_certificate` (internal CAs, internal certificates, trusted CAs: expiry, pending CSR, PEM to install on clients, where used; private keys never shown), `fmc_tls_decryption_check` (what decryption does to one flow and what a decrypt-resign rollout still lacks), `fmc_get_dns_policy` |
+| Decryption / DNS | `fmc_get_decryption_policy` (rules, trusted CAs, TLS 1.3, access policies using it, `readiness`), `fmc_get_certificate` (internal CAs, internal certificates, trusted CAs: expiry, pending CSR, PEM to install on clients, where used; private keys never shown), `fmc_list_certificates` (every certificate FMC holds: device enrolments with their deployment and identity/CA status, internal certificates and CAs, trusted CAs, external certificates; ISO, OpenSSL and epoch dates normalised to `days_left` and a severity, critical at 30 days and warning at 90; `expiring_within_days`), `fmc_tls_decryption_check` (what decryption does to one flow and what a decrypt-resign rollout still lacks), `fmc_get_dns_policy` |
 | Identity (AD/LDAP, ISE) | `fmc_get_realm` (directories, downloaded users and groups), `fmc_test_realm` (bind test from FMC; needs `FMC_UI_USERNAME`), `fmc_get_identity_policy` (rules, access policies using it), `fmc_get_identity_sources` (ISE/pxGrid connection, SGT download, realms, identity policies, sessions by source, per-device user-IP bindings, certificate expiry, what to fix), `fmc_user_ip_lookup` (who is on an IP / where a user is, with the user's realm groups) |
 | Intrusion (Snort 3) | `fmc_get_intrusion_policy` (base, mode, usage, overridden rules), `fmc_find_intrusion_rules` (gid:sid, SID or text; per-policy state) |
 | File / malware, network analysis | `fmc_get_file_policy` (settings and file rules; `catalog=true` lists file categories and types), `fmc_get_network_analysis_policy` (base, mode, access policies using it, inspector overrides) |
@@ -472,7 +472,7 @@ checks it against the registered tools.
 | `routing` | 8 (2/6/0) | static routes, BGP, OSPF, VRFs |  |
 | `sdwan` | 7 (1/6/0) | SD-WAN hub and spoke topologies, WAN interfaces, application-aware routing, branch health | `fmc_onboard_branch`, `fmc_sdwan_troubleshoot` |
 | `threat` | 13 (5/8/0) | intrusion (IPS), file/malware and network analysis policies, an ACP's threat posture | `fmc_threat_defense_review` |
-| `tls` | 12 (3/9/0) | TLS decryption policies and rules, internal CAs and certificates, readiness check |  |
+| `tls` | 13 (4/9/0) | TLS decryption policies and rules, certificates (all kinds, days left), readiness check |  |
 | `troubleshoot` | 10 (10/0/0) | why is traffic blocked: packet tracer, rule lookup, hit counts, show commands, live state | `fmc_firewall_health_review`, `fmc_prove_user_policy`, `fmc_why_blocked` |
 | `vpn` | 7 (5/2/0) | site-to-site VPN topologies, tunnel status and troubleshooting, remote access VPN (read) | `fmc_vpn_troubleshoot` |
 
