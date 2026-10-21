@@ -1,7 +1,7 @@
 {
  "_source": "FMC 10.0.1 (build 1), Global/mcp-test-leaf lab, 2026-10-20 (build:rules, F66). GETs via fmc_api_call; links dropped.",
  "applications_page": {
-  "_source": "GET object/applications?limit=5 (also with filter=name:HTTP and filter=nameOrValue:HTTP: the same unfiltered rows, count 8393). Rows after the first five are added for the tests (HTTP from GET applications/676; the others synthetic names with made-up ids).",
+  "_source": "GET object/applications?limit=5 (also with filter=name:HTTP and filter=nameOrValue:HTTP: the same unfiltered rows, count 8393). Rows after the first five are added for the tests (HTTP from GET applications/676; the others synthetic names with made-up ids). SSH carries its real app id 846 (fmc_find_application, W6 live-B1 2026-10-21).",
   "items": [
    {
     "id": "2325",
@@ -54,7 +54,7 @@
     "name": "Facebook Messages"
    },
    {
-    "id": "90005",
+    "id": "846",
     "type": "Application",
     "name": "SSH"
    }
@@ -396,5 +396,356 @@
    "count": 1,
    "pages": 1
   }
+ },
+ "live_rules": {
+  "_source": "W6 live-B1, FMC 10.0.1, Global/mcp-test-leaf, 2026-10-21: GET accessrules/{id} of rules created by fmc_create_access_rule with applications=['SSH'], time_range='mcp-w6-tr-now', vlan_tags=['100'], and by a raw POST with applications.applicationFilters; destinations scrubbed to documentation addresses, application filter id node part replaced. FMC adds applicationDefaultPort false to every applications block, and an empty vlanTags {} to rules without VLAN tags.",
+  "app_ssh": {
+   "metadata": {
+    "ruleIndex": 3,
+    "section": "Default",
+    "category": "--Undefined--",
+    "timestamp": 1792561115101,
+    "domain": "Global \\ mcp-test-leaf"
+   },
+   "enabled": true,
+   "advancedLogging": {},
+   "sendEventsToFMC": true,
+   "enableSyslog": false,
+   "applications": {
+    "applicationDefaultPort": false,
+    "applications": [
+     {
+      "id": "846",
+      "type": "Application",
+      "name": "SSH"
+     }
+    ]
+   },
+   "destinationDynamicObjects": {},
+   "logBegin": false,
+   "logEnd": true,
+   "logFiles": false,
+   "sourceDynamicObjects": {},
+   "commentHistoryList": [
+    {
+     "date": "2026-10-21T05:38:26.000+0000",
+     "comment": "W6 live-B1 F66: SSH app to FMC",
+     "user": {
+      "name": "mcp-api-svc",
+      "type": "User"
+     }
+    }
+   ],
+   "sourceNetworks": {
+    "objects": [
+     {
+      "type": "Network",
+      "overridable": false,
+      "name": "mcp-test-ftd-inside-net",
+      "id": "00000000-0000-0ed3-0000-021474841321"
+     }
+    ]
+   },
+   "destinationNetworks": {
+    "literals": [
+     {
+      "type": "Host",
+      "value": "198.51.100.76"
+     }
+    ]
+   },
+   "vlanTags": {},
+   "action": "ALLOW",
+   "variableSet": {
+    "name": "Default-Set",
+    "id": "76fa83ea-c972-11e2-8be8-8e45bb1343c0",
+    "type": "VariableSet"
+   },
+   "type": "AccessRule",
+   "name": "mcp-w6-app-ssh",
+   "id": "00000000-0000-0ed3-0000-000268434524"
+  },
+  "time_now": {
+   "metadata": {
+    "ruleIndex": 5,
+    "section": "Default",
+    "category": "--Undefined--",
+    "timestamp": 1792561150358,
+    "domain": "Global \\ mcp-test-leaf"
+   },
+   "timeRangeObjects": [
+    {
+     "name": "mcp-w6-tr-now",
+     "type": "TimeRange",
+     "id": "00000000-0000-0ed3-0000-021474975854"
+    }
+   ],
+   "enabled": true,
+   "advancedLogging": {},
+   "sendEventsToFMC": true,
+   "enableSyslog": false,
+   "destinationDynamicObjects": {},
+   "logBegin": false,
+   "logEnd": true,
+   "logFiles": false,
+   "sourceDynamicObjects": {},
+   "commentHistoryList": [
+    {
+     "date": "2026-10-21T05:38:45.000+0000",
+     "comment": "W6 live-B1 F66: active time range",
+     "user": {
+      "name": "mcp-api-svc",
+      "type": "User"
+     }
+    }
+   ],
+   "sourceNetworks": {
+    "objects": [
+     {
+      "type": "Network",
+      "overridable": false,
+      "name": "mcp-test-ftd-inside-net",
+      "id": "00000000-0000-0ed3-0000-021474841321"
+     }
+    ]
+   },
+   "destinationNetworks": {
+    "literals": [
+     {
+      "type": "Host",
+      "value": "198.51.100.76"
+     }
+    ]
+   },
+   "vlanTags": {},
+   "destinationPorts": {
+    "literals": [
+     {
+      "type": "PortLiteral",
+      "port": "443",
+      "protocol": "6"
+     }
+    ]
+   },
+   "action": "ALLOW",
+   "variableSet": {
+    "name": "Default-Set",
+    "id": "76fa83ea-c972-11e2-8be8-8e45bb1343c0",
+    "type": "VariableSet"
+   },
+   "type": "AccessRule",
+   "name": "mcp-w6-time-now",
+   "id": "00000000-0000-0ed3-0000-000268434526"
+  },
+  "vlan": {
+   "metadata": {
+    "ruleIndex": 10,
+    "section": "Default",
+    "category": "--Undefined--",
+    "timestamp": 1792561150358,
+    "domain": "Global \\ mcp-test-leaf"
+   },
+   "enabled": true,
+   "advancedLogging": {},
+   "sendEventsToFMC": true,
+   "enableSyslog": false,
+   "destinationDynamicObjects": {},
+   "logBegin": false,
+   "logEnd": true,
+   "logFiles": false,
+   "sourceDynamicObjects": {},
+   "commentHistoryList": [
+    {
+     "date": "2026-10-21T05:38:52.000+0000",
+     "comment": "W6 live-B1 F66: VLAN tag rule (inline sets only; expect 0 hits on routed mcp-ftd1)",
+     "user": {
+      "name": "mcp-api-svc",
+      "type": "User"
+     }
+    }
+   ],
+   "vlanTags": {
+    "literals": [
+     {
+      "startTag": 100,
+      "endTag": 100,
+      "type": "VlanTagLiteral"
+     }
+    ]
+   },
+   "action": "ALLOW",
+   "variableSet": {
+    "name": "Default-Set",
+    "id": "76fa83ea-c972-11e2-8be8-8e45bb1343c0",
+    "type": "VariableSet"
+   },
+   "type": "AccessRule",
+   "name": "mcp-w6-vlan",
+   "id": "00000000-0000-0ed3-0000-000268434527"
+  },
+  "app_filter": {
+   "metadata": {
+    "ruleIndex": 6,
+    "section": "Default",
+    "category": "--Undefined--",
+    "timestamp": 1792561150355,
+    "domain": "Global \\ mcp-test-leaf"
+   },
+   "enabled": true,
+   "advancedLogging": {},
+   "sendEventsToFMC": true,
+   "enableSyslog": false,
+   "applications": {
+    "applicationDefaultPort": false,
+    "applicationFilters": [
+     {
+      "name": "mcp-w6-appfilter",
+      "id": "17e78568-cd11-11f1-885b-00000000a001",
+      "type": "ApplicationFilter"
+     }
+    ]
+   },
+   "destinationDynamicObjects": {},
+   "logBegin": false,
+   "logEnd": true,
+   "logFiles": false,
+   "sourceDynamicObjects": {},
+   "sourceNetworks": {
+    "objects": [
+     {
+      "type": "Network",
+      "overridable": false,
+      "name": "mcp-test-ftd-inside-net",
+      "id": "00000000-0000-0ed3-0000-021474841321"
+     }
+    ]
+   },
+   "destinationNetworks": {
+    "literals": [
+     {
+      "type": "Host",
+      "value": "198.51.100.35"
+     }
+    ]
+   },
+   "vlanTags": {},
+   "action": "ALLOW",
+   "type": "AccessRule",
+   "name": "mcp-w6-appfilter-rule",
+   "id": "00000000-0000-0ed3-0000-000268434528"
+  }
+ },
+ "timerange_started": {
+  "_source": "W6 live-B1 2026-10-21: POST object/timeranges answer for fmc_create_time_range without start: FMC stores effectiveStartDateTime 'Started' (a literal).",
+  "effectiveStartDateTime": "Started",
+  "effectiveEndDateTime": "2026-10-23T23:59",
+  "recurrenceList": [
+   {
+    "recurrenceType": "DAILY_INTERVAL",
+    "dailyStartTime": "00:00",
+    "dailyEndTime": "23:59",
+    "days": [
+     "MON",
+     "TUE",
+     "WED",
+     "THU",
+     "FRI",
+     "SAT",
+     "SUN"
+    ]
+   }
+  ],
+  "name": "mcp-w6-tr-now",
+  "type": "TimeRange",
+  "id": "00000000-0000-0ed3-0000-021474975854",
+  "description": "W6 live-B1: in effect now (F66)",
+  "metadata": {
+   "lastUser": "mcp-api-svc",
+   "timestamp": 0,
+   "domain": "Global \\ mcp-test-leaf"
+  }
+ },
+ "applicationfilter_created": {
+  "_source": "W6 live-B1 2026-10-21: POST object/applicationfilters answer (201) for risks=['High','Very High']: FMC adds appConditions[].search and an empty metadata; the list stays empty afterwards (applicationfilters_empty).",
+  "name": "mcp-w6-appfilter",
+  "id": "17e78568-cd11-11f1-885b-00000000a001",
+  "type": "ApplicationFilter",
+  "metadata": {},
+  "appConditions": [
+   {
+    "search": "Risks:High, Very High",
+    "risks": [
+     {
+      "type": "ApplicationRisk",
+      "name": "High",
+      "id": "HIGH"
+     },
+     {
+      "type": "ApplicationRisk",
+      "name": "Very High",
+      "id": "VERY_HIGH"
+     }
+    ]
+   }
+  ]
+ },
+ "application_ssh": {
+  "_source": "W6 live-B1 2026-10-21: SSH as FMC 10.0.1 returned it inside the POST answer of an application filter with applications=['SSH'] (that copy has no id; 846 from fmc_find_application, which read GET object/applications/846: risk High, business relevance Medium).",
+  "id": "846",
+  "appProductivity": {
+   "name": "Medium",
+   "id": "MEDIUM",
+   "type": "ApplicationProductivity",
+   "metadata": {}
+  },
+  "appCategories": [
+   {
+    "name": "network protocols/services",
+    "id": "10",
+    "type": "ApplicationCategory",
+    "metadata": {}
+   },
+   {
+    "name": "security management",
+    "id": "34",
+    "type": "ApplicationCategory",
+    "metadata": {}
+   },
+   {
+    "name": "remote administration",
+    "id": "50",
+    "type": "ApplicationCategory",
+    "metadata": {}
+   }
+  ],
+  "applicationTags": [
+   {
+    "name": "encrypts communications",
+    "id": "15",
+    "type": "ApplicationTag",
+    "metadata": {}
+   }
+  ],
+  "type": "Application",
+  "name": "SSH",
+  "risk": {
+   "type": "ApplicationRisk",
+   "name": "High",
+   "id": "HIGH"
+  },
+  "applicationTypes": [
+   {
+    "type": "ApplicationType",
+    "metadata": {},
+    "name": "Client",
+    "id": "CLIENT"
+   },
+   {
+    "type": "ApplicationType",
+    "metadata": {},
+    "name": "Server",
+    "id": "SERVER"
+   }
+  ]
  }
 }
