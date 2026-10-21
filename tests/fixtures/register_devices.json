@@ -1,9 +1,9 @@
 {
-  "_source": "F74. bulk_response: FMC 10.0.1 spec, POST devicerecords 202 'Response Example 4 (Bulk Registration of devices)', links dropped (one TaskStatus for a two-device batch; replace with the Stage 2 live capture). registration_task and initial_deployment_job: live FMC 10.0.1 shapes (2026-10-19 registration), device name and UUID replaced.",
+  "_source": "F74. bulk_response, bulk_task and bulk_jobs: recorded live 2026-10-21 (Wave 6 Stage 2), FMC 10.0.1 (build 1), domain Global/mcp-test-leaf: one fmc_register_devices call with four FTDv rows. bulk_response = the answer to POST devicerecords?bulk=true (ONE TaskStatus for the whole batch, the same shape as the spec's 'Response Example 4'); bulk_task = GET job/taskstatuses/<that id> when it finished, with a subTask per device (target {id, type, name}, status, message; while the wait ran each sub-task already read SUCCESS with message DISCOVERY_SUCCESS_DEPLOYMENT_IN_PROGRESS); bulk_jobs = the four 'Deployment after registration' jobs FMC started one per device, staggered (user System, ISO times). registration_task and initial_deployment_job: live FMC 10.0.1 shapes from a single registration (2026-10-19). Device names and UUIDs replaced (bulk-1..4); task and job ids kept.",
   "bulk_response": {
     "items": [
       {
-        "id": "30064772170",
+        "id": "21474969953",
         "type": "TaskStatus",
         "name": "DEVICE_REGISTRATION",
         "version": "6.0.1",
@@ -37,5 +37,144 @@
       }
     ],
     "type": "JobHistory"
+  },
+  "bulk_task": {
+    "id": "21474969953",
+    "type": "TaskStatus",
+    "taskType": "DEVICE_REGISTRATION",
+    "message": "Total:4, FAILED:0, PENDING:0, SUCCESS:4, RUNNING:0, Remaining:0",
+    "status": "SUCCESS",
+    "subTasks": [
+      {
+        "id": "179255862584798",
+        "target": {
+          "id": "aaaaaaaa-0000-4000-8000-000000000001",
+          "type": "Device",
+          "name": "bulk-1"
+        },
+        "status": "SUCCESS",
+        "message": "DEVICE_SUCCESSFULLY_REGISTERED",
+        "description": "Device is registered successfully."
+      },
+      {
+        "id": "17925586640904",
+        "target": {
+          "id": "aaaaaaaa-0000-4000-8000-000000000002",
+          "type": "Device",
+          "name": "bulk-2"
+        },
+        "status": "SUCCESS",
+        "message": "DEVICE_SUCCESSFULLY_REGISTERED",
+        "description": "Device is registered successfully."
+      },
+      {
+        "id": "179255869626844",
+        "target": {
+          "id": "aaaaaaaa-0000-4000-8000-000000000003",
+          "type": "Device",
+          "name": "bulk-3"
+        },
+        "status": "SUCCESS",
+        "message": "DEVICE_SUCCESSFULLY_REGISTERED",
+        "description": "Device is registered successfully."
+      },
+      {
+        "id": "179255872848025",
+        "target": {
+          "id": "aaaaaaaa-0000-4000-8000-000000000004",
+          "type": "Device",
+          "name": "bulk-4"
+        },
+        "status": "SUCCESS",
+        "message": "DEVICE_SUCCESSFULLY_REGISTERED",
+        "description": "Device is registered successfully."
+      }
+    ]
+  },
+  "bulk_jobs": {
+    "items": [
+      {
+        "id": "00000000-0000-0ed3-0000-021474971584",
+        "jobName": "Deploy_Job_140",
+        "jobStatus": "DEPLOYED",
+        "jobType": "DEPLOYMENT",
+        "startTime": "2026-10-21T05:00:00Z",
+        "endTime": "2026-10-21T05:01:25Z",
+        "user": "System",
+        "deploymentNote": "Deployment after registration",
+        "deviceList": [
+          {
+            "deviceName": "bulk-4",
+            "deviceUUID": "aaaaaaaa-0000-4000-8000-000000000004",
+            "deploymentStatus": "SUCCEEDED",
+            "deployedVersion": 1
+          }
+        ],
+        "type": "JobHistory"
+      },
+      {
+        "id": "00000000-0000-0ed3-0000-021474971162",
+        "jobName": "Deploy_Job_139",
+        "jobStatus": "DEPLOYED",
+        "jobType": "DEPLOYMENT",
+        "startTime": "2026-10-21T04:59:39Z",
+        "endTime": "2026-10-21T05:01:05Z",
+        "user": "System",
+        "deploymentNote": "Deployment after registration",
+        "deviceList": [
+          {
+            "deviceName": "bulk-3",
+            "deviceUUID": "aaaaaaaa-0000-4000-8000-000000000003",
+            "deploymentStatus": "SUCCEEDED",
+            "deployedVersion": 1
+          }
+        ],
+        "type": "JobHistory"
+      },
+      {
+        "id": "00000000-0000-0ed3-0000-021474970722",
+        "jobName": "Deploy_Job_138",
+        "jobStatus": "DEPLOYED",
+        "jobType": "DEPLOYMENT",
+        "startTime": "2026-10-21T04:59:17Z",
+        "endTime": "2026-10-21T05:00:39Z",
+        "user": "System",
+        "deploymentNote": "Deployment after registration",
+        "deviceList": [
+          {
+            "deviceName": "bulk-2",
+            "deviceUUID": "aaaaaaaa-0000-4000-8000-000000000002",
+            "deploymentStatus": "SUCCEEDED",
+            "deployedVersion": 1
+          }
+        ],
+        "type": "JobHistory"
+      },
+      {
+        "id": "00000000-0000-0ed3-0000-021474970282",
+        "jobName": "Deploy_Job_137",
+        "jobStatus": "DEPLOYED",
+        "jobType": "DEPLOYMENT",
+        "startTime": "2026-10-21T04:58:12Z",
+        "endTime": "2026-10-21T04:59:31Z",
+        "user": "System",
+        "deploymentNote": "Deployment after registration",
+        "deviceList": [
+          {
+            "deviceName": "bulk-1",
+            "deviceUUID": "aaaaaaaa-0000-4000-8000-000000000001",
+            "deploymentStatus": "SUCCEEDED",
+            "deployedVersion": 1
+          }
+        ],
+        "type": "JobHistory"
+      }
+    ],
+    "paging": {
+      "offset": 0,
+      "limit": 10,
+      "count": 4,
+      "pages": 1
+    }
   }
 }
