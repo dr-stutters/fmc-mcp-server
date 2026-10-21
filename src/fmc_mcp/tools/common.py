@@ -51,6 +51,8 @@ OBJECT_TYPES: dict[str, ObjType] = {
         ObjType("application", "object/applications", "Application", "other", writable=False),
         ObjType("url_category", "object/urlcategories", "URLCategory", "other", writable=False),
         ObjType("geolocation", "object/geolocations", "Geolocation", "other", writable=False),
+        # FMC's spec lists only the collection GET/POST; GET and DELETE by id work on FMC 10.0.1
+        ObjType("cipher_suite_list", "object/ciphersuitelists", "CipherSuiteList", "other"),
     )
 }
 

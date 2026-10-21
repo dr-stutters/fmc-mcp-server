@@ -186,7 +186,9 @@ Workflows:
   policy is linked): fmc_create_cipher_suite_list (preset='weak') -> fmc_create_decryption_rule
   (BLOCK_WITH_RESET with tls_versions=['sslv3','tls10','tls11'], another with cipher_suite_lists; above any
   DECRYPT_RESIGN rule) -> fmc_update_decryption_policy undecryptable={'unsupported_cipher_suite':
-  'BLOCK_WITH_RESET'} (else RC4 passes a resign rule undecrypted) -> fmc_deploy.
+  'BLOCK_WITH_RESET'} (else RC4 passes a resign rule undecrypted) -> fmc_deploy. Switch a rule's list or
+  versions, disable or move it: fmc_update_decryption_rule; an unused list: fmc_delete_object
+  type='cipher_suite_list'.
 - One corporate policy, a child per site: fmc_create_access_policy(base_policy=<parent>) or
   fmc_set_base_policy (the parent's Mandatory rules run first, its Default rules last) -> fmc_assign_policy
   -> fmc_pending_changes -> fmc_deploy. Rule categories: fmc_create_category / fmc_rename_category /

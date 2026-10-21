@@ -1253,6 +1253,10 @@
       "tier": "write",
       "title": "Update decryption policy settings"
     },
+    "fmc_update_decryption_rule": {
+      "tier": "write",
+      "title": "Update decryption rule"
+    },
     "fmc_update_device_group": {
       "tier": "write",
       "title": "Change device group"
