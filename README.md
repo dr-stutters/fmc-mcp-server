@@ -180,6 +180,7 @@ Notes on some read tools:
 | Objects | `fmc_create_object`, `fmc_update_object`, `fmc_delete_object`, `fmc_create_group`, `fmc_update_group`, `fmc_create_security_zone`, `fmc_import_objects` (bulk, validated; `mode='sync'` takes an IPAM export or CSV as the desired state: create, update, unchanged, group members, orphans under a prefix), `fmc_replace_object` (A becomes B in every access and prefilter rule, group, NAT rule and static route, found through FMC's usage API; optionally deletes A), `fmc_create_time_range` (absolute window plus daily or weekly recurrences), `fmc_create_application_filter` (applications plus risk, business relevance, category, tag and type) |
 | Access control | `fmc_create_access_policy`, `fmc_create_access_rule`, `fmc_update_access_rule` (both take URL categories with a reputation level: `url_categories=[{category, reputation}]`, and `applications=`, `application_filters=`, `vlan_tags=`, `time_range=`, `source_sgts=` / `destination_sgts=` (ISE or custom SGTs by name or tag number, shown with their tag in the preview); VLAN tags match only on inline sets), `fmc_delete_access_rule`, `fmc_import_access_rules` (bulk, validated) |
 | Prefilter | `fmc_create_prefilter_policy`, `fmc_set_prefilter_policy` (link to an access policy), `fmc_create_prefilter_rule`, `fmc_update_prefilter_rule`, `fmc_delete_prefilter_rule` (FASTPATH / ANALYZE / BLOCK) |
+| Bulk rule edits | `fmc_bulk_update_access_rules` (select rules by names, ids, text, action, enabled, section, category or no hits in N days; set enabled, logging, action, intrusion policy, extra source zones or a comment; one preview with every rule's diff, partial bulk PUTs of 50, stops at the first rule FMC refuses), `fmc_clear_hit_counts` (one device; the preview lists the counts that are lost) |
 | NAT | `fmc_create_nat_policy`, `fmc_create_nat_rule`, `fmc_update_nat_rule`, `fmc_delete_nat_rule` |
 | Device configuration | `fmc_update_interface`, `fmc_create_subinterface`, `fmc_create_interface` (loopback, VTI, EtherChannel, BVI), `fmc_delete_interface`, `fmc_create_static_route`, `fmc_delete_static_route`, `fmc_assign_policy` |
 | Routing | `fmc_configure_bgp`, `fmc_configure_ospf`, `fmc_create_vrf`, `fmc_delete_vrf` |
@@ -286,7 +287,7 @@ MD5 password, because FMC returns it masked and a PUT would replace it, unless y
   through `fmc_rule_lookup` before and after, checks shadowing and overlap, previews the change and plans the
   deploy with a rollback.
 - **Clean up a policy:** the `fmc_policy_cleanup` prompt turns `fmc_policy_audit` findings into grouped,
-  approved changes, verifies them with `fmc_diff_policy_bundle` against a baseline bundle and a re-audit, and
+  approved changes (a group of identical rule edits is one `fmc_bulk_update_access_rules` preview), verifies them with `fmc_diff_policy_bundle` against a baseline bundle and a re-audit, and
   keeps the baseline for `fmc_import_policy_bundle` as a rollback.
 - **How well does this policy stop threats?** The `fmc_threat_defense_review` prompt combines
   `fmc_threat_posture` (intrusion and file policies and their modes, TRUST and fastpath bypasses, SI and DNS

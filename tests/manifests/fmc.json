@@ -195,6 +195,7 @@
         "fmc_delete_object",
         "fmc_change_tickets",
         "fmc_ticket",
+        "fmc_bulk_update_access_rules",
         "fmc_delete_access_rule",
         "fmc_update_access_rule",
         "fmc_diff_policy_bundle",
@@ -203,7 +204,8 @@
         "fmc_deploy",
         "fmc_get_hit_counts",
         "fmc_import_policy_bundle",
-        "fmc_rollback_deployment"
+        "fmc_rollback_deployment",
+        "fmc_clear_hit_counts"
       ],
       "rendered": true,
       "tier": "write",
@@ -423,9 +425,17 @@
       "tier": "dangerous",
       "title": "Back up devices"
     },
+    "fmc_bulk_update_access_rules": {
+      "tier": "write",
+      "title": "Bulk-edit access rules"
+    },
     "fmc_change_tickets": {
       "tier": "read",
       "title": "Change-management tickets"
+    },
+    "fmc_clear_hit_counts": {
+      "tier": "write",
+      "title": "Clear rule hit counts"
     },
     "fmc_configure_bgp": {
       "tier": "write",

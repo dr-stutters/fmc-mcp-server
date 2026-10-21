@@ -18,6 +18,7 @@ from fmc_mcp.tools import (
     admin,
     analysis,
     app_routing,
+    bulk_rules,
     bundle,
     bundle_import,
     certificates,
@@ -162,9 +163,12 @@ Workflows:
 - "Where does 10.1.2.3 appear?": fmc_find_address (objects and groups, dynamic-object mappings, access,
   prefilter and NAT rules, static routes, VPN endpoints in one ranked call) -> fmc_where_used on an object.
 - Policy review: fmc_policy_audit ranks shadowed, permissive, unlogged, uninspected, unused and mergeable
-  rules, expired time ranges and duplicate objects, each with a fix to preview; then fmc_pending_changes
-  -> fmc_deploy. Threat-defense posture (intrusion and file policies, TRUST/fastpath bypasses, SI and DNS
-  coverage, decryption, licences): fmc_threat_posture; the fmc_threat_defense_review prompt combines both.
+  rules, expired time ranges and duplicate objects, each with a fix to preview; groups of identical fixes
+  go through fmc_bulk_update_access_rules (one preview, every rule's diff; select by names or
+  zero_hits_days); then fmc_pending_changes -> fmc_deploy. Fresh counters after a cleanup:
+  fmc_clear_hit_counts. Threat-defense posture (intrusion and file policies, TRUST/fastpath bypasses, SI
+  and DNS coverage, decryption, licences): fmc_threat_posture; the fmc_threat_defense_review prompt
+  combines both.
   Prompts: fmc_policy_cleanup (findings -> approved cleanup -> diff + re-audit) and fmc_rule_change_review
   (one rule change with before/after flows, shadowing check and a deploy plan with rollback).
 - Site-to-site VPN: fmc_create_s2s_vpn -> fmc_deploy both peers -> fmc_vpn_status (every topology's
@@ -250,6 +254,7 @@ REGISTER: list[Callable[[ToolRegistrar], None]] = [
     object_import.register,
     object_lifecycle.register,
     policy_writes.register,
+    bulk_rules.register,
     dangerous.register,
     troubleshoot.register,
     metrics.register,
