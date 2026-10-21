@@ -321,6 +321,8 @@ def unused_mocks(fmc: respx.MockRouter) -> Any:
     )
     for path in UNUSED_TYPES:
         fmc.get(f"{CHILD_CFG}/object/{path}", params={"filter": "unusedOnly:true"}).mock(return_value=empty())
+    for path in ("networkgroups",):  # the filter lists no network group: also the full list
+        fmc.get(f"{CHILD_CFG}/object/{path}").mock(return_value=empty())
     return rec
 
 
