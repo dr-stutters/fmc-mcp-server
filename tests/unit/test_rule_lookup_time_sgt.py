@@ -152,10 +152,11 @@ async def test_bobs_session_sgt_decides_the_sgt_rule(at_six: respx.MockRouter) -
         "sgt": "Contractors (SGT 5)",
         "from": "FMC user activity: User Login mcp-bob at 2026-10-21T05:53:11Z",
     }
-    # the newest login within 30 days, not checked against an active session: the tool says so
+    # the newest login FMC still lists (about the last hour), not checked against an active session
     assert (
         "newest ISE login for 10.10.34.100" in caveat and "not cross-checked with an active session" in caveat
     )
+    assert "about the last hour" in caveat and "30 days" not in caveat  # #273: FMC keeps ~1 h
     assert activity.calls.last.request.url.params["ipAddress"] == "10.10.34.100"
 
 
@@ -189,7 +190,7 @@ async def test_given_sgt_wins_and_needs_no_activity_read(at_six: respx.MockRoute
 @pytest.mark.parametrize(
     ("events", "note"),
     [
-        ([], "No ISE login for 10.10.34.100"),
+        ([], "No ISE login for 10.10.34.100 in FMC's user activity, which keeps only about the last hour"),
         ("logoff", "is 'User Logoff' by mcp-alice"),
         ("no-sgt", "carries no SGT"),
     ],
