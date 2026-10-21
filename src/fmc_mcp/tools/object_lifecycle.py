@@ -47,6 +47,7 @@ from fmc_mcp.tools.common import (
     Domain,
     ObjectTypeName,
     ObjType,
+    is_builtin_object,
     is_system,
     obj_type,
     object_summary,
@@ -329,10 +330,14 @@ class Gather:
 
     def _fixed(self, c: Candidate) -> bool:
         """System and inherited objects are refused whatever else is selected. The owner domain is checked
-        first: in a child domain FMC 10.0.1 marks an ancestor's objects read-only, sometimes without a reason,
-        so they would otherwise read as built-ins."""
+        before FMC's read-only flag: in a child domain FMC 10.0.1 marks an ancestor's objects read-only,
+        sometimes without a reason, so they would otherwise read as built-ins. FMC's own built-ins (fixed
+        ids, is_builtin_object) are said to be built-in there too, not "defined in Global": deleting them in
+        Global is refused as well."""
         owner = inherited_from(c.obj, self.here)
-        if owner:
+        if owner and is_builtin_object(c.obj):
+            c.refuse("FMC built-in (system) object, read-only in every domain", in_use=False)
+        elif owner:
             c.refuse(f"defined in domain {owner!r} (only inherited here; delete it there)", in_use=False)
         elif c.kind == "policies":
             if c.obj.get("isSystemDefined"):
@@ -483,6 +488,19 @@ def _requests(steps: list[tuple[int, str, str, list[Candidate]]]) -> int:
 # --- replace everywhere ---------------------------------------------------------------------------
 
 Scope = Literal["access_rules", "prefilter_rules", "groups", "nat_rules", "static_routes"]
+
+
+def nat_where(policy: str, row: dict[str, Any]) -> str:
+    """A NAT rule for the replace preview: a manual rule by index and section, an auto NAT rule (no index:
+    FMC keeps one per object) by the object it translates: 'mcp-w6-nat auto NAT of mcp-w6-a (DYNAMIC)'."""
+    if row.get("kind") == "auto":
+        nat_type = f" ({row['nat_type']})" if row.get("nat_type") else ""
+        return f"{policy} auto NAT of {row.get('original_source') or '?'}{nat_type}"
+    index = f" #{row['index']}" if row.get("index") is not None else ""
+    section = f" ({str(row['section']).lower()})" if row.get("section") else ""
+    return f"{policy} manual NAT{index}{section}"
+
+
 SCOPES: tuple[str, ...] = get_args(Scope)  # also the order the changes are applied in
 REPLACEABLE = (
     "host",
@@ -703,8 +721,7 @@ class Walk:
                 path = await self.app.config_path(f"{NAT}/{pid}/{sub}/{r['id']}", self.domain)
                 # PUT back what the typed endpoint returns, not the natrules aggregate's row
                 full: dict[str, Any] = await self.app.api.get(path)
-                row = flatten_nat_rule(full)
-                where = f"{pname} {row.get('section') or ''} #{row.get('index') or '-'} ({row.get('kind')})"
+                where = nat_where(pname, flatten_nat_rule(full))
                 site = make_site(
                     "nat_rules", re.sub(r"\s+", " ", where), path, full, self.old_id, self.new_ref
                 )

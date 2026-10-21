@@ -17,7 +17,7 @@ from fastmcp.exceptions import ToolError
 
 from fmc_mcp.server import create_server
 
-from .conftest import CFG, fixture, items, make_settings
+from .conftest import CFG, CHILD, fixture, items, make_settings
 
 REC = fixture("object_lifecycle")
 OTHER = {"name": "Global", "id": "99999999-0000-4000-8000-000000000001", "type": "Domain"}
@@ -82,17 +82,29 @@ async def test_delete_by_prefix_in_dependency_order(fmc: respx.MockRouter) -> No
         obj("h2", "mcp-w6-h2", "Host", value="192.0.2.2"),
         obj("h3", "mcp-w6-h3", "Host", value="192.0.2.3"),
         system(obj("h4", "mcp-w6-builtin", "Host", value="192.0.2.4")),
-        inherited(obj("h5", "mcp-w6-global", "Host", value="192.0.2.5")),
+        inherited(
+            obj("00000000-0000-0ed3-0000-021474990005", "mcp-w6-global", "Host", value="192.0.2.5")
+        ),  # FMC-made id (0ed3)
         obj("h6", "mcp-w6-seed-keep", "Host", value="192.0.2.6"),
         obj("h7", "other", "Host", value="192.0.2.7"),
         # FMC 10.0.1 in a leaf: an ancestor's object can be read-only with no reason at all
         {
-            **obj("h8", "mcp-w6-noreason", "Host", value="192.0.2.8"),
+            **obj("00000000-0000-0ed3-0000-021474990008", "mcp-w6-noreason", "Host", value="192.0.2.8"),
             "metadata": {"readOnly": {"state": True}, "domain": OTHER},
         },
     ]
     fmc.get(f"{CFG}/object/hosts").mock(
-        side_effect=collection(hosts, unused={"h1", "h4", "h5", "h6", "h7", "h8"})
+        side_effect=collection(
+            hosts,
+            unused={
+                "h1",
+                "h4",
+                "00000000-0000-0ed3-0000-021474990005",
+                "h6",
+                "h7",
+                "00000000-0000-0ed3-0000-021474990008",
+            },
+        )
     )
     fmc.get(f"{CFG}/object/networkgroups").mock(side_effect=collection([g1], unused={"g1"}))
     usage = {
@@ -644,6 +656,10 @@ async def test_replace_everywhere_in_order(fmc: respx.MockRouter) -> None:
             {"where": "mcp-w6-acp #2 mcp-w6-r2", "fields": ["destinationNetworks"]},
         ]
         assert got["changes"]["static_routes"][0]["where"].startswith("mcp-sdwan-t1-spoke1: mcp-w6-a via")
+        # live-B2 showed "mcp-w6-nat AUTO #- (auto)": an auto NAT rule has no index, its object names it
+        assert [c["where"] for c in got["changes"]["nat_rules"]] == [
+            "mcp-w6-nat auto NAT of mcp-w6-a (STATIC)"
+        ]
         assert got["found_by"] == "FMC's usage API" and "not_changed" not in got
         assert got["write_requests"] == 6 and p["blast_radius"] == 7
         out = (await run(c, "fmc_replace_object", {**args, "confirm": p["confirm"]}))["result"]
@@ -968,3 +984,41 @@ async def test_sync_problems_and_modes(fmc: respx.MockRouter) -> None:
                 "fmc_import_objects",
                 {"objects": [{"name": "x", "type": "host", "value": "192.0.2.9"}], "prefix": "ipam-"},
             )
+
+
+def test_nat_where_labels_auto_and_manual_rules() -> None:
+    from fmc_mcp.tools.object_lifecycle import nat_where
+
+    auto = {"kind": "auto", "section": "AUTO", "nat_type": "STATIC", "original_source": "web-srv"}
+    assert nat_where("nat", auto) == "nat auto NAT of web-srv (STATIC)"
+    manual = {"kind": "manual", "section": "BEFORE_AUTO", "index": 3}
+    assert nat_where("nat", manual) == "nat manual NAT #3 (before_auto)"
+    assert nat_where("nat", {"kind": "manual"}) == "nat manual NAT"
+
+
+async def test_a_builtin_seen_from_a_leaf_is_refused_as_builtin(fmc: respx.MockRouter) -> None:
+    """Wave 6 live-B2: in the leaf, any-ipv4 was refused as "defined in domain 'Global'" (right outcome, wrong
+    reason: Global refuses it too). FMC 10.0.1's leaf rows (leaf_inherited_objects.json) say readOnly DOMAIN
+    for its built-ins and for Global's own objects alike; the fixed id tells them apart."""
+    rows = fixture("leaf_inherited_objects")["networkaddresses"]["items"]
+    builtin = next(r for r in rows if r["name"] == "any-ipv4")
+    global_own = next(r for r in rows if "-0ed3-" in r["id"] and r["metadata"]["domain"]["name"] == "Global")
+    child = f"/api/fmc_config/v1/domain/{CHILD}"
+    by_type: dict[str, list[dict[str, Any]]] = {"Host": [], "Network": [], "Range": []}
+    for r in (builtin, global_own):
+        by_type[r["type"]].append(r)
+    for path, t in (("hosts", "Host"), ("networks", "Network"), ("ranges", "Range")):
+        rows_t = by_type[t]
+        fmc.get(f"{child}/object/{path}").mock(
+            side_effect=collection(rows_t, unused={r["id"] for r in rows_t})
+        )
+    names = ["any-ipv4", global_own["name"]]
+    async with Client(server()) as c:
+        p = await run(
+            c,
+            "fmc_delete_objects",
+            {"names": names, "types": ["host", "network", "range"], "domain": "Branch"},
+        )
+    reasons = {r["name"]: r["reason"] for r in p["preview"]["refused"]}
+    assert reasons["any-ipv4"] == "FMC built-in (system) object, read-only in every domain"
+    assert reasons[global_own["name"]] == "defined in domain 'Global' (only inherited here; delete it there)"
