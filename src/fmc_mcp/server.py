@@ -62,6 +62,7 @@ from fmc_mcp.tools import (
     policy_structure,
     policy_writes,
     prefilter,
+    profiling,
     prompts,
     prove,
     registration,
@@ -230,7 +231,9 @@ Workflows:
   last hour?": fmc_recent_activity (health alerts + audit + deployments), fmc_list_health_alerts.
   A full ranked review of the estate: the fmc_firewall_health_review prompt.
 - Load over time ("was the branch firewall busy at 09:40?"): fmc_device_metrics (CPU, memory,
-  throughput, connections and drops over a window, with peaks and dips).
+  throughput, connections and drops over a window, with peaks and dips). High Snort CPU or latency, "which
+  rules burn it?": fmc_snort_profile (rules ranked by time; each gid:sid goes to fmc_find_intrusion_rules /
+  fmc_set_intrusion_rule_state) or fmc_cpu_profile (Snort 3 modules, 15-120 min); fmc_get_profiler_results.
 - Day-2 admin: fmc_upgrade_status (versions), fmc_list_backups / fmc_backup_devices,
   fmc_get_health_policy / fmc_update_health_policy, fmc_list_users, fmc_list_object_overrides /
   fmc_set_object_override (per-device values).
@@ -308,6 +311,7 @@ REGISTER: list[Callable[[ToolRegistrar], None]] = [
     dangerous.register,
     registration.register,
     troubleshoot.register,
+    profiling.register,
     fleet.register,
     device_groups.register,
     metrics.register,

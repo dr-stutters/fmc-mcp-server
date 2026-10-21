@@ -665,7 +665,7 @@ async def test_audit_log_has_no_row_key(fmc: respx.MockRouter) -> None:
 async def test_registered_as_an_mcp_task(fmc: respx.MockRouter) -> None:
     async with Client(server(mcp_tasks=True)) as c:
         status = (await c.call_tool("fmc_status", {})).structured_content
-    assert status is not None and status["server"]["tasks"]["tools"] == ["fmc_register_devices"]
+    assert status is not None and "fmc_register_devices" in status["server"]["tasks"]["tools"]
     async with Client(server()) as c:  # MCP_TASKS off: an ordinary tool
         status = (await c.call_tool("fmc_status", {})).structured_content
     assert status is not None and "tasks" not in status["server"]

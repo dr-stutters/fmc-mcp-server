@@ -65,6 +65,7 @@ Everything in `mcp-ro`, plus:
 | (top level) | Deploy Configuration to Devices | `deploy` (FMC adds `task_status`, `task_status.all_users`) | `fmc_deploy`, `fmc_rollback_deployment`, deployment reads |
 | Troubleshooting | Modify Health, Modify Health Policy, Apply Health Policy, Modify Threat Defense CLI | `health.modify`, `health_policy.modify`, `health_policy.apply`, `threat_defense_cli.modify` | `fmc_update_health_policy` (F14) |
 | Change management | Modify tickets | `modify_tickets` | `fmc_ticket` |
+| Troubleshooting | Snort 3 Profiling (the role editor's name not yet checked) | not yet known | `fmc_snort_profile`, `fmc_cpu_profile`, `fmc_get_profiler_results` (F78). The lab's `mcp-rw` lacks it: FMC 10.0.1 answers 403 "The user is not authorized." on every `snortprofiler` / `cpuprofiler` call while packet tracer works for the same user (2026-10-21); the tools say so instead of blaming the credentials |
 | Administration > Advanced | Backup Management | `tools`, `backup_management` | `fmc_list_backups`, `fmc_backup_devices` (F14); not *Restore Backup* |
 
 Still denied: users and roles, external authentication, domains, FMC system configuration, restore, smart
