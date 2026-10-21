@@ -1,0 +1,177 @@
+{
+ "_recorded": "FMC 10.0.1 (build 1), 2026-10-20, domain Global/mcp-test-leaf (shown as the test domain); addresses replaced with documentation ranges, links dropped, device ids replaced",
+ "usage_static_route": {
+  "items": [
+   {
+    "type": "Device",
+    "name": "Static Route Setting under virtual router Global",
+    "id": "4fc3908a-0000-4000-8000-000000000d01"
+   },
+   {
+    "type": "Device",
+    "name": "Static Route Setting under virtual router Global",
+    "id": "1bcefc02-0000-4000-8000-000000000d02"
+   }
+  ],
+  "paging": {
+   "offset": 0,
+   "limit": 1000,
+   "count": 2,
+   "pages": 1
+  }
+ },
+ "usage_group": {
+  "items": [
+   {
+    "type": "NetworkAddress",
+    "name": "mcp-test-servers",
+    "id": "00000000-0000-0ed3-0000-021474836712"
+   },
+   {
+    "type": "AccessPolicy",
+    "name": "mcp-test-acp",
+    "id": "00000000-0000-0ed3-0000-021474836766"
+   },
+   {
+    "type": "FTDNatPolicy",
+    "name": "mcp-test-nat",
+    "id": "00000000-0000-0ed3-0000-021474836981"
+   }
+  ],
+  "paging": {
+   "offset": 0,
+   "limit": 1000,
+   "count": 3,
+   "pages": 1
+  }
+ },
+ "ipv4staticroutes": {
+  "items": [
+   {
+    "metadata": {
+     "egressInterfaceVirtualRouter": "Global",
+     "timestamp": 1792285146479,
+     "domain": {
+      "name": "Global",
+      "id": "e276abec-e0f2-11e3-8169-6d9ed49b625f",
+      "type": "Domain"
+     }
+    },
+    "interfaceName": "mpls",
+    "selectedNetworks": [
+     {
+      "type": "Network",
+      "overridable": false,
+      "name": "mcp-sdwan-mpls-net",
+      "id": "00000000-0000-0ed3-0000-021474864532"
+     }
+    ],
+    "gateway": {
+     "literal": {
+      "type": "Host",
+      "value": "192.0.2.1"
+     }
+    },
+    "metricValue": 1,
+    "type": "IPv4StaticRoute",
+    "isTunneled": false,
+    "id": "00000000-0000-0ed3-0000-021474864591"
+   },
+   {
+    "metadata": {
+     "egressInterfaceVirtualRouter": "Global",
+     "timestamp": 1792285160267,
+     "domain": {
+      "name": "Global",
+      "id": "e276abec-e0f2-11e3-8169-6d9ed49b625f",
+      "type": "Domain"
+     }
+    },
+    "interfaceName": "inet",
+    "selectedNetworks": [
+     {
+      "type": "Network",
+      "overridable": false,
+      "name": "mcp-sdwan-inet-net",
+      "id": "00000000-0000-0ed3-0000-021474864550"
+     }
+    ],
+    "gateway": {
+     "literal": {
+      "type": "Host",
+      "value": "198.51.100.1"
+     }
+    },
+    "metricValue": 1,
+    "type": "IPv4StaticRoute",
+    "isTunneled": false,
+    "id": "00000000-0000-0ed3-0000-021474864618"
+   }
+  ],
+  "paging": {
+   "offset": 0,
+   "limit": 25,
+   "count": 2,
+   "pages": 1
+  }
+ },
+ "securityzones": {
+  "items": [
+   {
+    "name": "mcp-w6-zone-wan",
+    "id": "6d81c482-ca8e-11f1-bd2d-f6e16f180443",
+    "type": "SecurityZone",
+    "metadata": {
+     "readOnly": {
+      "state": false
+     },
+     "parentType": "InterfaceObject",
+     "timestamp": 1792291732,
+     "domain": {
+      "name": "Global",
+      "id": "e276abec-e0f2-11e3-8169-6d9ed49b625f",
+      "type": "Domain"
+     }
+    },
+    "interfaces": [
+     {
+      "type": "PhysicalInterface",
+      "id": "00000000-0000-0ed3-0000-021474856717",
+      "name": "Ethernet0/0"
+     },
+     {
+      "type": "PhysicalInterface",
+      "id": "00000000-0000-0ed3-0000-021474857331",
+      "name": "Ethernet0/0"
+     }
+    ],
+    "interfaceMode": "ROUTED"
+   },
+   {
+    "name": "mcp-w6-zone-spare",
+    "id": "6e21a6e6-ca8e-11f1-bd2d-f6e16f180443",
+    "type": "SecurityZone",
+    "metadata": {
+     "readOnly": {
+      "state": false
+     },
+     "parentType": "InterfaceObject",
+     "timestamp": 1792291744,
+     "domain": {
+      "name": "Global",
+      "id": "e276abec-e0f2-11e3-8169-6d9ed49b625f",
+      "type": "Domain"
+     }
+    },
+    "interfaces": [],
+    "interfaceMode": "ROUTED"
+   }
+  ],
+  "paging": {
+   "offset": 0,
+   "limit": 25,
+   "count": 2,
+   "pages": 1
+  }
+ }
+}

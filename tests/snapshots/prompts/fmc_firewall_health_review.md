@@ -1,15 +1,14 @@
 # fmc_firewall_health_review
 
 title: Firewall health review
-arguments: {"compare_with": "example", "device": "mcp-ftd", "domain": "Global", "lookback_hours": "24"}
+arguments: {"device": "mcp-ftd", "domain": "Global", "lookback_hours": "24"}
 
 Is the firewall estate healthy? Reviews device health and connectivity (with CPU, memory,
 throughput and drops over the review window for the devices that need it), HA pairs and
 clusters, the deployment backlog and failed deployments, licences, software and VDB/SRU/LSP
-content age, backups, VPN tunnels and recent health alerts with the aggregate tools, optionally
-configuration drift against a reference device, template or stored export (compare_with), and
-writes one ranked report (critical, warning, info), each finding with its evidence and a
-concrete next step. Read-only.
+content age, backups, certificate expiry, VPN tunnels and recent health alerts with the
+aggregate tools, and writes one ranked report (critical, warning, info), each finding with
+its evidence and a concrete next step. Read-only.
 
 ## user
 
@@ -66,10 +65,22 @@ note it and carry on.
 6. Backups: `fmc_list_backups` with domain="Global". No FMC backup, or none in the last 7 days, is a
    warning; the same for each device in scope. Give the newest date per device.
 
-7. VPN: `fmc_list_vpn_tunnels` with domain="Global". Keep only the rows of the devices from step 1 (and, for alerts, the FMC's own). TUNNEL_DOWN is critical and UNKNOWN a
+7. Certificates: `fmc_list_certificates` with expiring_within_days=90, domain="Global". Of the device rows keep those of the devices from step 1; the other certificates are FMC-wide. Each
+   row has days_left and a severity: expired or within 30 days is critical, within 90 days a
+   warning. A device enrolment whose deployment FAILED or whose identity or CA certificate is
+   PENDING or NOT_AVAILABLE is at least a warning (its problems say why). Say what each one
+   serves where the row shows it (a device enrolment: RA or site-to-site VPN on that device; a
+   trusted CA: LDAPS, ISE/pxGrid or decryption trust; an internal certificate or CA: decryption or
+   FMC's pxGrid client); for an internal certificate, internal CA or trusted CA that is due,
+   `fmc_get_certificate` with certificate=<name>, domain="Global" shows what uses it (counts towards
+   the per-device limit). FMC's bundled public roots are hidden; a bundled_roots_expiring count
+   is info (FMC's updates replace them). The next step is a renewal: re-enrol or import the new
+   certificate on FMC before days_left reaches 0.
+
+8. VPN: `fmc_list_vpn_tunnels` with domain="Global". Keep only the rows of the devices from step 1 (and, for alerts, the FMC's own). TUNNEL_DOWN is critical and UNKNOWN a
    warning; no tunnels at all is info.
 
-8. Health alerts: `fmc_list_health_alerts` with since_minutes=1440, domain="Global". Keep only the rows of the devices from step 1 (and, for alerts, the FMC's own).
+9. Health alerts: `fmc_list_health_alerts` with since_minutes=1440, domain="Global". Keep only the rows of the devices from step 1 (and, for alerts, the FMC's own).
    Repeats are collapsed with first/last seen and a count. An alert last seen in the last hour is
    current and counts at its level; older ones are history (info, unless the same alert keeps
    coming back). Note what the FMC reports about itself (Security Intelligence and Talos feeds,
@@ -78,16 +89,9 @@ note it and carry on.
    changed just before it: `fmc_recent_activity` with since_minutes=1440,
    device=<name>, domain="Global" (audit records and deployments around it).
 
-9. Configuration drift against "example": `fmc_diff_device_config` with a=<device>, b="example", domain="Global"
-   for each device in scope, at most three (each call reads both sides, about 30 requests per device).
-   `b` may be another device or HA pair, a stored export or a device template. A difference in
-   assigned policies, routing, NAT, VPN membership or interface zones is a warning (the device
-   doesn't run what its reference does); addresses, VTI peers and object overrides that differ per
-   site are info. Give each difference with its section, key and from/to values; `identical: true`
-   is an info finding of its own. Sections under `not_compared` weren't checked: say which.
-
 10. Report: one list, critical first, then warning, then info; within a level, what affects
-   traffic (devices, HA, VPN) comes before what affects management (licences, content, backups).
+   traffic (devices, HA, VPN and their certificates) comes before what affects management
+   (licences, content, backups).
    Merge findings with one cause (a red device and its INTERFACE alerts). Each finding gives:
    - its level and a one-line title naming the device or the FMC;
    - evidence: the tool and the values it returned (status, module, count, dates);

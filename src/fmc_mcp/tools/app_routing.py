@@ -11,7 +11,6 @@ command API doesn't pass 'show policy-route' or 'show path-monitoring' through.
 """
 
 # No `from __future__ import annotations`: FastMCP inspects signatures at runtime.
-import difflib
 import ipaddress
 from typing import Annotated, Any, Literal
 
@@ -30,6 +29,7 @@ from fmc_mcp._core import (
 from fmc_mcp.client import FmcApp
 from fmc_mcp.preview import fmc_preview
 from fmc_mcp.refs import RefResolver
+from fmc_mcp.rule_conditions import resolve_applications
 from fmc_mcp.tools.common import Domain, ref_label
 from fmc_mcp.tools.device_config import (
     InterfaceRef,
@@ -186,24 +186,12 @@ def pick_named(
 
 
 async def application_refs(app: FmcApp, names: list[str] | None, domain: str | None) -> list[dict[str, Any]]:
-    """Application references by name (case-insensitive) or app id; FMC can't filter this list."""
+    """Application references by exact name (case-insensitive) or numeric app id. FMC can't filter this
+    list, so names resolve against the per-process index rule_conditions keeps (shared with the access-rule
+    tools)."""
     if not names:
         return []
-    page = await app.all(await app.config_path(APPLICATIONS, domain), expanded=False, cap=20_000)
-    by_name: dict[str, dict[str, Any]] = {}
-    for a in page.items:
-        by_name.setdefault(str(a.get("name", "")).lower(), a)
-    by_id = {str(a.get("id")): a for a in page.items}
-    out = []
-    for raw in names:
-        n = raw.strip()
-        hit = by_name.get(n.lower()) or by_id.get(n)
-        if hit is None:
-            close = difflib.get_close_matches(n.lower(), list(by_name), n=5, cutoff=0.6)
-            hint = f" Close: {', '.join(by_name[c]['name'] for c in close)}." if close else ""
-            raise NotFound(f"No application {n!r} in FMC's application catalog.{hint}", 404)
-        out.append({"id": str(hit["id"]), "type": "Application", "name": hit.get("name")})
-    return out
+    return await resolve_applications(app, names, domain)
 
 
 async def find_acl(app: FmcApp, name: str, domain: str | None) -> dict[str, Any] | None:

@@ -712,10 +712,10 @@ def test_static_route_keys() -> None:
 
 def test_health_review_compare_with() -> None:
     plain = _health_review_text("Global", "spoke", 24)
-    assert "fmc_diff_device_config" not in plain and "\n9. Report" in plain
+    assert "fmc_diff_device_config" not in plain and "\n10. Report" in plain
     text = _health_review_text("Global", "spoke", 24, "mcp-sdwan-t1-spoke1")
     assert '`fmc_diff_device_config` with a=<device>, b="mcp-sdwan-t1-spoke1", domain="Global"' in text
-    assert text.index("9. Configuration drift") < text.index("10. Report")
+    assert text.index("10. Configuration drift") < text.index("11. Report")
     stored = _health_review_text(None, None, 24, "device-mcp-sdwan-t1-spoke1-20261020T101500Z.yaml")
     assert '`fmc_diff_device_config` with a="device-mcp-sdwan-t1-spoke1-20261020T101500Z.yaml":' in stored
     with pytest.raises(InvalidRequest):

@@ -163,6 +163,8 @@ def test_health_review_steps_in_order() -> None:
         "fmc_license_status",
         "fmc_upgrade_status",
         "fmc_list_backups",
+        "fmc_list_certificates",
+        "fmc_get_certificate",
         "fmc_list_vpn_tunnels",
         "fmc_list_health_alerts",
         "fmc_recent_activity",
@@ -173,6 +175,8 @@ def test_health_review_steps_in_order() -> None:
     assert "120 API requests per minute" in text and "domain=" not in text
     assert "critical" in text and "warning" in text and "info" in text
     assert "every managed device" in text and "Keep only the rows" not in text
+    assert "`fmc_list_certificates` with expiring_within_days=90." in text  # F71
+    assert "critical" in text.split("7. Certificates")[1].split("8. VPN")[0]
 
 
 def test_health_review_scoped_to_domain_and_device() -> None:
@@ -182,6 +186,7 @@ def test_health_review_scoped_to_domain_and_device() -> None:
     assert "since_hours=2" in text and "since_minutes=120" in text
     # name is a substring filter only fmc_list_devices supports: the others keep step 1's devices
     assert 'device="ftd1"' not in text and text.count("Keep only the rows") == 4
+    assert 'expiring_within_days=90, domain="Global/mcp-test-leaf". Of the device rows keep' in text
 
 
 @pytest.mark.parametrize(

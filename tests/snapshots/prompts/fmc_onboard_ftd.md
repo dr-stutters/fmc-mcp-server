@@ -1,14 +1,15 @@
 # fmc_onboard_ftd
 
 title: Onboard an FTD
-arguments: {"access_policy": "mcp-test-ha-acp", "gateway": "198.18.128.1", "host": "198.18.128.161", "inside_interface": "Ethernet0/1", "inside_ip": "10.99.2.1/24", "name": "mcp-ftd2", "nat_policy": "mcp-test-ha-nat", "outside_interface": "Ethernet0/0", "outside_ip": "198.18.128.163/18", "platform_settings": "mcp-test-ps", "recipe": "ftd-fmc", "template": "mcp-sdwan-spoke-tmpl", "test_destination": "198.18.128.1"}
+arguments: {"access_policy": "mcp-test-ha-acp", "devices": "mcp-ftd2=198.18.128.161, mcp-ftd3=198.18.128.162", "gateway": "198.18.128.1", "host": "198.18.128.161", "inside_interface": "Ethernet0/1", "inside_ip": "10.99.2.1/24", "name": "mcp-ftd2", "nat_policy": "mcp-test-ha-nat", "outside_interface": "Ethernet0/0", "outside_ip": "198.18.128.163/18", "platform_settings": "mcp-test-ps", "recipe": "ftd-fmc", "template": "mcp-sdwan-spoke-tmpl", "test_destination": "198.18.128.1"}
 
 Onboard an FTD end to end: optionally build it in CML from a recipe, check licensing,
 register it with FMC, set outside/inside interfaces and zones, default route and NAT, assign
 policies, deploy, and verify with show commands, packet tracer and real traffic. With
 `template`, a device template sets the interfaces, routing, policies and SD-WAN/VPN membership
-in one call (fmc_apply_device_template). Explains the `configure manager add` step for
-re-registration.
+in one call (fmc_apply_device_template). With `devices` (or a recipe whose hand-off lists
+several FTDs), every FTD is registered in one fmc_register_devices call. Explains the
+`configure manager add` step for re-registration.
 
 ## user
 
@@ -19,7 +20,7 @@ around a failed registration or deployment.
 
 0. Preconditions. `fmc_status` (FMC reachable, API user). `fmc_license_status`:
    FMC must be registered with Smart Licensing or be in evaluation mode, otherwise registration fails
-   ("license" errors). `fmc_list_devices`: if "mcp-ftd2" is already registered, stop and ask
+   ("license" errors). `fmc_list_devices`: if any of "mcp-ftd2", "mcp-ftd3" is already registered, stop and ask
    the user whether to delete and re-register it. To re-register: `fmc_delete_device`,
    wait 1-2 minutes until the FTD's `show managers` no longer says "in the process of
    Unregistration", then run `configure manager add <fmc-ip> <reg-key>` on the FTD again.
@@ -27,12 +28,16 @@ around a failed registration or deployment.
 
 1. Build the FTD in CML: `cml_build_recipe` with recipe="ftd-fmc" (preview first; the FTDv boots in 15-30 minutes, so build with wait=false and then `cml_wait_for_converged`). Then `cml_verify_recipe` for the same recipe: the 'show managers' probe must show the FMC as pending. The recipe's fmc_side and credentials sections give the management IP and registration key.
 
-2. Register: `fmc_register_device` with name="mcp-ftd2", host="198.18.128.161", access_policy="mcp-test-ha-acp",
-   wait=true; leave out reg_key when the server has FMC_FTD_REG_KEY (the preview says where the key
-   comes from), otherwise ask the user for the registration key. This waits for the registration task
-   and FMC's initial deployment (5-10 minutes). Then `fmc_get_device` name="mcp-ftd2": it must be
-   connected, with its model and version. A failure saying the device is unreachable or the key is wrong
-   means the FTD's `configure manager add` does not match: fix it (step 1) and retry.
+2. Register all 2 FTDs in one call: `fmc_register_devices` with devices=[{"name": "mcp-ftd2", "host": "198.18.128.161"}, {"name": "mcp-ftd3", "host": "198.18.128.162"}],
+   access_policy="mcp-test-ha-acp" and NO reg_key (every row uses the server's FMC_FTD_REG_KEY; the preview says so per
+   row and blocks duplicate names or hosts). It sends one bulk request and waits for every registration
+   and initial deployment under one deadline (timeout_minutes); a client that supports MCP tasks runs it
+   in the background, so report its progress. The result has a row per device (deployed / registered /
+   failed / refused / running) and the wall-clock time; `fmc_get_device` name="mcp-ftd2" must then
+   be connected. A failed or refused row: fix that FTD (step 1) and call `fmc_register_devices`
+   again with only the rows that did not register. Steps 3-7 configure "mcp-ftd2"; for each other FTD run
+   this prompt again with its name and addresses (it is registered by then: skip steps 0-2), or pass
+   template=... so one `fmc_apply_device_template` per FTD does steps 3-5.
 
 2b. Device template "mcp-sdwan-spoke-tmpl" (a branch like an existing one): `fmc_get_device_template`
    template="mcp-sdwan-spoke-tmpl" lists its variables (type and default), interfaces, overridable objects and VPN/SD-WAN

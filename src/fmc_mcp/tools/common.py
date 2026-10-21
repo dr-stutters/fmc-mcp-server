@@ -47,7 +47,7 @@ OBJECT_TYPES: dict[str, ObjType] = {
         ObjType("vlan_tag", "object/vlantags", "VlanTag", "vlan"),
         ObjType("vlan_group", "object/vlangrouptags", "VlanGroupTag", "vlan"),
         ObjType("dynamic_object", "object/dynamicobjects", "DynamicObject", "other", writable=False),
-        ObjType("time_range", "object/timeranges", "TimeRange", "other", writable=False),
+        ObjType("time_range", "object/timeranges", "TimeRange", "other"),
         ObjType("application", "object/applications", "Application", "other", writable=False),
         ObjType("url_category", "object/urlcategories", "URLCategory", "other", writable=False),
         ObjType("geolocation", "object/geolocations", "Geolocation", "other", writable=False),
@@ -152,6 +152,9 @@ def ref_label(ref: Any) -> str:
         return f"{proto}/{port}" if port else proto
     if ref.get("url"):
         return str(ref["url"])
+    if "startTag" in ref:  # VlanTagLiteral
+        lo, hi = ref.get("startTag"), ref.get("endTag", ref.get("startTag"))
+        return f"VLAN {lo}" if lo == hi else f"VLAN {lo}-{hi}"
     return str(ref.get("id", "?"))
 
 
