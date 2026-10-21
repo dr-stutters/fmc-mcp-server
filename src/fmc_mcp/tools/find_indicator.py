@@ -563,24 +563,21 @@ def register(reg: ToolRegistrar) -> None:
         offset: Annotated[int, Field(ge=0)] = 0,
         response_format: ResponseFormat = "markdown",
     ) -> ToolResult:
-        """'Where does bad.example.com appear?' in one call, the SOC's indicator sweep for domains and
-        URLs (fmc_find_address does IPs): FQDN objects, URL objects and URL groups and the network groups
-        holding FQDN objects; access rules and decryption rules that use them (source, destination or URL
-        condition, through any chain of groups); each access policy's Security Intelligence URL block and
-        do-not-block lists (fmc_si_block's URL objects, SI URL feeds, FMC's Global and Domain lists); DNS
-        policy rules and the SI DNS lists and feeds in them (fmc_dns_block's lists included, naming the
-        access policies that use the DNS policy); and every SI URL/DNS feed whose fetched entries hold it
-        (si_lists, also when no policy uses the feed). Ranked like fmc_find_address: exact first, then
-        values inside it (its subdomains, URLs on it), then the narrowest values that contain it (a parent
-        domain, a shorter URL); each row says where it lives (policy, rule index and action, SI list,
-        DNS rule) and via which object, list or feed. File hashes: answered at once that FMC's file lists
-        and TID observables aren't searched (FMC 10.0.1's REST API has no file-list endpoints). Not
-        searched, and said so in `not_checked`: Talos categories, custom SI lists' entries (FMC returns
-        counts only), URL categories in rules, Threat Intelligence Director. Budget-aware: about 11
-        collection reads (and up to 8 of FMC's own block lists) plus 2 per access policy and 1 per DNS
-        and decryption policy, at most 25
-        policies per kind and max_requests in all (default 60); narrow with device or access_policy.
-        Offline configuration only (see `limits`); live verdicts: fmc_packet_tracer."""
+        """'Where does bad.example.com appear?' in one call, the SOC's domain and URL sweep
+        (fmc_find_address does IPs): FQDN and URL objects, URL groups and network groups holding FQDN
+        objects; access and decryption rules using them (source, destination or URL condition, through
+        any group chain); each access policy's Security Intelligence URL block/do-not-block lists
+        (fmc_si_block's objects, URL feeds, FMC's Global and Domain lists); DNS policy rules with their SI
+        DNS lists and feeds (fmc_dns_block's lists included, naming the access policies using the DNS
+        policy); and every SI URL/DNS feed whose fetched entries hold it. Ranked like fmc_find_address:
+        exact, then values inside it (subdomains, URLs on it), then the narrowest values containing it
+        (a parent domain, a shorter URL); each row says where (policy, rule index and action, SI list, DNS
+        rule) and via which object, list or feed. A file hash is answered at once: FMC's file lists and
+        TID observables aren't searched. `not_checked` names what FMC's REST API doesn't return (Talos
+        categories, custom SI list entries, URL categories in rules). Budget-aware: about 11 collection
+        reads plus 2 per access policy and 1 per DNS and decryption policy (25 per kind), objects and SI
+        first, within max_requests (default 60; a warning names what didn't fit); narrow with device or
+        access_policy. Offline configuration (see `limits`); live verdicts: fmc_packet_tracer."""
         app: FmcApp = get_client(ctx)
         want = parse_indicator(value)
         if want.kind == "hash":
@@ -627,17 +624,12 @@ def register(reg: ToolRegistrar) -> None:
         elif need_si or "access_rules" in wanted:
             if s.spend("access policies"):
                 acps = await _policies(s, "access", ACCESS, None, "access policies")
-        si_read = rules_read = 0
-        for p in acps:
-            if need_si:
-                si_read += await _security_intelligence(s, p, "security_intelligence" in wanted)
-            if "access_rules" in wanted:
-                rules_read += await _policy_rules(s, "access_rules", ACCESS, "accessrules", p, "action")
+        # Security Intelligence first (it names the DNS policies' users), then DNS rules, then the rule scans
+        si_read = 0
         if need_si:
+            for p in acps:
+                si_read += await _security_intelligence(s, p, "security_intelligence" in wanted)
             s.searched["si_policies"] = si_read
-        if "access_rules" in wanted:
-            s.searched["access_policies"] = len(acps)
-            s.searched["access_rules"] = rules_read
 
         if "dns_rules" in wanted:
             if narrowed:
@@ -653,6 +645,13 @@ def register(reg: ToolRegistrar) -> None:
                     dns_pols = dns_pols[:POLICY_CAP]
             s.searched["dns_policies"] = len(dns_pols)
             s.searched["dns_rules"] = sum([await _dns_rules(s, p) for p in dns_pols])
+
+        if "access_rules" in wanted:
+            rules_read = 0
+            for p in acps:
+                rules_read += await _policy_rules(s, "access_rules", ACCESS, "accessrules", p, "action")
+            s.searched["access_policies"] = len(acps)
+            s.searched["access_rules"] = rules_read
 
         if "decryption_rules" in wanted:
             if narrowed:

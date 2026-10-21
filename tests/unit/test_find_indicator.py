@@ -231,9 +231,13 @@ async def test_budget_names_what_was_not_read(world: respx.MockRouter) -> None:
     assert len(config_calls(world)) <= 15
     warning = data["warning"]
     assert warning.startswith("Stopped at max_requests=15; not read:")
-    assert "not read: DNS policies, decryption policies." in warning and "raise max_requests" in warning
-    # the cheap collections came first: objects and SI feeds/lists were searched
-    assert data["by_area"]["objects"] == 7 and data["by_area"]["si_lists"] == 2
+    assert (
+        "not read: rules of DNS policy Default DNS Policy, rules of DNS policy mcp-w6-dns, rules of "
+        in warning
+    )
+    assert "mcp-w6-acp, decryption policies." in warning and "raise max_requests" in warning
+    # objects, SI feeds/lists and the access policy's SI came first
+    assert data["by_area"] == {"objects": 7, "si_lists": 2, "security_intelligence": 2}
 
 
 async def test_access_policy_narrows_to_its_dns_and_decryption_policies(world: respx.MockRouter) -> None:
