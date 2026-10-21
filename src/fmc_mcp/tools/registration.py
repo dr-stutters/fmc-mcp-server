@@ -38,6 +38,7 @@ from fmc_mcp._core.secrets import mask_values, scrub_text
 from fmc_mcp.client import FmcApp
 from fmc_mcp.preview import fmc_preview
 from fmc_mcp.rails import check_deploy_window, deploy_window_blockers
+from fmc_mcp.tools import dangerous
 from fmc_mcp.tools.common import Domain, resolve_in, slim
 from fmc_mcp.tools.dangerous import (
     FAILED_WORDS,
@@ -201,7 +202,7 @@ class _Run:
         self.skip_deployment = skip_deployment
         self.stop_on_failure = stop_on_failure
         self.began = time.monotonic()
-        self.started = int(time.time())  # wall clock, for FMC's job history filter
+        self.started = dangerous.wall_clock()  # for FMC's job history filter
         self.groups: list[_Group] = []
         self.finished: dict[str, tuple[bool, str | None, str]] = {}  # task id -> (done, failure, text)
         self.task_data: dict[str, dict[str, Any]] = {}  # task id -> FMC's latest TaskStatus
@@ -413,7 +414,7 @@ class _Run:
         watch = {r.device_id: r for r in self.rows if r.status == "deploying" and r.device_id}
         if not watch:
             return
-        now = int(time.time())
+        now = dangerous.wall_clock()
         self.calls += 1
         page = await self.app.page(
             await self.app.config_path(JOBS, self.domain),

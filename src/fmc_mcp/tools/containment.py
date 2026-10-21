@@ -386,6 +386,7 @@ def register(reg: ToolRegistrar) -> None:
         return await fmc_preview(
             ctx,
             tool="fmc_contain_host",
+            lock_refs=[target] if new_rules and target else [],  # block rules go into it (F76 lock check)
             args={"ip": ip, "reason": reason, "object": object, "policy": policy, "domain": domain},
             confirm=confirm,
             plan=Plan(

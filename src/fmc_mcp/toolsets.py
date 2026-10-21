@@ -133,6 +133,7 @@ CATALOGUE: dict[str, tuple[str, tuple[str, ...]]] = {
             "fmc_create_si_feed",
             "fmc_delete_si_object",
             "fmc_dns_block",
+            "fmc_find_indicator",
             "fmc_get_dns_policy",
             "fmc_get_security_intelligence",
             "fmc_release_host",
@@ -201,18 +202,21 @@ CATALOGUE: dict[str, tuple[str, tuple[str, ...]]] = {
         ),
     ),
     "policy": (
-        "access control, NAT and prefilter policies and rules, assignments, rule hygiene",
+        "access control, NAT and prefilter: policies, rules, categories, inheritance, locks, assignments, "
+        "hygiene",
         (
             "fmc_assign_policy",
             "fmc_bulk_update_access_rules",
             "fmc_clear_hit_counts",
             "fmc_create_access_policy",
             "fmc_create_access_rule",
+            "fmc_create_category",
             "fmc_create_nat_policy",
             "fmc_create_nat_rule",
             "fmc_create_prefilter_policy",
             "fmc_create_prefilter_rule",
             "fmc_delete_access_rule",
+            "fmc_delete_category",
             "fmc_delete_nat_rule",
             "fmc_delete_policy",
             "fmc_delete_prefilter_rule",
@@ -224,6 +228,9 @@ CATALOGUE: dict[str, tuple[str, tuple[str, ...]]] = {
             "fmc_list_policy_assignments",
             "fmc_list_prefilter_rules",
             "fmc_policy_audit",
+            "fmc_policy_lock",
+            "fmc_rename_category",
+            "fmc_set_base_policy",
             "fmc_set_prefilter_policy",
             "fmc_shadowed_rules",
             "fmc_update_access_rule",
@@ -232,10 +239,12 @@ CATALOGUE: dict[str, tuple[str, tuple[str, ...]]] = {
         ),
     ),
     "routing": (
-        "static routes, BGP, OSPF, VRFs",
+        "static routes, BGP, OSPF, VRFs, prefix lists and route maps",
         (
             "fmc_configure_bgp",
             "fmc_configure_ospf",
+            "fmc_create_prefix_list",
+            "fmc_create_route_map",
             "fmc_create_static_route",
             "fmc_create_vrf",
             "fmc_delete_static_route",
@@ -275,15 +284,17 @@ CATALOGUE: dict[str, tuple[str, tuple[str, ...]]] = {
         ),
     ),
     "tls": (
-        "TLS decryption policies and rules, cipher suite lists, certificates (all kinds, days left), "
+        "TLS decryption policies and rules, cipher suite lists, certificates (days left, enrolment), "
         "readiness check",
         (
+            "fmc_create_cert_enrollment",
             "fmc_create_cipher_suite_list",
             "fmc_create_decryption_policy",
             "fmc_create_decryption_rule",
             "fmc_create_internal_ca",
             "fmc_delete_certificate",
             "fmc_delete_decryption_rule",
+            "fmc_enroll_certificate",
             "fmc_get_certificate",
             "fmc_get_decryption_policy",
             "fmc_import_certificate_files",

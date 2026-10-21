@@ -28,7 +28,10 @@ from fmc_mcp.tools.system import iso
 
 BEHIND = timedelta(hours=12)  # the furthest a device clock can be behind UTC (UTC-12)
 AHEAD = timedelta(hours=14)  # and ahead (UTC+14)
-ACTIVITY_HOURS = 24 * 30  # how far back the source IP's ISE login (with its SGT) is looked for
+# How far back the source IP's ISE login (with its SGT) is asked for. FMC 10.0.1 answers with only about
+# the last hour of analysis/useractivity whatever is asked (final-live 2026-10-21: an unfiltered GET in
+# Global held 9 rows, the oldest 50 minutes old; `time=` filters answer 422): the notes say "about an hour".
+ACTIVITY_HOURS = 24 * 30
 
 
 def now() -> datetime:
@@ -212,7 +215,8 @@ async def session_sgt(app: FmcApp, ip: str, user: str | None, domain: str | None
     events = [a for a in events if str(a.get("ipAddress", "")) == ip] or events
     if not events:
         return FlowSgt(
-            note=f"No ISE login for {ip} in FMC's user activity (30 days): SGT rules stay conditional."
+            note=f"No ISE login for {ip} in FMC's user activity, which keeps only about the last hour (FMC "
+            "10.0.1): SGT rules stay conditional. Pass source_sgt to evaluate a known SGT."
         )
     newest = events[0]
     if user:
@@ -233,9 +237,9 @@ async def session_sgt(app: FmcApp, ip: str, user: str | None, domain: str | None
         name=None if tag.isdigit() else tag,
         tag=int(tag) if tag.isdigit() else None,
         origin=origin,
-        caveat=f"The SGT of the newest ISE login for {ip} in FMC's user activity (last 30 days), not "
-        "cross-checked with an active session: if that user logged off or the address moved since, the "
-        "device sees another SGT. Pass source_sgt to evaluate a known one.",
+        caveat=f"The SGT of the newest ISE login for {ip} in FMC's user activity (FMC 10.0.1 keeps only "
+        "about the last hour of it), not cross-checked with an active session: if that user logged off or "
+        "the address moved since, the device sees another SGT. Pass source_sgt to evaluate a known one.",
     )
 
 

@@ -12,6 +12,7 @@ from pydantic import Field
 
 from fmc_mcp._core import ResponseFormat, ToolRegistrar, UpstreamError, get_client, list_result
 from fmc_mcp._core.http import page_of
+from fmc_mcp.acp_structure import base_chain, locked, read_locks
 from fmc_mcp.client import FmcApp
 from fmc_mcp.tools.common import Domain, ref_label, resolve_in
 from fmc_mcp.tools.devices import DEVICES, DeviceRef
@@ -28,6 +29,49 @@ NOT_DEPLOYABLE_NOTE = (
     "these pending entries: FMC decides 'deployable' from the device's out-of-date policies, and these "
     "entries (e.g. a certificate or object changed in an ancestor domain) have not made it out of date."
 )
+
+
+LOCKED_NOTE = (
+    "An access policy in this deployment is locked (policy_locks): its holder may be in the middle of a "
+    "change, and the deploy pushes what is saved now. Ask them, or wait for the unlock (fmc_policy_lock)."
+)
+ACP_ENTITY = re.compile(r"access(control)?policy", re.I)
+
+
+async def pending_locks(
+    app: FmcApp, device: dict[str, Any], rows: list[dict[str, Any]], domain: str | None
+) -> list[dict[str, Any]]:
+    """The locked access policies that matter to this deployment: the device's own access policy, its base
+    policies, and any access policy among the pending rows (by name), each such row marked with
+    `locked_by`. One read of FMC's lock list (plus the device policy's base chain when something is
+    locked); nothing when the list can't be read or nothing is locked."""
+    held = locked(await read_locks(app, domain))
+    if not held:
+        return []
+    acp = device.get("accessPolicy") or {}
+    by_name = {str(r.get("policy") or "").lower(): r for r in held if r.get("policy")}
+    by_id = {str(r.get("policy_id") or "").lower(): r for r in held}
+    out: dict[str, dict[str, Any]] = {}
+    if acp.get("id"):
+        mine = by_id.get(str(acp["id"]).lower())
+        if mine:
+            out[str(acp["id"]).lower()] = {**mine, "why": "the device's access policy"}
+        try:
+            chain = await base_chain(app, str(acp["id"]), domain)
+        except UpstreamError:
+            chain = []
+        for base in chain:
+            lock = by_id.get(str(base["id"]).lower())
+            if lock:
+                why = f"a base policy of the device's access policy {acp.get('name')!r}"
+                out.setdefault(str(base["id"]).lower(), {**lock, "why": why})
+    for row in rows:
+        lock = by_name.get(str(row.get("entity") or "").lower())
+        if lock is None or not ACP_ENTITY.search(str(row.get("type") or "").replace(" ", "")):
+            continue
+        row["locked_by"] = lock.get("locked_by") or "unknown"
+        out.setdefault(str(lock.get("policy_id")).lower(), {**lock, "why": "pending in this deployment"})
+    return [{k: v for k, v in r.items() if k != "policy_id" and v is not None} for r in out.values()]
 
 
 def deployable_row(d: dict[str, Any]) -> dict[str, Any]:
@@ -53,38 +97,54 @@ SECRET_FIELD = re.compile(r"password|secret|key|community|psk", re.I)
 # One pending change can be huge: FMC 10.0.1 listed a Snort 3 network analysis policy UPDATE whose
 # inspectorData value was 115 KB (seen live 2026-10-21), over the response budget on its own; the list
 # result only drops whole rows, so each row's change lines are capped here.
-CHANGE_TEXT_CAP = 400  # characters per change line
+CHANGE_TEXT_CAP = 400  # characters of a change line's one value (added / deleted)
+VALUE_CAP = CHANGE_TEXT_CAP // 2  # characters of each side of an 'old -> new' line: both stay visible
 CHANGES_PER_ROW = 30  # change lines per row
+CUT_MARK = " more characters]"
+
+
+def _cut(value: Any, cap: int) -> str:
+    text = str(value)
+    if len(text) <= cap:
+        return text
+    return f"{text[:cap]}... [{len(text) - cap:,}{CUT_MARK}"
 
 
 def _change_text(v: dict[str, Any], verb: str) -> str:
+    """'Field: old -> new' with each side cut at VALUE_CAP (a long old value no longer hides the new one),
+    or 'Field: value' / '-Field: value' cut at CHANGE_TEXT_CAP."""
     field = v.get("fieldName") or "?"
     old, new = v.get("oldValue"), v.get("newValue")
     if SECRET_FIELD.search(str(field)):  # FMC shows encrypted secrets here (e.g. BGP neighbor passwords)
         old = "********" if old not in (None, "") else old
         new = "********" if new not in (None, "") else new
     if verb == "deleted":
-        return f"-{field}: {old if old is not None else new}"
+        return f"-{field}: {_cut(old if old is not None else new, CHANGE_TEXT_CAP)}"
     if old is not None and new is not None:
-        return f"{field}: {old} -> {new}"
-    return f"{field}: {new if new is not None else old}"
+        return f"{field}: {_cut(old, VALUE_CAP)} -> {_cut(new, VALUE_CAP)}"
+    return f"{field}: {_cut(new if new is not None else old, CHANGE_TEXT_CAP)}"
 
 
-def _capped(text: str) -> str:
-    if len(text) <= CHANGE_TEXT_CAP:
-        return text
-    return f"{text[:CHANGE_TEXT_CAP]}... [{len(text) - CHANGE_TEXT_CAP:,} more characters]"
+def cut_note(rows: list[dict[str, Any]]) -> str | None:
+    """What was cut from pending_row rows, for the answer's note (None when nothing was)."""
+    if not any(r.get("changes_total") or any(CUT_MARK in t for t in r.get("changes") or []) for r in rows):
+        return None
+    return (
+        f"Long change values are cut (each side of 'old -> new' at {VALUE_CAP} characters, a single value "
+        f"at {CHANGE_TEXT_CAP}) and rows at {CHANGES_PER_ROW} changes (changes_total counts them); the FMC "
+        "UI's deployment preview shows them whole."
+    )
 
 
 def pending_row(c: dict[str, Any]) -> dict[str, Any]:
-    """One pending change with its field values flattened to 'Field: old -> new' strings, each capped at
-    CHANGE_TEXT_CAP characters and the row at CHANGES_PER_ROW lines (`changes_total` then counts them)."""
+    """One pending change with its field values flattened to 'Field: old -> new' strings, each value cut
+    (_change_text) and the row at CHANGES_PER_ROW lines (`changes_total` then counts them)."""
     changes: list[str] = []
     for key, verb in (("valueAdded", "added"), ("valueUpdated", "updated"), ("valueDeleted", "deleted")):
         for v in c.get(key) or []:
             if isinstance(v, dict):
                 changes.append(_change_text(v, verb))
-    shown = [_capped(t) for t in changes[:CHANGES_PER_ROW]]
+    shown = changes[:CHANGES_PER_ROW]
     row = {
         "entity": c.get("entityName"),
         "type": c.get("entityType"),
@@ -266,7 +326,8 @@ def register(reg: ToolRegistrar) -> None:
         """Show what the next deployment would push to one device: each changed entity (policy,
         rule, object) with the action (added/updated/deleted), who changed it and the changed
         values (long values cut, e.g. a Snort 3 policy's inspector data). Use before fmc_deploy to
-        review the blast radius."""
+        review the blast radius. A locked access policy (the device's, or one in the list) is named with
+        its holder (`policy_locks`): someone may be mid-change, and the deploy pushes what is saved now."""
         app: FmcApp = get_client(ctx)
         d = await resolve_in(app, DEVICES, device, "device", domain)
         path = await app.config_path(f"{DEPLOYABLE}/{d['id']}/pendingchanges", domain)
@@ -279,16 +340,16 @@ def register(reg: ToolRegistrar) -> None:
         notes = []
         if not everything.complete:
             notes.append("Only the first 5000 change entries were read.")
-        if any(
-            r.get("changes_total") or any("more characters]" in t for t in r.get("changes") or [])
-            for r in rows
-        ):
-            notes.append(
-                f"Long change values are cut at {CHANGE_TEXT_CAP} characters and rows at {CHANGES_PER_ROW} "
-                "changes (changes_total counts them); the FMC UI's deployment preview shows them whole."
-            )
+        cut = cut_note(rows)
+        if cut:
+            notes.append(cut)
         if rows and not await is_deployable(app, str(d["id"]), domain):
             notes.append(NOT_DEPLOYABLE_NOTE)
+        if rows:
+            locks = await pending_locks(app, d, rows, domain)
+            if locks:
+                extra["policy_locks"] = locks
+                notes.append(LOCKED_NOTE)
         if notes:
             extra["note"] = " ".join(notes)
         return list_result(page_of(rows, limit=limit, offset=offset), fmt=response_format, extra=extra)

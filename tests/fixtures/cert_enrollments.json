@@ -1,0 +1,261 @@
+{
+ "_source": "FMC 10.0.1, Global/mcp-test-leaf, 2026-10-21 (W6N probe, notes/w6n-fixtures/f75-probe-certenrollments.json): self_signed_request, self_signed_post (the POST answer: metadata.timestamp 0), self_signed_get (GET by id: FMC filled validationUsage, revocation NONE + ignoreRevocation, key.ignoreIpsecKeyusage) and enrollments_empty / device_certificates_empty (no 'items' key) are real (links dropped, the leaf domain id replaced with the test domain's). pkcs12_get follows FMC 10.0.1's spec GET example 1 (base64Certificate returned in full, passPhrase masked; bundle truncated, renamed mcp-w6-enr-p12). managecertificates has no example in the spec: manage_response and the task_* shapes are built from its schema (ManageDeviceCertificatesRequestModel + TaskMetadata.task) and F74's live TaskStatus answers, pending Stage 2. device_enrolled follows the spec's devices/certificates example 2 (inline form, epoch dates).",
+ "self_signed_request": {
+  "type": "CertEnrollment",
+  "name": "mcp-w6-enr-probe",
+  "description": "W6N probe: self-signed enrollment shape (F75); not enrolled on any device",
+  "enrollmentType": "SELF_SIGNED_CERTFICATE",
+  "certificateParameters": {
+   "includeFQDN": "NONE",
+   "commonName": "mcp-w6-enr-probe",
+   "organization": "mcp-w6",
+   "includeDeviceSerial": false
+  },
+  "key": {
+   "keyType": "RSA",
+   "keyName": "mcp-w6-enr-probe-key",
+   "keySize": "CertKey_2048"
+  },
+  "overridable": false
+ },
+ "self_signed_post": {
+  "metadata": {
+   "timestamp": 0,
+   "lastUser": {
+    "name": "mcp-api-svc"
+   },
+   "domain": {
+    "name": "Global \\ mcp-test-leaf",
+    "id": "e276abec-e0f2-11e3-8169-6d9ed49b625f",
+    "type": "Domain"
+   }
+  },
+  "skipCaFlagCheck": false,
+  "validationUsage": {
+   "ipsecClient": true,
+   "sslClient": true,
+   "sslServer": false
+  },
+  "revocation": {
+   "onlineCertificateStatusProtocolContent": {
+    "enableOnlineCertificateStatusProtocol": false
+   },
+   "certRevocationListContent": {
+    "enableCertRevocationListDistributionPoint": false,
+    "enableStaticCertRevocationList": false,
+    "enableCertRevocationList": false
+   },
+   "evaluationPriority": "NONE",
+   "ignoreRevocation": true
+  },
+  "certificateParameters": {
+   "includeFQDN": "NONE",
+   "commonName": "mcp-w6-enr-probe",
+   "organization": "mcp-w6",
+   "includeDeviceSerial": false
+  },
+  "enrollmentType": "SELF_SIGNED_CERTFICATE",
+  "key": {
+   "ignoreIpsecKeyusage": false,
+   "keySize": "CertKey_2048",
+   "keyType": "RSA",
+   "keyName": "mcp-w6-enr-probe-key"
+  },
+  "type": "CertEnrollment",
+  "name": "mcp-w6-enr-probe",
+  "overridable": false,
+  "description": "W6N probe: self-signed enrollment shape (F75); not enrolled on any device",
+  "id": "00000000-0000-0ed3-0000-021475016663"
+ },
+ "self_signed_get": {
+  "metadata": {
+   "timestamp": 1792581285817,
+   "lastUser": {
+    "name": "mcp-api-svc"
+   },
+   "domain": {
+    "name": "Global \\ mcp-test-leaf",
+    "id": "e276abec-e0f2-11e3-8169-6d9ed49b625f",
+    "type": "Domain"
+   }
+  },
+  "skipCaFlagCheck": false,
+  "validationUsage": {
+   "ipsecClient": true,
+   "sslClient": true,
+   "sslServer": false
+  },
+  "revocation": {
+   "onlineCertificateStatusProtocolContent": {
+    "enableOnlineCertificateStatusProtocol": false
+   },
+   "certRevocationListContent": {
+    "enableCertRevocationListDistributionPoint": false,
+    "enableStaticCertRevocationList": false,
+    "enableCertRevocationList": false
+   },
+   "evaluationPriority": "NONE",
+   "ignoreRevocation": true
+  },
+  "certificateParameters": {
+   "includeFQDN": "NONE",
+   "commonName": "mcp-w6-enr-probe",
+   "organization": "mcp-w6",
+   "includeDeviceSerial": false
+  },
+  "enrollmentType": "SELF_SIGNED_CERTFICATE",
+  "key": {
+   "ignoreIpsecKeyusage": false,
+   "keySize": "CertKey_2048",
+   "keyType": "RSA",
+   "keyName": "mcp-w6-enr-probe-key"
+  },
+  "type": "CertEnrollment",
+  "name": "mcp-w6-enr-probe",
+  "overridable": false,
+  "description": "W6N probe: self-signed enrollment shape (F75); not enrolled on any device",
+  "id": "00000000-0000-0ed3-0000-021475016663"
+ },
+ "enrollments_empty": {
+  "paging": {
+   "offset": 0,
+   "limit": 0,
+   "count": 0,
+   "pages": 0
+  }
+ },
+ "device_certificates_empty": {
+  "paging": {
+   "offset": 0,
+   "limit": 0,
+   "count": 0,
+   "pages": 0
+  }
+ },
+ "pkcs12_get": {
+  "metadata": {
+   "timestamp": 1792581285817,
+   "lastUser": {
+    "name": "mcp-api-svc"
+   },
+   "domain": {
+    "name": "Global \\ mcp-test-leaf",
+    "id": "e276abec-e0f2-11e3-8169-6d9ed49b625f",
+    "type": "Domain"
+   }
+  },
+  "enrollmentType": "PKCS12",
+  "revocation": {
+   "onlineCertificateStatusProtocolContent": {
+    "enableOnlineCertificateStatusProtocol": false
+   },
+   "certRevocationListContent": {
+    "enableCertRevocationListDistributionPoint": false,
+    "enableStaticCertRevocationList": false,
+    "enableCertRevocationList": false
+   },
+   "evaluationPriority": "NONE",
+   "ignoreRevocation": true
+  },
+  "pkcs12Content": {
+   "base64Certificate": "MIIS2AIBAzCCEp4GCSqGSIb3DQEHAaCCEo8EghKLMIIShzCCDRcGCSqGSIb3DQEH\r\nBqCCDQgwgg0EAgEAMIIM/QYJKoZIhvcNAQcBMBwGCiqGSIb3DQEMAQYwDgQIh2mr\r\nrR7FAGECAggAgIIM0HDm106E+UKGgRbZItuD36V5DkJdhH7z5Fcmn4ih4bHrfNTe\r\nnoXuq5oRtX==\r\n",
+   "passPhrase": "*********"
+  },
+  "skipCaFlagCheck": false,
+  "validationUsage": {
+   "ipsecClient": true,
+   "sslClient": true,
+   "sslServer": true
+  },
+  "type": "CertEnrollment",
+  "name": "mcp-w6-enr-p12",
+  "overridable": false,
+  "id": "00000000-0000-0ed3-0000-150323855619"
+ },
+ "manage_response": {
+  "action": "ENROLL",
+  "deviceCertificates": [
+   {
+    "deviceId": "d9b0ef62-3921-11ef-b2a5-e9c9e2e20bd3",
+    "certificates": [
+     {
+      "certificate": {
+       "id": "00000000-0000-0ed3-0000-021475016663",
+       "type": "CertEnrollment"
+      }
+     }
+    ]
+   }
+  ],
+  "metadata": {
+   "task": {
+    "id": "21475099999",
+    "name": "CERTIFICATE_ENROLLMENT",
+    "type": "TaskStatus"
+   }
+  }
+ },
+ "task_running": {
+  "id": "21475099999",
+  "type": "TaskStatus",
+  "status": "RUNNING",
+  "message": "Certificate enrollment in progress"
+ },
+ "task_success": {
+  "id": "21475099999",
+  "type": "TaskStatus",
+  "status": "SUCCESS",
+  "message": "Certificate enrollment completed"
+ },
+ "task_failed": {
+  "id": "21475099999",
+  "type": "TaskStatus",
+  "status": "FAILED",
+  "message": "ENROLLMENT_FAILED",
+  "description": "Certificate enrollment failed on the device"
+ },
+ "device": {
+  "id": "d9b0ef62-3921-11ef-b2a5-e9c9e2e20bd3",
+  "type": "Device",
+  "name": "mcp-ftd1",
+  "hostName": "192.0.2.11",
+  "isConnected": true,
+  "sw_version": "10.0.0",
+  "model": "Cisco Secure Firewall Threat Defense for VMware",
+  "metadata": {
+   "domain": {
+    "name": "Global \\ mcp-test-leaf",
+    "id": "e276abec-e0f2-11e3-8169-6d9ed49b625f",
+    "type": "Domain"
+   }
+  }
+ },
+ "device_enrolled": {
+  "items": [
+   {
+    "id": "d9b0ef62-3921-11ef-b2a5-e9c9e2e20bd3",
+    "type": "DeviceCertificate",
+    "weakCryptoEnabled": false,
+    "enrolledCertificates": [
+     {
+      "id": "00000000-0000-0ed3-0000-021475016663",
+      "name": "mcp-w6-enr-probe",
+      "enrollmentType": "SELF_SIGNED_CERTFICATE",
+      "deploymentStatus": "SUCCESS",
+      "caCertificateStatus": "NOT_APPLICABLE",
+      "identityCertificateStatus": "AVAILABLE",
+      "isOutdated": false,
+      "caCertExpiryDate": 0,
+      "identityCertExpiryDate": 2044513874
+     }
+    ]
+   }
+  ],
+  "paging": {
+   "offset": 0,
+   "limit": 25,
+   "count": 1,
+   "pages": 1
+  }
+ }
+}

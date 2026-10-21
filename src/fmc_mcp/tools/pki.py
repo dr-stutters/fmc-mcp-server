@@ -34,6 +34,7 @@ from fmc_mcp._core import (
     list_result,
 )
 from fmc_mcp._core.http import page_of
+from fmc_mcp.cert_names import cert_names
 from fmc_mcp.client import FmcApp, is_uuid
 from fmc_mcp.preview import fmc_preview
 from fmc_mcp.tools.common import Domain, domain_path, pick_by_name
@@ -124,15 +125,16 @@ def csr_pending(c: dict[str, Any]) -> bool:
 def cert_row(c: dict[str, Any], kind: CertKind, now: datetime | None = None) -> dict[str, Any]:
     now = now or datetime.now(UTC)
     end = parse_date(c.get("validityEndDate"))
-    subject, issuer = c.get("subjectCommonName"), c.get("issuerCommonName")
     owner = ((c.get("metadata") or {}).get("domain") or {}).get("name")
+    names = cert_names(c)  # from the PEM: FMC's own name fields are garbled for some bundled roots
+    subject, issuer = names.subject_cn, names.issuer_cn
     row: dict[str, Any] = {
         "name": c.get("name"),
         "kind": kind.key,
-        "subject": subject or None,
-        "organization": c.get("subjectOrganization") or None,
-        "issuer": issuer or None,
-        "self_signed": (subject == issuer and c.get("subjectOrganization") == c.get("issuerOrganization"))
+        "subject": subject,
+        "organization": names.subject_o,
+        "issuer": issuer,
+        "self_signed": (subject == issuer and names.subject_o == names.issuer_o)
         if subject and issuer
         else None,
         "valid_until": c.get("validityEndDate") or None,
@@ -286,14 +288,20 @@ class PkiFile:
     group_or_world_readable: bool
 
 
-def read_pki_file(pki_dir: Path | None, name: str, what: str) -> PkiFile:
-    """A file inside FMC_PKI_DIR (no paths outside it, also not through symlinks), read as text."""
+PKI_DIR_OFF = (
+    "Certificate file import is off: set FMC_PKI_DIR to a directory on the MCP server host that "
+    "holds the certificate and key files (read there and sent to FMC only, never through MCP). "
+    "Or let FMC generate the key with fmc_create_internal_ca."
+)
+
+
+def pki_path(
+    pki_dir: Path | None, name: str, what: str, off: str = PKI_DIR_OFF
+) -> tuple[Path, os.stat_result]:
+    """A regular file inside FMC_PKI_DIR (no paths outside it, also not through symlinks) and its stat,
+    at most MAX_PKI_FILE bytes. `off`: the message when FMC_PKI_DIR is not set."""
     if not pki_dir:
-        raise InvalidRequest(
-            "Certificate file import is off: set FMC_PKI_DIR to a directory on the MCP server host that "
-            "holds the certificate and key files (read there and sent to FMC only, never through MCP). "
-            "Or let FMC generate the key with fmc_create_internal_ca."
-        )
+        raise InvalidRequest(off)
     try:
         root = Path(os.path.expanduser(str(pki_dir))).resolve()
         if not root.is_dir():
@@ -308,7 +316,13 @@ def read_pki_file(pki_dir: Path | None, name: str, what: str) -> PkiFile:
     if st is None or not stat.S_ISREG(st.st_mode):
         raise InvalidRequest(f"No file {name!r} in FMC_PKI_DIR ({what})")
     if st.st_size > MAX_PKI_FILE:
-        raise InvalidRequest(f"{what} {name!r} is {st.st_size} bytes; a PEM file is a few KB")
+        raise InvalidRequest(f"{what} {name!r} is {st.st_size} bytes; a certificate file is a few KB")
+    return candidate, st
+
+
+def read_pki_file(pki_dir: Path | None, name: str, what: str, off: str = PKI_DIR_OFF) -> PkiFile:
+    """A file inside FMC_PKI_DIR (no paths outside it, also not through symlinks), read as text."""
+    candidate, st = pki_path(pki_dir, name, what, off)
     try:
         text = candidate.read_text(encoding="ascii")
     except (OSError, UnicodeDecodeError):

@@ -19,6 +19,7 @@ from fmc_mcp._core import (
     list_result,
 )
 from fmc_mcp._core.http import Page, page_of
+from fmc_mcp.acp_structure import policy_structure
 from fmc_mcp.catalog import Catalog, ip_contains
 from fmc_mcp.client import FmcApp, is_uuid
 from fmc_mcp.rules import flatten_access_rule, flatten_nat_rule, flatten_prefilter_rule
@@ -266,10 +267,11 @@ def register(reg: ToolRegistrar) -> None:
         ] = False,
         domain: Domain = None,
     ) -> dict[str, Any]:
-        """Summarise an access control policy: default action (and its intrusion policy), parent
-        (inheritance), prefilter policy, the devices it is assigned to, and rule counts by section and
-        action. With include_rules, also returns rules flattened to one row each with zones, networks,
-        ports, applications and URLs shown by name."""
+        """Summarise an access control policy: default action (and its intrusion policy), its base policy
+        (inheritance: parent_policy, and base_chain when the base has a base too), the lock (who holds it,
+        fmc_policy_lock), its rule categories (section and rule range), prefilter policy, the devices it is
+        assigned to, and rule counts by section and action. With include_rules, also returns rules
+        flattened to one row each with zones, networks, ports, applications and URLs shown by name."""
         app: FmcApp = get_client(ctx)
         p = await resolve_policy(app, "access", policy, domain)
         rules = await all_rules(app, await app.config_path(f"{ACCESS}/{p['id']}/accessrules", domain))
@@ -303,6 +305,13 @@ def register(reg: ToolRegistrar) -> None:
             },
             "assigned_to": await _assigned_devices(app, p["id"], domain),
         }
+        structure = await policy_structure(app, p, domain)
+        chain = structure.pop("base_chain", None)
+        if chain:
+            out["parent_policy"] = out.get("parent_policy") or chain[0]
+            if len(chain) > 1:
+                out["base_chain"] = chain
+        out.update(structure)
         if not rules.complete:
             out["rules"]["note"] = (
                 f"Policy has more than {RULE_CAP} rules; counts cover the first {RULE_CAP}."

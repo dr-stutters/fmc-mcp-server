@@ -126,6 +126,8 @@
         "fmc_list_devices",
         "fmc_get_vpn_topology",
         "fmc_get_device",
+        "fmc_get_access_policy",
+        "fmc_create_access_policy",
         "fmc_sdwan_status",
         "cml_run_commands",
         "fmc_register_device",
@@ -539,6 +541,14 @@
       "tier": "write",
       "title": "Create application filter"
     },
+    "fmc_create_category": {
+      "tier": "write",
+      "title": "Create access policy category"
+    },
+    "fmc_create_cert_enrollment": {
+      "tier": "write",
+      "title": "Create certificate enrollment object"
+    },
     "fmc_create_cipher_suite_list": {
       "tier": "write",
       "title": "Create cipher suite list"
@@ -635,9 +645,17 @@
       "tier": "write",
       "title": "Create prefilter rule"
     },
+    "fmc_create_prefix_list": {
+      "tier": "write",
+      "title": "Create prefix list"
+    },
     "fmc_create_realm": {
       "tier": "write",
       "title": "Create AD/LDAP realm"
+    },
+    "fmc_create_route_map": {
+      "tier": "write",
+      "title": "Create route map"
     },
     "fmc_create_s2s_vpn": {
       "tier": "write",
@@ -682,6 +700,10 @@
     "fmc_delete_app_route": {
       "tier": "write",
       "title": "Delete application route"
+    },
+    "fmc_delete_category": {
+      "tier": "write",
+      "title": "Delete access policy category"
     },
     "fmc_delete_certificate": {
       "tier": "write",
@@ -795,6 +817,10 @@
       "tier": "write",
       "title": "Download realm users and groups"
     },
+    "fmc_enroll_certificate": {
+      "tier": "dangerous",
+      "title": "Enrol, re-enrol, refresh or delete a device certificate"
+    },
     "fmc_export_access_rules": {
       "tier": "read",
       "title": "Export access rules"
@@ -814,6 +840,10 @@
     "fmc_find_application": {
       "tier": "read",
       "title": "Find applications and application filters"
+    },
+    "fmc_find_indicator": {
+      "tier": "read",
+      "title": "Find where a domain, URL or hash appears"
     },
     "fmc_find_intrusion_rules": {
       "tier": "read",
@@ -1079,6 +1109,10 @@
       "tier": "read",
       "title": "Audit an access policy"
     },
+    "fmc_policy_lock": {
+      "tier": "write",
+      "title": "Lock or unlock an access policy"
+    },
     "fmc_prove_policy": {
       "tier": "read",
       "title": "Prove a policy with expected flows"
@@ -1098,6 +1132,10 @@
     "fmc_release_host": {
       "tier": "write",
       "title": "Release a contained host"
+    },
+    "fmc_rename_category": {
+      "tier": "write",
+      "title": "Rename access policy category"
     },
     "fmc_replace_object": {
       "tier": "write",
@@ -1130,6 +1168,10 @@
     "fmc_set_banner": {
       "tier": "write",
       "title": "Set login banner (platform settings)"
+    },
+    "fmc_set_base_policy": {
+      "tier": "write",
+      "title": "Set an access policy's base policy (inheritance)"
     },
     "fmc_set_decryption_policy": {
       "tier": "write",
