@@ -188,7 +188,10 @@
       "references": [
         "fmc_export_policy_bundle",
         "fmc_policy_audit",
+        "fmc_replace_object",
         "fmc_where_used",
+        "fmc_unused_objects",
+        "fmc_delete_objects",
         "fmc_delete_object",
         "fmc_change_tickets",
         "fmc_ticket",
@@ -664,6 +667,10 @@
       "tier": "write",
       "title": "Delete object"
     },
+    "fmc_delete_objects": {
+      "tier": "dangerous",
+      "title": "Delete objects in bulk"
+    },
     "fmc_delete_policy": {
       "tier": "dangerous",
       "title": "Delete policy"
@@ -995,6 +1002,10 @@
     "fmc_release_host": {
       "tier": "write",
       "title": "Release a contained host"
+    },
+    "fmc_replace_object": {
+      "tier": "write",
+      "title": "Replace an object everywhere"
     },
     "fmc_rollback_deployment": {
       "tier": "dangerous",

@@ -177,7 +177,7 @@ Notes on some read tools:
 
 | Area | Tools |
 |---|---|
-| Objects | `fmc_create_object`, `fmc_update_object`, `fmc_delete_object`, `fmc_create_group`, `fmc_update_group`, `fmc_create_security_zone`, `fmc_import_objects` (bulk, validated) |
+| Objects | `fmc_create_object`, `fmc_update_object`, `fmc_delete_object`, `fmc_create_group`, `fmc_update_group`, `fmc_create_security_zone`, `fmc_import_objects` (bulk, validated; `mode='sync'` takes an IPAM export or CSV as the desired state: create, update, unchanged, group members, orphans under a prefix), `fmc_replace_object` (A becomes B in every access and prefilter rule, group, NAT rule and static route, found through FMC's usage API; optionally deletes A) |
 | Access control | `fmc_create_access_policy`, `fmc_create_access_rule`, `fmc_update_access_rule` (both take URL categories with a reputation level: `url_categories=[{category, reputation}]`), `fmc_delete_access_rule`, `fmc_import_access_rules` (bulk, validated) |
 | Prefilter | `fmc_create_prefilter_policy`, `fmc_set_prefilter_policy` (link to an access policy), `fmc_create_prefilter_rule`, `fmc_update_prefilter_rule`, `fmc_delete_prefilter_rule` (FASTPATH / ANALYZE / BLOCK) |
 | NAT | `fmc_create_nat_policy`, `fmc_create_nat_rule`, `fmc_update_nat_rule`, `fmc_delete_nat_rule` |
@@ -225,6 +225,7 @@ MD5 password, because FMC returns it masked and a PUT would replace it, unless y
 | `fmc_create_ha_pair` | Forms an HA pair: the failover link, and state replication over it or over a separate state link (`state_interface`). |
 | `fmc_ha_action` | Breaks, switches or deletes an HA pair. |
 | `fmc_delete_policy` | Deletes a whole policy. |
+| `fmc_delete_objects` | Deletes many objects in one preview: by names, a name prefix or every unused object, across value objects and groups, zones, dynamic objects and policies; refuses built-ins, objects an ancestor domain owns and anything still in use (naming what uses it), deletes in dependency order with FMC's bulk DELETE. |
 | `fmc_backup_devices` | Backs up device configurations to FMC (not supported on FTDv). |
 | `fmc_apply_device_template` | Applies a device template to one standalone FTD with its variable values and object overrides (replaces its interface, routing, policy and VPN/SD-WAN configuration); the preview lists every variable and override. |
 
