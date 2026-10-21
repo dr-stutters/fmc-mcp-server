@@ -372,12 +372,52 @@ def _drift_step(compare_with: str, d: str) -> str:
 """
 
 
+MAX_BASELINES = 5  # stored snapshots one health review compares with the devices now
+
+
+def _state_step(n: int, baseline: str | None, d: str) -> str:
+    """The health review's snapshot step (F73): compare with stored snapshots (`baseline`: file names in
+    FMC_BUNDLE_DIR, comma-separated), or take the 'before' snapshot of a planned change."""
+    snap, diff = tool_ref("fmc_device_snapshot"), tool_ref("fmc_diff_device_config")
+    if not baseline:
+        return f"""
+{n}. Change-window baseline, only if the user is about to change these devices: {snap} with
+   devices=[the devices in scope, at most 10]{d}, label='before <change>' (about ten requests per
+   device; read-only). Keep each device's file or YAML. After the change: the same call with
+   label='after', then {diff} with a=<before>, b=<after> per device (routes lost, tunnels and SAs
+   down, interface changes, new alerts, the deployed version, hit-count deltas).
+"""
+    files = [f.strip() for f in baseline.split(",") if f.strip()]
+    if (
+        not files
+        or len(files) > MAX_BASELINES
+        or not all(re.fullmatch(r"[\w.@+-]+\.ya?ml", f) for f in files)
+    ):
+        raise InvalidRequest(
+            f"baseline must name 1-{MAX_BASELINES} snapshot files in FMC_BUNDLE_DIR (comma-separated "
+            "'snapshot-<device>-<label>-<time>.yaml' names from fmc_device_snapshot)."
+        )
+    calls = "\n".join(f"   - {diff} with a={_q(f, 'baseline')}{d}" for f in files)
+    return f"""
+{n}. State since the baseline snapshot{"s" if len(files) > 1 else ""} (b omitted: the same device now,
+   its snapshot's sections re-read, about ten requests per device):
+{calls}
+   `findings` words each change. A route lost, a tunnel or IKEv2 SA down, an interface down or a
+   failover state change is critical on a link or tunnel that should carry traffic (else a warning);
+   a new health alert counts at its level; a cleared alert, a new deployment (deployed_version,
+   last_job) and the hit-count `deltas` are info. Sections under `not_compared`, and the snapshot's
+   meta.errors, weren't checked: say which. Then {snap} with devices=[the same devices],
+   label='after'{d}, so the change record has both sides.
+"""
+
+
 def _health_review_text(
     domain: str | None,
     device: str | None,
     lookback_hours: int,
     compare_with: str | None = None,
     group: str | None = None,
+    baseline: str | None = None,
 ) -> str:
     """The fmc_firewall_health_review instructions."""
     if not 1 <= lookback_hours <= 720:
@@ -413,7 +453,9 @@ def _health_review_text(
         keep = ""
         cert_keep = ""
     drift = _drift_step(compare_with, d) if compare_with else ""
-    report = 11 if compare_with else 10
+    state_n = 11 if compare_with else 10
+    state = _state_step(state_n, baseline, d)
+    report = state_n + 1
     return f"""Review the health of {scope} and of the FMC itself over the last
 {lookback_hours} hours, and write one ranked report with next steps. Every step is read-only:
 change, deploy or back up nothing; the report only proposes next steps.
@@ -502,7 +544,7 @@ else info): note it and carry on.
    with FMC (critical while current). Only for a critical finding where you need to know what
    changed just before it: {tool_ref("fmc_recent_activity")} with since_minutes={minutes},
    device=<name>{d} (audit records and deployments around it).
-{drift}
+{drift}{state}
 {report}. Report: one list, critical first, then warning, then info; within a level, what affects
    traffic (devices, HA, VPN and their certificates) comes before what affects management
    (licences, content, backups).
@@ -531,6 +573,9 @@ def _rule_change_review_text(
     """The fmc_rule_change_review instructions."""
     pol = _q(policy, "policy")
     rul = _q(rule, "rule")
+    # fmc_device_snapshot labels (at most 60 characters)
+    before = _q(f"before {rule.strip()}"[:60], "rule")
+    after = _q(f"after {rule.strip()}"[:60], "rule")
     flows: list[str] = []
     if bool(source) != bool(destination):
         raise InvalidRequest("A sample flow needs both source and destination (or neither).")
@@ -576,16 +621,26 @@ separate approval.
 
 5. What a deploy would push: {tool_ref("fmc_list_policy_assignments")} with policy={pol} for the devices, and
    {tool_ref("fmc_pending_changes")} for each (at most three). Pending changes that aren't this one
-   are a finding: someone else's work would go out too.
+   are a finding: someone else's work would go out too. Snapshot before (read-only, before any
+   deploy): {tool_ref("fmc_device_snapshot")} with devices=[those devices, at most 10],
+   label={before} (routing table, interfaces, tunnels and SAs, hit counts, health alerts, the
+   deployed version; about ten requests per device). Keep each device's file or YAML: it is the
+   state to compare with after the deploy.
 
 6. Deploy plan (don't deploy unless the user asks): {tool_ref("fmc_deploy")} previewed for those
    devices, then verification with {tool_ref("fmc_packet_tracer")} for the in-rule flow and
-   {tool_ref("fmc_get_hit_counts")} on the rule. Rollback: {tool_ref("fmc_rollback_deployment")} for
-   the device, or {tool_ref("fmc_diff_policy_bundle")} with a=<baseline bundle> to see exactly what
-   to undo, and {tool_ref("fmc_import_policy_bundle")} with the baseline to restore it.
+   {tool_ref("fmc_get_hit_counts")} on the rule. After the deploy, snapshot and diff:
+   {tool_ref("fmc_device_snapshot")} with the same devices, label={after}, then
+   {tool_ref("fmc_diff_device_config")} with a=<before>, b=<after> per device. Expect the
+   deployment's deployed_version to move and the rule's hit count to rise (`deltas`); a route lost,
+   a tunnel or SA down, an interface change or a new health alert in `findings` is a regression:
+   say so and propose the rollback. Rollback: {tool_ref("fmc_rollback_deployment")} for the device,
+   or {tool_ref("fmc_diff_policy_bundle")} with a=<baseline bundle> to see exactly what to undo, and
+   {tool_ref("fmc_import_policy_bundle")} with the baseline to restore it.
 
 7. Report: the change as applied (or still only previewed), the flows before and after, audit
-   findings added or removed, pending changes per device, and the deploy and rollback steps.
+   findings added or removed, pending changes per device, the state diff after the deploy (or the
+   snapshot files to compare with), and the deploy and rollback steps.
 """
 
 
@@ -1620,7 +1675,12 @@ def register(reg: ToolRegistrar) -> None:
 
     @reg.prompt(
         title="Firewall health review",
-        example={"domain": "Global", "device": "mcp-ftd", "lookback_hours": "24"},
+        example={
+            "domain": "Global",
+            "device": "mcp-ftd",
+            "lookback_hours": "24",
+            "baseline": "snapshot-mcp-ftd1-before-20261021T023000Z.yaml",
+        },
     )
     def fmc_firewall_health_review(
         domain: Annotated[
@@ -1643,15 +1703,24 @@ def register(reg: ToolRegistrar) -> None:
         group: Annotated[
             str | None, Field(description="Only the devices of this device group (fmc_list_device_groups)")
         ] = None,
+        baseline: Annotated[
+            str | None,
+            Field(
+                description="Snapshots taken before a change (fmc_device_snapshot file names in "
+                "FMC_BUNDLE_DIR, comma-separated, at most 5): adds a step comparing each device's state "
+                "now with its snapshot (routes, tunnels, SAs, interfaces, alerts, deployments, hit counts)"
+            ),
+        ] = None,
     ) -> str:
         """Is the firewall estate healthy? Reviews device health and connectivity (with CPU, memory,
         throughput and drops over the review window for the devices that need it), HA pairs and
         clusters, the deployment backlog and failed deployments, licences, software and VDB/SRU/LSP
         content age, backups, certificate expiry, VPN tunnels and recent health alerts with the
         aggregate tools, optionally configuration drift against a reference device, template or
-        stored export (compare_with), and writes one ranked report (critical, warning, info), each
-        finding with its evidence and a concrete next step. Read-only."""
-        return _health_review_text(domain, device, lookback_hours, compare_with, group)
+        stored export (compare_with), the device state against snapshots taken before a change
+        (baseline; else how to take one), and writes one ranked report (critical, warning, info),
+        each finding with its evidence and a concrete next step. Read-only."""
+        return _health_review_text(domain, device, lookback_hours, compare_with, group, baseline)
 
     @reg.prompt(
         title="Review a rule change",
@@ -1677,7 +1746,8 @@ def register(reg: ToolRegistrar) -> None:
     ) -> str:
         """Review an access rule change before it is made and deployed: baseline bundle, sample flows
         through fmc_rule_lookup before and after, a shadowing and overlap check, the change as a preview,
-        what a deploy would push, and a deploy plan with rollback. Changes only what the user approves."""
+        what a deploy would push, a device snapshot before and a snapshot + state diff after the deploy,
+        and a deploy plan with rollback. Changes only what the user approves."""
         return _rule_change_review_text(policy, rule, source, destination, protocol, port)
 
     @reg.prompt(

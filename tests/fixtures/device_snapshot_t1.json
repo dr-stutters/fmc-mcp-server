@@ -1,0 +1,661 @@
+{
+ "_source": "F73, recorded 2026-10-21 from FMC 10.0.1 (build 1), Global/mcp-test-leaf, mcp-sdwan-t1-spoke1 (connected, standalone): `show` = the operational/commands output of each command (as fmc_run_show_command returned it, route legend stripped); health/alerts and deployment/jobhistories as fmc_api_call GET (expanded) returned them, params of some green rows trimmed. Lab 10.x/24 addresses replaced with one 192.0.2.x/28 each and the carriers' 10.x/16 with 198.51.100.x/27 (inside .48/28, mpls .0/28, inet .16/28, lte .32/28); the FTD prints its internal management address as 203.0.113.130. `wan_down` is SYNTHESIZED from the recording for the F73 test plan (one WAN link down with cml_set_link_state): mpls (Ethernet0/0) down/down, its connected, local and static routes gone, the INTERFACE health module also naming Ethernet0/0. Re-record it in Stage 2.",
+ "device": "1bcefc02-ca81-11f1-9c58-8639fcd7b26d",
+ "show": {
+  "show interface ip brief": "Interface                  IP-Address      OK? Method Status                Protocol\nEthernet0/0                192.0.2.2      YES CONFIG up                    up  \nEthernet0/1                192.0.2.18      YES CONFIG up                    up  \nEthernet0/2                192.0.2.34      YES CONFIG up                    up  \nEthernet0/3                192.0.2.49      YES CONFIG up                    up  \nInternal-Control0/0        127.0.1.1       YES unset  up                    up  \nInternal-Control0/1        unassigned      YES unset  up                    up  \nInternal-Data0/0           unassigned      YES unset  down                  down\nInternal-Data0/0           unassigned      YES unset  up                    up  \nInternal-Data0/1           169.254.1.1     YES unset  up                    up  \nInternal-Data0/2           unassigned      YES unset  up                    up  \nManagement0/0              203.0.113.130   YES unset  up                    up  \n",
+  "show route": "\nGateway of last resort is not set\n\nC        192.0.2.48 255.255.255.240 is directly connected, inside\nL        192.0.2.49 255.255.255.255 is directly connected, inside\nS        198.51.100.0 255.255.255.224 [1/0] via 192.0.2.1, mpls\nC        192.0.2.0 255.255.255.240 is directly connected, mpls\nL        192.0.2.2 255.255.255.255 is directly connected, mpls\nS        198.51.100.32 255.255.255.224 [1/0] via 192.0.2.17, inet\nC        192.0.2.16 255.255.255.240 is directly connected, inet\nL        192.0.2.18 255.255.255.255 is directly connected, inet\nS        198.51.100.64 255.255.255.224 [1/0] via 192.0.2.33, lte\nC        192.0.2.32 255.255.255.240 is directly connected, lte\nL        192.0.2.34 255.255.255.255 is directly connected, lte\n\n",
+  "show crypto ikev2 sa": "\nThere are no IKEv2 SAs\n",
+  "show failover state": "\n               State          Last Failure Reason      Date/Time\nThis host  -   Secondary\n               Disabled       None\nOther host -   Primary\n               Not Detected   None\n\n====Configuration State===\n====Communication State===\n\n",
+  "show running-config route": "route mpls 198.51.100.0 255.255.255.224 192.0.2.1 1\nroute inet 198.51.100.32 255.255.255.224 192.0.2.17 1\nroute lte 198.51.100.64 255.255.255.224 192.0.2.33 1\n"
+ },
+ "health/alerts": {
+  "items": [
+   {
+    "deviceUUID": "1bcefc02-ca81-11f1-9c58-8639fcd7b26d",
+    "moduleID": "FXOS_HEALTH",
+    "moduleUUID": "1032fda0-bcdc-4628-b78d-5f9212d1da57",
+    "timestamp": 1792549580,
+    "status": "GREEN",
+    "details": "FXOS health check passed.",
+    "type": "Alert"
+   },
+   {
+    "deviceUUID": "1bcefc02-ca81-11f1-9c58-8639fcd7b26d",
+    "moduleID": "CERTIFICATE_MONITORING",
+    "moduleUUID": "10508566-c10d-474a-97cb-77b379f402f4",
+    "timestamp": 1792549580,
+    "status": "GREEN",
+    "details": "There are no monitored certificates due to expire.",
+    "type": "Alert"
+   },
+   {
+    "deviceUUID": "1bcefc02-ca81-11f1-9c58-8639fcd7b26d",
+    "moduleID": "SNORT_IDENTITY_MEMORY_USAGE",
+    "moduleUUID": "36ce7a0d-79ec-4dfe-bee5-b8d37661ca17",
+    "timestamp": 1792549580,
+    "params": "<params><totalloop><val>3.7%</val></totalloop><totalloop><val>741.3K / 20.0M</val></totalloop><memloop><val>532.3K</val></memloop><memloop><val>32B</val></memloop><memloop><val>139.3K</val></memloop><bindingloop><val>2 / 64000</val></bindingloop><bindingloop><val>2</val></bindingloop><bindingloop><val>0</val></bindingloop><ugloop><val>0</val></ugloop><ugloop><val>0 / 128</val></ugloop></params>",
+    "status": "GREEN",
+    "details": "3.7% of 20.0M used",
+    "type": "Alert"
+   },
+   {
+    "deviceUUID": "1bcefc02-ca81-11f1-9c58-8639fcd7b26d",
+    "moduleID": "FTD_CONFIG_RESOURCE_UTILISATION",
+    "moduleUUID": "36ce7a0d-79ec-4dfe-bee5-b8d37661ca18",
+    "timestamp": 1792549580,
+    "status": "GREEN",
+    "details": "Deployed configurations are normal.",
+    "type": "Alert"
+   },
+   {
+    "deviceUUID": "1bcefc02-ca81-11f1-9c58-8639fcd7b26d",
+    "moduleID": "INLINELINK_ALARM",
+    "moduleUUID": "5bbe3968-1334-4a0b-9e01-b9183353788g",
+    "timestamp": 1792549580,
+    "status": "GREEN",
+    "details": "Hardware is functioning normally",
+    "type": "Alert"
+   },
+   {
+    "deviceUUID": "1bcefc02-ca81-11f1-9c58-8639fcd7b26d",
+    "moduleID": "LOCAL_MALWARE_ANALYSIS",
+    "moduleUUID": "5bbe3968-1334-4a0b-9e01-b91833537892",
+    "timestamp": 1792549580,
+    "status": "GREEN",
+    "details": "Process is running correctly",
+    "type": "Alert"
+   },
+   {
+    "deviceUUID": "1bcefc02-ca81-11f1-9c58-8639fcd7b26d",
+    "moduleID": "CLUSTER",
+    "moduleUUID": "5bbe3968-1334-4a0b-9e01-b91833537894",
+    "timestamp": 1792549580,
+    "status": "GREEN",
+    "details": "Process is running correctly",
+    "type": "Alert"
+   },
+   {
+    "deviceUUID": "1bcefc02-ca81-11f1-9c58-8639fcd7b26d",
+    "moduleID": "DATABASE",
+    "moduleUUID": "5bbe3968-1334-4a0b-9e01-b91833537895",
+    "timestamp": 1792549580,
+    "status": "GREEN",
+    "details": "Integrity checks passed.",
+    "type": "Alert"
+   },
+   {
+    "deviceUUID": "1bcefc02-ca81-11f1-9c58-8639fcd7b26d",
+    "moduleID": "DATABASE",
+    "moduleUUID": "5bbe3968-1334-4a0b-9e01-b91833537895",
+    "timestamp": 1792549580,
+    "status": "GREEN",
+    "details": "The size of the MariaDB undo files is within the threshold.",
+    "type": "Alert"
+   },
+   {
+    "deviceUUID": "1bcefc02-ca81-11f1-9c58-8639fcd7b26d",
+    "moduleID": "OUT_OF_BAND_CHANGES",
+    "moduleUUID": "5bbe3968-1334-4a0b-9e01-b91833537896",
+    "timestamp": 1792549580,
+    "status": "GREEN",
+    "details": "No out-of-band configuration changes happened on the device",
+    "type": "Alert"
+   },
+   {
+    "deviceUUID": "1bcefc02-ca81-11f1-9c58-8639fcd7b26d",
+    "moduleID": "ADVANCED_SNORT_STATS",
+    "moduleUUID": "5e0733d8-a91c-416c-932e-9694d790e8a4",
+    "timestamp": 1792540345,
+    "status": "DISABLED",
+    "details": "Appliance unreachable",
+    "type": "Alert"
+   },
+   {
+    "deviceUUID": "1bcefc02-ca81-11f1-9c58-8639fcd7b26d",
+    "moduleID": "RECONFIG_DETECTION",
+    "moduleUUID": "613dc7ce-e81b-11e3-ac4f-b20f1374fc54",
+    "timestamp": 1792549580,
+    "status": "GREEN",
+    "details": "Process is running correctly",
+    "type": "Alert"
+   },
+   {
+    "deviceUUID": "1bcefc02-ca81-11f1-9c58-8639fcd7b26d",
+    "moduleID": "DISK_USAGE",
+    "moduleUUID": "62040536-9fb1-4749-a127-6b94eaa0c906",
+    "timestamp": 1792549580,
+    "status": "GREEN",
+    "details": "/ngfw using 4%: 2.2G (55G Avail) of 61G",
+    "type": "Alert"
+   },
+   {
+    "deviceUUID": "1bcefc02-ca81-11f1-9c58-8639fcd7b26d",
+    "moduleID": "HM_TALOSAGENT",
+    "moduleUUID": "74c2eafa-9062-11ee-a96d-edbc3fb06c61",
+    "timestamp": 1792549580,
+    "status": "GREEN",
+    "details": "Talos Communication Daemon running correctly",
+    "type": "Alert"
+   },
+   {
+    "deviceUUID": "1bcefc02-ca81-11f1-9c58-8639fcd7b26d",
+    "moduleID": "CPU",
+    "moduleUUID": "980ca3ae-fd69-43c1-b3cc-d71ea394b2eb",
+    "timestamp": 1792549513,
+    "status": "GREEN",
+    "details": "Data Path average is 0.12%",
+    "type": "Alert"
+   },
+   {
+    "deviceUUID": "1bcefc02-ca81-11f1-9c58-8639fcd7b26d",
+    "moduleID": "CPU",
+    "moduleUUID": "980ca3ae-fd69-43c1-b3cc-d71ea394b2eb",
+    "timestamp": 1792549513,
+    "status": "GREEN",
+    "details": "Snort average is 0.00%",
+    "type": "Alert"
+   },
+   {
+    "deviceUUID": "1bcefc02-ca81-11f1-9c58-8639fcd7b26d",
+    "moduleID": "CPU",
+    "moduleUUID": "980ca3ae-fd69-43c1-b3cc-d71ea394b2eb",
+    "timestamp": 1792549513,
+    "status": "GREEN",
+    "details": "System average is 10.50%",
+    "type": "Alert"
+   },
+   {
+    "deviceUUID": "1bcefc02-ca81-11f1-9c58-8639fcd7b26d",
+    "moduleID": "INTRUSION_FILE_STATS",
+    "moduleUUID": "98765432-edbc-1234-qss9-123456789cbd",
+    "timestamp": 1792549580,
+    "status": "GREEN",
+    "details": "Events per second is 0.<br>",
+    "type": "Alert"
+   },
+   {
+    "deviceUUID": "1bcefc02-ca81-11f1-9c58-8639fcd7b26d",
+    "moduleID": "DISK_STATUS",
+    "moduleUUID": "9c72c6f7-51ba-4edb-82d4-23f8542b3639",
+    "timestamp": 1792549580,
+    "status": "GREEN",
+    "details": "Disk Status is healthy",
+    "type": "Alert"
+   },
+   {
+    "deviceUUID": "1bcefc02-ca81-11f1-9c58-8639fcd7b26d",
+    "moduleID": "TIME_SYNC",
+    "moduleUUID": "9da5e98c-350c-11db-925e-00123f628zzz",
+    "timestamp": 1792549552,
+    "status": "GREEN",
+    "details": "Synchronized",
+    "type": "Alert"
+   },
+   {
+    "deviceUUID": "1bcefc02-ca81-11f1-9c58-8639fcd7b26d",
+    "moduleID": "APPLIANCE_HEARTBEAT",
+    "moduleUUID": "awerjyue-andy-7654-0796-s4678494gi94",
+    "timestamp": 1792540345,
+    "status": "DISABLED",
+    "details": "Appliance unreachable",
+    "type": "Alert"
+   },
+   {
+    "deviceUUID": "1bcefc02-ca81-11f1-9c58-8639fcd7b26d",
+    "moduleID": "EVENTHANDLER_STATUS",
+    "moduleUUID": "e354b7c6-8ee0-479f-9445-fd1d7f8c1646",
+    "timestamp": 1792549580,
+    "status": "GREEN",
+    "details": "Healthy",
+    "type": "Alert"
+   },
+   {
+    "deviceUUID": "1bcefc02-ca81-11f1-9c58-8639fcd7b26d",
+    "moduleID": "MEMORY_USAGE",
+    "moduleUUID": "e4e2ea08-659d-4d7c-84f9-b4112900b1cb",
+    "timestamp": 1792549430,
+    "status": "GREEN",
+    "details": "Normal System Memory - 35.86%",
+    "type": "Alert"
+   },
+   {
+    "deviceUUID": "1bcefc02-ca81-11f1-9c58-8639fcd7b26d",
+    "moduleID": "MEMORY_USAGE",
+    "moduleUUID": "e4e2ea08-659d-4d7c-84f9-b4112900b1cb",
+    "timestamp": 1792549430,
+    "status": "GREEN",
+    "details": "Normal Data Plane Memory - 40.27%",
+    "type": "Alert"
+   },
+   {
+    "deviceUUID": "1bcefc02-ca81-11f1-9c58-8639fcd7b26d",
+    "moduleID": "MEMORY_USAGE",
+    "moduleUUID": "e4e2ea08-659d-4d7c-84f9-b4112900b1cb",
+    "timestamp": 1792549430,
+    "status": "GREEN",
+    "details": "Normal Snort Memory - 9.63%",
+    "type": "Alert"
+   },
+   {
+    "deviceUUID": "1bcefc02-ca81-11f1-9c58-8639fcd7b26d",
+    "moduleID": "THREAT_DATA_UPDATES",
+    "moduleUUID": "ec501d95-72cf-4cb7-b104-5ec4a9102c51",
+    "timestamp": 1792549580,
+    "status": "RED",
+    "details": "Cisco Cloud Configuration - Unable to reach Cisco Cloud from the device. Please check the network connection.. Cisco Support Diagnostics Configuration - failure. ",
+    "type": "Alert"
+   },
+   {
+    "deviceUUID": "1bcefc02-ca81-11f1-9c58-8639fcd7b26d",
+    "moduleID": "IDENTITY_PROCESS_STATUS",
+    "moduleUUID": "f2e0ca94-7e93-413e-9a9e-ba397a29671e",
+    "timestamp": 1792549580,
+    "status": "GREEN",
+    "details": "Identity Process are disabled",
+    "type": "Alert"
+   },
+   {
+    "deviceUUID": "1bcefc02-ca81-11f1-9c58-8639fcd7b26d",
+    "moduleID": "APPLICATION_BYPASS",
+    "moduleUUID": "fa0cf1c7-a607-4233-9c8f-3212816b7cf1",
+    "timestamp": 1792549580,
+    "status": "GREEN",
+    "details": "No applications were bypassed",
+    "type": "Alert"
+   },
+   {
+    "deviceUUID": "1bcefc02-ca81-11f1-9c58-8639fcd7b26d",
+    "moduleID": "PROCESS",
+    "moduleUUID": "health29-efweh-2313-2789-fefwdwqsdfg",
+    "timestamp": 1792549580,
+    "status": "GREEN",
+    "details": "All processes are running correctly",
+    "type": "Alert"
+   },
+   {
+    "deviceUUID": "1bcefc02-ca81-11f1-9c58-8639fcd7b26d",
+    "moduleID": "INTERFACE",
+    "moduleUUID": "qwerjyue-andv-7654-2345-g4678494gi94",
+    "timestamp": 1792549580,
+    "params": "<params><interface><name>Ethernet0/0</name><link>1</link><rx>268.6KB</rx><tx>268.5KB</tx><receiving>1</receiving></interface><interface><name>Ethernet0/1</name><link>1</link><rx>267.6KB</rx><tx>267.6KB</tx><receiving>1</receiving></interface><interface><name>Ethernet0/2</name><link>1</link><rx>546.0B</rx><tx>556.0B</tx><receiving>0</receiving></interface><interface><name>Ethernet0/3</name><link>1</link><rx>411.8KB</rx><tx>224.0B</tx><receiving>1</receiving></interface><interface><name>eth0</name><link>1</link><rx>175.9MB</rx><tx>20.6MB</tx><receiving>1</receiving></interface></params>",
+    "status": "RED",
+    "details": "Interface 'Ethernet0/2' is not receiving any packets",
+    "type": "Alert"
+   }
+  ],
+  "paging": {
+   "offset": 0,
+   "limit": 100,
+   "count": 30,
+   "pages": 1
+  }
+ },
+ "deployment/jobhistories": {
+  "items": [
+   {
+    "id": "00000000-0000-0ed3-0000-021474956489",
+    "jobName": "Deploy_Job_135",
+    "jobStatus": "DEPLOYED",
+    "jobType": "DEPLOYMENT",
+    "startTime": "2026-10-19T05:13:41Z",
+    "endTime": "2026-10-19T05:14:49Z",
+    "user": "mcp-api-svc",
+    "deploymentNote": "F60 demo story 2 reset (topologies, DVTIs, overlay rule removed) + mcp-ftd1 teardown deploy",
+    "deviceList": [
+     {
+      "deviceName": "mcp-ftd1",
+      "deviceUUID": "43d57cc8-c9c6-11f1-858d-a03accd83568",
+      "deploymentStatus": "SUCCEEDED",
+      "deployedVersion": 9
+     },
+     {
+      "deviceName": "mcp-sdwan-t1-hub",
+      "deviceUUID": "4fc3908a-ca73-11f1-aef7-f44b5515d8ea",
+      "deploymentStatus": "SUCCEEDED",
+      "deployedVersion": 39
+     },
+     {
+      "deviceName": "mcp-sdwan-t1-spoke1",
+      "deviceUUID": "1bcefc02-ca81-11f1-9c58-8639fcd7b26d",
+      "deploymentStatus": "SUCCEEDED",
+      "deployedVersion": 37
+     },
+     {
+      "deviceName": "mcp-fw-ha-a",
+      "deviceUUID": "0c7a00e4-caf9-11f1-a329-a5594ad4d7df",
+      "deploymentStatus": "SUCCEEDED",
+      "deployedVersion": 3,
+      "containerUUID": "03e0cc6c-cb56-11f1-85ee-4ce46f180443",
+      "containerName": "mcp-fw-ha"
+     },
+     {
+      "deviceName": "mcp-fw-branch1",
+      "deviceUUID": "f706b55e-cb4d-11f1-a68f-c97bc7530305",
+      "deploymentStatus": "SUCCEEDED",
+      "deployedVersion": 8
+     }
+    ],
+    "type": "JobHistory"
+   },
+   {
+    "id": "00000000-0000-0ed3-0000-021474952975",
+    "jobName": "Deploy_Job_132",
+    "jobStatus": "DEPLOYED",
+    "jobType": "DEPLOYMENT",
+    "startTime": "2026-10-19T05:02:29Z",
+    "endTime": "2026-10-19T05:03:21Z",
+    "user": "mcp-api-svc",
+    "deploymentNote": "F60 demo story 2 setup: mcp-fw-demo-sdwan (+wan2)",
+    "deviceList": [
+     {
+      "deviceName": "mcp-sdwan-t1-hub",
+      "deviceUUID": "4fc3908a-ca73-11f1-aef7-f44b5515d8ea",
+      "deploymentStatus": "SUCCEEDED",
+      "deployedVersion": 37
+     },
+     {
+      "deviceName": "mcp-sdwan-t1-spoke1",
+      "deviceUUID": "1bcefc02-ca81-11f1-9c58-8639fcd7b26d",
+      "deploymentStatus": "SUCCEEDED",
+      "deployedVersion": 36
+     }
+    ],
+    "type": "JobHistory"
+   }
+  ],
+  "paging": {
+   "offset": 0,
+   "limit": 2,
+   "count": 2,
+   "pages": 1
+  }
+ },
+ "wan_down": {
+  "show": {
+   "show interface ip brief": "Interface                  IP-Address      OK? Method Status                Protocol\nEthernet0/0                192.0.2.2      YES CONFIG down                  down\nEthernet0/1                192.0.2.18      YES CONFIG up                    up  \nEthernet0/2                192.0.2.34      YES CONFIG up                    up  \nEthernet0/3                192.0.2.49      YES CONFIG up                    up  \nInternal-Control0/0        127.0.1.1       YES unset  up                    up  \nInternal-Control0/1        unassigned      YES unset  up                    up  \nInternal-Data0/0           unassigned      YES unset  down                  down\nInternal-Data0/0           unassigned      YES unset  up                    up  \nInternal-Data0/1           169.254.1.1     YES unset  up                    up  \nInternal-Data0/2           unassigned      YES unset  up                    up  \nManagement0/0              203.0.113.130   YES unset  up                    up  \n",
+   "show route": "\nGateway of last resort is not set\n\nC        192.0.2.48 255.255.255.240 is directly connected, inside\nL        192.0.2.49 255.255.255.255 is directly connected, inside\nS        198.51.100.32 255.255.255.224 [1/0] via 192.0.2.17, inet\nC        192.0.2.16 255.255.255.240 is directly connected, inet\nL        192.0.2.18 255.255.255.255 is directly connected, inet\nS        198.51.100.64 255.255.255.224 [1/0] via 192.0.2.33, lte\nC        192.0.2.32 255.255.255.240 is directly connected, lte\nL        192.0.2.34 255.255.255.255 is directly connected, lte\n\n"
+  },
+  "health/alerts": {
+   "items": [
+    {
+     "deviceUUID": "1bcefc02-ca81-11f1-9c58-8639fcd7b26d",
+     "moduleID": "FXOS_HEALTH",
+     "moduleUUID": "1032fda0-bcdc-4628-b78d-5f9212d1da57",
+     "timestamp": 1792549580,
+     "status": "GREEN",
+     "details": "FXOS health check passed.",
+     "type": "Alert"
+    },
+    {
+     "deviceUUID": "1bcefc02-ca81-11f1-9c58-8639fcd7b26d",
+     "moduleID": "CERTIFICATE_MONITORING",
+     "moduleUUID": "10508566-c10d-474a-97cb-77b379f402f4",
+     "timestamp": 1792549580,
+     "status": "GREEN",
+     "details": "There are no monitored certificates due to expire.",
+     "type": "Alert"
+    },
+    {
+     "deviceUUID": "1bcefc02-ca81-11f1-9c58-8639fcd7b26d",
+     "moduleID": "SNORT_IDENTITY_MEMORY_USAGE",
+     "moduleUUID": "36ce7a0d-79ec-4dfe-bee5-b8d37661ca17",
+     "timestamp": 1792549580,
+     "params": "<params><totalloop><val>3.7%</val></totalloop><totalloop><val>741.3K / 20.0M</val></totalloop><memloop><val>532.3K</val></memloop><memloop><val>32B</val></memloop><memloop><val>139.3K</val></memloop><bindingloop><val>2 / 64000</val></bindingloop><bindingloop><val>2</val></bindingloop><bindingloop><val>0</val></bindingloop><ugloop><val>0</val></ugloop><ugloop><val>0 / 128</val></ugloop></params>",
+     "status": "GREEN",
+     "details": "3.7% of 20.0M used",
+     "type": "Alert"
+    },
+    {
+     "deviceUUID": "1bcefc02-ca81-11f1-9c58-8639fcd7b26d",
+     "moduleID": "FTD_CONFIG_RESOURCE_UTILISATION",
+     "moduleUUID": "36ce7a0d-79ec-4dfe-bee5-b8d37661ca18",
+     "timestamp": 1792549580,
+     "status": "GREEN",
+     "details": "Deployed configurations are normal.",
+     "type": "Alert"
+    },
+    {
+     "deviceUUID": "1bcefc02-ca81-11f1-9c58-8639fcd7b26d",
+     "moduleID": "INLINELINK_ALARM",
+     "moduleUUID": "5bbe3968-1334-4a0b-9e01-b9183353788g",
+     "timestamp": 1792549580,
+     "status": "GREEN",
+     "details": "Hardware is functioning normally",
+     "type": "Alert"
+    },
+    {
+     "deviceUUID": "1bcefc02-ca81-11f1-9c58-8639fcd7b26d",
+     "moduleID": "LOCAL_MALWARE_ANALYSIS",
+     "moduleUUID": "5bbe3968-1334-4a0b-9e01-b91833537892",
+     "timestamp": 1792549580,
+     "status": "GREEN",
+     "details": "Process is running correctly",
+     "type": "Alert"
+    },
+    {
+     "deviceUUID": "1bcefc02-ca81-11f1-9c58-8639fcd7b26d",
+     "moduleID": "CLUSTER",
+     "moduleUUID": "5bbe3968-1334-4a0b-9e01-b91833537894",
+     "timestamp": 1792549580,
+     "status": "GREEN",
+     "details": "Process is running correctly",
+     "type": "Alert"
+    },
+    {
+     "deviceUUID": "1bcefc02-ca81-11f1-9c58-8639fcd7b26d",
+     "moduleID": "DATABASE",
+     "moduleUUID": "5bbe3968-1334-4a0b-9e01-b91833537895",
+     "timestamp": 1792549580,
+     "status": "GREEN",
+     "details": "Integrity checks passed.",
+     "type": "Alert"
+    },
+    {
+     "deviceUUID": "1bcefc02-ca81-11f1-9c58-8639fcd7b26d",
+     "moduleID": "DATABASE",
+     "moduleUUID": "5bbe3968-1334-4a0b-9e01-b91833537895",
+     "timestamp": 1792549580,
+     "status": "GREEN",
+     "details": "The size of the MariaDB undo files is within the threshold.",
+     "type": "Alert"
+    },
+    {
+     "deviceUUID": "1bcefc02-ca81-11f1-9c58-8639fcd7b26d",
+     "moduleID": "OUT_OF_BAND_CHANGES",
+     "moduleUUID": "5bbe3968-1334-4a0b-9e01-b91833537896",
+     "timestamp": 1792549580,
+     "status": "GREEN",
+     "details": "No out-of-band configuration changes happened on the device",
+     "type": "Alert"
+    },
+    {
+     "deviceUUID": "1bcefc02-ca81-11f1-9c58-8639fcd7b26d",
+     "moduleID": "ADVANCED_SNORT_STATS",
+     "moduleUUID": "5e0733d8-a91c-416c-932e-9694d790e8a4",
+     "timestamp": 1792540345,
+     "status": "DISABLED",
+     "details": "Appliance unreachable",
+     "type": "Alert"
+    },
+    {
+     "deviceUUID": "1bcefc02-ca81-11f1-9c58-8639fcd7b26d",
+     "moduleID": "RECONFIG_DETECTION",
+     "moduleUUID": "613dc7ce-e81b-11e3-ac4f-b20f1374fc54",
+     "timestamp": 1792549580,
+     "status": "GREEN",
+     "details": "Process is running correctly",
+     "type": "Alert"
+    },
+    {
+     "deviceUUID": "1bcefc02-ca81-11f1-9c58-8639fcd7b26d",
+     "moduleID": "DISK_USAGE",
+     "moduleUUID": "62040536-9fb1-4749-a127-6b94eaa0c906",
+     "timestamp": 1792549580,
+     "status": "GREEN",
+     "details": "/ngfw using 4%: 2.2G (55G Avail) of 61G",
+     "type": "Alert"
+    },
+    {
+     "deviceUUID": "1bcefc02-ca81-11f1-9c58-8639fcd7b26d",
+     "moduleID": "HM_TALOSAGENT",
+     "moduleUUID": "74c2eafa-9062-11ee-a96d-edbc3fb06c61",
+     "timestamp": 1792549580,
+     "status": "GREEN",
+     "details": "Talos Communication Daemon running correctly",
+     "type": "Alert"
+    },
+    {
+     "deviceUUID": "1bcefc02-ca81-11f1-9c58-8639fcd7b26d",
+     "moduleID": "CPU",
+     "moduleUUID": "980ca3ae-fd69-43c1-b3cc-d71ea394b2eb",
+     "timestamp": 1792549513,
+     "status": "GREEN",
+     "details": "Data Path average is 0.12%",
+     "type": "Alert"
+    },
+    {
+     "deviceUUID": "1bcefc02-ca81-11f1-9c58-8639fcd7b26d",
+     "moduleID": "CPU",
+     "moduleUUID": "980ca3ae-fd69-43c1-b3cc-d71ea394b2eb",
+     "timestamp": 1792549513,
+     "status": "GREEN",
+     "details": "Snort average is 0.00%",
+     "type": "Alert"
+    },
+    {
+     "deviceUUID": "1bcefc02-ca81-11f1-9c58-8639fcd7b26d",
+     "moduleID": "CPU",
+     "moduleUUID": "980ca3ae-fd69-43c1-b3cc-d71ea394b2eb",
+     "timestamp": 1792549513,
+     "status": "GREEN",
+     "details": "System average is 10.50%",
+     "type": "Alert"
+    },
+    {
+     "deviceUUID": "1bcefc02-ca81-11f1-9c58-8639fcd7b26d",
+     "moduleID": "INTRUSION_FILE_STATS",
+     "moduleUUID": "98765432-edbc-1234-qss9-123456789cbd",
+     "timestamp": 1792549580,
+     "status": "GREEN",
+     "details": "Events per second is 0.<br>",
+     "type": "Alert"
+    },
+    {
+     "deviceUUID": "1bcefc02-ca81-11f1-9c58-8639fcd7b26d",
+     "moduleID": "DISK_STATUS",
+     "moduleUUID": "9c72c6f7-51ba-4edb-82d4-23f8542b3639",
+     "timestamp": 1792549580,
+     "status": "GREEN",
+     "details": "Disk Status is healthy",
+     "type": "Alert"
+    },
+    {
+     "deviceUUID": "1bcefc02-ca81-11f1-9c58-8639fcd7b26d",
+     "moduleID": "TIME_SYNC",
+     "moduleUUID": "9da5e98c-350c-11db-925e-00123f628zzz",
+     "timestamp": 1792549552,
+     "status": "GREEN",
+     "details": "Synchronized",
+     "type": "Alert"
+    },
+    {
+     "deviceUUID": "1bcefc02-ca81-11f1-9c58-8639fcd7b26d",
+     "moduleID": "APPLIANCE_HEARTBEAT",
+     "moduleUUID": "awerjyue-andy-7654-0796-s4678494gi94",
+     "timestamp": 1792540345,
+     "status": "DISABLED",
+     "details": "Appliance unreachable",
+     "type": "Alert"
+    },
+    {
+     "deviceUUID": "1bcefc02-ca81-11f1-9c58-8639fcd7b26d",
+     "moduleID": "EVENTHANDLER_STATUS",
+     "moduleUUID": "e354b7c6-8ee0-479f-9445-fd1d7f8c1646",
+     "timestamp": 1792549580,
+     "status": "GREEN",
+     "details": "Healthy",
+     "type": "Alert"
+    },
+    {
+     "deviceUUID": "1bcefc02-ca81-11f1-9c58-8639fcd7b26d",
+     "moduleID": "MEMORY_USAGE",
+     "moduleUUID": "e4e2ea08-659d-4d7c-84f9-b4112900b1cb",
+     "timestamp": 1792549430,
+     "status": "GREEN",
+     "details": "Normal System Memory - 35.86%",
+     "type": "Alert"
+    },
+    {
+     "deviceUUID": "1bcefc02-ca81-11f1-9c58-8639fcd7b26d",
+     "moduleID": "MEMORY_USAGE",
+     "moduleUUID": "e4e2ea08-659d-4d7c-84f9-b4112900b1cb",
+     "timestamp": 1792549430,
+     "status": "GREEN",
+     "details": "Normal Data Plane Memory - 40.27%",
+     "type": "Alert"
+    },
+    {
+     "deviceUUID": "1bcefc02-ca81-11f1-9c58-8639fcd7b26d",
+     "moduleID": "MEMORY_USAGE",
+     "moduleUUID": "e4e2ea08-659d-4d7c-84f9-b4112900b1cb",
+     "timestamp": 1792549430,
+     "status": "GREEN",
+     "details": "Normal Snort Memory - 9.63%",
+     "type": "Alert"
+    },
+    {
+     "deviceUUID": "1bcefc02-ca81-11f1-9c58-8639fcd7b26d",
+     "moduleID": "THREAT_DATA_UPDATES",
+     "moduleUUID": "ec501d95-72cf-4cb7-b104-5ec4a9102c51",
+     "timestamp": 1792549580,
+     "status": "RED",
+     "details": "Cisco Cloud Configuration - Unable to reach Cisco Cloud from the device. Please check the network connection.. Cisco Support Diagnostics Configuration - failure. ",
+     "type": "Alert"
+    },
+    {
+     "deviceUUID": "1bcefc02-ca81-11f1-9c58-8639fcd7b26d",
+     "moduleID": "IDENTITY_PROCESS_STATUS",
+     "moduleUUID": "f2e0ca94-7e93-413e-9a9e-ba397a29671e",
+     "timestamp": 1792549580,
+     "status": "GREEN",
+     "details": "Identity Process are disabled",
+     "type": "Alert"
+    },
+    {
+     "deviceUUID": "1bcefc02-ca81-11f1-9c58-8639fcd7b26d",
+     "moduleID": "APPLICATION_BYPASS",
+     "moduleUUID": "fa0cf1c7-a607-4233-9c8f-3212816b7cf1",
+     "timestamp": 1792549580,
+     "status": "GREEN",
+     "details": "No applications were bypassed",
+     "type": "Alert"
+    },
+    {
+     "deviceUUID": "1bcefc02-ca81-11f1-9c58-8639fcd7b26d",
+     "moduleID": "PROCESS",
+     "moduleUUID": "health29-efweh-2313-2789-fefwdwqsdfg",
+     "timestamp": 1792549580,
+     "status": "GREEN",
+     "details": "All processes are running correctly",
+     "type": "Alert"
+    },
+    {
+     "deviceUUID": "1bcefc02-ca81-11f1-9c58-8639fcd7b26d",
+     "moduleID": "INTERFACE",
+     "moduleUUID": "qwerjyue-andv-7654-2345-g4678494gi94",
+     "timestamp": 1792549880,
+     "params": "<params><interface><name>Ethernet0/0</name><link>0</link><rx>268.6KB</rx><tx>268.5KB</tx><receiving>1</receiving></interface><interface><name>Ethernet0/1</name><link>1</link><rx>267.6KB</rx><tx>267.6KB</tx><receiving>1</receiving></interface><interface><name>Ethernet0/2</name><link>1</link><rx>546.0B</rx><tx>556.0B</tx><receiving>0</receiving></interface><interface><name>Ethernet0/3</name><link>1</link><rx>411.8KB</rx><tx>224.0B</tx><receiving>1</receiving></interface><interface><name>eth0</name><link>1</link><rx>175.9MB</rx><tx>20.6MB</tx><receiving>1</receiving></interface></params>",
+     "status": "RED",
+     "details": "Interface 'Ethernet0/0' is not receiving any packets, Interface 'Ethernet0/2' is not receiving any packets",
+     "type": "Alert"
+    }
+   ],
+   "paging": {
+    "offset": 0,
+    "limit": 100,
+    "count": 30,
+    "pages": 1
+   }
+  }
+ }
+}

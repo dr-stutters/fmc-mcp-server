@@ -20,9 +20,10 @@ Export layout (format fmc-device-config, version 1); ids, links and FMC metadata
     ha: {settings | failover link | state link | monitored <if> | mac <if>: {...}}  # HA pairs only
 
 Sections come from a registry (SECTIONS, filled by `export_section`): each has a collector, a kind
-(`config`; F73's snapshots add `state` sections the same way), a shape that picks how it is diffed
-(`keyed`: item by item; `single`: field by field; `policy`: settings + ordered rules, the policy
-bundle's planner) and whether it is in the default set. A section that is empty is left out of the
+(`config`, or `state`: what the device runs now, F73's device_snapshot module), a shape that picks how
+it is diffed (`keyed`: item by item; `single`: field by field; `policy`: settings + ordered rules, the
+policy bundle's planner) or a diff of its own, an `explain` that words a change as a one-line finding,
+and whether it is in the default set. A section that is empty is left out of the
 document but still listed in meta.sections, so a diff knows it was read. Mappings are sorted by key,
 set-like lists sorted, and secret values masked (core's key patterns, FMC's registration keys and
 pre-shared keys, and secrets on the CLI lines of out-of-band diffs), so re-exporting an unchanged device
@@ -125,12 +126,20 @@ _CLI_SECRET = re.compile(
 _VARIABLE = re.compile(r"^\$\{[^}]+\}$")
 _FILE_NAME = re.compile(r"[\w.@+-]+\.ya?ml")
 _EMPTY: tuple[Any, ...] = (None, "", [], {})
+# meta keys of a stored export that a live re-read needs to read the same way (F73 snapshots)
+LIVE_SETTINGS = ("running_config", "hit_count_refresh")
+MAX_DELTAS = 100  # deltas (hit counts, health readings) returned by a diff
 
 SectionShape = Literal["keyed", "single", "policy"]
 SectionKind = Literal["config", "state"]
 
 
 # --- the section registry (F73 adds state sections with export_section(kind="state")) -----------
+
+
+# A section's own diff: (section name, a's value, b's value) -> change rows. Rows with op "delta" are
+# counters (hit counts): reported under `deltas`, never a difference.
+SectionDiff = Callable[[str, Any, Any], list[dict[str, Any]]]
 
 
 @dataclass(frozen=True)
@@ -141,6 +150,8 @@ class Section:
     shape: SectionShape = "keyed"
     default: bool = True
     summary: str = ""
+    diff: SectionDiff | None = None
+    explain: Callable[[dict[str, Any]], str | None] | None = None  # a change row as a one-line finding
 
 
 SECTIONS: dict[str, Section] = {}
@@ -153,14 +164,17 @@ def export_section(
     shape: SectionShape = "keyed",
     default: bool = True,
     summary: str = "",
+    diff: SectionDiff | None = None,
+    explain: Callable[[dict[str, Any]], str | None] | None = None,
 ) -> Callable[[Callable[["ExportContext"], Awaitable[Any]]], Callable[["ExportContext"], Awaitable[Any]]]:
     """Register a section collector. Sections export (and diff) in registration order; a `keyed`
-    collector returns {item key: item}, a `single` one one object, a `policy` one {name, ..., rules}."""
+    collector returns {item key: item}, a `single` one one object, a `policy` one {name, ..., rules}.
+    `diff` replaces the shape's diff; `explain` turns one of the section's change rows into a finding."""
 
     def deco(fn: Callable[["ExportContext"], Awaitable[Any]]) -> Callable[["ExportContext"], Awaitable[Any]]:
         if name in SECTIONS:
             raise ValueError(f"export section {name!r} is registered twice")
-        SECTIONS[name] = Section(name, fn, kind, shape, default, summary)
+        SECTIONS[name] = Section(name, fn, kind, shape, default, summary, diff, explain)
         return fn
 
     return deco
@@ -193,8 +207,9 @@ def select_sections(wanted: list[str] | None) -> list[str]:
 @dataclass
 class ExportContext:
     """What a section collector works with: the device (the primary unit for an HA pair), the pair,
-    and `shared`, a per-call cache so a two-device diff reads zones, assignments, VPN topologies,
-    objects and shared policies once."""
+    `shared`, a per-call cache so a two-device diff reads zones, assignments, VPN topologies, objects
+    and shared policies once (and a snapshot its prefetched show-command output), and the tool call's
+    MCP context (state sections run show commands and FMC tasks with it)."""
 
     app: FmcApp
     domain: str | None
@@ -202,6 +217,7 @@ class ExportContext:
     ha: dict[str, Any] | None = None
     shared: dict[str, Any] = field(default_factory=dict)
     warnings: list[str] = field(default_factory=list)
+    mcp: Context | None = None
 
     @property
     def target_ids(self) -> set[str]:
@@ -679,10 +695,24 @@ async def build_export(
     domain: str | None,
     sections: list[str],
     shared: dict[str, Any] | None = None,
+    mcp: Context | None = None,
 ) -> tuple[dict[str, Any], list[str]]:
     """The export document (without exported_at/digest: finish() stamps those) and warnings."""
     device, ha = await resolve_target(app, ref, domain)
-    ctx = ExportContext(app, domain, device, ha, shared if shared is not None else {})
+    return await export_target(app, device, ha, domain, sections, shared, mcp)
+
+
+async def export_target(
+    app: FmcApp,
+    device: dict[str, Any],
+    ha: dict[str, Any] | None,
+    domain: str | None,
+    sections: list[str],
+    shared: dict[str, Any] | None = None,
+    mcp: Context | None = None,
+) -> tuple[dict[str, Any], list[str]]:
+    """build_export for a target resolve_target already returned (device record, HA pair or None)."""
+    ctx = ExportContext(app, domain, device, ha, shared if shared is not None else {}, mcp=mcp)
     domain_name = await app.domain_name(await app.domain_uuid(domain))
     meta: dict[str, Any] = {
         "device": (ha or device).get("name"),
@@ -978,7 +1008,10 @@ def diff_exports(a: dict[str, Any], b: dict[str, Any], sections: list[str] | Non
             continue
         va, vb = a.get(name) or {}, b.get(name) or {}
         shape = SECTIONS[name].shape if name in SECTIONS else "keyed"
-        if shape == "single":
+        own = SECTIONS[name].diff if name in SECTIONS else None
+        if own is not None:
+            changes += own(name, va, vb)
+        elif shape == "single":
             fields = subset_delta(va, vb) if subset else _fields(va, vb)
             if fields:
                 changes.append({"section": name, "op": "changed", "key": name, "fields": fields})
@@ -989,7 +1022,11 @@ def diff_exports(a: dict[str, Any], b: dict[str, Any], sections: list[str] | Non
             changes += more
             if n:
                 skipped[name] = n
+    deltas = [c for c in changes if c.get("op") == "delta"]
+    changes = [c for c in changes if c.get("op") != "delta"]
     out: dict[str, Any] = {"changes": changes, "compared": [n for n in names if n not in not_compared]}
+    if deltas:
+        out["deltas"] = deltas
     if not_compared:
         out["not_compared"] = not_compared
     if skipped:
@@ -997,9 +1034,29 @@ def diff_exports(a: dict[str, Any], b: dict[str, Any], sections: list[str] | Non
     return out
 
 
+def findings(changes: list[dict[str, Any]]) -> list[str]:
+    """One line per change of a section that words its changes (the state sections: a route lost, a
+    tunnel down, an interface down, a new alert, a hit-count delta)."""
+    out = []
+    for c in changes:
+        sec = SECTIONS.get(str(c.get("section")))
+        if sec is not None and sec.explain is not None and (line := sec.explain(c)):
+            out.append(line)
+    return out
+
+
 def _meta(doc: dict[str, Any]) -> dict[str, Any]:
     m = doc.get("meta") or {}
-    keys = ("device", "kind", "domain", "fmc_version", "exported_at", "digest", "unresolved_variables")
+    keys = (
+        "device",
+        "kind",
+        "label",
+        "domain",
+        "fmc_version",
+        "exported_at",
+        "digest",
+        "unresolved_variables",
+    )
     return {k: m[k] for k in keys if m.get(k) not in _EMPTY}
 
 
@@ -1016,9 +1073,24 @@ SectionsArg = Annotated[
     list[str] | None,
     Field(
         description="Sections (default: every config section): device, interfaces, routing, policies, nat, "
-        "platform_settings, vpn, object_overrides, out_of_band, ha; or 'config', 'state', 'all'"
+        "platform_settings, vpn, object_overrides, out_of_band, ha; state (what the device runs now, read "
+        "from the device: fmc_device_snapshot): route_table, interface_state, failover, vpn_sas, tunnels, "
+        "hit_counts, health_alerts, deployment, running_config; or 'config', 'state', 'all'"
     ),
 ]
+
+
+def read_like(
+    doc: dict[str, Any], sections: list[str] | None, names: list[str], shared: dict[str, Any]
+) -> list[str]:
+    """The sections to read a live device with when the other side is a stored export or snapshot: the
+    ones it was taken with (only those of `names` when the call named sections), with its running-config
+    sections and hit-count refresh setting (into `shared`)."""
+    meta = doc.get("meta") or {}
+    for key in LIVE_SETTINGS:
+        if key in meta:
+            shared[f"setting:{key}"] = meta[key]
+    return [n for n in meta.get("sections") or [] if n in SECTIONS and (sections is None or n in names)]
 
 
 async def _side(
@@ -1029,6 +1101,7 @@ async def _side(
     sections: list[str],
     shared: dict[str, Any],
     a: dict[str, Any] | None = None,
+    mcp: Context | None = None,
 ) -> tuple[dict[str, Any], list[str]]:
     """One side of a diff: a stored export, a live device / HA pair, or (b only) a device template.
     Live sides are stamped exported_at 'live' (their digest compares with a stored export's)."""
@@ -1041,7 +1114,7 @@ async def _side(
         if kind == "template" and a is not None:
             doc, warnings = await template_export(app, ref, domain, a)
         else:
-            doc, warnings = await build_export(app, ref, domain, sections, shared)
+            doc, warnings = await build_export(app, ref, domain, sections, shared, mcp)
     except NotFound:
         if kind != "auto" or a is None:
             raise
@@ -1089,12 +1162,14 @@ def register(reg: ToolRegistrar) -> None:
         order, secrets masked (SNMP communities, BGP/OSPF keys, PSKs, CLI secrets): re-exporting an
         unchanged device gives the same `digest`. Compare with fmc_diff_device_config. Written to
         FMC_BUNDLE_DIR too when set. Reads only FMC (works for disconnected devices); about 30
-        requests for one device."""
+        requests for one device. The state sections (sections=['state']: routing table, interfaces,
+        SAs, hit counts, alerts from the device) are what fmc_device_snapshot captures, for several
+        devices at once."""
         app: FmcApp = get_client(ctx)
         bundle_dir = app.settings.bundle_dir
         if not include_text and bundle_dir is None:
             raise InvalidRequest("include_text=false needs FMC_BUNDLE_DIR (nowhere else to put the export).")
-        doc, warnings = await build_export(app, device, domain, select_sections(sections))
+        doc, warnings = await build_export(app, device, domain, select_sections(sections), mcp=ctx)
         text = finish(doc)
         meta = doc["meta"]
         out: dict[str, Any] = {
@@ -1168,29 +1243,51 @@ def register(reg: ToolRegistrar) -> None:
         into `b`: added, removed (with the value), changed (`fields` {path: {from, to}}) per section key
         (interface name, route, protocol, topology, policy kind), NAT rules by name or position. Device
         names, hosts and serials are not compared. Secrets are masked on both sides, so a changed
-        password shows no difference. Reads only FMC."""
+        password shows no difference. Reads only FMC for configuration sections. State sections (a
+        snapshot from fmc_device_snapshot, or sections=['state']) read the device too and add
+        `findings`: routes lost or added, tunnels and SAs down, interface state changes, new or
+        cleared health alerts, a new deployment, running-config lines; hit-count changes and health
+        readings (a CPU or memory percentage in an alert's message) are `deltas` (traffic and load
+        move them, so they never make two snapshots differ). A stored snapshot as `a` with `b`
+        omitted (or a live device as `b`) reads exactly its sections (about ten requests per
+        device)."""
         app: FmcApp = get_client(ctx)
         names = select_sections(sections)
         shared: dict[str, Any] = {}
-        da, warnings = await _side(app, a, "auto", domain, names, shared)
-        if b is None or b.strip().lower() == "live":
-            if da.get("meta", {}).get("exported_at") == "live":
-                raise InvalidRequest(
-                    "Pass `b` (another device, an export or a template), or a stored export as `a` to "
-                    "compare it with the live device."
-                )
-            meta_a = da.get("meta") or {}
-            target = str(meta_a.get("id") or meta_a.get("device") or "")
-            if not target or meta_a.get("kind") == "template":
-                raise InvalidRequest("Export `a` names no device to read live; pass `b`.")
-            live_sections = [
-                n for n in meta_a.get("sections") or [] if n in SECTIONS and (sections is None or n in names)
-            ]
-            db, more = await _side(
-                app, target, "device", domain or meta_a.get("domain"), live_sections, shared
-            )
+        b_live = b is None or b.strip().lower() == "live"
+        b_stored = not b_live and (b_kind == "export" or (b_kind == "auto" and looks_like_export(str(b))))
+        if b_stored and not looks_like_export(a):
+            # a live device against a stored export or snapshot: read `a` the way `b` was taken
+            db, more = await _side(app, str(b), "export", domain, names, shared)
+            like = read_like(db, sections, names, shared)
+            da, warnings = await _side(app, a, "auto", domain, like, shared, mcp=ctx)
         else:
-            db, more = await _side(app, b, b_kind, domain, names, shared, a=da)
+            da, warnings = await _side(app, a, "auto", domain, names, shared, mcp=ctx)
+            stored_a = da.get("meta", {}).get("exported_at") != "live"
+            if b_live:
+                if not stored_a:
+                    raise InvalidRequest(
+                        "Pass `b` (another device, an export or a template), or a stored export as `a` to "
+                        "compare it with the live device."
+                    )
+                meta_a = da.get("meta") or {}
+                target = str(meta_a.get("id") or meta_a.get("device") or "")
+                if not target or meta_a.get("kind") == "template":
+                    raise InvalidRequest("Export `a` names no device to read live; pass `b`.")
+                db, more = await _side(
+                    app,
+                    target,
+                    "device",
+                    domain or meta_a.get("domain"),
+                    read_like(da, sections, names, shared),
+                    shared,
+                    mcp=ctx,
+                )
+            else:
+                # a stored export or snapshot against a live device: that device is read the same way
+                # (a snapshot's state sections too, so lost routes can't hide under not_compared)
+                like = read_like(da, sections, names, shared) if stored_a else names
+                db, more = await _side(app, str(b), b_kind, domain, like, shared, a=da, mcp=ctx)
         warnings += more
         result = diff_exports(da, db, None if sections is None else names)
         if not result["compared"]:  # never 'identical' on nothing
@@ -1201,12 +1298,19 @@ def register(reg: ToolRegistrar) -> None:
                 + " Pick sections both sides have (a stored export keeps the ones it was exported with)."
             )
         changes = result.pop("changes")
+        lines = findings(changes + result.get("deltas", []))
+        if len(result.get("deltas", [])) > MAX_DELTAS:  # the busiest rules first
+            result["deltas_total"] = len(result["deltas"])
+            result["deltas"] = sorted(result["deltas"], key=lambda d: -abs(int(d.get("delta") or 0)))[
+                :MAX_DELTAS
+            ]
         out: dict[str, Any] = {
             "a": _meta(da),
             "b": _meta(db),
             "identical": not changes,
             "summary": summarise(changes),
             "total": len(changes),
+            **({"findings": lines[:100]} if lines else {}),
             **result,
             "changes": changes[offset : offset + limit],
         }

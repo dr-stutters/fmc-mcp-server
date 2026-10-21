@@ -768,6 +768,23 @@ def test_redact_secrets() -> None:
     assert n == 5 and "route outside 0.0.0.0 0.0.0.0 192.0.2.1 1" in out
 
 
+def test_redact_skips_qualifiers_before_the_secret() -> None:
+    """A key id, hash, format or EIGRP AS between the keyword and the value is no secret: the value is
+    (it used to mask 'md5' and print the key)."""
+    text = (
+        " ospf message-digest-key 1 md5 k3y0spf\n"
+        "ntp authentication-key 1 md5 k3yntp\n"
+        "failover key hex 0a1b2c3d\n"
+        " authentication key eigrp 100 k3yeigrp\n"
+        " ospf message-digest-key 2 md5 *****"
+    )
+    out, n = redact(text)
+    for secret in ("k3y0spf", "k3yntp", "0a1b2c3d", "k3yeigrp"):
+        assert secret not in out
+    assert "message-digest-key 1 md5 ********" in out and "eigrp 100 ********" in out
+    assert n == 4 and "message-digest-key 2 md5 *****" in out  # masked by the device already
+
+
 async def test_show_command_output_is_redacted(ftd: respx.MockRouter) -> None:
     ftd.get(f"{DEVPATH}/operational/commands").mock(
         return_value=items(
