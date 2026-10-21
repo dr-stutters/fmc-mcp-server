@@ -666,5 +666,104 @@
     "id": "00000000-0000-0ed3-0000-000268434502"
    }
   ]
+ },
+ "monitor": {
+  "_source": "W6 live-B1 2026-10-21, FMC 10.0.1, mcp-w6-hygiene-acp: mcp-w6-monitor (MONITOR, one destination network, log end) in the probe rules' shape (destination scrubbed). fmc_bulk_update_access_rules(set={'log': 'none'}) sent it logEnd false + sendEventsToFMC false in a partial bulk PUT; FMC answered 200, and the GET afterwards still had logEnd true and sendEventsToFMC true (metadata.timestamp unchanged since creation) while the two ALLOW rules in the same PUT went to no logging.",
+  "rule": {
+   "metadata": {
+    "ruleIndex": 4,
+    "section": "Default",
+    "category": "--Undefined--",
+    "accessPolicy": {
+     "name": "mcp-w6-probe-acp",
+     "id": "00000000-0000-0ed3-0000-021474961034",
+     "type": "AccessPolicy"
+    },
+    "timestamp": 1792537033795,
+    "domain": {
+     "name": "Global \\ mcp-test-leaf",
+     "id": "a1c73df0-8353-8db7-1097-000000000000",
+     "type": "Domain"
+    }
+   },
+   "enabled": true,
+   "advancedLogging": {},
+   "sendEventsToFMC": true,
+   "enableSyslog": false,
+   "destinationDynamicObjects": {},
+   "logBegin": false,
+   "logEnd": true,
+   "logFiles": false,
+   "sourceDynamicObjects": {},
+   "destinationNetworks": {
+    "literals": [
+     {
+      "type": "Network",
+      "value": "198.51.100.0/24"
+     }
+    ]
+   },
+   "vlanTags": {},
+   "action": "MONITOR",
+   "variableSet": {
+    "name": "Default-Set",
+    "id": "76fa83ea-c972-11e2-8be8-8e45bb1343c0",
+    "type": "VariableSet"
+   },
+   "type": "AccessRule",
+   "name": "mcp-w6-monitor",
+   "id": "00000000-0000-0ed3-0000-000268434531"
+  },
+  "sent": {
+   "id": "00000000-0000-0ed3-0000-000268434531",
+   "type": "AccessRule",
+   "logEnd": false,
+   "sendEventsToFMC": false
+  },
+  "after": {
+   "metadata": {
+    "ruleIndex": 4,
+    "section": "Default",
+    "category": "--Undefined--",
+    "accessPolicy": {
+     "name": "mcp-w6-probe-acp",
+     "id": "00000000-0000-0ed3-0000-021474961034",
+     "type": "AccessPolicy"
+    },
+    "timestamp": 1792537033795,
+    "domain": {
+     "name": "Global \\ mcp-test-leaf",
+     "id": "a1c73df0-8353-8db7-1097-000000000000",
+     "type": "Domain"
+    }
+   },
+   "enabled": true,
+   "advancedLogging": {},
+   "sendEventsToFMC": true,
+   "enableSyslog": false,
+   "destinationDynamicObjects": {},
+   "logBegin": false,
+   "logEnd": true,
+   "logFiles": false,
+   "sourceDynamicObjects": {},
+   "destinationNetworks": {
+    "literals": [
+     {
+      "type": "Network",
+      "value": "198.51.100.0/24"
+     }
+    ]
+   },
+   "vlanTags": {},
+   "action": "MONITOR",
+   "variableSet": {
+    "name": "Default-Set",
+    "id": "76fa83ea-c972-11e2-8be8-8e45bb1343c0",
+    "type": "VariableSet"
+   },
+   "type": "AccessRule",
+   "name": "mcp-w6-monitor",
+   "id": "00000000-0000-0ed3-0000-000268434531"
+  }
  }
 }

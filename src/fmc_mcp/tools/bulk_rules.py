@@ -12,8 +12,13 @@ FMC 10.0.1 behaviour this relies on (recorded 2026-10-20 on an unassigned probe 
   been applied, and resending could append its comments twice.
 - The PUT answer lists the rules in request order with metadata.ruleIndex 1 for all: positions come from
   the GET before the change.
+- FMC can answer 200 and keep a field (recorded live 2026-10-21): log='none' on a MONITOR rule left logEnd and
+  sendEventsToFMC on (MONITOR rules always log the connection end to FMC; its timestamp didn't move). So the
+  preview leaves those two fields of MONITOR rules alone, and after the PUTs one GET of the rules checks
+  every sent field: rules FMC left unchanged are reported in `kept_by_fmc`, not as applied.
 - Hit counts: `DELETE policy/{accesspolicies|prefilterpolicies}/{id}/operational/hitcounts?filter=
-  deviceId:{uuid};ids:{..}` (no body; without ids every rule of the policy on that device).
+  deviceId:{uuid};ids:{..}` (no body) answers `{}`. Without ids it clears every rule of the policy on that
+  device, and the default action's counter too (recorded live 2026-10-21).
 """
 
 # No `from __future__ import annotations`: FastMCP inspects signatures at runtime.
@@ -45,6 +50,12 @@ from fmc_mcp.tools.policy_writes import BLOCKING, LogMode, RuleAction, _log_fiel
 from fmc_mcp.tools.troubleshoot import HIT_ID_CHUNK, is_default_action, rule_hits, to_utc
 
 CHUNK = 50  # rules per bulk PUT
+MONITOR_KEEPS = ("logEnd", "sendEventsToFMC")  # FMC keeps these on MONITOR rules whatever is sent
+MONITOR_LOG_SKIP = (
+    "is a MONITOR rule: FMC always logs its connections at the end to FMC and keeps that logging (FMC 10.0.1 "
+    "answered 200 to log='none' and changed nothing); leave it out of the selection"
+)
+MONITOR_LOG_NOTE = "MONITOR rule: FMC keeps logging the connection end to FMC; only the other fields change."
 MOVE_NOTE = (
     "Rules keep their section, category and position: bulk edits don't move rules (fmc_update_access_rule "
     "move_to moves one rule within its section; cross-section moves are refused there too)."
@@ -180,7 +191,10 @@ def rule_partial(
             )
         part["action"] = want.action
     if want.log is not None:
-        for k, v in _log_fields(want.log, action).items():
+        fields = _log_fields(want.log, action)
+        if action == "MONITOR":
+            fields = {k: v for k, v in fields.items() if k not in MONITOR_KEEPS or v}
+        for k, v in fields.items():
             if bool(cur.get(k, False)) is not v:
                 part[k] = v
     elif want.action and action in BLOCKING and cur.get("logEnd"):
@@ -197,9 +211,16 @@ def rule_partial(
         if add:
             part["sourceZones"] = {"objects": have + add}
     comment_only = not any(v not in (None, [], "") for k, v in want.model_dump().items() if k != "comment")
+    if not part and monitor_log_off(action, want) and not comment_only:
+        return {}, MONITOR_LOG_SKIP
     if want.comment and (part or comment_only):
         part["newComments"] = [want.comment]  # with the rule's changes, or on its own
     return part, None
+
+
+def monitor_log_off(action: str, want: RuleChanges) -> bool:
+    """Logging turned off on a MONITOR rule, which FMC doesn't do."""
+    return action == "MONITOR" and want.log == "none"
 
 
 def rule_diff(rule: dict[str, Any], part: dict[str, Any]) -> dict[str, Any]:
@@ -230,6 +251,51 @@ class _Stopped(Exception):
     def __init__(self, item: dict[str, Any], error: UpstreamError, certain: bool) -> None:
         super().__init__(str(error))
         self.item, self.error, self.certain = item, error, certain
+
+
+def _same(field: str, sent: Any, have: Any) -> bool:
+    """Whether FMC's rule holds what was sent for one partial-update field."""
+    if isinstance(sent, bool):
+        return bool(have or False) is sent
+    if field == "ipsPolicy":
+        return str((have or {}).get("id", "")).lower() == str(sent.get("id", "")).lower()
+    if field == "sourceZones":
+        ids = {str(z.get("id", "")).lower() for z in (have or {}).get("objects") or []}
+        return all(str(z.get("id", "")).lower() in ids for z in sent.get("objects") or [])
+    return bool(have == sent)
+
+
+def _shown(field: str, value: Any) -> Any:
+    if field == "sourceZones":
+        return block_labels(value) or "any"
+    if isinstance(value, dict):
+        return ref_label(value)
+    return value
+
+
+async def kept_by_fmc(
+    app: FmcApp, path: str, bodies: list[dict[str, Any]], names: dict[str, str]
+) -> tuple[list[dict[str, Any]], str | None]:
+    """Re-read the rules and list those FMC left (partly) unchanged although it answered 200: one row per
+    rule with the fields FMC kept. The second value says why nothing could be checked."""
+    try:
+        after = await all_rules(app, path)
+    except UpstreamError as e:
+        return [], f"Not verified: re-reading the rules failed ({e}); check with fmc_list_access_rules."
+    by_id = {str(r.get("id", "")).lower(): r for r in after.items}
+    out: list[dict[str, Any]] = []
+    for b in bodies:
+        rule = by_id.get(str(b["id"]).lower())
+        if rule is None:
+            continue
+        fields = {
+            k: {"sent": _shown(k, v), "fmc_has": _shown(k, rule.get(k))}
+            for k, v in b.items()
+            if k not in ("id", "type", "newComments") and not _same(k, v, rule.get(k))
+        }
+        if fields:
+            out.append({"rule": names[b["id"]], "fields": fields})
+    return out, None
 
 
 async def apply_chunks(
@@ -279,12 +345,23 @@ async def apply_chunks(
             getattr(s.error, "status_code", None),
         ) from s.error
     app.invalidate_cache()
-    return {
-        "applied": len(done),
+    kept, unverified = await kept_by_fmc(app, path, done, names)
+    kept_names = {k["rule"] for k in kept}
+    out: dict[str, Any] = {
+        "applied": len(done) - len(kept),
         "requests": puts,
-        "rules": [names[b["id"]] for b in done],
-        "next": "fmc_deploy (fmc_pending_changes shows the diff); fmc_list_access_rules shows the rules",
+        "rules": [names[b["id"]] for b in done if names[b["id"]] not in kept_names],
     }
+    if kept:
+        out["kept_by_fmc"] = kept
+        out["warning"] = (
+            f"FMC answered 200 but left {len(kept)} rule(s) without the change (the fields under "
+            "kept_by_fmc). Check them with fmc_get_access_rule; MONITOR rules always keep their "
+            "end-of-connection logging."
+        )
+    out["verified"] = unverified or "one GET of the policy's rules after the change"
+    out["next"] = "fmc_deploy (fmc_pending_changes shows the diff); fmc_list_access_rules shows the rules"
+    return out
 
 
 def register(reg: ToolRegistrar) -> None:
@@ -361,14 +438,15 @@ def register(reg: ToolRegistrar) -> None:
                 continue
             names[str(r["id"])] = str(r.get("name"))
             bodies.append({"id": r["id"], "type": "AccessRule", **part})
-            rows.append(
-                {
-                    "index": meta.get("ruleIndex"),
-                    "rule": r.get("name"),
-                    "section": meta.get("section"),
-                    "changes": rule_diff(r, part),
-                }
-            )
+            row = {
+                "index": meta.get("ruleIndex"),
+                "rule": r.get("name"),
+                "section": meta.get("section"),
+                "changes": rule_diff(r, part),
+            }
+            if monitor_log_off(set.action or str(r.get("action", "")), set):
+                row["note"] = MONITOR_LOG_NOTE
+            rows.append(row)
         if not rules.complete:
             blockers.append("The policy has more rules than the scan cap; narrow the selection by ids.")
         if not selected and not blockers:
@@ -412,6 +490,8 @@ def register(reg: ToolRegistrar) -> None:
                 side_effects=[
                     "Takes effect on devices after the next deployment.",
                     "Stops at the first rule FMC refuses; the rules before it stay changed.",
+                    "Afterwards the rules are read back once: a field FMC answered 200 to but kept is "
+                    "reported under kept_by_fmc, not as applied.",
                     MOVE_NOTE,
                 ],
             ),
@@ -470,8 +550,8 @@ def register(reg: ToolRegistrar) -> None:
         hits: dict[str, dict[str, Any]] = {}
         notes: list[str] = []
         last = None
-        # Without rule ids FMC clears "every rule of the policy on that device": the default action's
-        # counter may go too (not recorded on 10.0.1 yet), so the preview shows it as well.
+        # Without rule ids FMC clears "every rule of the policy on that device", and the default action's
+        # counter too (recorded on 10.0.1, 2026-10-21), so the preview shows it as well.
         every_rule = kind == "access" and not rules
         if targets:
             hits, last, notes = await rule_hits(
@@ -528,8 +608,8 @@ def register(reg: ToolRegistrar) -> None:
             details["default_action"] = {
                 "hits": int(default.get("hitCount") or 0),
                 "last_hit": to_utc(default.get("lastHitTimeStamp"), offset),
-                "note": "Clearing every rule may reset the default action's counter too (FMC doesn't say; "
-                "not counted in hits_lost). Pass rules=[...] to keep it.",
+                "note": "Clearing every rule resets the default action's counter too (FMC 10.0.1, seen "
+                "live; not counted in hits_lost). Pass rules=[...] to keep it.",
             }
         if notes:
             details["notes"] = notes

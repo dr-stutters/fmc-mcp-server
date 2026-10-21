@@ -5,6 +5,7 @@ The rules and FMC's answers are the probe's recordings on FMC 10.0.1 (tests/fixt
 partialUpdate changes only the sent fields, a chunk is atomic and its 400 names no rule, the PUT answer
 gives every rule ruleIndex 1."""
 
+import copy
 import json
 from datetime import UTC, datetime
 from typing import Any
@@ -16,6 +17,7 @@ from fastmcp import Client
 from fastmcp.exceptions import ToolError
 
 from fmc_mcp.bulk_fixes import bulk_fixes
+from fmc_mcp.client import FmcApp
 from fmc_mcp.server import create_server
 from fmc_mcp.tools import bulk_rules
 
@@ -49,10 +51,28 @@ async def preview_apply(name: str, args: dict[str, Any]) -> tuple[Any, Any]:
         return preview, done
 
 
+def honest(router: respx.MockRouter, rules: list[dict[str, Any]]) -> Any:
+    """FMC's rule list as the probe recorded partialUpdate: after a PUT it answered 200, the rules hold
+    exactly the fields that PUT sent (comments aside)."""
+
+    def get(request: httpx.Request) -> httpx.Response:
+        now = copy.deepcopy(rules)
+        by_id = {r["id"]: r for r in now}
+        for call in router.calls:
+            req, resp = call.request, call.optional_response
+            if req.method == "PUT" and req.url.path == RULES and resp is not None and resp.status_code == 200:
+                for b in json.loads(req.content):
+                    if b["id"] in by_id:
+                        by_id[b["id"]].update({k: v for k, v in b.items() if k != "newComments"})
+        return items(now)
+
+    return get
+
+
 @pytest.fixture
 def probe(lab: respx.MockRouter) -> respx.MockRouter:
     """mcp-test-acp holding the probe's three rules as recorded."""
-    lab.get(RULES).mock(return_value=items(PROBE))
+    lab.get(RULES).mock(side_effect=honest(lab, PROBE))
     lab.get(f"{CFG}/policy/intrusionpolicies").mock(return_value=items([BALANCED]))
     lab.get(f"{CFG}/object/securityzones").mock(return_value=items([INSIDE]))
     lab.get(f"{CFG}/object/interfacegroups").mock(return_value=items([]))
@@ -104,6 +124,7 @@ async def test_bulk_enable_log_and_comment(probe: respx.MockRouter) -> None:
     assert "1 bulk PUT(s)" in shown["requests"]
     assert any("don't move rules" in e for e in preview["side_effects"])
     assert done["result"]["applied"] == 2 and done["result"]["rules"] == ["mcp-w6-probe-1", "mcp-w6-probe-3"]
+    assert "kept_by_fmc" not in done["result"] and done["result"]["verified"].startswith("one GET")
 
 
 async def test_rules_already_as_asked_and_skipped(probe: respx.MockRouter) -> None:
@@ -382,8 +403,8 @@ async def test_clear_hit_counts_previews_what_is_lost(probe: respx.MockRouter) -
 
 
 async def test_clear_every_rule_shows_the_default_action_counter(probe: respx.MockRouter) -> None:
-    """Without rule ids FMC clears every rule on the device; the default action's counter may go too, so
-    the preview shows it (apart from hits_lost)."""
+    """Without rule ids FMC clears every rule on the device and, as recorded live on 10.0.1, the default
+    action's counter too, so the preview shows it (apart from hits_lost)."""
     probe.put(HC).mock(return_value=httpx.Response(200, json={}))
     rows = [
         {"rule": {"id": P1, "name": "mcp-w6-probe-1"}, "hitCount": 4},
@@ -401,7 +422,7 @@ async def test_clear_every_rule_shows_the_default_action_counter(probe: respx.Mo
         )
     shown = every["preview"]
     assert shown["hits_lost"] == 4 and shown["default_action"]["hits"] == 30
-    assert "may reset the default action" in shown["default_action"]["note"]
+    assert "resets the default action's counter too" in shown["default_action"]["note"]
     assert "default_action" not in some["preview"]  # ids given: only those rules are cleared
 
 
@@ -432,3 +453,110 @@ async def test_clear_hit_counts_unknown_rule(probe: respx.MockRouter) -> None:
             c, "fmc_clear_hit_counts", {"policy": "mcp-test-acp", "device": DEV["name"], "rules": ["nope"]}
         )
     assert out["status"] == "blocked" and out["blockers"] == ["No rule 'nope' in 'mcp-test-acp'."]
+
+
+# --- what FMC kept (W6 live, 2026-10-21) -------------------------------------------------------------
+
+MONITOR = FX["monitor"]
+
+
+async def test_monitor_rule_is_skipped_for_log_none(lab: respx.MockRouter) -> None:
+    """The live call: log='none' on [ALLOW, MONITOR, ALLOW]. FMC keeps a MONITOR rule's end-of-connection
+    logging, so the preview skips it with the reason instead of reporting it as changed."""
+    rules = [*PROBE, MONITOR["rule"]]
+    lab.get(RULES).mock(side_effect=honest(lab, rules))
+    put = lab.put(RULES).mock(return_value=httpx.Response(200, json={"items": []}))
+    preview, done = await preview_apply(
+        "fmc_bulk_update_access_rules",
+        {
+            "policy": "mcp-test-acp",
+            "select": {"names": ["mcp-w6-probe-1", "mcp-w6-monitor", "mcp-w6-probe-2"]},
+            "set": {"log": "none"},
+        },
+    )
+    shown = preview["preview"]
+    assert [r["rule"] for r in shown["rules"]] == ["mcp-w6-probe-1", "mcp-w6-probe-2"]
+    assert shown["skipped"] == [{"index": 4, "rule": "mcp-w6-monitor", "reason": bulk_rules.MONITOR_LOG_SKIP}]
+    assert [b["id"] for b in sent(put)] == [P1, P2]
+    assert done["result"]["applied"] == 2
+
+
+async def test_monitor_rule_only_loses_begin_logging(lab: respx.MockRouter) -> None:
+    rules = [*PROBE, {**MONITOR["rule"], "logBegin": True}]
+    lab.get(RULES).mock(side_effect=honest(lab, rules))
+    put = lab.put(RULES).mock(return_value=httpx.Response(200, json={"items": []}))
+    preview, _ = await preview_apply(
+        "fmc_bulk_update_access_rules",
+        {"policy": "mcp-test-acp", "select": {"names": ["mcp-w6-monitor"]}, "set": {"log": "none"}},
+    )
+    (row,) = preview["preview"]["rules"]
+    assert row["changes"] == {"logBegin": {"from": True, "to": False}}
+    assert row["note"] == bulk_rules.MONITOR_LOG_NOTE
+    assert sent(put) == [{"id": MONITOR["rule"]["id"], "type": "AccessRule", "logBegin": False}]
+
+
+async def test_fields_fmc_kept_are_reported_not_applied(lab: respx.MockRouter) -> None:
+    """FMC answered 200 but the GET afterwards shows the rule unchanged (as it did for the MONITOR rule):
+    the result names the rule and the fields under kept_by_fmc and doesn't count it as applied."""
+    keeps = MONITOR["rule"]["id"]
+
+    def get(request: httpx.Request) -> httpx.Response:
+        rows = honest(lab, [*PROBE, MONITOR["rule"]])(request).json()["items"]
+        return items([MONITOR["after"] if r["id"] == keeps else r for r in rows])
+
+    lab.get(RULES).mock(side_effect=get)
+    lab.put(RULES).mock(return_value=httpx.Response(200, json={"items": []}))
+    _, done = await preview_apply(
+        "fmc_bulk_update_access_rules",
+        {
+            "policy": "mcp-test-acp",
+            "select": {"names": ["mcp-w6-probe-3", "mcp-w6-monitor"]},
+            "set": {"enabled": False},
+        },
+    )
+    result = done["result"]
+    assert result["applied"] == 0 and result["rules"] == []  # probe-3 is disabled already: not sent
+    assert result["kept_by_fmc"] == [
+        {"rule": "mcp-w6-monitor", "fields": {"enabled": {"sent": False, "fmc_has": True}}}
+    ]
+    assert "left 1 rule(s) without the change" in result["warning"]
+
+
+async def test_kept_by_fmc_reads_the_live_monitor_answer(lab: respx.MockRouter) -> None:
+    """What the tool sent before this fix (logEnd/sendEventsToFMC false) against the rule FMC kept."""
+    lab.get(RULES).mock(return_value=items([MONITOR["after"]]))
+    app = FmcApp(make_settings())
+    try:
+        kept, why = await bulk_rules.kept_by_fmc(
+            app, RULES, [MONITOR["sent"]], {MONITOR["rule"]["id"]: "mcp-w6-monitor"}
+        )
+    finally:
+        await app.aclose()
+    assert why is None
+    assert kept == [
+        {
+            "rule": "mcp-w6-monitor",
+            "fields": {
+                "logEnd": {"sent": False, "fmc_has": True},
+                "sendEventsToFMC": {"sent": False, "fmc_has": True},
+            },
+        }
+    ]
+
+
+async def test_a_failed_read_back_says_unverified(probe: respx.MockRouter) -> None:
+    calls = {"n": 0}
+
+    def get(request: httpx.Request) -> httpx.Response:
+        calls["n"] += 1
+        if calls["n"] > 2:  # preview + confirm read the rules; the read-back fails
+            return httpx.Response(500, json={"error": {"messages": [{"description": "boom"}]}})
+        return items(PROBE)
+
+    probe.get(RULES).mock(side_effect=get)
+    probe.put(RULES).mock(return_value=httpx.Response(200, json={"items": []}))
+    _, done = await preview_apply(
+        "fmc_bulk_update_access_rules",
+        {"policy": "mcp-test-acp", "select": {"ids": [P1]}, "set": {"enabled": False}},
+    )
+    assert done["result"]["applied"] == 1 and done["result"]["verified"].startswith("Not verified")
