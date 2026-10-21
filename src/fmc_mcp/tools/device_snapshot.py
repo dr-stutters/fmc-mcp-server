@@ -87,6 +87,7 @@ _READING = re.compile(
 # FMC joins a module's items with '<br>' ("Interface 'Ethernet0/2' is not receiving any packets<br>Interface
 # 'Ethernet0/0' is ...", live Wave 6), in any order.
 _BREAK = re.compile(r"\s*<br\s*/?>\s*", re.I)
+_ITEM_SEP = re.compile(r"\s*;\s*")
 
 
 # --- show output, per unit ------------------------------------------------------------------------
@@ -332,17 +333,18 @@ def without_readings(text: Any) -> str:
 
 def alert_text(details: Any) -> str:
     """A health message as plain text: the items FMC joins with '<br>' (one per interface, say) separated by
-    '; ', any other HTML dropped."""
-    return clean_details(_BREAK.sub("; ", str(details or "")))
+    '; ', any other HTML and empty items (a leading or trailing '<br>') dropped. The items are sorted (by
+    their text without readings): FMC lists them in any order, and a snapshot (and its digest) shouldn't
+    change with that order alone."""
+    parts = (clean_details(p) for p in _BREAK.split(str(details or "")))
+    return "; ".join(sorted((p for p in parts if p), key=lambda p: (without_readings(p), p)))
 
 
 def _items(details: Any, *, keep_readings: bool = False) -> list[str]:
-    """A message's '; '-separated items, sorted (FMC lists them in any order); readings blanked unless
-    keep_readings."""
+    """A message's ';'-separated items, sorted (FMC lists them in any order), empty ones (a separator at
+    either end) dropped; readings blanked unless keep_readings."""
     text = alert_text(details)
-    return sorted(
-        p.strip() for p in (text if keep_readings else without_readings(text)).split("; ") if p.strip()
-    )
+    return sorted(p for p in _ITEM_SEP.split(text if keep_readings else without_readings(text)) if p)
 
 
 def _plain_alert(value: Any) -> Any:

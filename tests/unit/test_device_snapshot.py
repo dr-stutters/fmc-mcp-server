@@ -19,6 +19,7 @@ from fastmcp.exceptions import ToolError
 
 from fmc_mcp.tools.device_export import SECTIONS, parse_export
 from fmc_mcp.tools.device_snapshot import (
+    alert_text,
     diff_alerts,
     diff_hits,
     diff_lines,
@@ -638,7 +639,7 @@ async def test_live_wan_down_is_one_readable_health_finding(fmc: respx.MockRoute
     row.update(live["INTERFACE"])
     after_out, after = await snapshot(label="after")
     e02, e00 = (f"Interface 'Ethernet0/{n}' is not receiving any packets" for n in (2, 0))
-    both = f"{e02}; {e00}"
+    both = f"{e00}; {e02}"  # sorted at capture: FMC's order (0/2 first here) is arbitrary
     assert after["health_alerts"]["INTERFACE"] == {"status": "RED", "details": both}
     assert "<br>" not in after_out["snapshots"]["mcp-sdwan-t1-spoke1"]
     diff = await call(
@@ -647,10 +648,14 @@ async def test_live_wan_down_is_one_readable_health_finding(fmc: respx.MockRoute
     assert diff["summary"] == {"health_alerts": {"changed": 1}} and diff["total"] == 1
     assert diff["findings"] == [f"health alert INTERFACE: details {e02} -> {both}"]
     assert diff["findings"] != live["diff_findings_before_fix"]
-    # FMC lists the same two interfaces the other way round on its next run: no change
-    row["details"] = f"{e00}<br>{e02}"
+    # FMC lists the same two interfaces the other way round on its next run (with a trailing '<br>'): no
+    # change, and a snapshot with the same digest
+    row["details"] = f"{e00}<br>{e02}<br>"
     same = await call("fmc_diff_device_config", {"a": after_out["snapshots"]["mcp-sdwan-t1-spoke1"]})
     assert same["identical"] is True and "health_alerts" not in same["summary"]
+    flipped, _ = await snapshot(label="flipped")
+    (row_after,), (row_flipped,) = after_out["devices"], flipped["devices"]
+    assert row_flipped["digest"] == row_after["digest"]
     # restored
     row.update(next(a for a in FX["health/alerts"]["items"] if a["moduleID"] == "INTERFACE"))
     again = await call("fmc_diff_device_config", {"a": before})
@@ -668,12 +673,21 @@ def test_diff_alerts_reads_snapshots_that_kept_fmcs_br() -> None:
     new = {
         "INTERFACE": {
             "status": "RED",
-            "details": "Interface 'Ethernet0/2' is down; Interface 'Ethernet0/0' is down",
+            "details": "Interface 'Ethernet0/0' is down; Interface 'Ethernet0/2' is down",
         }
     }
     assert diff_alerts("health_alerts", old, new) == []
     gone = diff_alerts("health_alerts", old, {})
-    assert gone[0]["value"]["details"] == new["INTERFACE"]["details"]
+    assert gone[0]["value"]["details"] == new["INTERFACE"]["details"]  # as a new snapshot stores it
+    # a separator at either end ('A<br>B<br>' used to become 'A; B;') or an empty item is no change
+    for raw in (
+        "Interface 'Ethernet0/2' is down<br>Interface 'Ethernet0/0' is down<br>",
+        "<br/>Interface 'Ethernet0/0' is down<BR >  <br>Interface 'Ethernet0/2' is down",
+        "Interface 'Ethernet0/0' is down; Interface 'Ethernet0/2' is down;",
+    ):
+        assert diff_alerts("health_alerts", {"INTERFACE": {"status": "RED", "details": raw}}, new) == []
+    assert alert_text("A<br>B<br>") == "A; B" and alert_text("<br>B<br><br>A") == "A; B"
+    assert alert_text("CPU 91%<br>Memory 40%") == alert_text("Memory 40%<br>CPU 91%")
 
 
 def test_diff_alerts_keeps_what_the_message_says() -> None:
