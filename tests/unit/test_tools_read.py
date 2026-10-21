@@ -191,9 +191,12 @@ async def test_unused_objects(fmc: respx.MockRouter) -> None:
         "urlgroups",
     ):
         lab.get(f"{CFG}/object/{path}", params={"filter": "unusedOnly:true"}).mock(return_value=empty())
+    for path in ("networkgroups", "portobjectgroups", "urlgroups"):  # groups: also the full list
+        lab.get(f"{CFG}/object/{path}").mock(return_value=empty())
     data = await call("fmc_unused_objects", {"response_format": "json"})
     assert [r["name"] for r in data["results"]] == ["mcp-test-unused"]
     assert route.calls.last.request.url.params["filter"] == "unusedOnly:true"
+    assert "note" not in data  # no group needed the usage API
 
 
 async def test_empty_device_lists(fmc: respx.MockRouter) -> None:

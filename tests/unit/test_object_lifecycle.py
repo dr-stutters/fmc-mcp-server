@@ -289,6 +289,151 @@ async def test_delete_dry_run_and_arguments(fmc: respx.MockRouter) -> None:
         assert "fmc_delete_objects" not in {t.name for t in await c.list_tools()}
 
 
+LIVE_GROUPS = REC["networkgroups_live"]  # FMC 10.0.1: the unused filter answers no network group
+
+
+def live_groups(rows: list[dict[str, Any]]) -> Callable[..., httpx.Response]:
+    """networkgroups as FMC 10.0.1 answers them: nameOrValue works, unusedOnly answers nothing (the
+    recorded empty answer, no `items`)."""
+    by_name = collection(rows)
+
+    def handler(request: httpx.Request) -> httpx.Response:
+        if "unusedOnly" in request.url.params.get("filter", ""):
+            return httpx.Response(200, json=LIVE_GROUPS["unused_filter"])
+        return by_name(request)
+
+    return handler
+
+
+def usage_by_id(usage: dict[str, list[dict[str, Any]]]) -> Callable[..., httpx.Response]:
+    """The usage API: the given rows per object id, FMC's empty answer (no `items`) for the rest."""
+
+    def handler(request: httpx.Request) -> httpx.Response:
+        oid = request.url.params["filter"].split(";")[0].split(":")[1]
+        if usage.get(oid):
+            return items(usage[oid])
+        return httpx.Response(200, json=LIVE_GROUPS["usage_none"])
+
+    return handler
+
+
+async def test_prefix_cleanup_deletes_a_group_fmc_10_0_1_doesnt_call_unused(fmc: respx.MockRouter) -> None:
+    """The live-B2 prefix cleanup: FMC 10.0.1's unused filter answers no network group, the usage API names
+    nothing for the group, so the group goes first and its members after it; nothing is refused."""
+    grp = LIVE_GROUPS["by_name"]["items"][0]
+    member_ids = [m["id"] for m in grp["objects"]]
+    hosts = [
+        obj("00000000-0000-0ed3-0000-021474996337", "mcp-w6-sync-1", "Host", value="192.0.2.101"),
+        obj(member_ids[0], "mcp-w6-sync-2", "Host", value="192.0.2.112"),
+        obj(member_ids[1], "mcp-w6-sync-3", "Host", value="192.0.2.103"),
+        obj("00000000-0000-0ed3-0000-021474996339", "mcp-w6-sync-orphan", "Host", value="192.0.2.109"),
+    ]
+    unused_hosts = {hosts[0]["id"], hosts[3]["id"]}
+    fmc.get(f"{CFG}/object/hosts").mock(side_effect=collection(hosts, unused=unused_hosts))
+    fmc.get(f"{CFG}/object/networkgroups").mock(side_effect=live_groups([grp]))
+    in_grp = [{"type": "NetworkAddress", "name": grp["name"], "id": grp["id"]}]  # usage names a group so
+    usage = fmc.get(f"{CFG}/object/operational/usage").mock(
+        side_effect=usage_by_id({member_ids[0]: in_grp, member_ids[1]: in_grp})
+    )
+    calls: list[tuple[str, str]] = []
+
+    def deleted(request: httpx.Request) -> httpx.Response:
+        calls.append((request.url.path.rsplit("/", 1)[1], request.url.params.get("filter", "")))
+        if request.url.path.endswith("networkgroups"):
+            return httpx.Response(200, json=LIVE_GROUPS["delete_answer"])
+        return httpx.Response(200, json={})
+
+    fmc.delete(f"{CFG}/object/hosts").mock(side_effect=deleted)
+    fmc.delete(f"{CFG}/object/networkgroups").mock(side_effect=deleted)
+    args = {"prefix": "mcp-w6-sync-", "types": ["host", "network_group"]}
+    async with Client(server()) as c:
+        p = await run(c, "fmc_delete_objects", args)
+        assert p["status"] == "preview", p
+        got = p["preview"]
+        assert "refused" not in got, got["refused"]
+        assert [r["name"] for r in got["delete"]["objects"]] == [
+            "mcp-w6-sync-1",
+            "mcp-w6-sync-orphan",
+            "mcp-w6-sync-grp",
+            "mcp-w6-sync-2",
+            "mcp-w6-sync-3",
+        ]
+        assert got["delete"]["objects"][3]["after"] == ["mcp-w6-sync-grp"]
+        assert got["order"] == ["2 host (bulk)", "1 network_group (bulk)", "2 host (bulk)"]
+        assert usage.call_count == 3  # the two members and the group
+        out = (await run(c, "fmc_delete_objects", {**args, "confirm": p["confirm"]}))["result"]
+    assert out["deleted"] == 5
+    assert calls == [
+        ("hosts", f"ids:{hosts[0]['id']},{hosts[3]['id']}"),
+        ("networkgroups", f"ids:{grp['id']}"),
+        ("hosts", f"ids:{member_ids[0]},{member_ids[1]}"),
+    ]
+
+
+async def test_unused_only_checks_groups_with_the_usage_api(
+    fmc: respx.MockRouter, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    """unused_only lists groups without FMC's filter (it answers none on 10.0.1): a group the usage API
+    names nothing for is deleted, a used one skipped; a group past the usage budget is refused as not
+    checked (not counted as in use)."""
+    groups = [
+        obj("g1", "mcp-w6-grp-free", "NetworkGroup", objects=[{"id": "h1", "type": "Host"}]),
+        obj("g2", "mcp-w6-grp-used", "NetworkGroup"),
+        obj("g3", "mcp-w6-grp-late", "NetworkGroup"),
+    ]
+    route = fmc.get(f"{CFG}/object/networkgroups").mock(side_effect=live_groups(groups))
+    fmc.get(f"{CFG}/object/operational/usage").mock(
+        side_effect=usage_by_id({"g2": [{"type": "AccessPolicy", "name": "mcp-w6-acp", "id": ACP}]})
+    )
+    monkeypatch.setattr("fmc_mcp.tools.object_lifecycle.USAGE_CAP", 2)
+    args = {"prefix": "mcp-w6-", "unused_only": True, "types": ["network_group"], "dry_run": True}
+    async with Client(server()) as c:
+        d = await run(c, "fmc_delete_objects", args)
+    got = d["preview"]
+    assert [r["name"] for r in got["delete"]["objects"]] == ["mcp-w6-grp-free"]
+    assert got["in_use_skipped"] == 1
+    assert [(r["name"], r["reason"].split(" (")[0]) for r in got["refused"]] == [
+        ("mcp-w6-grp-late", "not checked")
+    ]
+    assert route.calls[0].request.url.params["filter"] == "nameOrValue:mcp-w6-"  # no unusedOnly
+
+
+async def test_unused_objects_lists_groups_the_filter_leaves_out(
+    fmc: respx.MockRouter, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    """live-B2: mcp-w6-grp (members, no referrer) was missing from fmc_unused_objects because FMC 10.0.1's
+    filter answers no network group. Groups it leaves out are asked of the usage API, except built-ins,
+    Global's groups and groups another group holds (no request for those), up to GROUP_USAGE_CAP."""
+    free = obj("g1", "mcp-w6-grp", "NetworkGroup", objects=[{"id": "h1", "type": "Host", "name": "mcp-w6-b"}])
+    outer = obj("g2", "mcp-w6-outer", "NetworkGroup", objects=[{"id": "g3", "type": "NetworkGroup"}])
+    inner = obj("g3", "mcp-w6-inner", "NetworkGroup")
+    groups = [free, outer, inner, system(obj("g4", "IPv4-Private-All-RFC1918", "NetworkGroup"))]
+    groups.append(inherited(obj("g5", "mcp-test-servers", "NetworkGroup")))
+    fmc.get(f"{CFG}/object/networkgroups").mock(side_effect=live_groups(groups))
+    for path in ("hosts", "networks", "ranges", "fqdns", "protocolportobjects", "urls"):
+        fmc.get(f"{CFG}/object/{path}").mock(return_value=items([]))
+    for path in ("portobjectgroups", "urlgroups"):
+        fmc.get(f"{CFG}/object/{path}").mock(
+            return_value=httpx.Response(200, json=LIVE_GROUPS["unused_filter"])
+        )
+    usage = fmc.get(f"{CFG}/object/operational/usage").mock(
+        side_effect=usage_by_id({"g2": [{"type": "AccessPolicy", "name": "mcp-w6-acp", "id": ACP}]})
+    )
+    async with Client(server()) as c:
+        out = await run(c, "fmc_unused_objects", {"response_format": "json"})
+        assert [(r["name"], r["object_type"], r.get("checked_by")) for r in out["results"]] == [
+            ("mcp-w6-grp", "network_group", "usage API")
+        ]
+        assert out["results"][0]["members"] == ["mcp-w6-b"]
+        assert "2 were checked with FMC's usage API" in out["note"]
+        asked = sorted(r.request.url.params["filter"].split(";")[0] for r in usage.calls)
+        assert asked == ["uuid:g1", "uuid:g2"]  # not the inner, built-in or Global's group
+        monkeypatch.setattr("fmc_mcp.tools.objects.GROUP_USAGE_CAP", 1)
+        capped = await run(c, "fmc_unused_objects", {"types": ["network_group"], "response_format": "json"})
+    assert [r["name"] for r in capped["results"]] == ["mcp-w6-grp"]
+    assert "1 more groups were not checked (at most 1 per call): mcp-w6-outer" in capped["note"]
+
+
 # --- fmc_replace_object ---------------------------------------------------------------------------
 
 OLD = obj("00000000-0000-0ed3-0000-0000000000a1", "mcp-w6-a", "Host", value="192.0.2.10")

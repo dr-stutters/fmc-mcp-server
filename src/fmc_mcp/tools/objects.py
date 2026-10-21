@@ -36,6 +36,7 @@ from fmc_mcp.tools.common import (
     resolve_object,
     slim,
 )
+from fmc_mcp.tools.object_lifecycle import GROUP_KEYS, GROUP_USAGE_CAP, free_groups
 
 ObjectRef = Annotated[str, Field(description="Object name or UUID")]
 OptionalType = Annotated[
@@ -336,7 +337,9 @@ def register(reg: ToolRegistrar) -> None:
         """List user-created objects that nothing references (no policy, group or other object), as
         clean-up candidates. FMC's built-in system objects are excluded (also in a child domain, where
         they are inherited from Global); objects inherited from an ancestor domain say so in
-        `inherited_from`. Confirm with fmc_where_used before deleting."""
+        `inherited_from`. Groups FMC's unused filter leaves out (FMC 10.0.1 lists no network group) are
+        checked with FMC's usage API, up to 40 per call (`checked_by` says so; the note counts the rest).
+        Confirm with fmc_where_used before deleting; bulk clean-up: fmc_delete_objects."""
         app: FmcApp = get_client(ctx)
         keys = types or [
             "host",
@@ -351,6 +354,7 @@ def register(reg: ToolRegistrar) -> None:
         ]
         rows: list[dict[str, Any]] = []
         skipped = []
+        budget, checked, unchecked = GROUP_USAGE_CAP, 0, []
         for key in keys:
             t = OBJECT_TYPES[key]
             if key not in FILTERABLE:
@@ -361,7 +365,28 @@ def register(reg: ToolRegistrar) -> None:
             )
             # is_system also knows the built-ins a child domain inherits (they say DOMAIN there, #197).
             rows += [{"object_type": key, **object_summary(o)} for o in page.items if not is_system(o)]
-        extra = {"note": f"Not checkable via FMC's unused filter: {', '.join(skipped)}"} if skipped else None
+            if key in GROUP_KEYS:  # FMC 10.0.1's filter answers no network group: ask the usage API
+                listed = {str(o.get("id", "")).lower() for o in page.items}
+                found = await free_groups(app, key, domain, listed, budget)
+                budget -= found.checked
+                checked += found.checked
+                unchecked += found.unchecked
+                rows += [
+                    {"object_type": key, **object_summary(o), "checked_by": "usage API"} for o in found.rows
+                ]
+        notes = [f"Not checkable via FMC's unused filter: {', '.join(skipped)}."] if skipped else []
+        if checked:
+            notes.append(
+                f"FMC's unused filter left out groups, so {checked} were checked with FMC's usage API."
+            )
+        if unchecked:
+            notes.append(
+                f"{len(unchecked)} more groups were not checked (at most {GROUP_USAGE_CAP} per call): "
+                + ", ".join(unchecked[:10])
+                + (" ..." if len(unchecked) > 10 else "")
+                + "; fmc_where_used checks one."
+            )
+        extra = {"note": " ".join(notes)} if notes else None
         return list_result(page_of(rows, limit=limit, offset=offset), fmt=response_format, extra=extra)
 
 
