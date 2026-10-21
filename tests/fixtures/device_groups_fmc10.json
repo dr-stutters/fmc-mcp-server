@@ -1,0 +1,204 @@
+{
+ "_source": "Recorded live 2026-10-21 (Wave 6 Stage 2), FMC 10.0.1 (build 1), domain Global/mcp-test-leaf: device group answers as the tools received them (POST and PUT) and as fmc_api_call GET returned them (expanded list, one group). The expanded list carries members, so no per-group read is needed. FMC 10.0.1 does NOT store a DeviceGroup description although its schema has one: the PUT that sent description 'W6 F68' was answered without it and a re-read has none. Group and device UUIDs, names and the user id replaced; the leaf domain shown as the tests' Global domain.",
+ "post_answer": {
+  "id": "c0000000-0000-4000-8000-0000000000a1",
+  "type": "DeviceGroup",
+  "name": "t1-fleet",
+  "members": [
+   {
+    "id": "a0000000-0000-4000-8000-00000000000b",
+    "type": "Device",
+    "name": "spoke1"
+   },
+   {
+    "id": "a0000000-0000-4000-8000-00000000000c",
+    "type": "Device",
+    "name": "spoke2"
+   },
+   {
+    "id": "a0000000-0000-4000-8000-00000000000d",
+    "type": "Device",
+    "name": "spoke3"
+   },
+   {
+    "id": "a0000000-0000-4000-8000-00000000000a",
+    "type": "Device",
+    "name": "hub"
+   }
+  ],
+  "metadata": {
+   "readOnly": false,
+   "lastUser": "admin",
+   "timestamp": 1792559110,
+   "domain": "Global"
+  }
+ },
+ "list_expanded": {
+  "items": [
+   {
+    "id": "c0000000-0000-4000-8000-0000000000a1",
+    "type": "DeviceGroup",
+    "name": "t1-fleet",
+    "members": [
+     {
+      "id": "a0000000-0000-4000-8000-00000000000b",
+      "type": "Device",
+      "name": "spoke1"
+     },
+     {
+      "id": "a0000000-0000-4000-8000-00000000000c",
+      "type": "Device",
+      "name": "spoke2"
+     },
+     {
+      "id": "a0000000-0000-4000-8000-00000000000d",
+      "type": "Device",
+      "name": "spoke3"
+     },
+     {
+      "id": "a0000000-0000-4000-8000-00000000000a",
+      "type": "Device",
+      "name": "hub"
+     }
+    ],
+    "metadata": {
+     "readOnly": {
+      "state": false
+     },
+     "timestamp": 1792559110,
+     "lastUser": {
+      "name": "admin",
+      "id": "d0000000-0000-4000-8000-000000000001",
+      "type": "user"
+     },
+     "domain": {
+      "name": "Global",
+      "id": "e276abec-e0f2-11e3-8169-6d9ed49b625f",
+      "type": "Domain"
+     }
+    }
+   }
+  ],
+  "paging": {
+   "offset": 0,
+   "limit": 25,
+   "count": 1,
+   "pages": 1
+  }
+ },
+ "put_add_answer": {
+  "id": "c0000000-0000-4000-8000-0000000000a1",
+  "type": "DeviceGroup",
+  "name": "t1-fleet",
+  "members": [
+   {
+    "id": "a0000000-0000-4000-8000-00000000000b",
+    "type": "Device",
+    "name": "spoke1"
+   },
+   {
+    "id": "a0000000-0000-4000-8000-00000000000c",
+    "type": "Device",
+    "name": "spoke2"
+   },
+   {
+    "id": "a0000000-0000-4000-8000-00000000000d",
+    "type": "Device",
+    "name": "spoke3"
+   },
+   {
+    "id": "a0000000-0000-4000-8000-00000000000e",
+    "type": "Device",
+    "name": "ftd1"
+   },
+   {
+    "id": "a0000000-0000-4000-8000-00000000000a",
+    "type": "Device",
+    "name": "hub"
+   }
+  ],
+  "metadata": {
+   "readOnly": false,
+   "lastUser": "admin",
+   "timestamp": 1792559321,
+   "domain": "Global"
+  }
+ },
+ "put_with_description_answer": {
+  "id": "c0000000-0000-4000-8000-0000000000a1",
+  "type": "DeviceGroup",
+  "name": "t1-fleet",
+  "members": [
+   {
+    "id": "a0000000-0000-4000-8000-00000000000b",
+    "type": "Device",
+    "name": "spoke1"
+   },
+   {
+    "id": "a0000000-0000-4000-8000-00000000000c",
+    "type": "Device",
+    "name": "spoke2"
+   },
+   {
+    "id": "a0000000-0000-4000-8000-00000000000d",
+    "type": "Device",
+    "name": "spoke3"
+   },
+   {
+    "id": "a0000000-0000-4000-8000-00000000000a",
+    "type": "Device",
+    "name": "hub"
+   }
+  ],
+  "metadata": {
+   "readOnly": false,
+   "lastUser": "admin",
+   "timestamp": 1792559328,
+   "domain": "Global"
+  }
+ },
+ "put_with_description_sent": "W6 F68",
+ "get_after_description_put": {
+  "id": "c0000000-0000-4000-8000-0000000000a1",
+  "type": "DeviceGroup",
+  "name": "t1-fleet",
+  "members": [
+   {
+    "id": "a0000000-0000-4000-8000-00000000000b",
+    "type": "Device",
+    "name": "spoke1"
+   },
+   {
+    "id": "a0000000-0000-4000-8000-00000000000c",
+    "type": "Device",
+    "name": "spoke2"
+   },
+   {
+    "id": "a0000000-0000-4000-8000-00000000000d",
+    "type": "Device",
+    "name": "spoke3"
+   },
+   {
+    "id": "a0000000-0000-4000-8000-00000000000a",
+    "type": "Device",
+    "name": "hub"
+   }
+  ],
+  "metadata": {
+   "readOnly": {
+    "state": false
+   },
+   "timestamp": 1792559328,
+   "lastUser": {
+    "name": "admin",
+    "id": "d0000000-0000-4000-8000-000000000001",
+    "type": "user"
+   },
+   "domain": {
+    "name": "Global",
+    "id": "e276abec-e0f2-11e3-8169-6d9ed49b625f",
+    "type": "Domain"
+   }
+  }
+ }
+}

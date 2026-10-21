@@ -496,6 +496,64 @@ async def test_update_group_preview_shows_rename_and_description(fleet: respx.Mo
     assert body["name"] == "spokes" and body["description"] == "new text" and len(body["members"]) == 3
 
 
+GROUPS_FMC10 = fixture("device_groups_fmc10")
+
+
+def recorded_group(fleet: respx.MockRouter) -> tuple[dict[str, Any], respx.Route]:
+    """FMC 10.0.1's expanded device-group list as recorded live (members included), and the per-group
+    GET route (never needed for it)."""
+    listing = GROUPS_FMC10["list_expanded"]
+    grp = listing["items"][0]
+    fleet.get(f"{CFG}/devicegroups/devicegrouprecords").mock(return_value=httpx.Response(200, json=listing))
+    one = fleet.get(f"{CFG}/devicegroups/devicegrouprecords/{grp['id']}").mock(
+        return_value=httpx.Response(200, json=GROUPS_FMC10["get_after_description_put"])
+    )
+    return grp, one
+
+
+async def test_recorded_group_list_carries_members(fleet: respx.MockRouter) -> None:
+    grp, one = recorded_group(fleet)
+    async with Client(server()) as c:
+        rows = await run(c, "fmc_list_device_groups", {"response_format": "json"})
+        full = await run(c, "fmc_list_device_groups", {"group": grp["name"], "response_format": "json"})
+    assert rows["results"][0]["members"] == ["spoke1", "spoke2", "spoke3", "hub"]
+    assert [m["type"] for m in full["members"]] == ["Device"] * 4
+    assert one.call_count == 0  # the expanded list has the members: no per-group read
+
+
+async def test_description_fmc_10_drops_is_reported(fleet: respx.MockRouter) -> None:
+    """FMC 10.0.1 answers a device-group PUT or POST that carries a description without it (and keeps
+    none): the preview says FMC may not store it, and the result warns instead of implying it was set."""
+    grp, _ = recorded_group(fleet)
+    sent = GROUPS_FMC10["put_with_description_sent"]
+    put = fleet.put(f"{CFG}/devicegroups/devicegrouprecords/{grp['id']}").mock(
+        return_value=httpx.Response(200, json=GROUPS_FMC10["put_with_description_answer"])
+    )
+    fleet.post(f"{CFG}/devicegroups/devicegrouprecords").mock(
+        side_effect=[
+            httpx.Response(201, json={**GROUPS_FMC10["post_answer"], "name": "new"}),
+            httpx.Response(201, json={**GROUPS_FMC10["post_answer"], "name": "kept", "description": sent}),
+        ]
+    )
+    update = {"group": grp["name"], "description": sent}
+    create = {"name": "new", "devices": ["ftd-a"], "description": sent}
+    async with Client(server()) as c:
+        preview = await run(c, "fmc_update_device_group", update)
+        done = await run(c, "fmc_update_device_group", {**update, "confirm": preview["confirm"]})
+        again = await run(c, "fmc_update_device_group", update)  # FMC kept nothing: still a change
+        made = await run(c, "fmc_create_device_group", create)
+        made = await run(c, "fmc_create_device_group", {**create, "confirm": made["confirm"]})
+        kept = await run(c, "fmc_create_device_group", {**create, "name": "kept"})
+        kept = await run(c, "fmc_create_device_group", {**create, "name": "kept", "confirm": kept["confirm"]})
+    assert json.loads(put.calls.last.request.content)["description"] == sent
+    assert "doesn't store device-group descriptions" in preview["preview"]["notes"][0]
+    assert done["status"] == "applied" and "did not keep the description" in done["result"]["warning"]
+    assert len(done["result"]["members"]) == 4
+    assert again["preview"]["description"] == {"from": "", "to": sent}
+    assert "did not keep the description" in made["result"]["warning"]
+    assert "warning" not in kept["result"]  # an FMC that keeps it: no warning
+
+
 async def test_licences_by_group_say_what_was_applied_when_one_fails(fleet: respx.MockRouter) -> None:
     fleet.put(f"{CFG}/devices/devicerecords/{A}").mock(return_value=httpx.Response(200, json={}))
     fleet.put(f"{CFG}/devices/devicerecords/{B}").mock(
