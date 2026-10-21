@@ -1,0 +1,670 @@
+{
+ "_source": "FMC 10.0.1 (build 1), Global/mcp-test-leaf, 2026-10-20 (probe agent, W6 F67): mcp-w6-probe-acp (unassigned) and its rules mcp-w6-probe-1..3; links dropped.",
+ "before": {
+  "_source": "GET accessrules?expanded=true after creating the three rules",
+  "items": [
+   {
+    "metadata": {
+     "ruleIndex": 1,
+     "section": "Default",
+     "category": "--Undefined--",
+     "accessPolicy": {
+      "name": "mcp-w6-probe-acp",
+      "id": "00000000-0000-0ed3-0000-021474961034",
+      "type": "AccessPolicy"
+     },
+     "timestamp": 1792537033795,
+     "domain": {
+      "name": "Global \\ mcp-test-leaf",
+      "id": "a1c73df0-8353-8db7-1097-000000000000",
+      "type": "Domain"
+     }
+    },
+    "enabled": true,
+    "advancedLogging": {},
+    "sendEventsToFMC": true,
+    "enableSyslog": false,
+    "destinationDynamicObjects": {},
+    "logBegin": true,
+    "logEnd": true,
+    "logFiles": false,
+    "sourceDynamicObjects": {},
+    "commentHistoryList": [
+     {
+      "date": "2026-10-20T22:57:07.000+0000",
+      "comment": "w6 probe rule 1",
+      "user": {
+       "name": "mcp-api-svc",
+       "type": "User"
+      }
+     }
+    ],
+    "sourceNetworks": {
+     "literals": [
+      {
+       "type": "Network",
+       "value": "192.0.2.0/24"
+      }
+     ]
+    },
+    "destinationNetworks": {
+     "literals": [
+      {
+       "type": "Host",
+       "value": "198.51.100.10"
+      }
+     ]
+    },
+    "vlanTags": {},
+    "destinationPorts": {
+     "literals": [
+      {
+       "type": "PortLiteral",
+       "port": "443",
+       "protocol": "6"
+      }
+     ]
+    },
+    "action": "ALLOW",
+    "variableSet": {
+     "name": "Default-Set",
+     "id": "76fa83ea-c972-11e2-8be8-8e45bb1343c0",
+     "type": "VariableSet"
+    },
+    "type": "AccessRule",
+    "name": "mcp-w6-probe-1",
+    "id": "00000000-0000-0ed3-0000-000268434502"
+   },
+   {
+    "metadata": {
+     "ruleIndex": 2,
+     "section": "Default",
+     "category": "--Undefined--",
+     "accessPolicy": {
+      "name": "mcp-w6-probe-acp",
+      "id": "00000000-0000-0ed3-0000-021474961034",
+      "type": "AccessPolicy"
+     },
+     "timestamp": 1792537041248,
+     "domain": {
+      "name": "Global \\ mcp-test-leaf",
+      "id": "a1c73df0-8353-8db7-1097-000000000000",
+      "type": "Domain"
+     }
+    },
+    "enabled": true,
+    "advancedLogging": {},
+    "sendEventsToFMC": true,
+    "enableSyslog": false,
+    "destinationDynamicObjects": {},
+    "logBegin": true,
+    "logEnd": false,
+    "logFiles": false,
+    "sourceDynamicObjects": {},
+    "commentHistoryList": [
+     {
+      "date": "2026-10-20T22:57:13.000+0000",
+      "comment": "w6 probe rule 2",
+      "user": {
+       "name": "mcp-api-svc",
+       "type": "User"
+      }
+     }
+    ],
+    "destinationNetworks": {
+     "literals": [
+      {
+       "type": "Network",
+       "value": "203.0.113.0/24"
+      }
+     ]
+    },
+    "vlanTags": {},
+    "destinationPorts": {
+     "literals": [
+      {
+       "type": "PortLiteral",
+       "port": "53",
+       "protocol": "17"
+      }
+     ]
+    },
+    "action": "BLOCK",
+    "variableSet": {
+     "name": "Default-Set",
+     "id": "76fa83ea-c972-11e2-8be8-8e45bb1343c0",
+     "type": "VariableSet"
+    },
+    "type": "AccessRule",
+    "name": "mcp-w6-probe-2",
+    "id": "00000000-0000-0ed3-0000-000268434503"
+   },
+   {
+    "metadata": {
+     "ruleIndex": 3,
+     "section": "Default",
+     "category": "--Undefined--",
+     "accessPolicy": {
+      "name": "mcp-w6-probe-acp",
+      "id": "00000000-0000-0ed3-0000-021474961034",
+      "type": "AccessPolicy"
+     },
+     "timestamp": 1792537041244,
+     "domain": {
+      "name": "Global \\ mcp-test-leaf",
+      "id": "a1c73df0-8353-8db7-1097-000000000000",
+      "type": "Domain"
+     }
+    },
+    "enabled": false,
+    "advancedLogging": {},
+    "sendEventsToFMC": false,
+    "enableSyslog": false,
+    "destinationDynamicObjects": {},
+    "logBegin": false,
+    "logEnd": false,
+    "logFiles": false,
+    "sourceDynamicObjects": {},
+    "commentHistoryList": [
+     {
+      "date": "2026-10-20T22:57:21.000+0000",
+      "comment": "w6 probe rule 3",
+      "user": {
+       "name": "mcp-api-svc",
+       "type": "User"
+      }
+     }
+    ],
+    "sourceNetworks": {
+     "literals": [
+      {
+       "type": "Host",
+       "value": "192.0.2.5"
+      }
+     ]
+    },
+    "destinationNetworks": {
+     "literals": [
+      {
+       "type": "Network",
+       "value": "198.51.100.0/24"
+      }
+     ]
+    },
+    "vlanTags": {},
+    "destinationPorts": {
+     "literals": [
+      {
+       "type": "PortLiteral",
+       "port": "22",
+       "protocol": "6"
+      }
+     ]
+    },
+    "action": "ALLOW",
+    "variableSet": {
+     "name": "Default-Set",
+     "id": "76fa83ea-c972-11e2-8be8-8e45bb1343c0",
+     "type": "VariableSet"
+    },
+    "type": "AccessRule",
+    "name": "mcp-w6-probe-3",
+    "id": "00000000-0000-0ed3-0000-000268434504"
+   }
+  ],
+  "paging": {
+   "offset": 0,
+   "limit": 25,
+   "count": 3,
+   "pages": 1
+  }
+ },
+ "rejected": {
+  "_source": "PUT accessrules?bulk=true&partialUpdate=true [{probe-1 enabled:false}, {probe-3 enabled:true, logEnd:true}] -> 400; nothing applied (atomic), no rule named",
+  "status": 400,
+  "error": {
+   "category": "FRAMEWORK",
+   "messages": [
+    {
+     "description": "Provide at least one destination for Connection Events to be logged to."
+    }
+   ],
+   "severity": "ERROR"
+  }
+ },
+ "applied": {
+  "_source": "the same + sendEventsToFMC:true on probe-3 -> 200; items in request order, metadata.ruleIndex 1 for both",
+  "items": [
+   {
+    "metadata": {
+     "ruleIndex": 1,
+     "section": "Default",
+     "category": "--Undefined--",
+     "accessPolicy": {
+      "name": "mcp-w6-probe-acp",
+      "id": "00000000-0000-0ed3-0000-021474961034",
+      "type": "AccessPolicy"
+     }
+    },
+    "enabled": false,
+    "advancedLogging": {},
+    "sendEventsToFMC": true,
+    "enableSyslog": false,
+    "destinationDynamicObjects": {},
+    "logBegin": true,
+    "logEnd": true,
+    "logFiles": false,
+    "sourceDynamicObjects": {},
+    "commentHistoryList": [
+     {
+      "date": "2026-10-20T22:57:07.000+0000",
+      "comment": "w6 probe rule 1",
+      "user": {
+       "name": "mcp-api-svc",
+       "type": "User"
+      }
+     }
+    ],
+    "sourceNetworks": {
+     "literals": [
+      {
+       "type": "Network",
+       "value": "192.0.2.0/24"
+      }
+     ]
+    },
+    "destinationNetworks": {
+     "literals": [
+      {
+       "type": "Host",
+       "value": "198.51.100.10"
+      }
+     ]
+    },
+    "vlanTags": {},
+    "destinationPorts": {
+     "literals": [
+      {
+       "type": "PortLiteral",
+       "port": "443",
+       "protocol": "6"
+      }
+     ]
+    },
+    "action": "ALLOW",
+    "variableSet": {
+     "name": "Default-Set",
+     "id": "76fa83ea-c972-11e2-8be8-8e45bb1343c0",
+     "type": "VariableSet"
+    },
+    "type": "AccessRule",
+    "name": "mcp-w6-probe-1",
+    "id": "00000000-0000-0ed3-0000-000268434502"
+   },
+   {
+    "metadata": {
+     "ruleIndex": 1,
+     "section": "Default",
+     "category": "--Undefined--",
+     "accessPolicy": {
+      "name": "mcp-w6-probe-acp",
+      "id": "00000000-0000-0ed3-0000-021474961034",
+      "type": "AccessPolicy"
+     }
+    },
+    "enabled": true,
+    "advancedLogging": {},
+    "sendEventsToFMC": true,
+    "enableSyslog": false,
+    "destinationDynamicObjects": {},
+    "logBegin": false,
+    "logEnd": true,
+    "logFiles": false,
+    "sourceDynamicObjects": {},
+    "commentHistoryList": [
+     {
+      "date": "2026-10-20T22:57:21.000+0000",
+      "comment": "w6 probe rule 3",
+      "user": {
+       "name": "mcp-api-svc",
+       "type": "User"
+      }
+     }
+    ],
+    "sourceNetworks": {
+     "literals": [
+      {
+       "type": "Host",
+       "value": "192.0.2.5"
+      }
+     ]
+    },
+    "destinationNetworks": {
+     "literals": [
+      {
+       "type": "Network",
+       "value": "198.51.100.0/24"
+      }
+     ]
+    },
+    "vlanTags": {},
+    "destinationPorts": {
+     "literals": [
+      {
+       "type": "PortLiteral",
+       "port": "22",
+       "protocol": "6"
+      }
+     ]
+    },
+    "action": "ALLOW",
+    "variableSet": {
+     "name": "Default-Set",
+     "id": "76fa83ea-c972-11e2-8be8-8e45bb1343c0",
+     "type": "VariableSet"
+    },
+    "type": "AccessRule",
+    "name": "mcp-w6-probe-3",
+    "id": "00000000-0000-0ed3-0000-000268434504"
+   }
+  ]
+ },
+ "after": {
+  "_source": "GET accessrules?expanded=true after the 200: only the sent fields changed",
+  "items": [
+   {
+    "metadata": {
+     "ruleIndex": 1,
+     "section": "Default",
+     "category": "--Undefined--",
+     "accessPolicy": {
+      "name": "mcp-w6-probe-acp",
+      "id": "00000000-0000-0ed3-0000-021474961034",
+      "type": "AccessPolicy"
+     },
+     "timestamp": 1792537095407,
+     "domain": {
+      "name": "Global \\ mcp-test-leaf",
+      "id": "a1c73df0-8353-8db7-1097-000000000000",
+      "type": "Domain"
+     }
+    },
+    "enabled": false,
+    "advancedLogging": {},
+    "sendEventsToFMC": true,
+    "enableSyslog": false,
+    "destinationDynamicObjects": {},
+    "logBegin": true,
+    "logEnd": true,
+    "logFiles": false,
+    "sourceDynamicObjects": {},
+    "commentHistoryList": [
+     {
+      "date": "2026-10-20T22:57:07.000+0000",
+      "comment": "w6 probe rule 1",
+      "user": {
+       "name": "mcp-api-svc",
+       "type": "User"
+      }
+     }
+    ],
+    "sourceNetworks": {
+     "literals": [
+      {
+       "type": "Network",
+       "value": "192.0.2.0/24"
+      }
+     ]
+    },
+    "destinationNetworks": {
+     "literals": [
+      {
+       "type": "Host",
+       "value": "198.51.100.10"
+      }
+     ]
+    },
+    "vlanTags": {},
+    "destinationPorts": {
+     "literals": [
+      {
+       "type": "PortLiteral",
+       "port": "443",
+       "protocol": "6"
+      }
+     ]
+    },
+    "action": "ALLOW",
+    "variableSet": {
+     "name": "Default-Set",
+     "id": "76fa83ea-c972-11e2-8be8-8e45bb1343c0",
+     "type": "VariableSet"
+    },
+    "type": "AccessRule",
+    "name": "mcp-w6-probe-1",
+    "id": "00000000-0000-0ed3-0000-000268434502"
+   },
+   {
+    "metadata": {
+     "ruleIndex": 2,
+     "section": "Default",
+     "category": "--Undefined--",
+     "accessPolicy": {
+      "name": "mcp-w6-probe-acp",
+      "id": "00000000-0000-0ed3-0000-021474961034",
+      "type": "AccessPolicy"
+     },
+     "timestamp": 1792537041248,
+     "domain": {
+      "name": "Global \\ mcp-test-leaf",
+      "id": "a1c73df0-8353-8db7-1097-000000000000",
+      "type": "Domain"
+     }
+    },
+    "enabled": true,
+    "advancedLogging": {},
+    "sendEventsToFMC": true,
+    "enableSyslog": false,
+    "destinationDynamicObjects": {},
+    "logBegin": true,
+    "logEnd": false,
+    "logFiles": false,
+    "sourceDynamicObjects": {},
+    "commentHistoryList": [
+     {
+      "date": "2026-10-20T22:57:13.000+0000",
+      "comment": "w6 probe rule 2",
+      "user": {
+       "name": "mcp-api-svc",
+       "type": "User"
+      }
+     }
+    ],
+    "destinationNetworks": {
+     "literals": [
+      {
+       "type": "Network",
+       "value": "203.0.113.0/24"
+      }
+     ]
+    },
+    "vlanTags": {},
+    "destinationPorts": {
+     "literals": [
+      {
+       "type": "PortLiteral",
+       "port": "53",
+       "protocol": "17"
+      }
+     ]
+    },
+    "action": "BLOCK",
+    "variableSet": {
+     "name": "Default-Set",
+     "id": "76fa83ea-c972-11e2-8be8-8e45bb1343c0",
+     "type": "VariableSet"
+    },
+    "type": "AccessRule",
+    "name": "mcp-w6-probe-2",
+    "id": "00000000-0000-0ed3-0000-000268434503"
+   },
+   {
+    "metadata": {
+     "ruleIndex": 3,
+     "section": "Default",
+     "category": "--Undefined--",
+     "accessPolicy": {
+      "name": "mcp-w6-probe-acp",
+      "id": "00000000-0000-0ed3-0000-021474961034",
+      "type": "AccessPolicy"
+     },
+     "timestamp": 1792537095407,
+     "domain": {
+      "name": "Global \\ mcp-test-leaf",
+      "id": "a1c73df0-8353-8db7-1097-000000000000",
+      "type": "Domain"
+     }
+    },
+    "enabled": true,
+    "advancedLogging": {},
+    "sendEventsToFMC": true,
+    "enableSyslog": false,
+    "destinationDynamicObjects": {},
+    "logBegin": false,
+    "logEnd": true,
+    "logFiles": false,
+    "sourceDynamicObjects": {},
+    "commentHistoryList": [
+     {
+      "date": "2026-10-20T22:57:21.000+0000",
+      "comment": "w6 probe rule 3",
+      "user": {
+       "name": "mcp-api-svc",
+       "type": "User"
+      }
+     }
+    ],
+    "sourceNetworks": {
+     "literals": [
+      {
+       "type": "Host",
+       "value": "192.0.2.5"
+      }
+     ]
+    },
+    "destinationNetworks": {
+     "literals": [
+      {
+       "type": "Network",
+       "value": "198.51.100.0/24"
+      }
+     ]
+    },
+    "vlanTags": {},
+    "destinationPorts": {
+     "literals": [
+      {
+       "type": "PortLiteral",
+       "port": "22",
+       "protocol": "6"
+      }
+     ]
+    },
+    "action": "ALLOW",
+    "variableSet": {
+     "name": "Default-Set",
+     "id": "76fa83ea-c972-11e2-8be8-8e45bb1343c0",
+     "type": "VariableSet"
+    },
+    "type": "AccessRule",
+    "name": "mcp-w6-probe-3",
+    "id": "00000000-0000-0ed3-0000-000268434504"
+   }
+  ],
+  "paging": {
+   "offset": 0,
+   "limit": 25,
+   "count": 3,
+   "pages": 1
+  }
+ },
+ "comment": {
+  "_source": "PUT [{probe-1 enabled:true, newComments:[...]}] -> 200: the comment is appended",
+  "items": [
+   {
+    "metadata": {
+     "ruleIndex": 1,
+     "section": "Default",
+     "category": "--Undefined--",
+     "accessPolicy": {
+      "name": "mcp-w6-probe-acp",
+      "id": "00000000-0000-0ed3-0000-021474961034",
+      "type": "AccessPolicy"
+     }
+    },
+    "enabled": true,
+    "advancedLogging": {},
+    "sendEventsToFMC": true,
+    "enableSyslog": false,
+    "destinationDynamicObjects": {},
+    "logBegin": true,
+    "logEnd": true,
+    "logFiles": false,
+    "sourceDynamicObjects": {},
+    "commentHistoryList": [
+     {
+      "date": "2026-10-20T22:57:07.000+0000",
+      "comment": "w6 probe rule 1",
+      "user": {
+       "name": "mcp-api-svc",
+       "type": "User"
+      }
+     },
+     {
+      "date": "2026-10-20T22:59:05.000+0000",
+      "comment": "w6 probe partial comment",
+      "user": {
+       "name": "mcp-api-svc",
+       "type": "User"
+      }
+     }
+    ],
+    "sourceNetworks": {
+     "literals": [
+      {
+       "type": "Network",
+       "value": "192.0.2.0/24"
+      }
+     ]
+    },
+    "destinationNetworks": {
+     "literals": [
+      {
+       "type": "Host",
+       "value": "198.51.100.10"
+      }
+     ]
+    },
+    "vlanTags": {},
+    "destinationPorts": {
+     "literals": [
+      {
+       "type": "PortLiteral",
+       "port": "443",
+       "protocol": "6"
+      }
+     ]
+    },
+    "action": "ALLOW",
+    "variableSet": {
+     "name": "Default-Set",
+     "id": "76fa83ea-c972-11e2-8be8-8e45bb1343c0",
+     "type": "VariableSet"
+    },
+    "type": "AccessRule",
+    "name": "mcp-w6-probe-1",
+    "id": "00000000-0000-0ed3-0000-000268434502"
+   }
+  ]
+ }
+}

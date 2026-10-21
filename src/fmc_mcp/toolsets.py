@@ -194,6 +194,8 @@ CATALOGUE: dict[str, tuple[str, tuple[str, ...]]] = {
         "access control, NAT and prefilter policies and rules, assignments, rule hygiene",
         (
             "fmc_assign_policy",
+            "fmc_bulk_update_access_rules",
+            "fmc_clear_hit_counts",
             "fmc_create_access_policy",
             "fmc_create_access_rule",
             "fmc_create_nat_policy",
