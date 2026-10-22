@@ -10,6 +10,7 @@ after fmc_deploy; check with fmc_run_show_command('show route') and the peer's C
 """
 
 # No `from __future__ import annotations`: FastMCP inspects signatures at runtime.
+import copy
 import ipaddress
 from typing import Annotated, Any
 
@@ -26,6 +27,7 @@ from fmc_mcp._core import (
     get_client,
 )
 from fmc_mcp._core.formatting import MASK, is_secret_key
+from fmc_mcp._core.secrets import scrub_text
 from fmc_mcp.client import FmcApp
 from fmc_mcp.preview import fmc_preview
 from fmc_mcp.refs import NETWORK_TYPES, RefResolver
@@ -47,6 +49,7 @@ from fmc_mcp.tools.route_policy import (
     apply_filters,
     apply_redistribution,
     fill_names,
+    missing_filters,
     neighbor_diff,
     neighbor_filters,
     redistribution_row,
@@ -68,6 +71,11 @@ OSPF_PROCESS_DEFAULTS: dict[str, Any] = {
     "timers": {"lsaGroup": 240},
 }
 
+
+# The create path's second step (F77-6): FMC 10.0.1 answers OK to a BGP create whose new neighbour has
+# default-originate (with its route map) and stores neighborFiltering {}; an update keeps it.
+FILTER_STEP = "update bgp: neighbor filters FMC left out of the create"
+NEW_MODEL = "<id of the new BGP model>"
 
 # --- helpers -------------------------------------------------------------------------------------
 
@@ -261,6 +269,191 @@ async def network_refs(app: FmcApp, values: list[str] | None, domain: str | None
     return out
 
 
+def created_body(steps: list[tuple[str, str, str, dict[str, Any] | None]]) -> dict[str, Any]:
+    """The body of the plan's "create bgp" step ({} without one)."""
+    return next((b or {} for name, _m, _p, b in steps if name == "create bgp"), {})
+
+
+def sent_filters(model: dict[str, Any]) -> dict[str, dict[str, Any]]:
+    """{neighbour address: neighborFiltering} of the neighbours a BGP body sends with filters."""
+    return {
+        str(n.get("ipv4Address")): dict(n["neighborFiltering"])
+        for n in (model.get("addressFamilyIPv4") or {}).get("neighbors") or []
+        if n.get("neighborFiltering")
+    }
+
+
+def _stored_neighbors(model: dict[str, Any] | None) -> dict[str, dict[str, Any]]:
+    return {
+        str(n.get("ipv4Address")): n
+        for n in ((model or {}).get("addressFamilyIPv4") or {}).get("neighbors") or []
+    }
+
+
+def not_kept(stored: dict[str, Any] | None, sent: dict[str, dict[str, Any]]) -> dict[str, list[str]]:
+    """{address: neighborFiltering keys} FMC's re-read model lacks (a neighbour that is missing
+    altogether: every key it was sent with)."""
+    have = _stored_neighbors(stored)
+    out: dict[str, list[str]] = {}
+    for addr, nf in sent.items():
+        keys = missing_filters(nf, (have.get(addr) or {}).get("neighborFiltering"))
+        if keys:
+            out[addr] = keys
+    return out
+
+
+def filter_repair(
+    stored: dict[str, Any], sent: dict[str, Any], missing: dict[str, list[str]]
+) -> tuple[dict[str, Any], list[str]]:
+    """The update that puts missing neighbour filters back: FMC's stored model (everything else sent back
+    as stored; maximumPaths left out, as on every BGP update) with each listed neighbour's missing
+    neighborFiltering keys taken from the create body. FMC returns MD5 passwords masked (or may leave them
+    out), and a PUT with the mask sets the mask as the password while one without it removes
+    authentication, so the password the call gave goes back in whenever the stored one is masked or
+    absent; the second value lists the neighbours with a masked password the call didn't give (an update
+    would replace it)."""
+    body = copy.deepcopy(editable(stored))
+    af = body.get("addressFamilyIPv4") or {}
+    af.pop("maximumPaths", None)
+    mine = _stored_neighbors(sent)
+    unsafe: list[str] = []
+    for n in af.get("neighbors") or []:
+        addr = str(n.get("ipv4Address"))
+        asked = mine.get(addr) or {}
+        if addr in missing:
+            nf = dict(n.get("neighborFiltering") or {})
+            for k in missing[addr]:
+                nf[k] = copy.deepcopy(asked["neighborFiltering"][k])
+            n["neighborFiltering"] = nf
+        secret = (n.get("neighborAdvanced") or {}).get("neighborSecret")
+        masked = bool(secret) and set(str(secret)) == {"*"}
+        given = (asked.get("neighborAdvanced") or {}).get("neighborSecret")
+        if given and (masked or not secret):
+            n["neighborAdvanced"] = {**(n.get("neighborAdvanced") or {}), "neighborSecret": given}
+        elif masked:
+            unsafe.append(addr)
+    return body, unsafe
+
+
+async def keep_filters(
+    app: FmcApp,
+    created: Any,
+    sent: dict[str, Any],
+    bgp_path: str,
+    list_path: str,
+    domain: str | None,
+) -> dict[str, Any]:
+    """F77-6, after a BGP create (POST) whose new neighbour has filters: re-read the new model; when a
+    sent filter is missing (FMC 10.0.1 leaves default-originate out of a create), send it again in one
+    update (PUT) and re-read once more. Returns `stored: True` when the update made FMC keep them, plus
+    `verified`, or `not_stored` (readable, per neighbour) and a plain `warning`. Never raises: the create
+    has already been applied, so anything that goes wrong in the check (a re-read FMC answers in another
+    shape, ...) is a "Not verified" warning next to it."""
+    progress = {"update": ""}  # "sending" while the PUT is out, "answered" once FMC answered OK
+    try:
+        return await _keep_filters(app, created, sent, bgp_path, list_path, domain, progress)
+    except Exception as e:  # noqa: BLE001 - the create is applied; report, don't fail the call
+        why = f"{type(e).__name__}: {scrub_text(str(e))[:200]}"
+        update = {
+            "sending": " An update sending the filters again had been started (its outcome is unknown).",
+            "answered": " An update had sent the filters again (answered OK) before that.",
+        }.get(progress["update"], "")
+        return {
+            "warning": f"Not verified: checking the new BGP model's neighbor filters after the create failed "
+            f"({why}).{update} FMC 10.0.1 can leave a neighbor's default-originate out of a create: check "
+            "the neighbor with fmc_get_routing."
+        }
+
+
+async def _keep_filters(
+    app: FmcApp,
+    created: Any,
+    sent: dict[str, Any],
+    bgp_path: str,
+    list_path: str,
+    domain: str | None,
+    progress: dict[str, str],
+) -> dict[str, Any]:
+    filters = sent_filters(sent)
+
+    async def reread(model_id: Any) -> dict[str, Any] | None:
+        if model_id:
+            got = await app.api.get(f"{bgp_path}/{model_id}")
+            return got if isinstance(got, dict) else None
+        return next(iter(await _items(app, list_path, domain)), None)
+
+    def shown(missing: dict[str, list[str]]) -> list[dict[str, Any]]:
+        return [
+            {
+                "neighbor": addr,
+                "filters": neighbor_filters({"neighborFiltering": {k: filters[addr][k] for k in keys}}),
+            }
+            for addr, keys in missing.items()
+        ]
+
+    def named(missing: dict[str, list[str]]) -> str:
+        return "; ".join(f"{r['neighbor']}: {', '.join(r['filters'])}" for r in shown(missing))
+
+    def lost(missing: dict[str, list[str]], why: str) -> dict[str, Any]:
+        return {
+            "not_stored": shown(missing),
+            "warning": f"FMC answered OK but didn't store these neighbor filters ({named(missing)}) {why}: "
+            "a deploy won't put them on the device. The rest of BGP was created. Check with "
+            "fmc_get_routing, then repeat the call for that neighbor (now an update) or set them in the "
+            "FMC UI.",
+        }
+
+    created_id = created.get("id") if isinstance(created, dict) else None
+    try:
+        stored = await reread(created_id)
+    except (UpstreamError, InvalidRequest) as e:
+        return {
+            "warning": f"Not verified: re-reading the new BGP model failed ({e}). FMC 10.0.1 can leave a "
+            "neighbor's default-originate out of a create: check the neighbor with fmc_get_routing."
+        }
+    missing = not_kept(stored, filters)
+    if not missing:
+        return {"verified": "re-read after the create: the neighbor filters are stored as sent"}
+    if stored is None or not stored.get("id"):
+        return {
+            "warning": "Not verified: the re-read after the create found no BGP model, so the neighbor "
+            f"filters ({named(missing)}) couldn't be checked or sent again. FMC 10.0.1 can leave a "
+            "neighbor's default-originate out of a create: check the neighbor with fmc_get_routing."
+        }
+    gone = [a for a in missing if a not in _stored_neighbors(stored)]
+    if gone:
+        return lost(missing, f"in the create, and the re-read has no neighbor {', '.join(gone)} to update")
+    body, unsafe = filter_repair(stored, sent, missing)
+    if unsafe:
+        return lost(
+            missing,
+            f"in the create; not sent again because neighbor {', '.join(unsafe)} has an MD5 password FMC "
+            "only returns masked (an update would replace it)",
+        )
+    progress["update"] = "sending"
+    try:
+        await app.api.put(f"{bgp_path}/{stored['id']}", body)
+    except (UpstreamError, InvalidRequest) as e:
+        return lost(missing, f"in the create, and the update that sent them again failed ({e})")
+    progress["update"] = "answered"
+    try:
+        again = await reread(stored["id"])
+    except (UpstreamError, InvalidRequest) as e:
+        return {
+            "warning": f"FMC left these neighbor filters out of the create ({named(missing)}); an update "
+            f"sent them again (answered OK), but re-reading it failed ({e}), so it isn't verified: check "
+            "with fmc_get_routing."
+        }
+    still = not_kept(again, filters)
+    if still:
+        return lost(still, "in the create, nor in the update that sent them again (both answered OK)")
+    return {
+        "stored": True,
+        "verified": f"FMC 10.0.1 left these neighbor filters out of the create ({named(missing)}); the "
+        "update sent them again and the re-read shows them stored",
+    }
+
+
 # --- tools ---------------------------------------------------------------------------------------
 
 
@@ -429,7 +622,9 @@ def register(reg: ToolRegistrar) -> None:
 
         Route policy on a neighbor (F77): inbound/outbound route maps and prefix lists (objects from
         fmc_create_route_map / fmc_create_prefix_list), a maximum-prefix limit and default-originate
-        (with a route map: FMC 10.0.1 drops it without one);
+        (with a route map: FMC 10.0.1 drops it without one, and leaves it out of a BGP create: on a device
+        without BGP the server re-reads the new model and sends a missing neighbor filter again in an
+        update; the result names any FMC still didn't keep);
         redistribution of connected, static or OSPF routes into BGP with a route map and metric. FMC
         replaces the whole BGP model on every change, so only the named neighbor and sources change and
         the preview shows just that diff. Check with fmc_get_routing, then after the deploy
@@ -661,16 +856,29 @@ def register(reg: ToolRegistrar) -> None:
                 steps.append(("update bgp", "PUT", f"{bgp_path}/{bgp['id']}", desired))
             else:
                 steps.append(("create bgp", "POST", bgp_path, desired))
+                if sent_filters(desired):  # F77-6: checked after the create, sent again if FMC left them out
+                    steps.append((FILTER_STEP, "PUT", f"{bgp_path}/{NEW_MODEL}", None))
 
         async def apply() -> Any:
             done: list[str] = []
+            check: dict[str, Any] = {}
+            created: Any = None
             try:
                 for name, method, path, body in steps:
+                    if name == FILTER_STEP:
+                        check = await keep_filters(
+                            app, created, created_body(steps), bgp_path, f"{base}/bgp", domain
+                        )
+                        if check.pop("stored", False):
+                            done.append(name)
+                        continue
                     try:
                         if method == "DELETE":
                             await app.api.delete(path)
                         elif method == "POST":
-                            await app.api.post(path, body)
+                            answer = await app.api.post(path, body)
+                            if name == "create bgp":
+                                created = answer
                         else:
                             await app.api.put(path, body)
                     except Exception as e:
@@ -681,7 +889,26 @@ def register(reg: ToolRegistrar) -> None:
                     done.append(name)
             finally:
                 app.invalidate_cache()
-            return {"applied": done, "next": "fmc_deploy, then check 'show route' on the device"}
+            return {
+                "applied": done,
+                **check,
+                "next": "fmc_deploy, then check 'show route' on the device",
+            }
+
+        shown = requests_shown(steps)
+        for row in shown:
+            if row["step"] == FILTER_STEP:
+                row["only_if"] = (
+                    "the re-read of the new model after the create (one GET) lacks a neighbor filter "
+                    "sent in it; one more GET then checks the update"
+                )
+                row["sends"] = {
+                    "model": "FMC's re-read of the new model (maximumPaths left out, as on every BGP update)",
+                    "with": [
+                        {"neighbor": addr, "neighborFiltering": mask_body(nf)}
+                        for addr, nf in sent_filters(created_body(steps)).items()
+                    ],
+                }
 
         return await fmc_preview(
             ctx,
@@ -713,8 +940,7 @@ def register(reg: ToolRegistrar) -> None:
             confirm=confirm,
             plan=Plan(
                 f"{'Remove' if remove_bgp else 'Change'} BGP on {where}",
-                details={"steps": [s[0] for s in steps], **view}
-                | ({} if blockers else {"requests": requests_shown(steps)}),
+                details={"steps": [s[0] for s in steps], **view} | ({} if blockers else {"requests": shown}),
                 fingerprint={"general": general and editable(general), "bgp": bgp and editable(bgp)}
                 | ({"policy": [resolved, [s[3] for s in steps]]} if policy else {}),
                 blockers=blockers,
@@ -725,6 +951,16 @@ def register(reg: ToolRegistrar) -> None:
                         "sent back as they are."
                     ]
                     if policy
+                    else []
+                )
+                + (
+                    [
+                        "FMC 10.0.1 answers OK to a BGP create but leaves a new neighbor's default-originate "
+                        "out of it (an update keeps it): after the create the server re-reads the new model "
+                        "and, if a neighbor filter it sent is missing, sends it again in one update and "
+                        "re-reads once more. The result names any filter FMC still didn't keep."
+                    ]
+                    if any(st[0] == FILTER_STEP for st in steps)
                     else []
                 ),
             ),
