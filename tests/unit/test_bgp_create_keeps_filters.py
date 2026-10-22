@@ -21,6 +21,7 @@ import copy
 from typing import Any
 
 import httpx
+import pytest
 import respx
 from fastmcp import Client
 
@@ -195,15 +196,23 @@ async def test_create_keeps_a_prefix_list_filter_one_reread_no_update(fmc: respx
     assert done["result"]["verified"] == "re-read after the create: the neighbor filters are stored as sent"
 
 
-async def test_the_update_puts_the_md5_password_back(fmc: respx.MockRouter) -> None:
-    """FMC returns a neighbour's MD5 password masked; the update carries the one the call gave (a PUT with
-    the mask would set the mask as the password), and neither preview nor result shows it."""
+@pytest.mark.parametrize("stored_secret", ["********", None], ids=["masked", "absent"])
+async def test_the_update_puts_the_md5_password_back(
+    fmc: respx.MockRouter, stored_secret: str | None
+) -> None:
+    """FMC returns a neighbour's MD5 password masked (or may leave it out of the re-read); the update carries
+    the one the call gave (a PUT with the mask sets the mask as the password, one without it removes
+    authentication), and neither preview nor result shows it."""
     routes = mount_new_hub(fmc)
     masked = copy.deepcopy(DROPPED)
-    masked["addressFamilyIPv4"]["neighbors"][0]["neighborAdvanced"]["neighborSecret"] = "********"
-    routes["create"].mock(return_value=httpx.Response(201, json=copy.deepcopy(masked)))
     kept = copy.deepcopy(KEPT)
-    kept["addressFamilyIPv4"]["neighbors"][0]["neighborAdvanced"]["neighborSecret"] = "********"
+    if stored_secret is not None:
+        masked["addressFamilyIPv4"]["neighbors"][0]["neighborAdvanced"]["neighborSecret"] = stored_secret
+        kept["addressFamilyIPv4"]["neighbors"][0]["neighborAdvanced"]["neighborSecret"] = stored_secret
+    assert ("neighborSecret" in masked["addressFamilyIPv4"]["neighbors"][0]["neighborAdvanced"]) == bool(
+        stored_secret
+    )
+    routes["create"].mock(return_value=httpx.Response(201, json=copy.deepcopy(masked)))
     fmc.get(f"{R}/bgp/{MODEL_ID}").mock(side_effect=answers(masked, kept))
     args = {**HUB_ARGS, "neighbor_password": "md5-Throwaway-1"}
     async with Client(server()) as c:
@@ -213,6 +222,54 @@ async def test_the_update_puts_the_md5_password_back(fmc: respx.MockRouter) -> N
     assert neighbor["neighborAdvanced"]["neighborSecret"] == "md5-Throwaway-1"
     assert "md5-Throwaway-1" not in str(preview) and "md5-Throwaway-1" not in str(done)
     assert done["result"]["applied"][-1] == FILTER_STEP
+
+
+MALFORMED = {"id": MODEL_ID, "addressFamilyIPv4": {"neighbors": [PEER]}}  # a shape FMC never sent
+
+
+async def test_a_malformed_reread_is_not_verified(fmc: respx.MockRouter) -> None:
+    """Review of #318: the create has been applied when the check runs, so a re-read in an unexpected shape
+    is a "Not verified" warning next to it, not an error that hides the applied create."""
+    routes = mount_new_hub(fmc)
+    fmc.get(f"{R}/bgp/{MODEL_ID}").mock(side_effect=answers(MALFORMED))
+    async with Client(server()) as c:
+        preview = await run(c, "fmc_configure_bgp", HUB_ARGS)
+        done = await run(c, "fmc_configure_bgp", {**HUB_ARGS, "confirm": preview["confirm"]})
+    assert done["status"] == "applied"
+    result = done["result"]
+    assert result["applied"] == ["create bgp general settings", "create bgp"]
+    warning = result["warning"]
+    assert warning.startswith("Not verified: checking the new BGP model's neighbor filters after the create")
+    assert "AttributeError" in warning and "An update had sent" not in warning
+    assert "verified" not in result and "not_stored" not in result and not routes["update"].called
+
+
+async def test_a_malformed_reread_after_the_update_is_not_verified(fmc: respx.MockRouter) -> None:
+    routes = mount_new_hub(fmc)
+    fmc.get(f"{R}/bgp/{MODEL_ID}").mock(side_effect=answers(DROPPED, MALFORMED))
+    async with Client(server()) as c:
+        preview = await run(c, "fmc_configure_bgp", HUB_ARGS)
+        done = await run(c, "fmc_configure_bgp", {**HUB_ARGS, "confirm": preview["confirm"]})
+    result = done["result"]
+    assert routes["update"].call_count == 1
+    assert result["applied"] == ["create bgp general settings", "create bgp"]  # the update isn't verified
+    assert result["warning"].startswith("Not verified:")
+    assert "An update had sent the filters again (answered OK) before that." in result["warning"]
+
+
+async def test_no_model_in_the_reread_is_not_verified(fmc: respx.MockRouter) -> None:
+    """A re-read without a model can't tell whether FMC kept the filters: "couldn't be checked", not
+    "didn't store"."""
+    routes = mount_new_hub(fmc)
+    fmc.get(f"{R}/bgp/{MODEL_ID}").mock(return_value=httpx.Response(200, json={}))
+    async with Client(server()) as c:
+        preview = await run(c, "fmc_configure_bgp", HUB_ARGS)
+        done = await run(c, "fmc_configure_bgp", {**HUB_ARGS, "confirm": preview["confirm"]})
+    result = done["result"]
+    assert result["applied"] == ["create bgp general settings", "create bgp"]
+    assert result["warning"].startswith("Not verified: the re-read after the create found no BGP model")
+    assert "couldn't be checked" in result["warning"] and "didn't store" not in result["warning"]
+    assert "not_stored" not in result and not routes["update"].called
 
 
 async def test_a_failed_reread_is_not_verified(fmc: respx.MockRouter) -> None:

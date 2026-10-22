@@ -27,6 +27,7 @@ from fmc_mcp._core import (
     get_client,
 )
 from fmc_mcp._core.formatting import MASK, is_secret_key
+from fmc_mcp._core.secrets import scrub_text
 from fmc_mcp.client import FmcApp
 from fmc_mcp.preview import fmc_preview
 from fmc_mcp.refs import NETWORK_TYPES, RefResolver
@@ -306,9 +307,11 @@ def filter_repair(
 ) -> tuple[dict[str, Any], list[str]]:
     """The update that puts missing neighbour filters back: FMC's stored model (everything else sent back
     as stored; maximumPaths left out, as on every BGP update) with each listed neighbour's missing
-    neighborFiltering keys taken from the create body. FMC returns MD5 passwords masked, so the create
-    body's password goes back in; the second value lists the neighbours whose password can't be restored
-    (a PUT with the mask would replace it)."""
+    neighborFiltering keys taken from the create body. FMC returns MD5 passwords masked (or may leave them
+    out), and a PUT with the mask sets the mask as the password while one without it removes
+    authentication, so the password the call gave goes back in whenever the stored one is masked or
+    absent; the second value lists the neighbours with a masked password the call didn't give (an update
+    would replace it)."""
     body = copy.deepcopy(editable(stored))
     af = body.get("addressFamilyIPv4") or {}
     af.pop("maximumPaths", None)
@@ -323,12 +326,12 @@ def filter_repair(
                 nf[k] = copy.deepcopy(asked["neighborFiltering"][k])
             n["neighborFiltering"] = nf
         secret = (n.get("neighborAdvanced") or {}).get("neighborSecret")
-        if secret and set(str(secret)) == {"*"}:
-            given = (asked.get("neighborAdvanced") or {}).get("neighborSecret")
-            if given:
-                n["neighborAdvanced"] = {**n["neighborAdvanced"], "neighborSecret": given}
-            else:
-                unsafe.append(addr)
+        masked = bool(secret) and set(str(secret)) == {"*"}
+        given = (asked.get("neighborAdvanced") or {}).get("neighborSecret")
+        if given and (masked or not secret):
+            n["neighborAdvanced"] = {**(n.get("neighborAdvanced") or {}), "neighborSecret": given}
+        elif masked:
+            unsafe.append(addr)
     return body, unsafe
 
 
@@ -343,7 +346,34 @@ async def keep_filters(
     """F77-6, after a BGP create (POST) whose new neighbour has filters: re-read the new model; when a
     sent filter is missing (FMC 10.0.1 leaves default-originate out of a create), send it again in one
     update (PUT) and re-read once more. Returns `stored: True` when the update made FMC keep them, plus
-    `verified`, or `not_stored` (readable, per neighbour) and a plain `warning`."""
+    `verified`, or `not_stored` (readable, per neighbour) and a plain `warning`. Never raises: the create
+    has already been applied, so anything that goes wrong in the check (a re-read FMC answers in another
+    shape, ...) is a "Not verified" warning next to it."""
+    progress = {"update": ""}  # "sending" while the PUT is out, "answered" once FMC answered OK
+    try:
+        return await _keep_filters(app, created, sent, bgp_path, list_path, domain, progress)
+    except Exception as e:  # noqa: BLE001 - the create is applied; report, don't fail the call
+        why = f"{type(e).__name__}: {scrub_text(str(e))[:200]}"
+        update = {
+            "sending": " An update sending the filters again had been started (its outcome is unknown).",
+            "answered": " An update had sent the filters again (answered OK) before that.",
+        }.get(progress["update"], "")
+        return {
+            "warning": f"Not verified: checking the new BGP model's neighbor filters after the create failed "
+            f"({why}).{update} FMC 10.0.1 can leave a neighbor's default-originate out of a create: check "
+            "the neighbor with fmc_get_routing."
+        }
+
+
+async def _keep_filters(
+    app: FmcApp,
+    created: Any,
+    sent: dict[str, Any],
+    bgp_path: str,
+    list_path: str,
+    domain: str | None,
+    progress: dict[str, str],
+) -> dict[str, Any]:
     filters = sent_filters(sent)
 
     async def reread(model_id: Any) -> dict[str, Any] | None:
@@ -384,10 +414,15 @@ async def keep_filters(
     missing = not_kept(stored, filters)
     if not missing:
         return {"verified": "re-read after the create: the neighbor filters are stored as sent"}
+    if stored is None or not stored.get("id"):
+        return {
+            "warning": "Not verified: the re-read after the create found no BGP model, so the neighbor "
+            f"filters ({named(missing)}) couldn't be checked or sent again. FMC 10.0.1 can leave a "
+            "neighbor's default-originate out of a create: check the neighbor with fmc_get_routing."
+        }
     gone = [a for a in missing if a not in _stored_neighbors(stored)]
-    if stored is None or not stored.get("id") or gone:
-        where = f"has no neighbor {', '.join(gone)}" if stored and gone else "found no BGP model"
-        return lost(missing, f"in the create, and the re-read {where} to update")
+    if gone:
+        return lost(missing, f"in the create, and the re-read has no neighbor {', '.join(gone)} to update")
     body, unsafe = filter_repair(stored, sent, missing)
     if unsafe:
         return lost(
@@ -395,10 +430,12 @@ async def keep_filters(
             f"in the create; not sent again because neighbor {', '.join(unsafe)} has an MD5 password FMC "
             "only returns masked (an update would replace it)",
         )
+    progress["update"] = "sending"
     try:
         await app.api.put(f"{bgp_path}/{stored['id']}", body)
     except (UpstreamError, InvalidRequest) as e:
         return lost(missing, f"in the create, and the update that sent them again failed ({e})")
+    progress["update"] = "answered"
     try:
         again = await reread(stored["id"])
     except (UpstreamError, InvalidRequest) as e:
