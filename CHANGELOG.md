@@ -1,5 +1,16 @@
 # Changelog
 
+## Unreleased
+
+### Added
+- **Decrypt - Resign cipher downgrade warning** (F85, #319): FTD 10.0 removes the suites it can't decrypt from the ClientHello it
+  forwards under a Decrypt - Resign rule, so a server preferring TLS 1.2 ChaCha20, AES-CCM or ARIA falls back to
+  ECDHE-RSA-AES128-CBC-SHA, and the only "step-up" is for weak suites it can't decrypt (NULL, RC4, Camellia). The
+  `fmc_create_decryption_rule` and `fmc_update_decryption_rule` previews for DECRYPT_RESIGN and `fmc_tls_decryption_check`
+  (check `cipher downgrade`) now say so. `fmc_mcp.cipher_suites` records per suite what Decrypt - Resign did in the lab's
+  step-up experiments (FTDv 10.0.0, FMC 10.0.1, 2026-10-22) and adds the suites the run used: Camellia, AES-CCM, ARIA and
+  TLS_AES_128_CCM_SHA256.
+
 ## 0.16.0 (2026-10-22)
 
 Wave 6 Next: certificate enrolment, access policy structure, route policy, profiling, indicators and compliance evidence (F75-F80),
