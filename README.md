@@ -27,7 +27,7 @@ sessions, so never the GUI `admin` or another integration's user.
 has a wheel with stutters-mcp-core bundled in; it needs only PyPI dependencies.
 
 ```bash
-WHEEL=https://github.com/dr-stutters/fmc-mcp-server/releases/download/v0.15.0/fmc_mcp_server-0.15.0-py3-none-any.whl
+WHEEL=https://github.com/dr-stutters/fmc-mcp-server/releases/download/v0.16.0/fmc_mcp_server-0.16.0-py3-none-any.whl
 export FMC_URL=https://fmc.example.com FMC_USERNAME=mcp-api-ro FMC_PASSWORD='...'
 uvx --from "$WHEEL" fmc-mcp-server check            # preflight: TLS, token, domains, role, version, rate limit
 claude mcp add fmc -e FMC_URL=$FMC_URL -e FMC_USERNAME=$FMC_USERNAME -e FMC_PASSWORD="$FMC_PASSWORD" \
@@ -41,7 +41,7 @@ Claude Desktop (`claude_desktop_config.json`), same idea:
   "mcpServers": {
     "fmc": {
       "command": "uvx",
-      "args": ["--from", "https://github.com/dr-stutters/fmc-mcp-server/releases/download/v0.15.0/fmc_mcp_server-0.15.0-py3-none-any.whl", "fmc-mcp-server"],
+      "args": ["--from", "https://github.com/dr-stutters/fmc-mcp-server/releases/download/v0.16.0/fmc_mcp_server-0.16.0-py3-none-any.whl", "fmc-mcp-server"],
       "env": {"FMC_URL": "https://fmc.example.com", "FMC_USERNAME": "mcp-api-ro", "FMC_PASSWORD": "..."}
     }
   }
@@ -106,7 +106,7 @@ Changes made in FMC reach the firewalls only after a **deployment** (`fmc_deploy
 
 ## Tools
 
-There are 217 tools when every tier is enabled (89 read, 114 write, 14 dangerous; the dangerous tier turns `fmc_api_call` into a raw call), and eleven workflow prompts (`fmc_why_blocked`, `fmc_firewall_health_review`, `fmc_sdwan_troubleshoot`, `fmc_vpn_troubleshoot`, `fmc_threat_defense_review`, `fmc_prove_user_policy`; `fmc_rule_change_review` and `fmc_policy_cleanup`, write tier; `fmc_onboard_ftd`, `fmc_onboard_branch` and `fmc_ha_failover_check`, dangerous tier). `FMC_TOOLSETS` loads only some areas of them (see "Toolsets").
+There are 217 tools when every tier is enabled (89 read, 114 write, 14 dangerous; the dangerous tier turns `fmc_api_call` into a raw call), and twelve workflow prompts (`fmc_why_blocked`, `fmc_firewall_health_review`, `fmc_sdwan_troubleshoot`, `fmc_vpn_troubleshoot`, `fmc_threat_defense_review`, `fmc_prove_user_policy`, `fmc_compliance_evidence`; `fmc_rule_change_review` and `fmc_policy_cleanup`, write tier; `fmc_onboard_ftd`, `fmc_onboard_branch` and `fmc_ha_failover_check`, dangerous tier). `FMC_TOOLSETS` loads only some areas of them (see "Toolsets").
 
 **Read**
 
