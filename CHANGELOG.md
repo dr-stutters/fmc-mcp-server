@@ -4,7 +4,7 @@
 
 Wave 6 Next: certificate enrolment, access policy structure, route policy, profiling, indicators and compliance evidence (F75-F80),
 built and proven live in the run of 2026-10-21 on FMC 10.0.1 with FTDv 10.0 in CML ([docs/wave6-next-proofs.md](docs/wave6-next-proofs.md):
-every item with its live evidence, the path it was proven on, the 16 fixes from the live run and the calls that wait for a re-proof
+every item with its live evidence, the path it was proven on, the 18 fixes from the live run and the calls that wait for a re-proof
 through a freshly connected client). Also the Wave 6 Now follow-ups (#248-#250, #272-#274) and, from the TLS cipher lab, TLS
 version and cipher suite rules with Undecryptable Actions (F82/F83). 17 new tools and one prompt: 217 tools (89 read, 114 write,
 14 dangerous) and twelve prompts.
@@ -114,6 +114,12 @@ version and cipher suite rules with Undecryptable Actions (F82/F83). 17 new tool
   - `fmc_pending_changes` masked true/false settings whose names look secret (a BGP neighbour's "Send Community attribute");
     allow-listed flags are shown, communities and passwords stay masked (#308).
   - A certificate without a CN had no subject or issuer: CN, else OU, else O, and `self_signed` read from the certificate (#311).
+  - `fmc_configure_bgp` creating BGP from scratch: FMC 10.0.1 answers OK to the create but leaves a new neighbour's
+    default-originate route map out. The tool now re-reads the new model, sends dropped neighbour filters again in one update,
+    re-reads once more and says plainly if FMC still didn't keep them; a re-read that fails reports "not verified", never
+    "applied" (#318, proven live on the t1 hub).
+  - Show-command output leaves FTD's "Public Key Hashes:" and "Key Size (bits):" labels in clear; `fmc_delete_policy`'s preview
+    of a child policy counts its own rules and says the inherited ones stay in the base (#316).
 - Follow-ups from Wave 6 Now:
   - A read-only API user's objects were taken for FMC built-ins (readOnly reason RBAC): `fmc_list_objects`,
     `fmc_unused_objects`, `fmc_find_address` and the hygiene check keep them, and object writes name the role when refusing (#249,
@@ -142,9 +148,8 @@ version and cipher suite rules with Undecryptable Actions (F82/F83). 17 new tool
 
 ### Known limits
 - FMC 10.0.1: a rule moved into a category gets a new id, and a category itself can't be moved (its PUT takes no position);
-  OSPFv2 passive interfaces are not in the REST model; BGP default-originate is kept only with a route map, and when BGP is
-  created from scratch in one call FMC drops the neighbour's default-originate route map although it answers OK (F77-6, #172):
-  configure the neighbour first, then set default-originate in a second call; turning SNMP off keeps the stored community (only a
+  OSPFv2 passive interfaces are not in the REST model; BGP default-originate is kept only with a route map, and a BGP create
+  drops it (the tool repairs that with an update, #318); turning SNMP off keeps the stored community (only a
   PUT without it clears it); FMC's file lists have no REST endpoints.
 - Role permissions (403 for the lab's API role, both users): the Snort and CPU profilers (F78 runs, stop semantics and result
   JSON are unit-tested from FMC's spec), change-management tickets (the evidence ticket column is unit-tested) and TID (F79 has no
@@ -155,8 +160,7 @@ version and cipher suite rules with Undecryptable Actions (F82/F83). 17 new tool
   suites in the table are not yet seen accepted (the tool warns).
 - An MCP client that connected before an upgrade keeps the old tool list: it can't see the new tools, and it sends new list and
   dict arguments of existing tools as strings. Reconnect after upgrading the server.
-- Cosmetic: show-command output still masks the labels "Public Key Hashes:" and "Key Size (bits):"; `fmc_create_access_rule`'s
-  `rules_now` and `fmc_delete_policy`'s preview count a child policy's inherited rules as its own.
+- Cosmetic: `fmc_create_access_rule`'s `rules_now` counts a child policy's inherited rules as its own.
 
 ## 0.15.0 (2026-10-21)
 

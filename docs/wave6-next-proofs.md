@@ -7,7 +7,8 @@ against FMC 10.0.1 with FTDv 10.0 in CML, in domain `Global/mcp-test-leaf`. The 
   #295 #296), each reviewed before gate 1 merged them (main 4a913ab: 216 tools, 89 read, 113 write, 14 dangerous; 12 prompts).
   A probe read FMC's shapes first (profilers, inheritance, locks, enrollments, change management, TID).
 - **Stage 2 (live-A: F75, F76, F80; live-B: F77, F78, F79 and the follow-ups)** ran on that `main`. Every finding got its own fix
-  PR (#297-#312), reviewed and merged at gate 2 (main 09d9cef).
+  PR (#297-#312), reviewed and merged at gate 2 (main 09d9cef); Stage 3's findings got #316 (cosmetic) and #318 (F77-6), proven
+  live by the coordinator before the release.
 - **Stage 3 (final-live)** re-ran each failed or partial proof on `main` 09d9cef, then restored the lab and closed the issues.
 
 Every write was previewed, read, then confirmed with the token, one call at a time. Deploys named the devices explicitly (never
@@ -61,7 +62,7 @@ Final status after the re-proof on `main` 09d9cef.
 |---|---|---|---|---|
 | 1 | F75 certificate enrolment (#170, open) | **pass** self-signed; PKCS12 **partial** (preview only) | new tool in-process + preview parity | self-signed ENROLL, RE_ENROLL (same key), REFRESH, DELETE on `mcp-ftd1`, each task SUCCESS and each step in `fmc_list_certificates`; the PKCS12 preview opens the file and shows no key material; create + enrol wait for the real tool |
 | 2 | F76 categories, base policy, locks (#171, closed) | **pass** after #297/#298/#299/#300 | session tool (new scalar args) + new tool in-process + preview parity | child policy with base, its first deploy passes after #298; categories created, renamed, deleted, a rule moved Default -> Mandatory and back (#297); lock holder shown, another user's write blocked |
-| 3 | F77 route policy (#172, open) | **pass** after #306/#307/#308/#310; **new bug F77-6** | session tool (scalar args) + new tool in-process + preview parity (`redistribute`) | prefix lists and a route map from the tool's body (#306); iBGP hub <-> spoke1 with redistribution through a route map, an inbound prefix list and default-originate by route map: spoke1 `B* 0.0.0.0/0` via the hub; put back to no BGP |
+| 3 | F77 route policy (#172, closed) | **pass** after #306/#307/#308/#310; F77-6 fixed in #318 and proven | session tool (scalar args) + new tool in-process + preview parity (`redistribute`) | prefix lists and a route map from the tool's body (#306); iBGP hub <-> spoke1 with redistribution through a route map, an inbound prefix list and default-originate by route map: spoke1 `B* 0.0.0.0/0` via the hub; put back to no BGP |
 | 4 | F78 Snort/CPU profiling (#173, open) | **blocked** (role permission); 403 wording and previews **pass** | new tool in-process | both API roles get 403 on the profilers (packet tracer works): the tools name the missing Snort 3 Profiling permission; previews state duration and CPU cost |
 | 5 | F79 `fmc_find_indicator` (#174, closed) | **pass** after #309 | new tool in-process | a domain, a URL under a URL object, a hash (0 requests), a request budget with named skips, device narrowing; a child's inherited rule labelled |
 | 6 | F80 hardening + evidence (#175, closed) | **pass** after #303 | new tool in-process + session tools | SSH from any and SNMP v2c give two high findings with the fix calls; fixed: "No findings."; an edited baseline skips a check; per-rule evidence after traffic; the ticket column is 403 for the role |
@@ -217,7 +218,7 @@ Not built: moving a category itself (no position in 10.0.1's PUT). Unit-only: `i
 `rules_now` count in `fmc_create_access_rule` previews and the rule count in `fmc_delete_policy` previews of a child include the
 base's inherited rules (which a delete doesn't remove). **Waits for the re-proof:** the five new tools by their real MCP names.
 
-## F77 BGP/OSPF route policy (#172, PR #282; fixes #306 #307 #308 #310 #312) — pass after the fixes; new bug F77-6
+## F77 BGP/OSPF route policy (#172, PR #282; fixes #306 #307 #308 #310 #312 #318) — pass after the fixes
 
 iBGP between `mcp-sdwan-t1-hub` and `mcp-sdwan-t1-spoke1` over the mpls carrier (a private AS). Before state recorded first: no BGP
 and no OSPF on either device (`fmc_get_routing`: three static routes each; `show running-config router` empty).
@@ -272,14 +273,20 @@ Re-proof (final-live):
   router` empty, `show route` identical to the before table, `fmc_get_routing` = before. Route maps, prefix lists and the two
   network objects deleted.
 
-**F77-6 (open, #172):** `fmc_configure_bgp(default_originate=True, default_originate_route_map=...)` on a device **without BGP** sends
-the default-originate block in the create POST; FMC 10.0.1 answers OK and stores nothing, and the tool reports it applied.
-Workaround: configure the neighbour first, then set default-originate in a second call (the update path stores it). Fix idea: the
-create path POSTs without the block and PUTs it right after, or re-reads and warns.
+**F77-6 (fixed in #318, proven live; #172 closed):** `fmc_configure_bgp(default_originate=True, default_originate_route_map=...)`
+on a device **without BGP** sends the default-originate block in the create POST; FMC 10.0.1 answers OK but stores nothing (the
+update path stores it). Since #318 the tool re-reads the new model after the create, sends dropped neighbour filters again in one
+update and re-reads once more. Live after the release fixes (coordinator, 2026-10-22, deployed main db1f52f, session tool):
+`mcp-<t1-hub>` without BGP, `fmc_configure_bgp(local_as=65110, router_id=<hub>, neighbor=<spoke1 mpls>, remote_as=65110,
+default_originate=True, default_originate_route_map='mcp-w6-t1-rm-default')` -> applied 'create bgp general settings', 'create bgp',
+'update bgp: neighbor filters FMC left out of the create', `verified: FMC 10.0.1 left these neighbor filters out of the create
+(<spoke1>: default_originate); the update sent them again and the re-read shows them stored`; `fmc_get_routing` showed the
+neighbour's `default_originate {route_map mcp-w6-t1-rm-default}`. Put back with `remove_bgp` (FMC-side proof, not deployed; the
+device-side default route was proven over the update path above).
 
 Unit-only: OSPF `redistribute=` (the live plan was BGP); community and AS-path list refs (types from the spec). Not built: OSPFv2
 passive interfaces (not in FMC 10.0.1's REST model). **Waits for the re-proof:** `fmc_create_prefix_list` / `fmc_create_route_map` by
-their real names, `fmc_configure_bgp(redistribute=[...])` through a client that sends the list, and F77-6 after its fix.
+their real names and `fmc_configure_bgp(redistribute=[...])` through a client that sends the list.
 
 ## F78 Snort rule and CPU profiling (#173, PR #290) — blocked by the role; 403 wording and previews pass
 
