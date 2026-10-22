@@ -9,8 +9,10 @@ change land?" (show commands on the FTD) and "where is this object used?".
 It is built on [stutters-mcp-core](https://github.com/dr-stutters/stutters-mcp-core) and runs either
 over stdio for a local client or as an authenticated Streamable HTTP service in a container.
 
-> **Not affiliated with or endorsed by Cisco Systems, Inc.** Cisco, Firepower and Secure Firewall are
-> trademarks of Cisco Systems, Inc.
+> **Disclaimer.** This is not an official Cisco product or repository, and it isn't supported or endorsed by
+> Cisco. It's a personal project by [@dr-stutters](https://github.com/dr-stutters), for lab and learning use
+> only: don't point it at production systems. It's provided as is, with no warranty (see the
+> [license](LICENSE)). Cisco, Firepower and Secure Firewall are trademarks of Cisco Systems, Inc.
 
 Tested against **FMC 10.0.1** (Global plus a leaf domain) with managed **FTDv 10.0**. FMC 7.2 and later
 should work. Older versions are best-effort. `docs/GAP-ANALYSIS.md` maps the whole FMC API to the
