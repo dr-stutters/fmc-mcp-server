@@ -1,6 +1,9 @@
 # Changelog
 
-## Unreleased
+## 0.16.1 (2026-10-22)
+
+The Decrypt - Resign cipher downgrade warning (F85) from the TLS cipher lab's step-up experiments. No new tools: 217 tools
+(89 read, 114 write, 14 dangerous) and twelve prompts.
 
 ### Added
 - **Decrypt - Resign cipher downgrade warning** (F85, #319): FTD 10.0 removes the suites it can't decrypt from the ClientHello it
