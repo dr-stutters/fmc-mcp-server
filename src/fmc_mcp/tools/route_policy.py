@@ -699,6 +699,35 @@ def default_originate_needs_route_map(*, removing: bool) -> str:
     )
 
 
+def _holds(sent: Any, stored: Any) -> bool:
+    """Whether `stored` (FMC's re-read) holds what `sent` asked for: a block FMC kept (not missing or
+    emptied), a reference by its id, a list when every sent row has a match, words by value (case
+    ignored: IN/OUT, PERMIT). Keys FMC adds (type, overridable, ...), the `type` FMC may leave out of a
+    stored reference, and numbers or flags inside a kept block (FMC may store its own default or leave one
+    out, e.g. a maximum-prefix threshold) don't count."""
+    if isinstance(sent, dict):
+        if not isinstance(stored, dict) or (sent and not stored):
+            return False
+        if sent.get("id") is not None:
+            return str(stored.get("id", "")).lower() == str(sent["id"]).lower()
+        return all(_holds(v, stored.get(k)) for k, v in sent.items() if k != "type")
+    if isinstance(sent, list):
+        return isinstance(stored, list) and all(any(_holds(s, t) for t in stored) for s in sent)
+    if isinstance(sent, str):
+        return stored is not None and sent.upper() == str(stored).upper()
+    return True
+
+
+def missing_filters(sent: dict[str, Any], stored: dict[str, Any] | None) -> list[str]:
+    """The neighborFiltering keys a request carried for one neighbour (`sent`) that FMC's re-read of
+    that neighbour's neighborFiltering (`stored`) doesn't hold. FMC 10.0.1 answers OK to a BGP create
+    (POST) whose new neighbour has neighborDefaultOriginate {routeMap} and stores neighborFiltering {}
+    (W6N final-live, 2026-10-21); the same block in an update (PUT) is stored, and an
+    ipv4PrefixListFilter in the create is kept (live-B and final-live)."""
+    have = stored or {}
+    return [k for k, v in sent.items() if not _holds(v, have.get(k))]
+
+
 # --- redistribution ----------------------------------------------------------------------------
 
 

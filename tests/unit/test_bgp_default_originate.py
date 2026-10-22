@@ -72,6 +72,10 @@ async def test_from_scratch_body_carries_the_route_map(fmc: respx.MockRouter) ->
     fmc.get(f"{CFG}/object/routemaps").mock(return_value=items([PERMIT_ALL]))
     fmc.post(f"{R}/bgpgeneralsettings").mock(return_value=httpx.Response(201, json={"id": "g"}))
     post = fmc.post(f"{R}/bgp").mock(return_value=httpx.Response(201, json={"id": "b"}))
+    # what FMC then does with it (left out, sent again): test_bgp_create_keeps_filters.py
+    fmc.get(f"{R}/bgp/b").mock(
+        side_effect=lambda request: httpx.Response(200, json={**body(post), "id": "b"})
+    )
     args = {
         "device": DEV["name"],
         "local_as": "65110",
