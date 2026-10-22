@@ -1,6 +1,6 @@
-"""fmc_tls_decryption_check (F64, F82, F83): what the decryption policy does to one TLS flow, and whether a
-decrypt-resign rollout is ready for it (CA, TLS 1.3, trusted issuers, undecryptable actions, rule order,
-the access policy link, deploys).
+"""fmc_tls_decryption_check (F64, F82, F83, F85): what the decryption policy does to one TLS flow, and
+whether a decrypt-resign rollout is ready for it (CA, TLS 1.3, trusted issuers, undecryptable actions, the
+cipher downgrade, rule order, the access policy link, deploys).
 
 Offline and best-effort like fmc_rule_lookup: the rule walk uses zones, networks, ports, users and, with
 `server_name`, URL objects; URL categories, applications and certificate conditions (issuer, status,
@@ -16,7 +16,7 @@ from pydantic import Field
 
 from fmc_mcp._core import InvalidRequest, NotFound, ToolRegistrar, UpstreamError, get_client
 from fmc_mcp.catalog import Catalog
-from fmc_mcp.cipher_suites import suite_of_literal
+from fmc_mcp.cipher_suites import RESIGN_DOWNGRADE, suite_of_literal
 from fmc_mcp.client import FmcApp
 from fmc_mcp.flow import access_policy_of, device_context
 from fmc_mcp.rules import has_value
@@ -244,7 +244,8 @@ def register(reg: ToolRegistrar) -> None:
         exempted or blocked, and what file, malware, intrusion and URL inspection can see as a result. Also
         checks a decrypt-resign rollout for the flow: the CA (CSR pending, expiry, clients must trust it),
         TLS 1.3 decryption, trusted issuers for the server certificate, what happens when the session can't
-        be decrypted (the Undecryptable Actions: an RC4 session passes undecrypted by default), rule order
+        be decrypted (the Undecryptable Actions: an RC4 session passes undecrypted by default), the cipher
+        downgrade Decrypt - Resign can cause (TLS 1.2 ChaCha20, AES-CCM, ARIA fall back to CBC), rule order
         (decrypt rules above TLS version / cipher suite Block rules), the access policy link and pending
         deploys. Rules with TLS version or cipher suite conditions are conditional (`matches_if` says what
         they match). Use it before and after fmc_create_decryption_rule; best-effort and offline (see
@@ -444,6 +445,7 @@ def register(reg: ToolRegistrar) -> None:
                         "trusted root (fmc_get_certificate gives its PEM), or it shows certificate errors.",
                     }
                 )
+            checks.append({"check": "cipher downgrade", "ok": None, "detail": RESIGN_DOWNGRADE})
             trusted = trusted_labels(pol)
             if adv.get("propagate_untrusted_certs") is False:
                 detail = (

@@ -27,7 +27,7 @@ from fmc_mcp._core import (
     list_result,
 )
 from fmc_mcp._core.http import page_of
-from fmc_mcp.cipher_suites import PRESETS, SUITES, Suite, find_suite, suite_of_literal
+from fmc_mcp.cipher_suites import PRESETS, RESIGN_DOWNGRADE, SUITES, Suite, find_suite, suite_of_literal
 from fmc_mcp.client import FmcApp
 from fmc_mcp.preview import fmc_preview
 from fmc_mcp.refs import RefResolver
@@ -727,8 +727,10 @@ def register(reg: ToolRegistrar) -> None:
         ServerHello). The preview warns when the policy can't decrypt TLS 1.3, when an exemption would land
         below a decrypt rule, when a decrypt rule would sit above a TLS version / cipher suite Block rule
         (decryptable weak suites then pass decrypted), or when an existing rule's TLS version selection will
-        make FMC refuse the deploy. Takes effect after a deploy of the devices whose access policy uses the
-        decryption policy (fmc_set_decryption_policy)."""
+        make FMC refuse the deploy. A DECRYPT_RESIGN preview also warns that FTD strips suites it can't
+        decrypt from the ClientHello: TLS 1.2 ChaCha20, AES-CCM and ARIA sessions can fall back to a CBC
+        suite, and there is no cipher step-up. Takes effect after a deploy of the devices whose access
+        policy uses the decryption policy (fmc_set_decryption_policy)."""
         app: FmcApp = get_client(ctx)
         versions = [v for v in ALL_TLS_VERSIONS if v in (tls_versions or [])]
         if len(versions) == len(ALL_TLS_VERSIONS):
@@ -809,6 +811,7 @@ def register(reg: ToolRegistrar) -> None:
                     f"TLS 1.3 decryption is off in {p.get('name')!r}, so TLS 1.3 sessions won't be "
                     "decrypted: fmc_update_decryption_policy tls13_decryption=true."
                 )
+            warnings.append(RESIGN_DOWNGRADE)
         if action == "DECRYPT_KNOWN_KEY":
             certs = []
             for c_ref in internal_certificates or []:
@@ -1004,9 +1007,11 @@ def register(reg: ToolRegistrar) -> None:
         move it (insert_before). Its action and other conditions stay; FMC's PUT gets the whole rule back.
         The preview shows each field from/to and the index, and warns when the result leaves a decrypt rule
         above an overlapping TLS version / cipher suite Block rule (decryptable weak suites then pass
-        decrypted). A Do-not-decrypt or Decrypt-Resign rule FMC stored with no version selected (FMC 10
-        refuses to deploy it) gets every version back. Current rules: fmc_get_decryption_policy. Takes
-        effect after a deploy of the devices whose access policy uses the decryption policy."""
+        decrypted), and for a Decrypt-Resign rule that TLS 1.2 ChaCha20, AES-CCM and ARIA sessions can fall
+        back to a CBC suite under it. A Do-not-decrypt or Decrypt-Resign rule FMC stored with no version
+        selected (FMC 10 refuses to deploy it) gets every version back. Current rules:
+        fmc_get_decryption_policy. Takes effect after a deploy of the devices whose access policy uses the
+        decryption policy."""
         app: FmcApp = get_client(ctx)
         p = await resolve_in(app, DECRYPTION, policy, "decryption policy", domain)
         base = await app.config_path(f"{DECRYPTION}/{p['id']}/decryptionpolicyrules", domain)
@@ -1108,6 +1113,8 @@ def register(reg: ToolRegistrar) -> None:
         after_rules = moved(existing.items, cur["id"], desired, position)
         name_ref = repr(cur.get("name"))
         warnings += [f"After this change: {m}" for m in order_problems(after_rules) if name_ref in m]
+        if action == "DECRYPT_RESIGN" and desired.get("enabled", True) and changes:
+            warnings.append(RESIGN_DOWNGRADE)
         item = f"{base}/{cur['id']}"
 
         async def apply() -> Any:
