@@ -48,8 +48,44 @@ Key name: mcp-w6-enr-self
 """
 
 
+# W6N final-live (#302 follow-up), FTD 10.0 on mcp-ftd1: two more labels of the same outputs were masked,
+# 'Public Key Hashes:' as 'Public Key ********' (redacted 1) and 'Key Size (bits): 2048' as
+# 'Key ******** (bits): 2048' (redacted 2). The lines as the FTD prints them (hash values replaced).
+CA_CERTIFICATES_FTD10 = """Certificate
+  Status: Available
+  Certificate Serial Number: 6ad8b2ad
+  Certificate Usage: General Purpose
+  Public Key Type: RSA (2048 bits)
+  Signature Algorithm: SHA256 with RSA Encryption
+  Issuer Name:
+    cn=mcp-ftd1.example.com
+    o=mcp-w6
+  Subject Name:
+    cn=mcp-ftd1.example.com
+    o=mcp-w6
+  Public Key Hashes:
+    SHA1 PublicKey hash: 0123456789abcdef0123456789abcdef01234567
+    SHA1 PublicKeyInfo hash: 89abcdef0123456789abcdef0123456789abcdef
+  Validity Date:
+    start date: 22:13:20 UTC Oct 21 2026
+    end   date: 22:13:20 UTC Oct 18 2036
+  Storage: config
+  Associated Trustpoints: mcp-w6-enr-self
+"""
+
+MYPUBKEY_FTD10 = """Key pair was generated at: 22:13:18 UTC Oct 21 2026
+Key name: mcp-w6-enr-self
+ Usage: General Purpose Key
+ Key Size (bits): 2048
+ Storage: config
+ Key Data:
+
+  30820122 300d0609 2a864886 f70d0101 01050003 82010f00 3082010a 02820101
+"""
+
+
 def test_certificate_and_public_key_lines_are_not_secrets() -> None:
-    for text in (CA_CERTIFICATES, MYPUBKEY):
+    for text in (CA_CERTIFICATES, MYPUBKEY, CA_CERTIFICATES_FTD10, MYPUBKEY_FTD10):
         out, n = redact(text)
         assert n == 0 and out == text, out
 
@@ -86,6 +122,21 @@ async def test_show_crypto_ca_certificates_through_the_tool(fmc: respx.MockRoute
     assert "Public Key Type: RSA (2048 bits)" in out["output"] and "redacted" not in out
 
 
+async def test_final_live_key_labels_through_the_tool(fmc: respx.MockRouter) -> None:
+    fmc.get(f"{CFG}/devices/devicerecords").mock(return_value=items([DEV]))
+    fmc.get(DEVPATH).mock(return_value=httpx.Response(200, json=DEV))
+    fmc.get(f"{DEVPATH}/operational/commands").mock(
+        return_value=items([{"commandOutput": CA_CERTIFICATES_FTD10 + MYPUBKEY_FTD10, "type": "command"}])
+    )
+    async with Client(create_server(make_settings())) as c:
+        r = await c.call_tool(
+            "fmc_run_show_command", {"device": "mcp-ftd1", "command": "show crypto ca certificates"}
+        )
+    out = r.structured_content
+    assert out is not None and "redacted" not in out
+    assert "  Public Key Hashes:\n" in out["output"] and " Key Size (bits): 2048\n" in out["output"]
+
+
 # Review of #302: the label exceptions belong to the bare keyword 'key' in its label shape only, and a
 # key or password after the word 'public' is still a secret. Each line's value must stay masked.
 STILL_MASKED = [
@@ -100,6 +151,13 @@ STILL_MASKED = [
     (" ikev1 pre-shared-key usage", " ikev1 pre-shared-key ********"),
     ("password data", "password ********"),
     ("snmp-server community type", "snmp-server community ********"),
+    # final-live's two labels are skipped in their label shape (with the colon) only
+    (" key size", " key ********"),
+    (" key hashes", " key ********"),
+    (" key size (bits)", " key ******** (bits)"),
+    ("failover key hashes", "failover key ********"),
+    (" pre-shared-key size:", " pre-shared-key ********"),
+    ("snmp-server community hashes:", "snmp-server community ********"),
 ]
 
 
@@ -126,6 +184,11 @@ def test_review_302_key_labels_stay_unmasked_in_their_label_shape() -> None:
         " Key Usage: General Purpose",
         "Key version : A",
         " Usage: General Purpose Key",
+        "  Public Key Hashes:",
+        "Public Key Hashes :",
+        " Key Size (bits): 2048",
+        "Key Size(bits) : 4096",
+        "Key Size: 2048",
     ):
         out, n = redact(line)
         assert n == 0 and out == line, (line, out)

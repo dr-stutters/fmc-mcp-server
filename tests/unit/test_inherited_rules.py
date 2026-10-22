@@ -17,6 +17,7 @@ from fmc_mcp.server import create_server
 from fmc_mcp.tools.find_address import _rule_where, inherited_from
 
 from .conftest import CFG, empty, fixture, items, make_settings
+from .test_tools_dangerous import confirm
 
 LIVE = fixture("child_policy_rules_fmc10")
 FX = fixture("find_indicator")
@@ -127,3 +128,51 @@ async def test_find_address_labels_the_inherited_row(fmc: respx.MockRouter) -> N
         "mcp-w6-child-acp #5 mcp-w6-ip-only (ALLOW) [inherited from mcp-w6-acp]",
     ]
     assert "inherited from <base>" in data["limits"]
+
+
+# W6N final-live (A2/B3): fmc_delete_policy's preview of a child said "rules 12 ... the policy and all of
+# its rules are removed" (13 once the child had a rule of its own); the 12 were the base's inherited rules,
+# which stay in the base. The preview now counts the child's own rules and says the inherited ones stay.
+
+
+def mount_delete(fmc: respx.MockRouter, policy: dict[str, Any], rules: dict[str, Any]) -> respx.Route:
+    fmc.get(f"{CFG}/policy/accesspolicies").mock(return_value=items([PARENT, CHILD]))
+    fmc.get(f"{CFG}/policy/accesspolicies/{policy['id']}/accessrules").mock(
+        return_value=httpx.Response(200, json=rules)
+    )
+    fmc.get(f"{CFG}/assignment/policyassignments").mock(return_value=empty())
+    return fmc.delete(f"{CFG}/policy/accesspolicies/{policy['id']}").mock(
+        return_value=httpx.Response(200, json={})
+    )
+
+
+def dangerous() -> Any:
+    return create_server(make_settings(mcp_enable_writes=True, mcp_enable_dangerous=True))
+
+
+async def test_delete_child_policy_counts_only_its_own_rules(fmc: respx.MockRouter) -> None:
+    rules = child_rules()
+    inherited = len(rules["items"]) - 1
+    delete = mount_delete(fmc, CHILD, rules)
+    preview, done = await confirm("fmc_delete_policy", {"kind": "access", "policy": CHILD["name"]})
+    d = preview["preview"]
+    assert d["rules"] == 1  # mcp-w6-child-icmp
+    assert d["inherited_rules"] == {
+        "count": inherited,
+        "from": "mcp-w6-acp",
+        "note": "listed under this policy by FMC; they belong to mcp-w6-acp and stay there",
+    }
+    assert preview["side_effects"] == [
+        f"Irreversible: the policy and its own 1 rule(s) are removed; the {inherited} rule(s) it inherits "
+        "from mcp-w6-acp stay in mcp-w6-acp."
+    ]
+    assert done["status"] == "applied" and delete.call_count == 1
+
+
+async def test_delete_base_policy_reads_as_before(fmc: respx.MockRouter) -> None:
+    rules = parent_rules()
+    mount_delete(fmc, PARENT, rules)
+    preview = await call_tool(dangerous(), "fmc_delete_policy", {"kind": "access", "policy": PARENT["name"]})
+    d = preview["preview"]
+    assert d["rules"] == len(rules["items"]) and "inherited_rules" not in d
+    assert preview["side_effects"] == ["Irreversible: the policy and all of its rules are removed."]

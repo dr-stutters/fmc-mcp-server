@@ -43,6 +43,7 @@ from fmc_mcp.tools.device_groups import expand_devices
 from fmc_mcp.tools.devices import DEVICES, HA_PAIRS, DeviceRef
 from fmc_mcp.tools.object_writes import applied, editable
 from fmc_mcp.tools.policies import POLICY_KINDS, PolicyKind, all_rules, policy_assignments
+from fmc_mcp.tools.policy_writes import owned_by
 from fmc_mcp.tools.system import iso
 
 DONE = {"deployed", "succeeded", "success", "completed", "complete"}
@@ -1083,7 +1084,8 @@ def register(reg: ToolRegistrar) -> None:
         confirm: Confirm = None,
     ) -> dict[str, Any]:
         """Delete a whole policy (access, NAT, prefilter, ...). Preview shows its rule count and the
-        devices it is assigned to; FMC refuses to delete a policy that is still assigned."""
+        devices it is assigned to; FMC refuses to delete a policy that is still assigned. For a child
+        access policy the count is its own rules: the base policy's rules it inherits stay in the base."""
         app: FmcApp = get_client(ctx)
         p = await resolve_in(app, POLICY_KINDS[kind], policy, f"{kind} policy", domain)
         details: dict[str, Any] = {"policy": p.get("name"), "id": p["id"]}
@@ -1093,11 +1095,28 @@ def register(reg: ToolRegistrar) -> None:
             "prefilter": "prefilterrules",
             "file": "filerules",
         }.get(kind)
+        removed = "Irreversible: the policy and all of its rules are removed."
         if sub:
             rules = await all_rules(
                 app, await app.config_path(f"{POLICY_KINDS[kind]}/{p['id']}/{sub}", domain)
             )
-            details["rules"] = len(rules.items)
+            # FMC 10.0.1 lists a child access policy's inherited rules under the child too (base's ids,
+            # metadata.accessPolicy = the base); deleting the child leaves them in the base
+            own = [r for r in rules.items if owned_by(r, p)]
+            details["rules"] = len(own)
+            inherited = [r for r in rules.items if not owned_by(r, p)]
+            if inherited:
+                owners = {ref_label((r.get("metadata") or {}).get("accessPolicy") or {}) for r in inherited}
+                bases = ", ".join(sorted(owners))
+                details["inherited_rules"] = {
+                    "count": len(inherited),
+                    "from": bases,
+                    "note": f"listed under this policy by FMC; they belong to {bases} and stay there",
+                }
+                removed = (
+                    f"Irreversible: the policy and its own {len(own)} rule(s) are removed; the "
+                    f"{len(inherited)} rule(s) it inherits from {bases} stay in {bases}."
+                )
         targets = [
             ref_label(t)
             for a in await policy_assignments(app, domain)
@@ -1122,7 +1141,7 @@ def register(reg: ToolRegistrar) -> None:
                 details=details,
                 fingerprint=editable(p),
                 blockers=blockers,
-                side_effects=["Irreversible: the policy and all of its rules are removed."],
+                side_effects=[removed],
             ),
             apply=lambda: applied(app, lambda: app.api.delete(path)),
         )
