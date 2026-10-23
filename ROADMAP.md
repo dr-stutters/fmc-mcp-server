@@ -371,3 +371,12 @@ Amendments posted as one comment per issue (no milestone or label change):
 | Owner: reopen TID reads (F79's TID section); decide the FTD DHCP server/relay and network-map reopenings | F79 section; two unfiled items | ⏳ owner |
 | Owner: the Snort 3 Profiling permission on the lab API role (mcp-rw); found by the Wave 6 Next probe (403) | F78 live run | ⏳ owner |
 | Evaluation licence expiry ≈ 2027-01-12 (FMC) | every live item | ⏳ renew before |
+
+## Waves 7–10 (planned 2026-10-23): Catalyst SD-WAN cross-architecture
+Suite plan: four waves of cross-architecture scenarios led by Catalyst SD-WAN, filed 2026-10-23 (draft `stutters-mcp-lab/planning/WAVE7-SDWAN-XARCH-DRAFT.md`). Waves: **7** foundation, identity and triage (Now) · **8** security and change safety · **9** topology and lifecycle (Next) · **10** reporting and reach (Later). Scenario epics in core: [C44](https://github.com/dr-stutters/stutters-mcp-core/issues/102), [C54](https://github.com/dr-stutters/stutters-mcp-core/issues/103), [C55](https://github.com/dr-stutters/stutters-mcp-core/issues/104), [C59](https://github.com/dr-stutters/stutters-mcp-core/issues/105), [C45](https://github.com/dr-stutters/stutters-mcp-core/issues/106), [C56](https://github.com/dr-stutters/stutters-mcp-core/issues/107), [C57](https://github.com/dr-stutters/stutters-mcp-core/issues/108), [C58](https://github.com/dr-stutters/stutters-mcp-core/issues/109), [C61](https://github.com/dr-stutters/stutters-mcp-core/issues/110), [C60](https://github.com/dr-stutters/stutters-mcp-core/issues/111).
+
+| # | Item | Wave | Milestone | Size | Scenario |
+|---|---|---|---|---|---|
+| [F89](https://github.com/dr-stutters/fmc-mcp-server/issues/327) | **`fmc_snapshot` for C53 pre/post checks** | 7 | Now | S | [C54](https://github.com/dr-stutters/stutters-mcp-core/issues/103) |
+| [F90](https://github.com/dr-stutters/fmc-mcp-server/issues/328) | **Map core `change_ref` to an FMC change ticket and `newComments` (G102)** | 7 | Next | S | — |
+| [F88](https://github.com/dr-stutters/fmc-mcp-server/issues/329) | **FTD as an SD-WAN service-chain target: checks and the trace leg** | 8 | Next | M | [C55](https://github.com/dr-stutters/stutters-mcp-core/issues/104) |
