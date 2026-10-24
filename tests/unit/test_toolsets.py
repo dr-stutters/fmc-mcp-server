@@ -11,6 +11,7 @@ from fastmcp import FastMCP
 from pydantic import ValidationError
 
 from fmc_mcp import toolsets
+from fmc_mcp._core import suite
 from fmc_mcp._core.testing import assert_tool_contract, call_tool
 from fmc_mcp.server import create_server
 
@@ -19,6 +20,7 @@ from .conftest import make_settings
 MANIFEST = json.loads((Path(__file__).resolve().parent.parent / "manifests" / "fmc.json").read_text())
 ALL_TIERS = {"mcp_enable_writes": True, "mcp_enable_dangerous": True}
 CORE = toolsets.TOOLSETS["core"] - {"fmc_review_change"}  # review_change only with two-person rails
+SUITE = set(suite.PACK)  # core's suite_* prompts: always registered (their legs name what is absent)
 
 
 def server(**kw: Any) -> FastMCP[Any]:
@@ -45,7 +47,7 @@ async def test_the_areas_cover_the_registered_tools(fmc: respx.MockRouter) -> No
     assert sorted(tools - table) == [], "new tool: add it to one area in fmc_mcp/toolsets.py"
     assert sorted(table - tools) == [], "toolsets.py names a tool that is not registered"
     assert set(MANIFEST["tools"]) == tools
-    assert set(toolsets.PROMPT_TOOLSETS) == prompts
+    assert set(toolsets.PROMPT_TOOLSETS) == prompts - SUITE and prompts >= SUITE
     # with two-person rails the review tool appears, and it is core
     tools, _ = await names(server(mcp_two_person_tools="fmc_deploy"))
     assert "fmc_review_change" in tools and toolsets.AREA_OF["fmc_review_change"] == "core"
@@ -56,7 +58,7 @@ async def test_toolset_registers_exactly_its_area(fmc: respx.MockRouter, area: s
     mcp = server(toolsets=area)
     tools, prompts = await names(mcp)
     assert tools == toolsets.TOOLSETS[area] | CORE
-    assert prompts == {p for p, home in toolsets.PROMPT_TOOLSETS.items() if home <= {area}}
+    assert prompts == {p for p, home in toolsets.PROMPT_TOOLSETS.items() if home <= {area}} | SUITE
     await assert_tool_contract(mcp, "fmc")
 
 
@@ -113,6 +115,8 @@ async def test_status_and_instructions_name_the_loaded_areas(fmc: respx.MockRout
 def test_prompt_home_areas_are_areas_the_prompt_uses() -> None:
     """A prompt's home areas must be among the areas of the fmc tools its rendered text names."""
     for name, meta in MANIFEST["prompts"].items():
+        if name in SUITE:  # core's, registered in every toolset selection
+            continue
         used = {toolsets.AREA_OF[r] for r in meta["references"] if r in toolsets.AREA_OF}
         assert toolsets.PROMPT_TOOLSETS[name] <= used, (name, sorted(used))
 

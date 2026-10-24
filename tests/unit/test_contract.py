@@ -12,6 +12,7 @@ from fmc_mcp._core.testing import (
     assert_inbound_references,
     assert_prompt_contract,
     assert_prompt_snapshots,
+    assert_suite_pack,
     assert_tool_contract,
     load_tool_manifests,
 )
@@ -66,6 +67,23 @@ def _server() -> FastMCP[Any]:
 
 async def test_inbound_references(fmc: respx.MockRouter) -> None:
     await assert_inbound_references(_server(), "fmc", HERE / "manifests")
+
+
+# Peer snapshot tools the suite pack's change check (C53) calls that their servers have not shipped yet; a
+# waiver for a tool a committed peer manifest now lists fails, so the list shrinks as peers ship.
+PEER_PENDING = [
+    "catc_compare_snapshot",
+    "catc_snapshot",
+    "catsdwan_compare_snapshot",
+    "catsdwan_snapshot",
+    "ise_compare_snapshot",
+    "ise_snapshot",
+]
+
+
+async def test_suite_pack(fmc: respx.MockRouter) -> None:
+    """Core's suite prompt pack (C48) is registered and its fmc leg tools (fmc_snapshot, ...) exist."""
+    await assert_suite_pack(_server(), "fmc", HERE / "manifests", pending=PEER_PENDING)
 
 
 async def test_prompt_snapshots(fmc: respx.MockRouter) -> None:
