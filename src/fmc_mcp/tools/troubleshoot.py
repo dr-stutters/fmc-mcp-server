@@ -33,7 +33,7 @@ from fmc_mcp._core import (
 from fmc_mcp._core.http import page_of
 from fmc_mcp.catalog import Catalog
 from fmc_mcp.client import FmcApp, fmc_error_detail
-from fmc_mcp.flow import device_context
+from fmc_mcp.flow import device_context, interface_holding
 from fmc_mcp.tools.common import Domain
 from fmc_mcp.tools.dangerous import task_id_of, wait_task
 from fmc_mcp.tools.device_config import device_interfaces, pick_interface, resolve_device
@@ -161,6 +161,69 @@ def parse_phase(p: dict[str, Any], verbose: bool) -> dict[str, Any]:
     return {k: v for k, v in row.items() if v not in (None, "", [])}
 
 
+def interface_state(result: dict[str, Any]) -> str | None:
+    """'input inside down/down' when the trace's ingress or egress interface isn't up/up (None when both
+    are, or FMC doesn't say; FMC 10.0.1 answers 'up'/'up', ftd_packettracer_allow.json): a chained
+    interface that is down drops the flow before any rule (F88)."""
+    bad = []
+    for side in ("input", "output"):
+        status, line = result.get(f"{side}Status"), result.get(f"{side}LineStatus")
+        if (status or line) and (status, line) != ("up", "up"):
+            name = _bare_ifc(result.get(f"{side}Interface"))
+            bad.append(f"{side} {name} {status or '?'}/{line or '?'}")
+    return "; ".join(bad) or None
+
+
+def _bare_ifc(value: Any) -> str:
+    """'outside(vrfid:0)' -> 'outside'."""
+    return str(value or "").split("(", 1)[0].strip()
+
+
+# ROUTE-LOOKUP's additionalInformation: 'Found next-hop 192.0.2.10 using egress ifc  outside(vrfid:0)'
+NEXT_HOP = re.compile(r"Found next-hop (\S+) using egress ifc\s+([^\s(]+)")
+
+
+def route_next_hop(trace: dict[str, Any]) -> tuple[str | None, str | None]:
+    """(next hop, egress interface) of a summarized trace: the last route lookup's, or (None, the result's
+    output interface) when no phase names one."""
+    hop = ifc = None
+    for p in trace.get("phases") or []:
+        info = p.get("info")
+        for text in info if isinstance(info, list) else [info]:
+            for m in NEXT_HOP.finditer(str(text or "")):
+                hop, ifc = m.group(1), m.group(2)
+    return hop, ifc or (_bare_ifc(trace.get("output")) or None)
+
+
+def chain_egress(trace: dict[str, Any], expect: str, destination: str) -> dict[str, Any]:
+    """Does the traced flow leave toward `expect` (the SD-WAN edge's return address of a service chain)?
+    {next_hop, egress_interface, ok, detail}."""
+    hop, ifc = route_next_hop(trace)
+    row: dict[str, Any] = {"expected_next_hop": expect, "next_hop": hop, "egress_interface": ifc}
+    if hop is None:
+        row["ok"] = None
+        row["detail"] = (
+            "The trace names no next hop (dropped before the route lookup, or run with verbose=false on a "
+            "device that leaves it out): see the phases."
+        )
+    elif hop == expect:
+        row["ok"] = True
+        row["detail"] = f"Leaves by {ifc} to {hop}: back to the SD-WAN edge as the chain expects."
+    else:
+        direct = (
+            " (the destination itself: delivered directly, not back through the edge)"
+            if hop == destination
+            else ""
+        )
+        row["ok"] = False
+        row["detail"] = (
+            f"Leaves by {ifc} to {hop}{direct}, not to the edge at {expect}: the FTD needs a route for the "
+            f"destination via {expect} (fmc_create_static_route), or the chain's return address is another "
+            "one (fmc_service_chain_check)."
+        )
+    return row
+
+
 def summarize_trace(resp: dict[str, Any], verbose: bool) -> list[dict[str, Any]]:
     out = []
     for dr in resp.get("deviceResponse") or []:
@@ -193,6 +256,7 @@ def summarize_trace(resp: dict[str, Any], verbose: bool) -> list[dict[str, Any]]
             "input": result.get("inputInterface"),
             "output": result.get("outputInterface"),
             "drop_reason": result.get("dropReason"),
+            "interface_state": interface_state(result),
             "drop_detail": result.get("dropDetail") or result.get("dropDetail:"),
             "dropped_at": (
                 f"phase {dropped['phase']} {dropped.get('type')}"
@@ -617,6 +681,22 @@ def register(reg: ToolRegistrar) -> None:
         verbose: Annotated[
             bool, Field(description="Include each phase's full config and additional information")
         ] = False,
+        ingress_hop: Annotated[
+            str | None,
+            Field(
+                description="The address that hands the packet to the FTD, e.g. the SD-WAN edge's "
+                "service-chain address: the ingress interface is the one whose subnet holds it (for a "
+                "chained flow whose source sits behind the edge). Ignored when input_interface is given"
+            ),
+        ] = None,
+        expect_next_hop: Annotated[
+            str | None,
+            Field(
+                description="Where the flow should leave to, e.g. the SD-WAN edge's return address of a "
+                "service chain (the same edge address for a single-arm chain): `chain_leg` says whether the "
+                "route lookup sends it there"
+            ),
+        ] = None,
         domain: Domain = None,
     ) -> dict[str, Any]:
         """Simulate a packet through an FTD (packet-tracer, run by FMC; nothing is transmitted) and
@@ -627,9 +707,34 @@ def register(reg: ToolRegistrar) -> None:
         name) is picked from the source IP unless given. An HA pair or cluster is traced on its active
         unit (FMC's failover state) / control node; `device` names pair and unit. A unit or node FMC
         lists as disconnected is refused with its connected peers named (nothing is traced on a peer in
-        its place)."""
+        its place). As the FTD leg of an SD-WAN service chain (catsdwan_trace_through_firewall): pass the
+        edge's address as ingress_hop and its return address as expect_next_hop; `chain_leg` then says
+        which interface the flow entered by, whether it leaves back to the edge, and whether both interfaces
+        are up (`interface_state` in a result names one that isn't). Did the real flow arrive:
+        fmc_live_connections(host=source). Static checks of the attachment: fmc_service_chain_check."""
         app: FmcApp = get_client(ctx)
         dev, member = await resolve_unit(app, device, domain, traceable=True)
+        ifaces: list[tuple[str, dict[str, Any]]] | None = None
+        hop_found: str | None = None
+        if ingress_hop and not input_interface:
+            try:
+                hop_ip = ipaddress.ip_address(ingress_hop.strip())
+            except ValueError as e:
+                raise InvalidRequest(f"Invalid ingress_hop: {e}") from None
+            ifaces = await device_interfaces(app, dev["id"], domain)
+            held = interface_holding(ifaces, hop_ip)
+            if held is None:
+                raise InvalidRequest(
+                    f"No enabled, named interface on {dev['name']} has {hop_ip} in its subnet: the edge's "
+                    "link to the FTD is not configured on it (fmc_service_chain_check says what is missing)."
+                )
+            input_interface = str(held[0]["logical_name"])
+            hop_found = f"connected {held[1]} holds ingress_hop {hop_ip}"
+        if expect_next_hop:
+            try:
+                expect_next_hop = str(ipaddress.ip_address(expect_next_hop.strip()))
+            except ValueError as e:
+                raise InvalidRequest(f"Invalid expect_next_hop: {e}") from None
         out = await packet_trace(
             app,
             dev,
@@ -643,7 +748,10 @@ def register(reg: ToolRegistrar) -> None:
             icmp_code=icmp_code,
             verbose=verbose,
             domain=domain,
+            interfaces=ifaces,
         )
+        if hop_found:
+            out["input_interface_found_by"] = hop_found
         name = str(dev.get("name"))
         out = {"device": member.label(name) if member else name, **out}
         standby = next(
@@ -651,6 +759,19 @@ def register(reg: ToolRegistrar) -> None:
         )
         if standby:
             out["note"] = standby_note(dev, member, standby)
+        if (ingress_hop or expect_next_hop) and out.get("results"):
+            first = out["results"][0]
+            leg: dict[str, Any] = {
+                "ingress": {"interface": out.get("input_interface"), "hop": ingress_hop},
+                "verdict": first.get("action"),
+                "verdict_rule": first.get("verdict_rule"),
+            }
+            if first.get("interface_state"):
+                leg["interface_state"] = first["interface_state"]
+            if expect_next_hop:
+                dst = str(ipaddress.ip_address(destination_ip.strip()))  # packet_trace checked it
+                leg["egress"] = chain_egress(first, expect_next_hop, dst)
+            out["chain_leg"] = leg
         return out
 
     @reg.read(title="Rule hit counts")

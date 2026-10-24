@@ -72,6 +72,7 @@ from fmc_mcp.tools import (
     sdwan,
     sdwan_status,
     security_intel,
+    service_chain,
     snapshot,
     system,
     templates,
@@ -145,6 +146,11 @@ Workflows:
   WAN link -> fmc_create_app_route (applications/networks/users out of the link with the best
   jitter, loss, RTT or MOS, or by priority) -> fmc_deploy -> fmc_sdwan_status (app routes and the
   path each uses); ECMP across WAN links: fmc_configure_ecmp_zone; remove: fmc_delete_app_route.
+- FTD as the firewall of a Catalyst SD-WAN service chain (the edge sends a VPN's traffic to the FTD and takes
+  it back): fmc_service_chain_check(device, edge_address, return_address for dual-arm, the chained networks)
+  checks interfaces, link state, zones, routes back to the edge and the access policy, each failure with
+  its fix tool; the live leg: fmc_packet_tracer(ingress_hop=<edge address>, expect_next_hop=<return
+  address>) -> `chain_leg`; did the flow arrive: fmc_live_connections(host=...).
 - Block a host fast: map its IP into a dynamic object that a BLOCK rule references
   (fmc_map_dynamic_object); mapping changes need no deployment, only the rule does (once).
   fmc_contain_host / fmc_release_host do this for one host with the quarantine object (and propose
@@ -360,6 +366,7 @@ REGISTER: list[Callable[[ToolRegistrar], None]] = [
     enrollment.register,
     decryption.register,
     decryption_check.register,
+    service_chain.register,
     dns.register,
     identity.register,
     identity_sources.register,

@@ -1201,6 +1201,10 @@
       "tier": "read",
       "title": "Search the Cisco Secure Firewall Management Center API spec"
     },
+    "fmc_service_chain_check": {
+      "tier": "read",
+      "title": "FTD as an SD-WAN service-chain firewall"
+    },
     "fmc_set_access_logging": {
       "tier": "write",
       "title": "Set access policy logging (syslog)"

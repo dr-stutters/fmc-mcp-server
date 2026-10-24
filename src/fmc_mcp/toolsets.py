@@ -328,6 +328,7 @@ CATALOGUE: dict[str, tuple[str, tuple[str, ...]]] = {
             "fmc_recent_activity",
             "fmc_rule_lookup",
             "fmc_run_show_command",
+            "fmc_service_chain_check",
             "fmc_snort_profile",
         ),
     ),
