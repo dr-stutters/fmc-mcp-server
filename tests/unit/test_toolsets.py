@@ -115,6 +115,8 @@ async def test_status_and_instructions_name_the_loaded_areas(fmc: respx.MockRout
 def test_prompt_home_areas_are_areas_the_prompt_uses() -> None:
     """A prompt's home areas must be among the areas of the fmc tools its rendered text names."""
     for name, meta in MANIFEST["prompts"].items():
+        if name in SUITE:  # core's, registered in every toolset selection
+            continue
         used = {toolsets.AREA_OF[r] for r in meta["references"] if r in toolsets.AREA_OF}
         assert toolsets.PROMPT_TOOLSETS[name] <= used, (name, sorted(used))
 

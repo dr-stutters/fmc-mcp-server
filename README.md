@@ -541,7 +541,7 @@ checks it against the registered tools.
 
 | Toolset | Tools (read/write/dangerous) | What it covers | Prompts (home area) |
 |---|---|---|---|
-| `core` | 7 (6/0/1) | always loaded: status, the API spec search and raw API call, domains, devices, tasks |  |
+| `core` | 9 (8/0/1) | always loaded: status, the API spec search and raw API call, domains, devices, tasks, change-check snapshots |  |
 | `admin` | 8 (6/1/1) | FMC itself: backups, upgrades, health policy, users, audit log, Smart Licensing |  |
 | `deploy` | 7 (4/1/2) | pending changes, deployments, rollback, change-management tickets | `fmc_onboard_branch`, `fmc_onboard_ftd`, `fmc_rule_change_review` |
 | `devices` | 23 (9/10/4) | device records, registration, licences, interfaces, clusters, device groups, device templates | `fmc_onboard_branch`, `fmc_onboard_ftd` |
