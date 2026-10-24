@@ -9,7 +9,7 @@ from fastmcp import FastMCP
 from fastmcp.server.auth import AuthProvider
 
 from fmc_mcp import toolsets
-from fmc_mcp._core import ServerSpec, ToolRegistrar, build_server
+from fmc_mcp._core import ServerSpec, ToolRegistrar, build_server, suite
 from fmc_mcp._core.spec import SpecSource
 from fmc_mcp.client import SPEC_PATH, FmcApp
 from fmc_mcp.config import Settings
@@ -72,6 +72,7 @@ from fmc_mcp.tools import (
     sdwan,
     sdwan_status,
     security_intel,
+    snapshot,
     system,
     templates,
     threat_posture,
@@ -229,6 +230,10 @@ Workflows:
   optional running-config sections; about ten requests per device) -> the change and deploy ->
   fmc_device_snapshot(label='after') -> fmc_diff_device_config(a=<before>, b=<after>) per device: routes
   lost, tunnels down, interface changes, new alerts, hit-count deltas.
+  "Did anything else break?" in a few requests: fmc_snapshot(site=<device group or name filter>) before
+  (deployment state, HA, interface link status, VPN tunnels, health; a blob the client keeps) ->
+  fmc_compare_snapshot(before) after (what changed, major/minor/info). The suite_change_check prompt runs
+  the same pre/post check across SD-WAN, ISE, Catalyst Center and FMC.
 - Health: fmc_list_devices, fmc_device_health, fmc_list_vpn_tunnels; "what changed or broke in the
   last hour?": fmc_recent_activity (health alerts + audit + deployments), fmc_list_health_alerts.
   A full ranked review of the estate: the fmc_firewall_health_review prompt.
@@ -327,6 +332,7 @@ REGISTER: list[Callable[[ToolRegistrar], None]] = [
     templates.register,
     device_export.register,
     device_snapshot.register,
+    snapshot.register,
     sdwan_status.register,
     vpn_status.register,
     activity.register,
@@ -357,6 +363,7 @@ REGISTER: list[Callable[[ToolRegistrar], None]] = [
     identity_sources.register,
     prompts.register,
     compliance.register,
+    suite.register,
 ]
 
 

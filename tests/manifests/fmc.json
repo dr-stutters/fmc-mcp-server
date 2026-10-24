@@ -1,5 +1,5 @@
 {
-  "core_version": "0.14.2",
+  "core_version": "0.15.0",
   "manifest": 1,
   "prefix": "fmc",
   "prompts": {
@@ -441,6 +441,34 @@
       "uses": [
         "fmc"
       ]
+    },
+    "suite_change_check": {
+      "arguments": [
+        "site",
+        "phase",
+        "change",
+        "before",
+        "servers"
+      ],
+      "references": [
+        "catsdwan_snapshot",
+        "catsdwan_compare_snapshot",
+        "ise_snapshot",
+        "ise_compare_snapshot",
+        "catc_snapshot",
+        "catc_compare_snapshot",
+        "fmc_snapshot",
+        "fmc_compare_snapshot"
+      ],
+      "rendered": true,
+      "suite": true,
+      "tier": "read",
+      "uses": [
+        "catsdwan",
+        "ise",
+        "catc",
+        "fmc"
+      ]
     }
   },
   "server": "fmc-mcp-server",
@@ -472,6 +500,10 @@
     "fmc_clear_hit_counts": {
       "tier": "write",
       "title": "Clear rule hit counts"
+    },
+    "fmc_compare_snapshot": {
+      "tier": "read",
+      "title": "Compare Secure Firewall Management Center snapshots"
     },
     "fmc_configure_bgp": {
       "tier": "write",
@@ -1216,6 +1248,10 @@
     "fmc_si_block": {
       "tier": "write",
       "title": "Security Intelligence block/unblock"
+    },
+    "fmc_snapshot": {
+      "tier": "read",
+      "title": "Secure Firewall Management Center snapshot"
     },
     "fmc_snort_profile": {
       "tier": "write",

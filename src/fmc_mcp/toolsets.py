@@ -11,7 +11,9 @@ Unknown names fail at startup with the list of areas. Unset or empty: every area
 
 Every tool is in exactly one area (TOOLSETS); tests/unit/test_toolsets.py checks the table against the
 registered tools, so a new tool must be added here. A prompt is registered when its home areas are loaded
-(PROMPT_TOOLSETS); optional steps may name tools of areas that are not.
+(PROMPT_TOOLSETS); optional steps may name tools of areas that are not. Core's suite prompts (`suite_*`,
+C48) are always registered: each names the legs it skips, and its fmc leg (fmc_snapshot,
+fmc_compare_snapshot) is in `core`.
 
 This is the fmc catalogue; the generic loader is planned in stutters-mcp-core (C31), and the table is
 plain data so it can move onto that mechanism unchanged.
@@ -32,15 +34,18 @@ ALWAYS = "core"
 # area -> (one-line description, tools). Keep each list sorted; one area per tool.
 CATALOGUE: dict[str, tuple[str, tuple[str, ...]]] = {
     "core": (
-        "always loaded: status, the API spec search and raw API call, domains, devices, tasks",
+        "always loaded: status, the API spec search and raw API call, domains, devices, tasks, change-check "
+        "snapshots",
         (
             "fmc_api_call",
+            "fmc_compare_snapshot",
             "fmc_get_definition",
             "fmc_get_task",
             "fmc_list_devices",
             "fmc_list_domains",
             "fmc_review_change",
             "fmc_search_spec",
+            "fmc_snapshot",
             "fmc_status",
         ),
     ),
