@@ -12,7 +12,7 @@ from typing import Any
 
 import httpx
 
-from fmc_mcp import toolsets
+from fmc_mcp import change_ref, toolsets
 from fmc_mcp._core import AuthError, InvalidRequest, NotFound
 from fmc_mcp._core.http import (
     ApiClient,
@@ -96,8 +96,9 @@ class _TicketHeaders:
 
     async def headers(self, client: ApiClient) -> dict[str, str]:
         out = dict(await self.inner.headers(client))
-        if self.app.ticket_id:
-            out["ticket-id"] = self.app.ticket_id
+        ticket = change_ref.call_ticket.get() or self.app.ticket_id  # a call's change_ref ticket first
+        if ticket:
+            out["ticket-id"] = ticket
         return out
 
     async def on_unauthorized(self, client: ApiClient, sent: dict[str, str]) -> bool:

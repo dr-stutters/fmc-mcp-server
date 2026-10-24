@@ -17,6 +17,7 @@ from typing import Annotated, Any
 from fastmcp import Context
 from pydantic import Field
 
+from fmc_mcp import change_ref
 from fmc_mcp._core import (
     Confirm,
     InvalidRequest,
@@ -169,7 +170,7 @@ def _rule_body(name: str, reason: str) -> dict[str, Any]:
         "logBegin": True,
         "logEnd": False,
         "sendEventsToFMC": True,
-        "newComments": [f"Created by fmc_contain_host: {reason}"[:250]],
+        "newComments": [str(change_ref.comment(f"Created by fmc_contain_host: {reason}"))[:250]],
     }
 
 

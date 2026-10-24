@@ -8,7 +8,7 @@ import httpx
 from fastmcp import FastMCP
 from fastmcp.server.auth import AuthProvider
 
-from fmc_mcp import toolsets
+from fmc_mcp import change_ref, toolsets
 from fmc_mcp._core import ServerSpec, ToolRegistrar, build_server, suite
 from fmc_mcp._core.spec import SpecSource
 from fmc_mcp.client import SPEC_PATH, FmcApp
@@ -105,6 +105,8 @@ Workflows:
   -> fmc_deploy (device and hubs) -> fmc_get_vpn_topology.
 - Change safely: make the change -> fmc_pending_changes (what the next deploy pushes) -> fmc_deploy
   -> fmc_run_show_command / fmc_list_deployments; undo a bad deployment with fmc_rollback_deployment.
+  A change number from the user goes in `change_ref` on each write: the preview shows it, access rule
+  comments carry it, and with change management on the open FMC ticket of that name takes the change.
 - Fleets and device groups: fmc_list_device_groups, fmc_create_device_group, fmc_update_device_group (add,
   remove), fmc_delete_device_group. A group goes wherever devices do ('group:<name>', or its name):
   fmc_run_show_command(group=... or devices=[...]: one command on up to 25 devices, a row per device),
@@ -375,10 +377,10 @@ def create_server(
 ) -> FastMCP[Any]:
     selected = toolsets.parse(settings.toolsets)
     spec = SPEC
-    register = REGISTER
+    register = [change_ref.wrapped(fn) for fn in REGISTER]  # change_ref on every write (F90)
     if selected is not None:  # FMC_TOOLSETS: only these areas (core always)
         spec = replace(SPEC, instructions=SPEC.instructions + toolsets.instructions_note(selected))
-        register = [toolsets.filtered(fn, selected) for fn in REGISTER]
+        register = [toolsets.filtered(fn, selected) for fn in register]
     return build_server(
         spec,
         settings,

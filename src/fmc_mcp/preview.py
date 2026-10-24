@@ -1,6 +1,7 @@
 """Preview wrapper for every FMC write (F19): names the domain the change is made in, and blocks edits
 of objects or policies that a descendant domain only inherits (FMC refuses them there). Access policies
-another user has locked (F76) block the preview with the holder's name; the API user's own lock is shown."""
+another user has locked (F76) block the preview with the holder's name; the API user's own lock is shown.
+A call's `change_ref` (F90) is shown, bound to the confirm, and mapped to an open FMC ticket."""
 
 from __future__ import annotations
 
@@ -11,6 +12,7 @@ from typing import Any
 
 from fastmcp import Context
 
+from fmc_mcp import change_ref
 from fmc_mcp._core import Plan, get_client, preview_or_apply
 from fmc_mcp.acp_structure import lock_findings
 from fmc_mcp.client import FmcApp
@@ -79,4 +81,24 @@ async def fmc_preview(
         plan.blockers.extend(lock_blockers)
         if lock_notes:
             plan.details["policy_lock"] = lock_notes[0] if len(lock_notes) == 1 else lock_notes
-    return await preview_or_apply(ctx, tool=tool, args=args, confirm=confirm, plan=plan, apply=apply)
+    run = apply
+    ref = change_ref.current()
+    if ref:
+        ticket = await change_ref.map_to_ticket(app, plan, args.get("domain"))
+        # Part of the arguments (so the audit events record it) and of the fingerprint (so a confirm is
+        # refused if the ticket it maps to has changed since the preview).
+        args = {**args, change_ref.ARGUMENT: ref}
+        plan.fingerprint = {"plan": plan.fingerprint, "change_ref": ref, "ticket": ticket}
+
+        async def with_ref() -> Any:
+            token = change_ref.call_ticket.set(ticket)
+            try:
+                result = await apply()
+            finally:
+                change_ref.call_ticket.reset(token)
+            if isinstance(result, dict) and change_ref.ARGUMENT not in result:
+                result = {**result, change_ref.ARGUMENT: ref}
+            return result
+
+        run = with_ref
+    return await preview_or_apply(ctx, tool=tool, args=args, confirm=confirm, plan=plan, apply=run)
