@@ -1,5 +1,10 @@
 # Changelog
 
+## 0.16.2 (2026-10-24)
+
+### Security
+- fastmcp, fastmcp-slim and fastmcp-tasks 4.1.0 -> 4.1.3 (GHSA-7xgj-8392-5q4r, GHSA-vqqp-x5qm-5qp4). No tool changes.
+
 ## 0.16.1 (2026-10-22)
 
 The Decrypt - Resign cipher downgrade warning (F85) from the TLS cipher lab's step-up experiments. No new tools: 217 tools
