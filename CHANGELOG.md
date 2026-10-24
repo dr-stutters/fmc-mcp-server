@@ -1,5 +1,14 @@
 # Changelog
 
+## 0.17.0 (2026-10-24)
+
+Wave 7 (SD-WAN cross-architecture): pre/post change snapshots on the suite's snapshot contract. Core 0.15.0 with the suite
+prompt pack. Two new tools and one prompt: 219 tools (91 read, 114 write, 14 dangerous) and thirteen prompts.
+
+### Added
+- `fmc_snapshot` / `fmc_compare_snapshot` (F89, #333): core snapshot contract C53 with deployment state, HA, interface and VPN
+  status and device health per device group or name filter; core's suite prompt pack (`suite_change_check`); core 0.15.0.
+
 ## 0.16.2 (2026-10-24)
 
 ### Security
