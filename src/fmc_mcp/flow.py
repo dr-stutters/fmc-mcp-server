@@ -105,6 +105,27 @@ def connected_net(interfaces: list[tuple[str, dict[str, Any]]], ip: Address) -> 
     return best
 
 
+def interface_holding(
+    interfaces: list[tuple[str, dict[str, Any]]], ip: Address, *, enabled_only: bool = True
+) -> tuple[dict[str, Any], Net] | None:
+    """The named interface (an interface_row(), its subnet) whose connected subnet holds `ip`, longest match:
+    the FTD side of a link whose far end is `ip` (an SD-WAN edge's service-chain address, F88). With
+    enabled_only=False a disabled interface is found too (to say it is disabled)."""
+    best: tuple[dict[str, Any], Net] | None = None
+    for kind, i in interfaces:
+        row = interface_row(kind, i)
+        if not row.get("logical_name") or (enabled_only and row.get("enabled") is False):
+            continue
+        for net in _interface_nets(row, i):
+            if (
+                ip.version == net.version
+                and ip in net
+                and (best is None or net.prefixlen > best[1].prefixlen)
+            ):
+                best = (row, net)
+    return best
+
+
 async def all_interfaces(app: FmcApp, device_id: str, domain: str | None) -> list[tuple[str, dict[str, Any]]]:
     """(kind, interface) for every interface of a device in one request: FMC's ftdallinterfaces (all
     kinds; FMC 10.0.1 leaves a subinterface's subIntfId and VLAN out there). Falls back to one request
