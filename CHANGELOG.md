@@ -1,5 +1,14 @@
 # Changelog
 
+## 0.17.1 (2026-10-24)
+
+Change numbers on every write. Core stays 0.15.0. 219 tools and thirteen prompts.
+
+### Added
+- Every write tool takes `change_ref` (a change number) (F90, #328, #335): the preview shows it and binds it to the confirm,
+  access rule writes add it to the rule's comment history (`newComments`), with FMC change management the open FMC ticket of
+  that name carries the change (`ticket-id`, for that call only), and the audit events and the result record it.
+
 ## 0.17.0 (2026-10-24)
 
 Wave 7 (SD-WAN cross-architecture): pre/post change snapshots on the suite's snapshot contract. Core 0.15.0 with the suite
