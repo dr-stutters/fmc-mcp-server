@@ -733,3 +733,23 @@ async def test_single_rule_log_none_keeps_monitor_end_logging(lab: respx.MockRou
     assert (created["logBegin"], created["logEnd"], created["sendEventsToFMC"]) == (False, True, True)
     assert not any("MONITOR" in s for s in plain["side_effects"])  # an ALLOW rule really goes quiet
     assert plain["preview"]["changes"]["logEnd"] == {"from": True, "to": False}
+
+
+async def test_bulk_change_ref_is_each_changed_rules_comment(probe: respx.MockRouter) -> None:
+    """F90: change_ref without a comment becomes 'Change <ref>' on every rule the call changes."""
+    probe.get(f"{CFG}/changemanagement/tickets").mock(
+        return_value=httpx.Response(400, json={"error": {"messages": [{"description": "not enabled"}]}})
+    )
+    put = probe.put(RULES).mock(return_value=httpx.Response(200, json=FX["applied"]))
+    preview, done = await preview_apply(
+        "fmc_bulk_update_access_rules",
+        {
+            "policy": "mcp-test-acp",
+            "select": {"names": ["MCP-W6-PROBE-1", "mcp-w6-probe-3"]},
+            "set": {"enabled": True, "log": "end"},
+            "change_ref": "CHG9",
+        },
+    )
+    assert preview["preview"]["change_ref"] == "CHG9"
+    assert {b["id"]: b["newComments"] for b in sent(put)} == {P1: ["Change CHG9"], P3: ["Change CHG9"]}
+    assert done["result"]["applied"] == 2 and done["result"]["change_ref"] == "CHG9"

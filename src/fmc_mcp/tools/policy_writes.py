@@ -7,6 +7,7 @@ from typing import Annotated, Any, Literal
 from fastmcp import Context
 from pydantic import Field
 
+from fmc_mcp import change_ref
 from fmc_mcp._core import (
     Confirm,
     InvalidRequest,
@@ -523,8 +524,9 @@ def register(reg: ToolRegistrar) -> None:
                 raise InvalidRequest("A file policy can only be set on ALLOW rules.")
             body["filePolicy"] = await file_policy_ref(app, file_policy, domain)
             body["logFiles"] = log != "none"
-        if comment:
-            body["newComments"] = [comment]
+        note = change_ref.comment(comment)  # with the call's change_ref (F90)
+        if note:
+            body["newComments"] = [note]
         params: dict[str, Any] = {}
         blockers = await identity_blockers(app, p, body.get("users"), domain)
         if section:
@@ -764,8 +766,9 @@ def register(reg: ToolRegistrar) -> None:
         desired.update(_log_fields(log, desired.get("action")))
         _fix_block_logging(desired)
         desired.pop("commentHistoryList", None)
-        if comment:
-            desired["newComments"] = [comment]
+        note = change_ref.comment(comment)  # with the call's change_ref (F90)
+        if note:
+            desired["newComments"] = [note]
         old_index = (current.get("metadata") or {}).get("ruleIndex")
         changes = relabel_changes(
             {**rule_changes(editable(current), desired), **cleared}, editable(current), desired, extra.tags

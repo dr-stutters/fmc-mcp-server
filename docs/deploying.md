@@ -140,6 +140,11 @@ supports it (F22):
   releases it from the server. Approval itself happens in the FMC UI, by a person.
 - `FMC_TICKET=CHG0012345` sends that ticket id (`ticket-id` header) with every request from the start, for
   example when the change number comes from your ITSM process.
+- `change_ref` on any write tool (F90) ties that one change to a change number: the preview shows it, the
+  MCP audit log records it, access rule writes add it to the rule's comment history (`[CHG...] comment`, or
+  `Change CHG...` alone), and with change management on the call's requests carry the open FMC ticket of that
+  name or id (for that call only; the server's current ticket is used when none is named so, and the preview is
+  blocked when there is neither). `fmc_api_call` gets it with core's audit trail v2 (C33).
 
 Tickets belong to the FMC user, and this server has one FMC user: an open ticket is used for **every caller's**
 changes until it is submitted or released. On a regulated site:

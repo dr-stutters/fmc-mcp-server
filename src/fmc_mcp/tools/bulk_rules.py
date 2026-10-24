@@ -29,6 +29,7 @@ from typing import Annotated, Any, Literal
 from fastmcp import Context
 from pydantic import BaseModel, ConfigDict, Field
 
+from fmc_mcp import change_ref
 from fmc_mcp._core import (
     Confirm,
     InvalidRequest,
@@ -215,8 +216,9 @@ def rule_partial(
     comment_only = not any(v not in (None, [], "") for k, v in want.model_dump().items() if k != "comment")
     if not part and monitor_log_off(action, want) and not comment_only:
         return {}, MONITOR_LOG_SKIP
-    if want.comment and (part or comment_only):
-        part["newComments"] = [want.comment]  # with the rule's changes, or on its own
+    note = change_ref.comment(want.comment) if (part or want.comment) else None  # F90: + change_ref
+    if note and (part or comment_only):
+        part["newComments"] = [note]  # with the rule's changes, or on its own
     return part, None
 
 
