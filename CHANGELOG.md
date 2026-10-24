@@ -1,5 +1,18 @@
 # Changelog
 
+## 0.17.2 (2026-10-24)
+
+FTD as an SD-WAN service-chain target. Core stays 0.15.0. 220 tools and thirteen prompts.
+
+### Added
+- `fmc_service_chain_check` (F88, #329, #337): the FTD as a Catalyst SD-WAN service-chain firewall: links, link state,
+  zones, routes back to the edge, the policy verdict, and a fix per failure.
+- `fmc_packet_tracer` takes `ingress_hop` / `expect_next_hop` and returns a `chain_leg` (F88), and `interface_state` on
+  traces whose interfaces aren't up.
+
+### Changed
+- README tool counts brought up to date (220 tools: 92 read, 114 write, 14 dangerous; thirteen prompts).
+
 ## 0.17.1 (2026-10-24)
 
 Change numbers on every write. Core stays 0.15.0. 219 tools and thirteen prompts.
