@@ -125,14 +125,27 @@ async def _ravpn(app: FmcApp, ref: str, domain: str | None) -> dict[str, Any]:
     return hit
 
 
-async def _targets(app: FmcApp, policy_id: str, domain: str | None) -> list[str]:
+async def _targets(app: FmcApp, policy_id: str, domain: str | None) -> list[str] | None:
+    """The devices the RA VPN policy is assigned to, or None when FMC's assignments can't be read."""
     try:
         for a in await policy_assignments(app, domain):
-            if (a.get("policy") or {}).get("id") == policy_id:
+            if str((a.get("policy") or {}).get("id", "")).lower() == policy_id.lower():
                 return [str(t.get("name") or t.get("id")) for t in a.get("targets") or []]
     except UpstreamError:
-        pass
+        return None
     return []
+
+
+def _norm(v: Any) -> Any:
+    """A value as compared for the preview diff: references by id only (FMC's carry links, version and
+    ids in either case; ours are {id, type, name}), lists and dicts element by element."""
+    if isinstance(v, dict):
+        if v.get("id"):
+            return str(v["id"]).lower()
+        return {k: _norm(x) for k, x in v.items() if k not in ("links", "metadata")}
+    if isinstance(v, list):
+        return [_norm(x) for x in v]
+    return v
 
 
 def _os_of(pkg: dict[str, Any]) -> str | None:
@@ -453,6 +466,7 @@ def register(reg: ToolRegistrar) -> None:
             cert = None
             blockers.append(f"No certificate enrollment named {certificate!r} (fmc_create_cert_enrollment).")
         images = []
+        skipped: list[str] = []
         pkgs: list[dict[str, Any] | None] = []
         if ssl:
             if secure_client_packages:
@@ -467,12 +481,15 @@ def register(reg: ToolRegistrar) -> None:
                     continue
                 os_ = _os_of(p)
                 if os_ is None:
-                    blockers.append(
-                        f"Can't tell the operating system of Secure Client package {p.get('name')!r}."
-                    )
+                    if secure_client_packages:
+                        blockers.append(
+                            f"Can't tell the operating system of Secure Client package {p.get('name')!r}."
+                        )
+                    else:
+                        skipped.append(str(p.get("name") or p.get("id")))
                     continue
                 images.append({"operatingSystem": os_, "anyconnectImage": ref_of(p)})
-            if not images and not blockers:
+            if not images and not secure_client_packages:
                 blockers.append(
                     "No Secure Client package on FMC: upload one in the FMC UI (Objects > Object Management "
                     "> VPN > Secure Client File); SSL clients download it from the FTD."
@@ -528,6 +545,11 @@ def register(reg: ToolRegistrar) -> None:
             f"{certificate!r} on each one (fmc_enroll_certificate), then fmc_deploy.",
             NAT_NOTE,
         ]
+        if skipped:
+            side_effects.append(
+                f"Left out Secure Client package(s) {', '.join(skipped)}: their operating system isn't in"
+                " the name; pass them in secure_client_packages to see why."
+            )
         if bypass_access_control:
             side_effects.append(
                 "Decrypted VPN traffic bypasses the access control policy (sysopt permit-vpn)."
@@ -641,7 +663,8 @@ def register(reg: ToolRegistrar) -> None:
         if aaa_server:
             if (srv := await _aaa_server(app, aaa_server, domain, blockers)) is not None:
                 body["primaryAuthenticationServer"] = srv
-                body["useLocalAsPrimaryAuthServer"] = False
+                if not existing or existing.get("useLocalAsPrimaryAuthServer"):
+                    body["useLocalAsPrimaryAuthServer"] = False
         elif local_authentication:
             if not pol.get("localRealmServer"):
                 blockers.append(
@@ -652,6 +675,13 @@ def register(reg: ToolRegistrar) -> None:
             body.pop("primaryAuthenticationServer", None)
         elif not existing and body["authenticationMethod"] != "CLIENT_CERTIFICATE_ONLY":
             raise InvalidRequest("A new AAA profile needs aaa_server or local_authentication=true.")
+        if body.get("authenticationMethod") == "CLIENT_CERTIFICATE_ONLY":
+            if aaa_server or local_authentication:
+                raise InvalidRequest(
+                    "Certificate-only authentication takes no aaa_server or local_authentication."
+                )
+            body.pop("primaryAuthenticationServer", None)
+            body.pop("useLocalAsPrimaryAuthServer", None)
         for key, ref in (
             ("authorizationServer", authorization_server),
             ("accountingServer", accounting_server),
@@ -675,11 +705,20 @@ def register(reg: ToolRegistrar) -> None:
         ):
             if val is not None:
                 body[key] = val
-        changes = (
-            {k: {"from": existing.get(k), "to": v} for k, v in body.items() if existing.get(k) != v}
-            if existing
-            else None
-        )
+        changes: dict[str, Any] | None = None
+        if existing:
+            changes = {
+                k: {"from": existing.get(k), "to": v}
+                for k, v in body.items()
+                if _norm(existing.get(k)) != _norm(v)
+            }
+            changes.update(
+                {
+                    k: {"from": v, "to": None}
+                    for k, v in existing.items()
+                    if k not in body and k not in ("links", "metadata")
+                }
+            )
         assign_changed = False
         assign_body: dict[str, Any] | None = None
         assign_path = ""
@@ -700,17 +739,21 @@ def register(reg: ToolRegistrar) -> None:
                     **{k: v for k, v in flags.items() if v is not None},
                 }
                 assign_path = f"{base}/addressassignmentsettings/{cur['id']}"
-                assign_changed = assign_body != {
-                    k: v for k, v in cur.items() if k not in ("links", "metadata")
-                }
+                assign_changed = any(_norm(cur.get(k)) != _norm(v) for k, v in flags.items() if v is not None)
         if existing and not changes and not assign_changed:
             blockers.append(f"Connection profile {name!r} already has these settings.")
         targets = await _targets(app, pol["id"], domain)
-        side_effects = [
-            f"{DEPLOY_NOTE} Targets now: {', '.join(targets)}."
-            if targets
-            else "The RA VPN policy targets no device yet: nothing is pushed until it is assigned, deployed."
-        ]
+        if targets is None:
+            side_effects = [
+                f"{DEPLOY_NOTE} FMC's policy assignments could not be read, so the devices it reaches are "
+                "unknown: check Targeted Devices before confirming."
+            ]
+        elif targets:
+            side_effects = [f"{DEPLOY_NOTE} Targets now: {', '.join(targets)}."]
+        else:
+            side_effects = [
+                "The RA VPN policy targets no device yet: nothing is pushed until it is assigned, deployed."
+            ]
         if existing and targets:
             side_effects.append(
                 f"Users of {name!r} on {', '.join(targets)} get the change at their next connection after "
@@ -737,7 +780,8 @@ def register(reg: ToolRegistrar) -> None:
             out["next"] = "fmc_deploy the targeted FTDs, then fmc_get_ravpn."
             return out
 
-        details: dict[str, Any] = {"policy": pol.get("name"), "where_used": targets or "no device yet"}
+        where = "unknown (policy assignments unreadable)" if targets is None else targets or "no device yet"
+        details: dict[str, Any] = {"policy": pol.get("name"), "where_used": where}
         if existing:
             details["changes"] = changes
         else:

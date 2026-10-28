@@ -298,6 +298,29 @@ async def test_create_ravpn_without_package_blocks(fmc: respx.MockRouter) -> Non
     assert out["status"] == "blocked" and "upload one in the FMC UI" in out["blockers"][0]
 
 
+async def test_create_ravpn_skips_unknown_os_package_by_default(fmc: respx.MockRouter) -> None:
+    odd = {"id": "pkg-2", "name": "sc-5.1-pkg", "type": "AnyConnectPackage"}
+    objects(fmc, packages=[PKG, odd])
+    fmc.get(RAVPN).mock(return_value=items([]))
+    async with Client(server()) as c:
+        out = await run(c, "fmc_create_ravpn", RA_ARGS)
+    assert out["status"] == "preview", out
+    assert [i["anyconnectImage"]["id"] for i in out["preview"]["ravpn"]["anyConnectClientImages"]] == [
+        "pkg-1"
+    ]
+    assert any("sc-5.1-pkg" in s for s in out["side_effects"])
+
+
+async def test_create_ravpn_reports_missing_package_with_other_blockers(fmc: respx.MockRouter) -> None:
+    objects(fmc, packages=[])
+    fmc.get(RAVPN).mock(return_value=items([]))
+    async with Client(server()) as c:
+        out = await run(c, "fmc_create_ravpn", {**RA_ARGS, "access_interfaces": ["no-such-zone"]})
+    assert out["status"] == "blocked"
+    assert any("no-such-zone" in b for b in out["blockers"])
+    assert any("upload one in the FMC UI" in b for b in out["blockers"])
+
+
 # --- connection profiles ---------------------------------------------------------------------------
 
 
@@ -402,3 +425,105 @@ async def test_new_aaa_profile_needs_a_server(fmc: respx.MockRouter) -> None:
             "fmc_set_connection_profile", {"policy": "mcp-test-ravpn", "name": "x"}, raise_on_error=False
         )
     assert r.is_error
+
+
+def fmc_ref(obj: dict[str, Any]) -> dict[str, Any]:
+    """A reference as FMC returns it inside an object: links, and the id in upper case."""
+    return {**obj, "id": obj["id"].upper(), "links": {"self": "https://fmc.example.com/x"}}
+
+
+async def test_profile_rerun_with_fmc_refs_is_a_no_op(fmc: respx.MockRouter) -> None:
+    objects(fmc)
+    live = {
+        **PROFILE,
+        "groupPolicy": fmc_ref(DFLT),
+        "primaryAuthenticationServer": fmc_ref(PROFILE["primaryAuthenticationServer"]),
+        "ipv4AddressPool": [fmc_ref(POOL4)],
+    }
+    policy(fmc, [live])
+    async with Client(server()) as c:
+        out = await run(
+            c,
+            "fmc_set_connection_profile",
+            {
+                "policy": "mcp-test-ravpn",
+                "name": "mcp-test-employees",
+                "group_policy": "DfltGrpPolicy",
+                "aaa_server": "mcp-test-ad",
+                "ipv4_pools": ["mcp-test-ra-pool"],
+                "use_pools": True,
+            },
+        )
+    assert out["status"] == "blocked" and "already has these settings" in out["blockers"][0], out
+
+
+async def test_profile_to_local_shows_server_removed(fmc: respx.MockRouter) -> None:
+    objects(fmc)
+    policy(fmc, [PROFILE])
+    put = fmc.put(f"{RAVPN}/ra-1/connectionprofiles/cp-1").mock(side_effect=echo(200))
+    args = {"policy": "mcp-test-ravpn", "name": "mcp-test-employees", "local_authentication": True}
+    async with Client(server()) as c:
+        preview = await run(c, "fmc_set_connection_profile", args)
+        assert preview["status"] == "preview", preview
+        ch = preview["preview"]["changes"]
+        assert ch["primaryAuthenticationServer"]["to"] is None
+        assert ch["useLocalAsPrimaryAuthServer"] == {"from": None, "to": True}
+        done = await run(c, "fmc_set_connection_profile", {**args, "confirm": preview["confirm"]})
+    body = json.loads(put.calls.last.request.content)
+    assert "primaryAuthenticationServer" not in body and body["useLocalAsPrimaryAuthServer"] is True
+    assert done["result"]["connection_profile"]["aaa_server"] == "LOCAL"
+
+
+async def test_profile_local_without_realm_blocks(fmc: respx.MockRouter) -> None:
+    objects(fmc)
+    fmc.get(RAVPN).mock(return_value=items([{**POLICY, "localRealmServer": None}]))
+    fmc.get(f"{RAVPN}/ra-1/connectionprofiles").mock(return_value=items([]))
+    async with Client(server()) as c:
+        out = await run(
+            c,
+            "fmc_set_connection_profile",
+            {"policy": "mcp-test-ravpn", "name": "x", "local_authentication": True},
+        )
+    assert out["status"] == "blocked" and "no local realm" in out["blockers"][0]
+
+
+async def test_profile_certificate_only_drops_aaa_server(fmc: respx.MockRouter) -> None:
+    objects(fmc)
+    policy(fmc, [PROFILE])
+    put = fmc.put(f"{RAVPN}/ra-1/connectionprofiles/cp-1").mock(side_effect=echo(200))
+    args = {"policy": "mcp-test-ravpn", "name": "mcp-test-employees", "authentication": "certificate"}
+    async with Client(server()) as c:
+        preview = await run(c, "fmc_set_connection_profile", args)
+        assert preview["status"] == "preview", preview
+        assert preview["preview"]["changes"]["primaryAuthenticationServer"]["to"] is None
+        await run(c, "fmc_set_connection_profile", {**args, "confirm": preview["confirm"]})
+    body = json.loads(put.calls.last.request.content)
+    assert body["authenticationMethod"] == "CLIENT_CERTIFICATE_ONLY"
+    assert "primaryAuthenticationServer" not in body
+
+
+async def test_profile_unreadable_assignments_says_so(fmc: respx.MockRouter) -> None:
+    objects(fmc)
+    policy(fmc, [])
+    fmc.get(f"{CFG}/assignment/policyassignments").mock(return_value=httpx.Response(500, json={}))
+    async with Client(server()) as c:
+        out = await run(
+            c,
+            "fmc_set_connection_profile",
+            {"policy": "mcp-test-ravpn", "name": "x", "aaa_server": "mcp-test-ise"},
+        )
+    assert out["status"] == "preview", out
+    assert out["preview"]["where_used"].startswith("unknown")
+    assert any("could not be read" in s for s in out["side_effects"])
+
+
+async def test_profile_confirm_result_shows_aliases_and_server(fmc: respx.MockRouter) -> None:
+    objects(fmc)
+    policy(fmc, [])
+    fmc.post(f"{RAVPN}/ra-1/connectionprofiles").mock(side_effect=echo())
+    args = {"policy": "mcp-test-ravpn", "name": "x", "aaa_server": "mcp-test-ise", "aliases": ["Corp"]}
+    async with Client(server()) as c:
+        preview = await run(c, "fmc_set_connection_profile", args)
+        done = await run(c, "fmc_set_connection_profile", {**args, "confirm": preview["confirm"]})
+    row = done["result"]["connection_profile"]
+    assert row["aaa_server"] == "mcp-test-ise" and row["aliases"] == ["Corp"]

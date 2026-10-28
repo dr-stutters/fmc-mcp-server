@@ -664,8 +664,13 @@ def _profile_row(c: dict[str, Any]) -> dict[str, Any]:
         )
         if isinstance(c.get("authenticationMethod") or c.get("authenticationSettings"), dict)
         else c.get("authenticationMethod"),
-        "aaa_server": server("authenticationSettings") or server("authenticationServer"),
-        "aliases": _names(c.get("groupAliases")) or None,
+        "aaa_server": server("primaryAuthenticationServer")
+        or server("authenticationSettings")
+        or server("authenticationServer")
+        or ("LOCAL" if c.get("useLocalAsPrimaryAuthServer") else None),
+        "aliases": [str(a.get("aliasName")) for a in c.get("groupAlias") or [] if isinstance(a, dict)]
+        or _names(c.get("groupAliases"))
+        or None,
         "id": c.get("id"),
     }
     return {k: v for k, v in row.items() if v not in (None, [], "")}
