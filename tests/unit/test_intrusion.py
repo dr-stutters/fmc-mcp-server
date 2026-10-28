@@ -46,6 +46,28 @@ RULE = {
     "ruleGroups": [{"name": "mcp-test-rules", "id": "g1", "type": "IntrusionRuleGroup"}],
 }
 RULES = f"{CFG}/policy/intrusionpolicies/{IPS['id']}/intrusionrules"
+# GET .../intrusionpolicies/{id}?includeCount=true (FMC 10.0.1, live 2026-10-28 on Balanced: snortEngine and
+# ruleCount sit in metadata; metadata.mappedPolicy is the Snort 2 twin). No recommendations configured.
+RULE_COUNT = {
+    "disabled": 43060,
+    "alert": 479,
+    "block": 9880,
+    "rewrite": 0,
+    "reject": 0,
+    "pass": 0,
+    "drop": 0,
+    "overridden": 0,
+}
+IPS_DETAIL = {
+    **IPS,
+    "inlineDrop": 1,
+    "metadata": {
+        **IPS["metadata"],
+        "mappedPolicy": {"snortEngine": "SNORT2"},
+        "snortEngine": "SNORT3",
+        "ruleCount": RULE_COUNT,
+    },
+}
 
 
 def server() -> Any:
@@ -67,8 +89,14 @@ def test_rule_filter() -> None:
 async def test_policy_summary_lists_overrides(fmc: respx.MockRouter) -> None:
     fmc.get(f"{CFG}/policy/intrusionpolicies").mock(return_value=items([IPS, BALANCED]))
     route = fmc.get(RULES).mock(return_value=items([{**RULE, "overrideState": "DROP"}]))
+    one = fmc.get(f"{CFG}/policy/intrusionpolicies/{IPS['id']}").mock(
+        return_value=httpx.Response(200, json=IPS_DETAIL)
+    )
     async with Client(server()) as c:
         out = await run(c, "fmc_get_intrusion_policy", {"policy": "mcp-test-ips", "response_format": "json"})
+    assert one.calls.last.request.url.params["includeCount"] == "true"
+    assert out["snort_engine"] == "SNORT3" and out["rule_counts"]["block"] == 9880
+    assert out["recommendations"] == {"configured": False, "in_use": False}
     assert route.calls.last.request.url.params["filter"] == f"overrides:true;ipspolicy:{IPS['id']}"
     assert out["base_policy"] == "Balanced Security and Connectivity"
     assert out["overridden_rules"][0]["rule"] == "2000:1000001"
@@ -169,6 +197,7 @@ async def test_set_state_reports_the_policy_default_not_the_rule_keyword(fmc: re
 async def test_find_and_summary_use_default_set_by(fmc: respx.MockRouter) -> None:
     fmc.get(f"{CFG}/policy/intrusionpolicies").mock(return_value=items([IPS]))
     fmc.get(RULES).mock(return_value=items([{**T498_ONE, "overrideState": "BLOCK"}]))
+    fmc.get(f"{CFG}/policy/intrusionpolicies/{IPS['id']}").mock(return_value=httpx.Response(200, json=IPS))
     async with Client(server()) as c:
         found = await run(
             c,
@@ -256,3 +285,144 @@ async def test_set_device_licenses_keeps_host_and_tier(fmc: respx.MockRouter) ->
     assert body["license_caps"] == ["ESSENTIALS", "IPS"] and body["hostName"] == "10.0.0.1"
     assert body["performanceTier"] == "FTDv5"
     assert r.is_error and "ESSENTIALS" in r.content[0].text  # type: ignore[union-attr]
+
+
+# --- F97 rule recommendations (ruleRecommendation from the FMC spec: IRuleRecommendation) ---------------
+ONE = f"{CFG}/policy/intrusionpolicies/{IPS['id']}"
+INSIDE = {
+    "id": "00000000-0000-0ed3-0000-021474900001",
+    "name": "mcp-inside",
+    "type": "Network",
+    "value": "192.0.2.0/24",
+}
+REC = {
+    "securityLevel": "LEVEL_2",
+    "acceptDisabledRules": False,
+    "lastUpdatedTime": 1793145600,  # 2026-10-28T00:00:00Z
+    "networks": [{"id": INSIDE["id"], "type": "Network", "name": "mcp-inside"}],
+    "recommendationInUse": True,
+}
+
+
+def rec_routes(fmc: respx.MockRouter, detail: dict[str, Any]) -> respx.Route:
+    """The policy (list + single GET) and a PUT that stores ruleRecommendation like FMC does."""
+    state = {"p": detail}
+    fmc.get(f"{CFG}/policy/intrusionpolicies").mock(return_value=items([IPS, BALANCED]))
+    fmc.get(ONE).mock(side_effect=lambda req: httpx.Response(200, json=state["p"]))
+
+    def put(req: httpx.Request) -> httpx.Response:
+        body = json.loads(req.content)
+        rec = body.get("ruleRecommendation")
+        if req.url.params.get("ruleRecommendationAction") == "REMOVE":
+            body.pop("ruleRecommendation", None)
+        elif rec is not None:
+            body["ruleRecommendation"] = {**rec, "lastUpdatedTime": 1793145600}
+        state["p"] = {**body, "metadata": detail.get("metadata")}
+        return httpx.Response(200, json=state["p"])
+
+    return fmc.put(ONE).mock(side_effect=put)
+
+
+async def test_get_policy_shows_recommendations(fmc: respx.MockRouter) -> None:
+    fmc.get(f"{CFG}/policy/intrusionpolicies").mock(return_value=items([IPS]))
+    fmc.get(RULES).mock(return_value=items([]))
+    fmc.get(ONE).mock(return_value=httpx.Response(200, json={**IPS_DETAIL, "ruleRecommendation": REC}))
+    async with Client(server()) as c:
+        out = await run(c, "fmc_get_intrusion_policy", {"policy": "mcp-test-ips", "response_format": "json"})
+    assert out["recommendations"] == {
+        "configured": True,
+        "in_use": True,
+        "security_level": 2,
+        "networks": ["mcp-inside"],
+        "accept_disabled_rules": False,
+        "last_generated": "2026-10-28T00:00:00Z",
+    }
+
+
+async def test_generate_and_use_sends_rule_recommendation(fmc: respx.MockRouter) -> None:
+    put = rec_routes(fmc, IPS_DETAIL)
+    fmc.get(f"{CFG}/object/hosts").mock(return_value=items([]))
+    nets = fmc.get(f"{CFG}/object/networks").mock(return_value=items([INSIDE]))
+    async with Client(server()) as c:
+        args = {"policy": "mcp-test-ips", "networks": ["mcp-inside"], "security_level": 2}
+        preview = await run(c, "fmc_set_intrusion_recommendations", args)
+        assert preview["status"] == "preview", preview
+        assert nets.calls.last.request.url.params["filter"] == "nameOrValue:mcp-inside"
+        pv = preview["preview"]
+        assert pv["current"] == {"configured": False, "in_use": False}
+        assert pv["new"]["security_level"] == 2 and pv["new"]["networks"] == ["mcp-inside"]
+        assert pv["fmc_action"] == "GENERATE_AND_ACCEPT"
+        effects = " ".join(preview["side_effects"])
+        assert (
+            "Policies > Network Discovery" in effects and "drops" not in effects
+        )  # level 2: no drop warning
+        done = await run(c, "fmc_set_intrusion_recommendations", {**args, "confirm": preview["confirm"]})
+    req = put.calls.last.request
+    assert req.url.params["ruleRecommendationAction"] == "GENERATE_AND_ACCEPT"
+    body = json.loads(req.content)
+    assert "metadata" not in body and body["inspectionMode"] == "PREVENTION"
+    assert body["ruleRecommendation"] == {
+        "securityLevel": "LEVEL_2",
+        "networks": [{"id": INSIDE["id"], "type": "Network", "name": "mcp-inside"}],
+        "acceptDisabledRules": False,
+        "recommendationInUse": True,
+    }
+    assert done["result"]["recommendations"]["in_use"] is True
+    assert done["result"]["recommendations"]["last_generated"] == "2026-10-28T00:00:00Z"
+
+
+async def test_level_4_warns_about_drops_and_stored_networks_are_reused(fmc: respx.MockRouter) -> None:
+    rec_routes(fmc, {**IPS_DETAIL, "ruleRecommendation": REC})
+    async with Client(server()) as c:
+        args = {"policy": "mcp-test-ips", "action": "generate", "security_level": 4, "accept_disabled": True}
+        preview = await run(c, "fmc_set_intrusion_recommendations", args)
+    assert preview["status"] == "preview", preview
+    assert preview["preview"]["new"]["networks"] == ["mcp-inside"]  # stored networks kept
+    assert preview["preview"]["fmc_action"] == "GENERATE"
+    effects = " ".join(preview["side_effects"])
+    assert "LEVEL_4" in effects and "drop" in effects and "acceptDisabledRules" in effects
+
+
+async def test_stop_using_then_remove(fmc: respx.MockRouter) -> None:
+    put = rec_routes(fmc, {**IPS_DETAIL, "ruleRecommendation": REC})
+    async with Client(server()) as c:
+        args = {"policy": "mcp-test-ips", "action": "stop_using"}
+        preview = await run(c, "fmc_set_intrusion_recommendations", args)
+        assert preview["status"] == "preview", preview
+        await run(c, "fmc_set_intrusion_recommendations", {**args, "confirm": preview["confirm"]})
+        req = put.calls.last.request
+        assert "ruleRecommendationAction" not in req.url.params
+        sent = json.loads(req.content)["ruleRecommendation"]
+        assert sent["recommendationInUse"] is False and "lastUpdatedTime" not in sent
+        # stop_using again: nothing to change
+        again = await run(c, "fmc_set_intrusion_recommendations", args)
+        assert again["status"] == "blocked" and "not in use" in again["blockers"][0]
+        args = {"policy": "mcp-test-ips", "action": "remove"}
+        preview = await run(c, "fmc_set_intrusion_recommendations", args)
+        done = await run(c, "fmc_set_intrusion_recommendations", {**args, "confirm": preview["confirm"]})
+    assert put.calls.last.request.url.params["ruleRecommendationAction"] == "REMOVE"
+    assert done["result"]["recommendations"] == {"configured": False, "in_use": False}
+
+
+async def test_recommendations_refused_for_system_snort2_and_unconfigured(fmc: respx.MockRouter) -> None:
+    snort2 = {**IPS_DETAIL, "metadata": {**IPS_DETAIL["metadata"], "snortEngine": "SNORT2"}}
+    rec_routes(fmc, snort2)
+    bal = f"{CFG}/policy/intrusionpolicies/{BALANCED['id']}"
+    fmc.get(bal).mock(return_value=httpx.Response(200, json=BALANCED))
+    async with Client(server()) as c:
+        out = await run(
+            c, "fmc_set_intrusion_recommendations", {"policy": BALANCED["name"], "action": "refresh"}
+        )
+        assert out["status"] == "blocked"
+        assert any("system intrusion policy" in b for b in out["blockers"])
+        assert any("no rule recommendations" in b for b in out["blockers"])
+        out = await run(c, "fmc_set_intrusion_recommendations", {"policy": "mcp-test-ips"})
+        assert out["status"] == "blocked"
+        assert any("Snort 2" in b for b in out["blockers"])
+        assert any("networks=[...]" in b for b in out["blockers"])
+        r = await c.call_tool(
+            "fmc_set_intrusion_recommendations",
+            {"policy": "mcp-test-ips", "action": "use", "security_level": 3},
+            raise_on_error=False,
+        )
+    assert r.is_error and "generate(_and_use)" in r.content[0].text  # type: ignore[union-attr]
