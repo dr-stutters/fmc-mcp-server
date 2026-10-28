@@ -499,6 +499,17 @@ async def _usage(app: FmcApp, obj: dict[str, Any], t: ObjType, domain: str | Non
     lists: the decryption rules that use them."""
     if t.key == "cipher_suite_list":
         return [cipher_rule_usage(pol, r) for pol, r in await cipher_list_rules(app, obj, domain)]
+    if t.key == "sla_monitor":  # FMC's usage API doesn't report route tracking: read the routes
+        from fmc_mcp.tools.sla_monitors import routes_tracking  # imported here: avoids an import cycle
+
+        return [
+            {
+                "type": "IPv4StaticRoute",
+                "name": f"{r['device']} ({r['table']}) via {r['gateway']}",
+                "id": r["id"],
+            }
+            for r in await routes_tracking(app, str(obj["id"]), domain)
+        ]
     try:
         page = await app.all(
             await app.config_path("object/operational/usage", domain),

@@ -108,7 +108,7 @@ Changes made in FMC reach the firewalls only after a **deployment** (`fmc_deploy
 
 ## Tools
 
-There are 228 tools when every tier is enabled (92 read, 122 write, 14 dangerous; the dangerous tier turns `fmc_api_call` into a raw call), and thirteen workflow prompts (`fmc_why_blocked`, `fmc_firewall_health_review`, `fmc_sdwan_troubleshoot`, `fmc_vpn_troubleshoot`, `fmc_threat_defense_review`, `fmc_prove_user_policy`, `fmc_compliance_evidence`, `suite_change_check`; `fmc_rule_change_review` and `fmc_policy_cleanup`, write tier; `fmc_onboard_ftd`, `fmc_onboard_branch` and `fmc_ha_failover_check`, dangerous tier). `FMC_TOOLSETS` loads only some areas of them (see "Toolsets").
+There are 231 tools when every tier is enabled (92 read, 125 write, 14 dangerous; the dangerous tier turns `fmc_api_call` into a raw call), and thirteen workflow prompts (`fmc_why_blocked`, `fmc_firewall_health_review`, `fmc_sdwan_troubleshoot`, `fmc_vpn_troubleshoot`, `fmc_threat_defense_review`, `fmc_prove_user_policy`, `fmc_compliance_evidence`, `suite_change_check`; `fmc_rule_change_review` and `fmc_policy_cleanup`, write tier; `fmc_onboard_ftd`, `fmc_onboard_branch` and `fmc_ha_failover_check`, dangerous tier). `FMC_TOOLSETS` loads only some areas of them (see "Toolsets").
 
 **Read**
 
@@ -197,7 +197,7 @@ Notes on some read tools:
 | Prefilter | `fmc_create_prefilter_policy`, `fmc_set_prefilter_policy` (link to an access policy), `fmc_create_prefilter_rule`, `fmc_update_prefilter_rule`, `fmc_delete_prefilter_rule` (FASTPATH / ANALYZE / BLOCK) |
 | Bulk rule edits | `fmc_bulk_update_access_rules` (select rules by names, ids, text, action, enabled, section, category or no hits in N days; set enabled, logging, action, intrusion policy, extra source zones or a comment; one preview with every rule's diff, partial bulk PUTs of 50, stops at the first rule FMC refuses), `fmc_clear_hit_counts` (one device; the preview lists the counts that are lost) |
 | NAT | `fmc_create_nat_policy`, `fmc_create_nat_rule`, `fmc_update_nat_rule`, `fmc_delete_nat_rule` |
-| Device configuration | `fmc_update_interface` (incl. `mode`: routed, inline, passive), `fmc_create_subinterface`, `fmc_create_interface` (loopback, VTI, EtherChannel, BVI), `fmc_delete_interface`, `fmc_create_static_route`, `fmc_delete_static_route`, `fmc_assign_policy` |
+| Device configuration | `fmc_update_interface` (incl. `mode`: routed, inline, passive), `fmc_create_subinterface`, `fmc_create_interface` (loopback, VTI, EtherChannel, BVI), `fmc_delete_interface`, `fmc_create_static_route` (`track=` an SLA monitor), `fmc_delete_static_route`, `fmc_create_sla_monitor`, `fmc_delete_sla_monitor` (dual-ISP failover), `fmc_assign_policy` |
 | IPS-only inline sets | `fmc_create_inline_set` (interface pairs as a bump in the wire: inline or tap mode, fail-open on Snort down / busy, link-state propagation, strict TCP; the preview blocks members with an address, a non-INLINE zone, another mode or an existing pair, and warns that tap mode drops nothing), `fmc_update_inline_set` (tap mode on/off for the pilot-to-inline cut-over, settings, add or remove pairs), `fmc_delete_inline_set`; `fmc_get_device` and `fmc_export_device_config` (section `inline_sets`) show them |
 | Routing | `fmc_configure_bfd` (BFD template with timers, echo and authentication, applied single-hop on an interface or multi-hop between two addresses; the preview flags BGP neighbors without fall-over BFD and multi-hop toward a directly connected peer), `fmc_configure_bgp` (neighbors, fall-over BFD (`bfd`), networks, and route policy: neighbor route maps and prefix lists in/out, maximum prefix, default-originate, redistribution of connected/static/OSPF with a route map and metric; the preview diffs only the touched neighbor), `fmc_configure_ospf` (area networks, redistribution), `fmc_create_prefix_list` (IPv4 lines with ge/le), `fmc_create_route_map` (match prefix lists, communities, AS paths; set local preference, metric, weight, communities, AS-path prepend), `fmc_create_vrf`, `fmc_delete_vrf` |
 | SD-WAN application-aware routing | `fmc_configure_wan_interface` (priority, ICMP path monitoring to the next hop or an IP, HTTP application monitoring), `fmc_configure_ecmp_zone`, `fmc_create_app_route` (applications, networks, ports or users out of the WAN link picked by order, priority, or lowest jitter / loss / RTT or highest MOS), `fmc_delete_app_route`; `fmc_get_routing` shows the routes and WAN settings |
@@ -518,7 +518,7 @@ of the server, and FMC's 120 requests/minute are shared by every API user of tha
 
 ### Toolsets (`FMC_TOOLSETS`, F46)
 
-With every tier on, the server registers 228 tools, and a client sends all their descriptions to the
+With every tier on, the server registers 231 tools, and a client sends all their descriptions to the
 model on every turn. Some clients also cap the number of tools. `FMC_TOOLSETS` loads only the areas you
 name:
 
@@ -554,7 +554,7 @@ checks it against the registered tools.
 | `objects` | 24 (9/14/1) | network/port/URL objects and groups, zones, dynamic objects, overrides, where an address is used |  |
 | `platform` | 12 (2/10/0) | platform settings: syslog, connection logging, NTP, SNMP, DNS, NetFlow, SSH/HTTPS/ICMP, banner, hardening | `fmc_compliance_evidence` |
 | `policy` | 31 (9/21/1) | access control, NAT and prefilter: policies, rules, categories, inheritance, locks, assignments, hygiene | `fmc_policy_cleanup`, `fmc_rule_change_review`, `fmc_why_blocked` |
-| `routing` | 11 (2/9/0) | static routes, BGP, OSPF, BFD, VRFs, prefix lists and route maps |  |
+| `routing` | 13 (2/11/0) | static routes, SLA monitors, BGP, OSPF, BFD, VRFs, prefix lists and route maps |  |
 | `sdwan` | 7 (1/6/0) | SD-WAN hub and spoke topologies, WAN interfaces, application-aware routing, branch health | `fmc_onboard_branch`, `fmc_sdwan_troubleshoot` |
 | `threat` | 13 (5/8/0) | intrusion (IPS), file/malware and network analysis policies, an ACP's threat posture | `fmc_threat_defense_review` |
 | `tls` | 18 (5/12/1) | TLS decryption policies and rules, cipher suite lists, certificates (days left, enrolment), readiness check |  |
