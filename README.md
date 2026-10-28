@@ -108,7 +108,7 @@ Changes made in FMC reach the firewalls only after a **deployment** (`fmc_deploy
 
 ## Tools
 
-There are 233 tools when every tier is enabled (92 read, 126 write, 15 dangerous; the dangerous tier turns `fmc_api_call` into a raw call), and fourteen workflow prompts (`fmc_why_blocked`, `fmc_firewall_health_review`, `fmc_sdwan_troubleshoot`, `fmc_vpn_troubleshoot`, `fmc_threat_defense_review`, `fmc_prove_user_policy`, `fmc_compliance_evidence`, `suite_change_check`; `fmc_rule_change_review` and `fmc_policy_cleanup`, write tier; `fmc_onboard_ftd`, `fmc_onboard_branch`, `fmc_ha_failover_check` and `fmc_replace_device`, dangerous tier). `FMC_TOOLSETS` loads only some areas of them (see "Toolsets").
+There are 236 tools when every tier is enabled (92 read, 129 write, 15 dangerous; the dangerous tier turns `fmc_api_call` into a raw call), and fourteen workflow prompts (`fmc_why_blocked`, `fmc_firewall_health_review`, `fmc_sdwan_troubleshoot`, `fmc_vpn_troubleshoot`, `fmc_threat_defense_review`, `fmc_prove_user_policy`, `fmc_compliance_evidence`, `suite_change_check`; `fmc_rule_change_review` and `fmc_policy_cleanup`, write tier; `fmc_onboard_ftd`, `fmc_onboard_branch`, `fmc_ha_failover_check` and `fmc_replace_device`, dangerous tier). `FMC_TOOLSETS` loads only some areas of them (see "Toolsets").
 
 **Read**
 
@@ -215,7 +215,7 @@ Notes on some read tools:
 | DNS | `fmc_create_dns_policy`, `fmc_set_dns_policy`, `fmc_dns_block` (block/unblock domains via custom SI DNS lists; NXDOMAIN or drop) |
 | Licences | `fmc_set_device_licenses` (IPS, MALWARE_DEFENSE, URL, ...; a device or a device group in one preview) |
 | Device groups | `fmc_create_device_group`, `fmc_update_device_group` (add, remove, rename), `fmc_delete_device_group`; `fmc_deploy`, `fmc_assign_policy`, `fmc_backup_devices`, `fmc_set_device_licenses`, `fmc_device_metrics` and `fmc_sdwan_status(branch=...)` take a group |
-| Admin | `fmc_update_health_policy` (module on/off, thresholds), `fmc_set_object_override` (per-device object values) |
+| Admin | `fmc_update_health_policy` (module on/off, thresholds), `fmc_create_health_policy` (from the default or another policy, per-module thresholds, optional devices), `fmc_assign_health_policy` (devices or `group:<name>`; preview shows the threshold changes per device), `fmc_delete_health_policy` (refused while assigned), `fmc_set_object_override` (per-device object values) |
 | Containment | `fmc_contain_host`, `fmc_release_host` (instant, no deploy); `fmc_si_block` (Security Intelligence block list for IPs, networks, URLs; logged; needs a deploy) |
 | Security Intelligence feeds and lists | `fmc_create_si_feed` (IP, URL or DNS feed FMC downloads on a schedule), `fmc_upload_si_list` (custom list from text, validated; replaces its own lists), `fmc_set_si_lists` (feeds, custom lists and Talos categories into an access policy's SI block or do-not-block list; DNS ones into its DNS policy as block, allow or monitor rules), `fmc_delete_si_object` |
 | HA | `fmc_configure_ha_monitoring` (monitored interfaces, standby IPs, failover MACs) |
@@ -524,7 +524,7 @@ of the server, and FMC's 120 requests/minute are shared by every API user of tha
 
 ### Toolsets (`FMC_TOOLSETS`, F46)
 
-With every tier on, the server registers 233 tools, and a client sends all their descriptions to the
+With every tier on, the server registers 236 tools, and a client sends all their descriptions to the
 model on every turn. Some clients also cap the number of tools. `FMC_TOOLSETS` loads only the areas you
 name:
 
@@ -550,7 +550,7 @@ checks it against the registered tools.
 | Toolset | Tools (read/write/dangerous) | What it covers | Prompts (home area) |
 |---|---|---|---|
 | `core` | 9 (8/0/1) | always loaded: status, the API spec search and raw API call, domains, devices, tasks, change-check snapshots |  |
-| `admin` | 8 (6/1/1) | FMC itself: backups, upgrades, health policy, users, audit log, Smart Licensing |  |
+| `admin` | 11 (6/4/1) | FMC itself: backups, upgrades, health policy, users, audit log, Smart Licensing |  |
 | `deploy` | 7 (4/1/2) | pending changes, deployments, rollback, change-management tickets | `fmc_onboard_branch`, `fmc_onboard_ftd`, `fmc_replace_device`, `fmc_rule_change_review` |
 | `devices` | 28 (9/14/5) | device records, registration, licences, interfaces, DHCP, clusters, device groups, device templates | `fmc_onboard_branch`, `fmc_onboard_ftd`, `fmc_replace_device` |
 | `ha` | 5 (2/1/2) | FTD high-availability pairs: status, forming, switch/break, monitored interfaces | `fmc_ha_failover_check` |

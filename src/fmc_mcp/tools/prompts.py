@@ -4,6 +4,7 @@
 import ipaddress
 import json
 import re
+import textwrap
 from typing import Annotated, Literal
 
 from pydantic import Field
@@ -168,6 +169,19 @@ def _device_rows(devices: str, name: str, host: str | None) -> list[tuple[str, s
     return rows
 
 
+def _health_step(health_policy: str | None, dev: str) -> str:
+    """The onboarding prompts' health policy sentence (F100), empty without one."""
+    if not health_policy:
+        return ""
+    hp = _q(health_policy, "health_policy")
+    return (
+        f" Health policy {hp}: {tool_ref('fmc_get_health_policy')} policy={hp} (it must exist; otherwise "
+        f"{tool_ref('fmc_create_health_policy')} name={hp} from the default with this device class's "
+        f"thresholds), then {tool_ref('fmc_assign_health_policy')} policy={hp}, devices=[{dev}]; "
+        f"{tool_ref('fmc_get_health_policy')} policy={hp} then lists the device."
+    )
+
+
 def _onboard_text(
     name: str,
     host: str | None,
@@ -183,6 +197,7 @@ def _onboard_text(
     test_destination: str | None,
     template: str | None = None,
     devices: str | None = None,
+    health_policy: str | None = None,
 ) -> str:
     """The fmc_onboard_ftd instructions."""
     rows = _device_rows(devices, name, host) if devices else None
@@ -270,6 +285,7 @@ def _onboard_text(
         if psp
         else ""
     )
+    ps_step += _health_step(health_policy, dev)
     single = f"""2. Register: {tool_ref("fmc_register_device")} with name={dev}, host={host_q},
    access_policy={acp}, wait=true; leave out reg_key when the server has FMC_FTD_REG_KEY (the preview
    says where the key comes from), otherwise ask the user for the registration key. This waits for the
@@ -1357,6 +1373,7 @@ def _onboard_branch_text(
     inside_host: str | None = None,
     test_destination: str | None = None,
     domain: str | None = None,
+    health_policy: str | None = None,
 ) -> str:
     """The fmc_onboard_branch instructions: register -> template or manual configuration -> join the
     SD-WAN topology -> deploy hubs and branch -> verify tunnel, routes, a flow -> prove-policy record."""
@@ -1388,6 +1405,9 @@ def _onboard_branch_text(
     dst_plain = json.loads(dst)
     wan_addr = str(wan_if_addr.ip) if wan_if_addr else "<the branch WAN address>"
     dom = f"Pass domain={_q(domain, 'domain')} on every FMC call.\n" if domain else ""
+    health = _health_step(health_policy, dev).strip()
+    if health:
+        health = "\n" + textwrap.fill(health, 104, initial_indent="      ", subsequent_indent="      ")
     hints = [f"WAN {wan}" if wan_ip else "", f"inside {inside}" if inside_ip else ""]
     known = ", ".join(h for h in hints if h)
     tvars_arg = (
@@ -1489,7 +1509,7 @@ Stop and report when a step fails; keep notes of what each step returned.
       {tool_ref("fmc_assign_policy")} kind='nat', policy=<that policy>, devices=[{dev}]. Keep the PAT on
       the WAN zone, never 'any': overlay traffic leaves through the VTI and must keep its addresses.
       Platform settings: the other spokes' policy ({tool_ref("fmc_assign_policy")}
-      kind='platform_settings', policy=<their platform settings policy>, devices=[{dev}]).
+      kind='platform_settings', policy=<their platform settings policy>, devices=[{dev}]).{health}
    e. Access policy {acp}: it must allow the inside zone to and from the overlay zone (branch to hub
       networks and back) and inside to WAN for breakout. Check offline with {tool_ref("fmc_rule_lookup")}
       policy={acp}, source={src}, destination={dst}, protocol='icmp', source_zone=<inside zone>,
@@ -1702,6 +1722,7 @@ def register(reg: ToolRegistrar) -> None:
             "platform_settings": "mcp-test-ps",
             "template": "mcp-sdwan-spoke-tmpl",
             "devices": "mcp-ftd2=198.18.128.161, mcp-ftd3=198.18.128.162",
+            "health_policy": "mcp-edge",
         },
     )
     def fmc_onboard_ftd(
@@ -1742,6 +1763,10 @@ def register(reg: ToolRegistrar) -> None:
                 "is one of them (the steps after registration configure it)"
             ),
         ] = None,
+        health_policy: Annotated[
+            str | None,
+            Field(description="Health policy for the FTD (fmc_get_health_policy), e.g. an edge policy"),
+        ] = None,
     ) -> str:
         """Onboard an FTD end to end: optionally build it in CML from a recipe, check licensing,
         register it with FMC, set outside/inside interfaces and zones, default route and NAT, assign
@@ -1765,6 +1790,7 @@ def register(reg: ToolRegistrar) -> None:
             test_destination,
             template,
             devices,
+            health_policy,
         )
 
     @reg.prompt(
@@ -2070,6 +2096,7 @@ def register(reg: ToolRegistrar) -> None:
             "test_destination": "10.77.0.10",
             "template": "mcp-fw-branch-tmpl",
             "domain": "Global/mcp-test-leaf",
+            "health_policy": "mcp-edge",
         },
     )
     def fmc_onboard_branch(
@@ -2113,6 +2140,10 @@ def register(reg: ToolRegistrar) -> None:
         domain: Annotated[
             str | None, Field(description="FMC domain for every call; the server's default if omitted")
         ] = None,
+        health_policy: Annotated[
+            str | None,
+            Field(description="Health policy for the branch (fmc_get_health_policy), e.g. an edge policy"),
+        ] = None,
     ) -> str:
         """Onboard a branch FTD into an SD-WAN topology end to end: register it (the key comes from the
         server's FMC_FTD_REG_KEY, never from the conversation), configure it from a device template when
@@ -2135,6 +2166,7 @@ def register(reg: ToolRegistrar) -> None:
             inside_host,
             test_destination,
             domain,
+            health_policy,
         )
 
     @reg.prompt(

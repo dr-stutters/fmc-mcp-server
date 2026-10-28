@@ -1,7 +1,7 @@
 # fmc_onboard_branch
 
 title: Onboard an SD-WAN branch
-arguments: {"access_policy": "mcp-fw-base-acp", "domain": "Global/mcp-test-leaf", "host": "192.0.2.13", "inside_host": "10.77.14.10", "inside_interface": "Ethernet0/1", "inside_ip": "10.77.14.1/24", "name": "mcp-fw-branch1", "template": "mcp-fw-branch-tmpl", "test_destination": "10.77.0.10", "topology": "mcp-fw-t1", "variables": "{\"wanIp\": \"198.51.100.14/24\", \"insideIp\": \"10.77.14.1/24\"}", "wan_gateway": "198.51.100.1", "wan_interface": "Ethernet0/0", "wan_ip": "198.51.100.14/24"}
+arguments: {"access_policy": "mcp-fw-base-acp", "domain": "Global/mcp-test-leaf", "health_policy": "mcp-edge", "host": "192.0.2.13", "inside_host": "10.77.14.10", "inside_interface": "Ethernet0/1", "inside_ip": "10.77.14.1/24", "name": "mcp-fw-branch1", "template": "mcp-fw-branch-tmpl", "test_destination": "10.77.0.10", "topology": "mcp-fw-t1", "variables": "{\"wanIp\": \"198.51.100.14/24\", \"insideIp\": \"10.77.14.1/24\"}", "wan_gateway": "198.51.100.1", "wan_interface": "Ethernet0/0", "wan_ip": "198.51.100.14/24"}
 
 Onboard a branch FTD into an SD-WAN topology end to end: register it (the key comes from the
 server's FMC_FTD_REG_KEY, never from the conversation), configure it from a device template when
@@ -93,6 +93,10 @@ Stop and report when a step fails; keep notes of what each step returned.
       the WAN zone, never 'any': overlay traffic leaves through the VTI and must keep its addresses.
       Platform settings: the other spokes' policy (`fmc_assign_policy`
       kind='platform_settings', policy=<their platform settings policy>, devices=["mcp-fw-branch1"]).
+      Health policy "mcp-edge": `fmc_get_health_policy` policy="mcp-edge" (it must exist; otherwise
+      `fmc_create_health_policy` name="mcp-edge" from the default with this device class's thresholds),
+      then `fmc_assign_health_policy` policy="mcp-edge", devices=["mcp-fw-branch1"];
+      `fmc_get_health_policy` policy="mcp-edge" then lists the device.
    e. Access policy "mcp-fw-base-acp": it must allow the inside zone to and from the overlay zone (branch to hub
       networks and back) and inside to WAN for breakout. Check offline with `fmc_rule_lookup`
       policy="mcp-fw-base-acp", source="10.77.14.10", destination="10.77.0.10", protocol='icmp', source_zone=<inside zone>,

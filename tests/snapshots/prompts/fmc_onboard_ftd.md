@@ -1,7 +1,7 @@
 # fmc_onboard_ftd
 
 title: Onboard an FTD
-arguments: {"access_policy": "mcp-test-ha-acp", "devices": "mcp-ftd2=198.18.128.161, mcp-ftd3=198.18.128.162", "gateway": "198.18.128.1", "host": "198.18.128.161", "inside_interface": "Ethernet0/1", "inside_ip": "10.99.2.1/24", "name": "mcp-ftd2", "nat_policy": "mcp-test-ha-nat", "outside_interface": "Ethernet0/0", "outside_ip": "198.18.128.163/18", "platform_settings": "mcp-test-ps", "recipe": "ftd-fmc", "template": "mcp-sdwan-spoke-tmpl", "test_destination": "198.18.128.1"}
+arguments: {"access_policy": "mcp-test-ha-acp", "devices": "mcp-ftd2=198.18.128.161, mcp-ftd3=198.18.128.162", "gateway": "198.18.128.1", "health_policy": "mcp-edge", "host": "198.18.128.161", "inside_interface": "Ethernet0/1", "inside_ip": "10.99.2.1/24", "name": "mcp-ftd2", "nat_policy": "mcp-test-ha-nat", "outside_interface": "Ethernet0/0", "outside_ip": "198.18.128.163/18", "platform_settings": "mcp-test-ps", "recipe": "ftd-fmc", "template": "mcp-sdwan-spoke-tmpl", "test_destination": "198.18.128.1"}
 
 Onboard an FTD end to end: optionally build it in CML from a recipe, check licensing,
 register it with FMC, set outside/inside interfaces and zones, default route and NAT, assign
@@ -63,7 +63,7 @@ around a failed registration or deployment.
 
 5. Policies: "mcp-test-ha-acp" was assigned at registration; make sure it allows the traffic you will test (its
    rules reference zones, so add the new zones to an allow rule with `fmc_update_access_rule`
-   if needed). Assign platform settings "mcp-test-ps": `fmc_assign_policy` kind='platform_settings', policy="mcp-test-ps", devices=["mcp-ftd2"].
+   if needed). Assign platform settings "mcp-test-ps": `fmc_assign_policy` kind='platform_settings', policy="mcp-test-ps", devices=["mcp-ftd2"]. Health policy "mcp-edge": `fmc_get_health_policy` policy="mcp-edge" (it must exist; otherwise `fmc_create_health_policy` name="mcp-edge" from the default with this device class's thresholds), then `fmc_assign_health_policy` policy="mcp-edge", devices=["mcp-ftd2"]; `fmc_get_health_policy` policy="mcp-edge" then lists the device.
 
 6. Deploy: `fmc_pending_changes` device="mcp-ftd2" (expect the interface, route, NAT and policy
    changes), then `fmc_deploy` devices=["mcp-ftd2"] with wait=true. Check

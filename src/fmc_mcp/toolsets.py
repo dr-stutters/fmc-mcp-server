@@ -52,7 +52,10 @@ CATALOGUE: dict[str, tuple[str, tuple[str, ...]]] = {
     "admin": (
         "FMC itself: backups, upgrades, health policy, users, audit log, Smart Licensing",
         (
+            "fmc_assign_health_policy",
             "fmc_backup_devices",
+            "fmc_create_health_policy",
+            "fmc_delete_health_policy",
             "fmc_get_health_policy",
             "fmc_license_status",
             "fmc_list_audit_records",
