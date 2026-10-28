@@ -168,8 +168,9 @@ Workflows:
   monitor) -> fmc_deploy -> fmc_get_security_intelligence (entries and last update of each feed).
 - Tune intrusion prevention: fmc_find_intrusion_rules (gid:sid or text) -> fmc_get_intrusion_policy ->
   fmc_set_intrusion_rule_state in a custom policy (fmc_create_intrusion_policy on top of a system one;
-  fmc_update_access_rule intrusion_policy=... puts it on an ALLOW rule) -> fmc_deploy. Custom Snort 3
-  rules: fmc_create_intrusion_rule.
+  fmc_update_access_rule intrusion_policy=... puts it on an ALLOW rule) -> fmc_deploy. Cisco's tuning
+  step after the base policy: fmc_set_intrusion_recommendations (rule recommendations for the protected
+  networks at level 1-4; needs network discovery host data). Custom Snort 3 rules: fmc_create_intrusion_rule.
 - Block files and malware: fmc_create_file_policy -> fmc_create_file_rule (e.g. BLOCK MSEXE downloads over
   HTTP, BLOCK_MALWARE for a malware cloud lookup that blocks) -> fmc_update_access_rule file_policy=... on
   ALLOW rules -> fmc_deploy; fmc_get_file_policy shows the rules. Network analysis (preprocessing):
