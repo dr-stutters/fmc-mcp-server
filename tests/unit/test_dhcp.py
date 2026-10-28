@@ -77,6 +77,7 @@ def mock_device(
     fmc.get(f"{DEVPATH}/physicalinterfaces").mock(return_value=items([INSIDE, OUTSIDE, DC, GUEST, SPARE]))
     for coll in ("subinterfaces", "etherchannelinterfaces", "bridgegroupinterfaces"):
         fmc.get(f"{DEVPATH}/{coll}").mock(return_value=empty())
+    fmc.get(f"{DEVPATH}/inlinesets").mock(return_value=empty())  # F96: no inline sets
     fmc.get(f"{DEVPATH}/vlaninterfaces").mock(
         return_value=httpx.Response(405, json={"error": {"messages": [{"description": "not supported"}]}})
     )

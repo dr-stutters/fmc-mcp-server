@@ -47,6 +47,7 @@ from fmc_mcp.tools import (
     hygiene,
     identity,
     identity_sources,
+    inline_sets,
     intrusion,
     live,
     metrics,
@@ -66,6 +67,7 @@ from fmc_mcp.tools import (
     profiling,
     prompts,
     prove,
+    ravpn,
     registration,
     route_policy,
     routing,
@@ -154,6 +156,10 @@ Workflows:
   checks interfaces, link state, zones, routes back to the edge and the access policy, each failure with
   its fix tool; the live leg: fmc_packet_tracer(ingress_hop=<edge address>, expect_next_hop=<return
   address>) -> `chain_leg`; did the flow arrive: fmc_live_connections(host=...).
+- IPS-only (FTD as a bump in the wire behind another firewall): fmc_update_interface(mode='inline', logical
+  name, no address, an INLINE zone or none) on each member -> fmc_create_inline_set(device, name, pairs,
+  tap_mode=True for a pilot: drops nothing) -> fmc_deploy -> fmc_run_show_command('show inline-set');
+  go inline: fmc_update_inline_set(tap_mode=False) -> fmc_deploy; remove: fmc_delete_inline_set.
 - Block a host fast: map its IP into a dynamic object that a BLOCK rule references
   (fmc_map_dynamic_object); mapping changes need no deployment, only the rule does (once).
   fmc_contain_host / fmc_release_host do this for one host with the quarantine object (and propose
@@ -165,8 +171,9 @@ Workflows:
   monitor) -> fmc_deploy -> fmc_get_security_intelligence (entries and last update of each feed).
 - Tune intrusion prevention: fmc_find_intrusion_rules (gid:sid or text) -> fmc_get_intrusion_policy ->
   fmc_set_intrusion_rule_state in a custom policy (fmc_create_intrusion_policy on top of a system one;
-  fmc_update_access_rule intrusion_policy=... puts it on an ALLOW rule) -> fmc_deploy. Custom Snort 3
-  rules: fmc_create_intrusion_rule.
+  fmc_update_access_rule intrusion_policy=... puts it on an ALLOW rule) -> fmc_deploy. Cisco's tuning
+  step after the base policy: fmc_set_intrusion_recommendations (rule recommendations for the protected
+  networks at level 1-4; needs network discovery host data). Custom Snort 3 rules: fmc_create_intrusion_rule.
 - Block files and malware: fmc_create_file_policy -> fmc_create_file_rule (e.g. BLOCK MSEXE downloads over
   HTTP, BLOCK_MALWARE for a malware cloud lookup that blocks) -> fmc_update_access_rule file_policy=... on
   ALLOW rules -> fmc_deploy; fmc_get_file_policy shows the rules. Network analysis (preprocessing):
@@ -319,6 +326,7 @@ REGISTER: list[Callable[[ToolRegistrar], None]] = [
     threat_posture.register,
     deploy.register,
     device_config.register,
+    inline_sets.register,
     object_writes.register,
     conditions.register,
     object_import.register,
@@ -339,6 +347,7 @@ REGISTER: list[Callable[[ToolRegistrar], None]] = [
     containment.register,
     ha.register,
     vpn.register,
+    ravpn.register,
     sdwan.register,
     templates.register,
     device_export.register,

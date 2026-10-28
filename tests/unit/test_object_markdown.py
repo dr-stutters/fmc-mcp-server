@@ -170,6 +170,8 @@ def setup_intrusion(fmc: respx.MockRouter) -> None:
     fmc.get(f"{CFG}/policy/intrusionpolicies/{ips['id']}/intrusionrules").mock(
         return_value=httpx.Response(200, json=REC["intrusion_overrides"])
     )
+    one = REC["intrusion_policy_get"]
+    fmc.get(f"{CFG}/policy/intrusionpolicies/{one['id']}").mock(return_value=httpx.Response(200, json=one))
 
 
 def setup_upgrades(fmc: respx.MockRouter) -> None:

@@ -335,6 +335,7 @@ async def test_get_device_masks_reg_key(fmc: respx.MockRouter) -> None:
     fmc.get(f"{CFG}/devices/devicerecords").mock(return_value=items([dev]))
     for sub in ("dhcpserver", "dhcprelaysettings"):  # F94: a model without DHCP settings
         fmc.get(f"{CFG}/devices/devicerecords/d1/dhcp/{sub}").mock(return_value=httpx.Response(404))
+    fmc.get(f"{CFG}/devices/devicerecords/d1/inlinesets").mock(return_value=items([]))  # F96: none
     data = await call("fmc_get_device", {"device": "ftd1"})
     text = json.dumps(data)
     assert "secret-key" not in text and "nat-secret" not in text and data["name"] == "ftd1"
