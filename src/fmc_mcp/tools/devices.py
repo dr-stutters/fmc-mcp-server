@@ -343,12 +343,23 @@ def register(reg: ToolRegistrar) -> None:
     async def fmc_get_device(ctx: Context, device: DeviceRef, domain: Domain = None) -> ToolResult:
         """Get one managed device in full: model, serial, version, health and message, license
         capabilities, performance tier, assigned access/health policies, HA/cluster role and
-        deployment status. Interfaces are listed by fmc_list_device_interfaces."""
+        deployment status, and its DHCP server pools and relay settings (`dhcp`, when set; change them with
+        fmc_configure_dhcp). Interfaces are listed by fmc_list_device_interfaces."""
+        from fmc_mcp.tools.dhcp import device_dhcp  # dhcp builds on device_config, which imports this module
+
         app: FmcApp = get_client(ctx)
         d = await resolve_in(app, DEVICES, device, "device", domain)
         if not d.get("model") and d.get("id"):
             d = await app.api.get(await app.config_path(f"{DEVICES}/{d['id']}", domain))
-        return object_result(slim(d))
+        out = slim(d)
+        if d.get("id"):
+            try:
+                dhcp = await device_dhcp(app, d, domain)
+            except UpstreamError as e:
+                dhcp = {"error": str(e)}
+            if dhcp:
+                out["dhcp"] = dhcp
+        return object_result(out)
 
     @reg.read(title="List device interfaces")
     async def fmc_list_device_interfaces(

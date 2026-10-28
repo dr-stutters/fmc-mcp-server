@@ -63,6 +63,8 @@ from fmc_mcp.tools.bundle import (
 from fmc_mcp.tools.common import SECRET_FIELDS, Domain, ref_label, resolve_in
 from fmc_mcp.tools.device_config import route_row
 from fmc_mcp.tools.devices import DEVICES, HA_PAIRS, INTERFACE_KINDS, interface_row
+from fmc_mcp.tools.dhcp import RELAY as DHCP_RELAY
+from fmc_mcp.tools.dhcp import SERVER as DHCP_SERVER
 from fmc_mcp.tools.platform_settings import LISTS, PS, SINGLE
 from fmc_mcp.tools.policies import NAT, RULE_CAP, policy_assignments
 from fmc_mcp.tools.templates import TEMPLATES, template_with_metadata
@@ -481,6 +483,34 @@ async def _routing(ctx: ExportContext) -> dict[str, Any]:
         out.update(
             await _protocols(ctx, f"{base}/virtualrouters/{v['id']}", f"vrf {name}: ", global_table=False)
         )
+    return _sorted(out)
+
+
+@export_section(
+    "dhcp",
+    summary="DHCP server (pools by interface, DNS, domain, lease, auto-config, options) and DHCP relay "
+    "(agents, servers)",
+)
+async def _dhcp(ctx: ExportContext) -> dict[str, Any]:
+    out: dict[str, Any] = {}
+    for key, sub in (("server", DHCP_SERVER), ("relay", DHCP_RELAY)):
+        rows = await ctx.items(f"{ctx.base}/{sub}")
+        if not rows:
+            continue
+        body = _body(rows[0], "name")
+        lists = ("dhcpServers",) if key == "server" else ("dhcpRelayAgent", "dhcpRelayServers")
+        for field_name in lists:
+            for item in body.pop(field_name, None) or []:
+                where = ref_label(item.get("interface") or {})
+                if field_name == "dhcpRelayServers":
+                    where = f"{where} -> {ref_label(item.get('server') or {})}"
+                label = {"dhcpServers": "pool", "dhcpRelayAgent": "relay agent"}.get(
+                    field_name, "relay server"
+                )
+                _put(out, f"{label} {where}", norm(_body(item)))
+        settings = {k: v for k, v in norm(body).items() if v not in _EMPTY}
+        if settings:
+            out[f"{key} settings"] = settings
     return _sorted(out)
 
 
