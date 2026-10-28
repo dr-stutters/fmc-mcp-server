@@ -554,7 +554,7 @@ checks it against the registered tools.
 | `core` | 9 (8/0/1) | always loaded: status, the API spec search and raw API call, domains, devices, tasks, change-check snapshots |  |
 | `admin` | 11 (6/4/1) | FMC itself: backups, upgrades, health policy, users, audit log, Smart Licensing |  |
 | `deploy` | 7 (4/1/2) | pending changes, deployments, rollback, change-management tickets | `fmc_onboard_branch`, `fmc_onboard_ftd`, `fmc_replace_device`, `fmc_rule_change_review` |
-| `devices` | 30 (10/14/6) | device records, registration, licences, interfaces, DHCP, clusters, device groups, device templates, FlexConfig | `fmc_onboard_branch`, `fmc_onboard_ftd`, `fmc_replace_device` |
+| `devices` | 30 (10/14/6) | device records, registration, licences, interfaces, DHCP, clusters, device groups and templates, FlexConfig | `fmc_onboard_branch`, `fmc_onboard_ftd`, `fmc_replace_device` |
 | `ha` | 5 (2/1/2) | FTD high-availability pairs: status, forming, switch/break, monitored interfaces | `fmc_ha_failover_check` |
 | `identity` | 13 (6/7/0) | users in rules: realms (AD/LDAP), identity policies, ISE identity source, user-IP sessions | `fmc_prove_user_policy` |
 | `intel` | 13 (3/10/0) | blocking by reputation: Security Intelligence feeds and lists, DNS policy, host containment |  |
