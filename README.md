@@ -552,7 +552,7 @@ checks it against the registered tools.
 | `objects` | 24 (9/14/1) | network/port/URL objects and groups, zones, dynamic objects, overrides, where an address is used |  |
 | `platform` | 12 (2/10/0) | platform settings: syslog, connection logging, NTP, SNMP, DNS, NetFlow, SSH/HTTPS/ICMP, banner, hardening | `fmc_compliance_evidence` |
 | `policy` | 31 (9/21/1) | access control, NAT and prefilter: policies, rules, categories, inheritance, locks, assignments, hygiene | `fmc_policy_cleanup`, `fmc_rule_change_review`, `fmc_why_blocked` |
-| `routing` | 10 (2/8/0) | static routes, BGP, OSPF, VRFs, prefix lists and route maps |  |
+| `routing` | 11 (2/9/0) | static routes, BGP, OSPF, BFD, VRFs, prefix lists and route maps |  |
 | `sdwan` | 7 (1/6/0) | SD-WAN hub and spoke topologies, WAN interfaces, application-aware routing, branch health | `fmc_onboard_branch`, `fmc_sdwan_troubleshoot` |
 | `threat` | 13 (5/8/0) | intrusion (IPS), file/malware and network analysis policies, an ACP's threat posture | `fmc_threat_defense_review` |
 | `tls` | 18 (5/12/1) | TLS decryption policies and rules, cipher suite lists, certificates (days left, enrolment), readiness check |  |

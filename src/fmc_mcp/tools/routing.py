@@ -628,11 +628,7 @@ def register(reg: ToolRegistrar) -> None:
         neighbor and network lists before and after, and each request it sends (`requests`: method, path,
         body; an MD5 password masked). Deploy to apply; verify with
         fmc_run_show_command('show route') and the peer ('show bgp summary').
-
-        Fast failover (F95): bfd='single_hop'|'multi_hop'|'auto'|'none' sets the neighbor's fall-over BFD.
-        The preview warns when the device has no matching BFD policy (fmc_configure_bfd; the BFD session
-        stays down), when a multi-hop peer is directly connected or a single-hop one isn't, and that the
-        peer needs BFD too.
+        `bfd` sets fall-over BFD; the preview warns without a matching BFD policy (fmc_configure_bfd).
 
         Route policy on a neighbor (F77): inbound/outbound route maps and prefix lists (objects from
         fmc_create_route_map / fmc_create_prefix_list), a maximum-prefix limit and default-originate
