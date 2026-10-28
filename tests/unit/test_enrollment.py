@@ -32,6 +32,7 @@ from fmc_mcp.tools.enrollment import (
     key_block,
     ref_paths,
     revocation_block,
+    wrap64,
 )
 
 from .conftest import CFG, fixture, items, make_settings
@@ -118,6 +119,19 @@ def no_users(fmc: respx.MockRouter) -> None:
 
 
 # --- helpers ------------------------------------------------------------------------------------------
+
+
+def assert_wrapped(text: str, der: bytes) -> None:
+    """FMC's own format (F75, #356): 64-character base64 lines, each ending CRLF, decoding back to the DER."""
+    assert (
+        text.endswith("\r\n")
+        and "\n" not in text.replace("\r\n", "")
+        and "\r" not in text.replace("\r\n", "")
+    )
+    lines = text.split("\r\n")[:-1]
+    assert lines and all(0 < len(line) <= 64 for line in lines)
+    assert all(len(line) == 64 for line in lines[:-1])
+    assert base64.b64decode("".join(lines), validate=True) == der
 
 
 def test_shapes() -> None:
@@ -243,14 +257,39 @@ async def test_pkcs12_from_files_never_shows_key_bundle_or_passphrase(
         out = await run(c, "fmc_create_cert_enrollment", {**args, "confirm": p["confirm"]})
     sent = json.loads(post.calls.last.request.content)
     assert sent["enrollmentType"] == "PKCS12" and sent["pkcs12Content"] == {
-        "base64Certificate": b64,
+        "base64Certificate": wrap64(blob),
         "passPhrase": PHRASE,
     }
+    assert_wrapped(sent["pkcs12Content"]["base64Certificate"], blob)  # one long line fails on the FTD
     assert sent["validationUsage"] == {"ipsecClient": True, "sslClient": True, "sslServer": True}
     everything = json.dumps(p) + json.dumps(out) + "\n".join(r.getMessage() for r in caplog.records)
     for secret in (PHRASE, b64[:40], P12["pkcs12Content"]["base64Certificate"][:20]):
         assert secret not in everything
     assert out["result"]["pkcs12"].startswith("stored on FMC")
+
+
+def test_wrap64_matches_fmcs_own_get_format() -> None:
+    fmc_text = P12["pkcs12Content"]["base64Certificate"]  # FMC's spec GET example: CRLF, 64 per line
+    assert all(len(line) <= 64 for line in fmc_text.split("\r\n"))
+    for size in (1, 47, 48, 49, 2400, 3300):  # 48 bytes = exactly one 64-character line
+        der = os.urandom(size)
+        assert_wrapped(wrap64(der), der)
+    assert wrap64(b"\x00" * 48) == "A" * 64 + "\r\n"
+
+
+async def test_pkcs12_base64_file_is_sent_rewrapped(fmc: respx.MockRouter, tmp_path: Path) -> None:
+    blob = make_pki()[0]
+    d = pki_dir(tmp_path, base64.b64encode(blob))  # a base64 text file on one unbroken line
+    fmc.get(ENR).mock(return_value=items([]))
+    post = fmc.post(ENR).mock(return_value=httpx.Response(201, json={"id": P12["id"]}))
+    fmc.get(f"{ENR}/{P12['id']}").mock(return_value=httpx.Response(200, json=P12))
+    args = {"name": "p", "kind": "pkcs12", "pkcs12_file": "ftd1.p12", "passphrase_file": "ftd1.pass"}
+    async with Client(server(pki_dir=d)) as c:
+        p = await run(c, "fmc_create_cert_enrollment", args)
+        await run(c, "fmc_create_cert_enrollment", {**args, "confirm": p["confirm"]})
+    sent = json.loads(post.calls.last.request.content)["pkcs12Content"]["base64Certificate"]
+    assert len(blob) > 2000 and sent.count("\r\n") > 30
+    assert_wrapped(sent, blob)
 
 
 async def test_pkcs12_passphrase_problems(fmc: respx.MockRouter, tmp_path: Path) -> None:
@@ -325,7 +364,7 @@ async def test_manual_ca_only(fmc: respx.MockRouter) -> None:
             await run(c, "fmc_create_cert_enrollment", {"name": "x", "kind": "manual_ca_only"})
     sent = json.loads(post.calls.last.request.content)["caCertificate"]
     assert sent["caOnly"] is True and "BEGIN" not in sent["base64Content"]
-    assert base64.b64decode(sent["base64Content"]) == der
+    assert_wrapped(sent["base64Content"], der)
     assert (
         out["result"]["ca_certificate"]["sha1_fingerprint"]
         == p["preview"]["ca_certificate"]["sha1_fingerprint"]
