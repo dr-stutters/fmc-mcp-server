@@ -603,8 +603,9 @@ def register(reg: ToolRegistrar) -> None:
         """Remote-access VPN (Secure Client) configuration and state, read-only: each RA VPN policy
         with its connection profiles (group policy, address pools, authentication/authorization/
         accounting servers), access interfaces and assigned devices, plus the RA VPN gateways FMC
-        monitors with their current session counts (health/ravpngateways). Building RA VPN needs
-        Secure Client packages and certificates, which stay in the FMC UI."""
+        monitors with their current session counts (health/ravpngateways). Build one with
+        fmc_create_address_pool, fmc_create_group_policy, fmc_create_ravpn and fmc_set_connection_profile;
+        uploading the Secure Client packages stays in the FMC UI."""
         app: FmcApp = get_client(ctx)
         everything = await app.all(await app.config_path(RAVPN, domain), cap=500)
         pols = everything.items
