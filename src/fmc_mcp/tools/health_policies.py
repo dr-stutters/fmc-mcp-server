@@ -25,7 +25,7 @@ from fmc_mcp._core import (
 )
 from fmc_mcp.client import FmcApp
 from fmc_mcp.preview import fmc_preview
-from fmc_mcp.tools.admin import HEALTH, LOWER_IS_WORSE, _with_thresholds, module_row
+from fmc_mcp.tools.admin import HEALTH, LOWER_IS_WORSE, _with_thresholds, module_row, module_rows
 from fmc_mcp.tools.common import Domain, resolve_in
 from fmc_mcp.tools.device_groups import expand_devices
 from fmc_mcp.tools.devices import DEVICES
@@ -106,10 +106,11 @@ def apply_modules(
 
 
 def module_diff(old: list[dict[str, Any]], new: list[dict[str, Any]]) -> list[dict[str, Any]]:
-    """Modules whose enabled state or thresholds differ, as {module, from, to} rows."""
+    """Modules whose enabled state or thresholds differ, as {module, from, to} rows, sorted by module id
+    (FMC's healthModules order changes from one GET to the next)."""
     before = {_key(m): module_row(m) for m in old}
     rows = []
-    for m in new:
+    for m in sorted(new, key=_key):
         to = module_row(m)
         frm = before.get(_key(m))
         if frm != to:
@@ -343,7 +344,10 @@ def register(reg: ToolRegistrar) -> None:
                         "with fmc_update_health_policy or delete it with fmc_delete_health_policy.",
                         getattr(e, "status_code", None),
                     ) from e
-                out["modules"] = [module_row(m) for m in mods_now if _key(m) in {k.lower() for k in modules}]
+                wanted = {k.strip().lower() for k in modules}
+                out["modules"] = [
+                    r for r in module_rows(mods_now) if str(r.get("module", "")).lower() in wanted
+                ]
             app.invalidate_cache()
             if recs:
                 pol = await app.api.get(path)
@@ -382,7 +386,7 @@ def register(reg: ToolRegistrar) -> None:
                 + (f" and assign it to {len(recs)} device(s)" if recs else ""),
                 details=details,
                 fingerprint={
-                    "base": [module_row(m) for m in base_mods],
+                    "base": module_rows(base_mods),
                     "devices": [(d.get("id"), (d.get("healthPolicy") or {}).get("id")) for d in recs],
                 },
                 blockers=blockers,
@@ -442,7 +446,7 @@ def register(reg: ToolRegistrar) -> None:
                 f"Assign health policy {pol.get('name')!r} to {len(moving)} of {len(recs)} device(s)",
                 details=details,
                 fingerprint={
-                    "policy": [module_row(m) for m in pol.get("healthModules") or []],
+                    "policy": module_rows(pol.get("healthModules") or []),
                     "devices": [(d.get("id"), (d.get("healthPolicy") or {}).get("id")) for d in recs],
                 },
                 blockers=blockers,
