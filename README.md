@@ -108,7 +108,7 @@ Changes made in FMC reach the firewalls only after a **deployment** (`fmc_deploy
 
 ## Tools
 
-There are 222 tools when every tier is enabled (92 read, 116 write, 14 dangerous; the dangerous tier turns `fmc_api_call` into a raw call), and thirteen workflow prompts (`fmc_why_blocked`, `fmc_firewall_health_review`, `fmc_sdwan_troubleshoot`, `fmc_vpn_troubleshoot`, `fmc_threat_defense_review`, `fmc_prove_user_policy`, `fmc_compliance_evidence`, `suite_change_check`; `fmc_rule_change_review` and `fmc_policy_cleanup`, write tier; `fmc_onboard_ftd`, `fmc_onboard_branch` and `fmc_ha_failover_check`, dangerous tier). `FMC_TOOLSETS` loads only some areas of them (see "Toolsets").
+There are 226 tools when every tier is enabled (92 read, 120 write, 14 dangerous; the dangerous tier turns `fmc_api_call` into a raw call), and thirteen workflow prompts (`fmc_why_blocked`, `fmc_firewall_health_review`, `fmc_sdwan_troubleshoot`, `fmc_vpn_troubleshoot`, `fmc_threat_defense_review`, `fmc_prove_user_policy`, `fmc_compliance_evidence`, `suite_change_check`; `fmc_rule_change_review` and `fmc_policy_cleanup`, write tier; `fmc_onboard_ftd`, `fmc_onboard_branch` and `fmc_ha_failover_check`, dangerous tier). `FMC_TOOLSETS` loads only some areas of them (see "Toolsets").
 
 **Read**
 
@@ -219,6 +219,7 @@ Notes on some read tools:
 | HA | `fmc_configure_ha_monitoring` (monitored interfaces, standby IPs, failover MACs) |
 | VPN | `fmc_create_s2s_vpn` (point-to-point IKEv2 PSK; policy- or route-based), `fmc_delete_s2s_vpn`; SD-WAN: `fmc_create_sdwan_topology` (wizard hub and spoke: hub DVTI, spoke pool, spokes on their WAN interfaces, backup hub, a second WAN tunnel per spoke through the companion topology `<name>-wan2`, iBGP overlay), `fmc_update_sdwan_topology` (add or remove spokes, their second WAN and the backup hub, ECMP) |
 | VPN | `fmc_create_s2s_vpn` (point-to-point IKEv2 PSK; policy- or route-based), `fmc_delete_s2s_vpn` |
+| Remote-access VPN | `fmc_create_address_pool` (IPv4 range + mask, or IPv6 start/prefix + count), `fmc_create_group_policy` (SSL/IKEv2, split tunnel with a standard ACL, DNS servers and split DNS, default domain, banner, pools, Secure Client VPN profile, idle timeout), `fmc_create_ravpn` (access zones, identity certificate from an F75 enrollment, Secure Client images, local realm; the preview names the identity NAT rule to add for NAT exemption), `fmc_set_connection_profile` (create or change a profile: group policy, AAA via ISE RADIUS or an AD realm, local or certificate authentication, pools, aliases, the policy's address assignment switches; shows the targeted devices). Uploading Secure Client packages and profiles stays in the FMC UI |
 | Device templates | `fmc_create_device_template` (generated from a standalone FTD, or empty from a firewall mode and access policy), `fmc_delete_device_template` |
 
 `fmc_create_access_rule` takes a position (`insert_before` or `insert_after`), a section and a
@@ -516,7 +517,7 @@ of the server, and FMC's 120 requests/minute are shared by every API user of tha
 
 ### Toolsets (`FMC_TOOLSETS`, F46)
 
-With every tier on, the server registers 222 tools, and a client sends all their descriptions to the
+With every tier on, the server registers 226 tools, and a client sends all their descriptions to the
 model on every turn. Some clients also cap the number of tools. `FMC_TOOLSETS` loads only the areas you
 name:
 
@@ -557,7 +558,7 @@ checks it against the registered tools.
 | `threat` | 13 (5/8/0) | intrusion (IPS), file/malware and network analysis policies, an ACP's threat posture | `fmc_threat_defense_review` |
 | `tls` | 18 (5/12/1) | TLS decryption policies and rules, cipher suite lists, certificates (days left, enrolment), readiness check |  |
 | `troubleshoot` | 13 (11/2/0) | why is traffic blocked or slow: packet tracer, rule lookup, hit counts, show commands, live state, profiling | `fmc_firewall_health_review`, `fmc_prove_user_policy`, `fmc_why_blocked` |
-| `vpn` | 7 (5/2/0) | site-to-site VPN topologies, tunnel status and troubleshooting, remote access VPN (read) | `fmc_vpn_troubleshoot` |
+| `vpn` | 11 (5/6/0) | site-to-site VPN topologies, tunnel status and troubleshooting, remote access VPN build and read | `fmc_vpn_troubleshoot` |
 
 ### Deploy safety rails (F18)
 

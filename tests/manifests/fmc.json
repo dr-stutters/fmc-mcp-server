@@ -569,6 +569,10 @@
       "tier": "write",
       "title": "Create access rule"
     },
+    "fmc_create_address_pool": {
+      "tier": "write",
+      "title": "Create RA VPN address pool"
+    },
     "fmc_create_app_route": {
       "tier": "write",
       "title": "Create application route"
@@ -624,6 +628,10 @@
     "fmc_create_group": {
       "tier": "write",
       "title": "Create object group"
+    },
+    "fmc_create_group_policy": {
+      "tier": "write",
+      "title": "Create RA VPN group policy"
     },
     "fmc_create_ha_pair": {
       "tier": "dangerous",
@@ -684,6 +692,10 @@
     "fmc_create_prefix_list": {
       "tier": "write",
       "title": "Create prefix list"
+    },
+    "fmc_create_ravpn": {
+      "tier": "write",
+      "title": "Create RA VPN policy"
     },
     "fmc_create_realm": {
       "tier": "write",
@@ -1224,6 +1236,10 @@
     "fmc_set_base_policy": {
       "tier": "write",
       "title": "Set an access policy's base policy (inheritance)"
+    },
+    "fmc_set_connection_profile": {
+      "tier": "write",
+      "title": "Set RA VPN connection profile"
     },
     "fmc_set_decryption_policy": {
       "tier": "write",
