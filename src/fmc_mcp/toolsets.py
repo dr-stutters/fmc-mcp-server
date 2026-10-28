@@ -79,6 +79,7 @@ CATALOGUE: dict[str, tuple[str, tuple[str, ...]]] = {
         (
             "fmc_apply_device_template",
             "fmc_configure_dhcp",
+            "fmc_copy_device_config",
             "fmc_create_device_group",
             "fmc_create_device_template",
             "fmc_create_inline_set",
@@ -372,6 +373,7 @@ PROMPT_TOOLSETS: dict[str, frozenset[str]] = {
     "fmc_onboard_ftd": frozenset({"deploy", "devices"}),
     "fmc_policy_cleanup": frozenset({"policy"}),
     "fmc_prove_user_policy": frozenset({"identity", "troubleshoot"}),
+    "fmc_replace_device": frozenset({"deploy", "devices"}),
     "fmc_rule_change_review": frozenset({"deploy", "policy"}),
     "fmc_sdwan_troubleshoot": frozenset({"sdwan"}),
     "fmc_threat_defense_review": frozenset({"threat"}),

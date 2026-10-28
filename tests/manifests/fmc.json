@@ -281,6 +281,37 @@
         "ise"
       ]
     },
+    "fmc_replace_device": {
+      "arguments": [
+        "old_device",
+        "new_name",
+        "new_host",
+        "copy_shared_policies",
+        "old_reachable",
+        "delete_old",
+        "domain"
+      ],
+      "references": [
+        "fmc_status",
+        "fmc_get_device",
+        "fmc_list_devices",
+        "fmc_device_snapshot",
+        "fmc_register_device",
+        "fmc_copy_device_config",
+        "fmc_get_task",
+        "fmc_set_device_licenses",
+        "fmc_pending_changes",
+        "fmc_deploy",
+        "fmc_diff_device_config",
+        "fmc_prove_policy",
+        "fmc_delete_device"
+      ],
+      "rendered": true,
+      "tier": "dangerous",
+      "uses": [
+        "fmc"
+      ]
+    },
     "fmc_rule_change_review": {
       "arguments": [
         "policy",
@@ -565,6 +596,10 @@
     "fmc_contain_host": {
       "tier": "write",
       "title": "Contain a host (quarantine)"
+    },
+    "fmc_copy_device_config": {
+      "tier": "dangerous",
+      "title": "Copy device configuration (RMA / clone)"
     },
     "fmc_cpu_profile": {
       "tier": "write",
