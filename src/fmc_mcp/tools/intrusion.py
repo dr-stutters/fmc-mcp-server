@@ -1,8 +1,10 @@
 """Intrusion (Snort 3) policy tuning (F13, first slice): read a policy and its rule overrides, find rules,
-change a rule's state per policy, create a policy, and manage custom (local) rules."""
+change a rule's state per policy, create a policy, and manage custom (local) rules. F97: Secure Firewall
+rule recommendations (ruleRecommendation on the policy, set with ?ruleRecommendationAction=...)."""
 
 # No `from __future__ import annotations`: FastMCP inspects signatures at runtime.
 import re
+from datetime import UTC, datetime
 from typing import Annotated, Any, Literal
 
 from fastmcp import Context
@@ -23,7 +25,7 @@ from fmc_mcp._core import (
 from fmc_mcp._core.http import Page
 from fmc_mcp.client import FmcApp, is_uuid
 from fmc_mcp.preview import fmc_preview
-from fmc_mcp.tools.common import Domain, ref_label, resolve_in
+from fmc_mcp.tools.common import Domain, ref_label, resolve_in, resolve_object
 from fmc_mcp.tools.network_analysis import access_policies_using
 from fmc_mcp.tools.object_writes import applied, editable
 from fmc_mcp.tools.render import object_reply
@@ -39,6 +41,55 @@ PolicyRef = Annotated[
     str, Field(description="Intrusion policy name or UUID (fmc_list_policies kind=intrusion)")
 ]
 RULE_RE = re.compile(r"^\s*(?:(\d+)\s*:\s*)?(\d+)\s*$")
+
+# Rule recommendations (F97). Our action names -> FMC's ruleRecommendationAction query value; stop_using sends
+# none and only clears recommendationInUse.
+RecAction = Literal["generate_and_use", "generate", "use", "refresh", "stop_using", "remove"]
+REC_ACTIONS: dict[str, str | None] = {
+    "generate_and_use": "GENERATE_AND_ACCEPT",
+    "generate": "GENERATE",
+    "use": "ACCEPT",
+    "refresh": "REFRESH",
+    "stop_using": None,
+    "remove": "REMOVE",
+}
+REC_NETWORK_TYPES = ["host", "network", "network_group"]
+MAX_REC_NETWORKS = 50
+DISCOVERY_GUI = "Policies > Network Discovery"
+REC_GUI = "Policies > Intrusion > (policy) > Snort 3 Version > Recommendations"
+
+
+def snort_engine(p: dict[str, Any]) -> str | None:
+    """SNORT3 or SNORT2: FMC 10.0.1 puts it in metadata.snortEngine (metadata.mappedPolicy.snortEngine is
+    the engine of the mapped twin policy, not this one); the spec also has a top-level snortEngine."""
+    return p.get("snortEngine") or (p.get("metadata") or {}).get("snortEngine")
+
+
+def rec_time(v: Any) -> str | None:
+    """lastUpdatedTime (epoch seconds; milliseconds tolerated) as ISO 8601 UTC."""
+    if not isinstance(v, int | float) or v <= 0:
+        return None
+    secs = v / 1000 if v > 10_000_000_000 else v
+    return datetime.fromtimestamp(secs, UTC).isoformat(timespec="seconds").replace("+00:00", "Z")
+
+
+def recommendation_row(p: dict[str, Any]) -> dict[str, Any]:
+    """A policy's rule recommendation state: off, or level, networks, last generated and in use."""
+    rec = p.get("ruleRecommendation")
+    if not isinstance(rec, dict) or not rec:
+        return {"configured": False, "in_use": False}
+    level = str(rec.get("securityLevel") or "")
+    row: dict[str, Any] = {
+        "configured": True,
+        "in_use": bool(rec.get("recommendationInUse")),
+        "security_level": int(level[-1]) if level[-1:].isdigit() else level or None,
+        "networks": [
+            ref_label(n) or n.get("value") for n in rec.get("networks") or [] if isinstance(n, dict)
+        ],
+        "accept_disabled_rules": rec.get("acceptDisabledRules"),
+        "last_generated": rec_time(rec.get("lastUpdatedTime")),
+    }
+    return {k: v for k, v in row.items() if v is not None}
 
 
 def rule_filter(ref: str) -> str | None:
@@ -134,12 +185,21 @@ def register(reg: ToolRegistrar) -> None:
         response_format: ResponseFormat = "markdown",
     ) -> ToolResult:
         """Summarise a Snort 3 intrusion policy: base policy, inspection mode (PREVENTION drops,
-        DETECTION only alerts), how many access policies/devices use it, and every rule whose state is
-        overridden in it (gid:sid, message, default vs. override). Find rules with
-        fmc_find_intrusion_rules; tune them with fmc_set_intrusion_rule_state."""
+        DETECTION only alerts), how many access policies/devices use it, rule counts per state, the
+        Secure Firewall rule recommendations (level, networks, last generated, in use), and every rule
+        whose state is overridden in it (gid:sid, message, default vs. override). Find rules with
+        fmc_find_intrusion_rules; tune them with fmc_set_intrusion_rule_state or
+        fmc_set_intrusion_recommendations."""
         app: FmcApp = get_client(ctx)
         p = await with_usage(app, await resolve_ips(app, policy, domain), policy, domain)
+        one = await app.config_path(f"{IPS}/{p['id']}", domain)
+        try:  # only the single GET (includeCount) has ruleRecommendation and rule counts
+            detail = await app.api.get(one, params={"includeCount": "true"})
+        except UpstreamError:
+            detail = {}
+        detail = detail if isinstance(detail, dict) else {}
         meta = p.get("metadata") or {}
+        counts = (detail.get("metadata") or {}).get("ruleCount")
         path = await app.config_path(f"{IPS}/{p['id']}/intrusionrules", domain)
         over = await app.all(path, {"filter": f"overrides:true;ipspolicy:{p['id']}"}, cap=MAX_OVERRIDES)
         out: dict[str, Any] = {
@@ -149,9 +209,15 @@ def register(reg: ToolRegistrar) -> None:
             "system_defined": bool(p.get("isSystemDefined")),
             "used_by": usage_row(p),
             "domain": (meta.get("domain") or {}).get("name"),
+            "snort_engine": snort_engine(detail) or snort_engine(p),
+            "rule_counts": counts if isinstance(counts, dict) else None,
+            "recommendations": recommendation_row(detail or p),
             "overridden_rules": [rule_row(r) for r in over.items],
             "id": p.get("id"),
         }
+        for k in ("snort_engine", "rule_counts"):
+            if out[k] is None:
+                del out[k]
         if not over.complete:
             out["note"] = f"Only the first {MAX_OVERRIDES} overrides are listed."
         return object_reply(out, fmt=response_format)
@@ -285,6 +351,198 @@ def register(reg: ToolRegistrar) -> None:
                 },
                 blockers=blockers,
                 side_effects=["Takes effect on devices after the next deployment."],
+            ),
+            apply=apply,
+        )
+
+    @reg.write(title="Set intrusion rule recommendations")
+    async def fmc_set_intrusion_recommendations(
+        ctx: Context,
+        policy: PolicyRef,
+        action: Annotated[
+            RecAction,
+            Field(
+                description="generate_and_use (default): generate for the networks and level, then use them; "
+                "generate: generate only (review, then action='use'); use: start using the generated ones; "
+                "refresh: regenerate with the stored networks and level; stop_using: keep them but stop "
+                "applying them; remove: delete the recommendations and their configuration"
+            ),
+        ] = "generate_and_use",
+        networks: Annotated[
+            list[str] | None,
+            Field(
+                max_length=MAX_REC_NETWORKS,
+                description="Protected networks: host, network or network group objects (name or UUID). "
+                "generate/generate_and_use only; default: the networks already stored on the policy",
+            ),
+        ] = None,
+        security_level: Annotated[
+            int | None,
+            Field(
+                ge=1,
+                le=4,
+                description="1 (fewest rules) to 4 (most; may enable rules that drop). generate/"
+                "generate_and_use only; default: the stored level, else 2",
+            ),
+        ] = None,
+        accept_disabled: Annotated[
+            bool | None,
+            Field(
+                description="Also accept recommendations that DISABLE rules (fewer rules, less protection). "
+                "generate/generate_and_use only; default: the stored setting, else false",
+            ),
+        ] = None,
+        domain: Domain = None,
+        confirm: Confirm = None,
+    ) -> dict[str, Any]:
+        """Turn on Cisco Secure Firewall rule recommendations in a custom Snort 3 intrusion policy: FMC
+        enables the rules that match the OS, services and applications network discovery saw on the
+        protected networks, at a security level (1-4), and can disable rules for things they don't run.
+        This is Cisco's recommended tuning step after choosing a base policy. The preview shows the
+        current and new recommendation settings and the access policies/devices using the policy.
+        Refused for system and Snort 2 policies. Check with fmc_get_intrusion_policy (recommendations,
+        rule_counts); takes effect after a deploy."""
+        app: FmcApp = get_client(ctx)
+        p = await with_usage(app, await resolve_ips(app, policy, domain), policy, domain)
+        one = await app.config_path(f"{IPS}/{p['id']}", domain)
+        cur = await app.api.get(one)
+        cur = cur if isinstance(cur, dict) else {}
+        rec = cur.get("ruleRecommendation")
+        stored: dict[str, Any] = rec if isinstance(rec, dict) else {}
+        builds = action in ("generate_and_use", "generate")
+        if not builds and (networks is not None or security_level is not None or accept_disabled is not None):
+            raise InvalidRequest(
+                f"networks, security_level and accept_disabled go with generate(_and_use), not {action!r}."
+            )
+        blockers: list[str] = []
+        if p.get("isSystemDefined") or cur.get("isSystemDefined"):
+            blockers.append(
+                f"{p.get('name')!r} is a system intrusion policy and read-only; create a custom policy based "
+                "on it (fmc_create_intrusion_policy) and use that in the access rules."
+            )
+        if (snort_engine(cur) or snort_engine(p)) == "SNORT2":
+            blockers.append(
+                f"{p.get('name')!r} is a Snort 2 policy; this tool sets Snort 3 rule recommendations only "
+                "(Snort 2 'Firepower Recommendations' are set in the UI)."
+            )
+        refs: list[dict[str, Any]] = []
+        for ref in dict.fromkeys(networks or []):
+            _, obj = await resolve_object(app, ref, domain, REC_NETWORK_TYPES)
+            refs.append({"id": obj["id"], "type": obj.get("type"), "name": obj.get("name")})
+        new: dict[str, Any] = {}
+        if builds:
+            nets = refs or [
+                {k: n.get(k) for k in ("id", "type", "name") if n.get(k)}
+                for n in stored.get("networks") or []
+                if isinstance(n, dict)
+            ]
+            if not nets:
+                blockers.append("Name the protected networks (networks=[...]): the policy has none stored.")
+            level = security_level or int(str(stored.get("securityLevel") or "LEVEL_2")[-1])
+            new = {
+                "securityLevel": f"LEVEL_{level}",
+                "networks": nets,
+                "acceptDisabledRules": bool(
+                    accept_disabled
+                    if accept_disabled is not None
+                    else stored.get("acceptDisabledRules", False)
+                ),
+                "recommendationInUse": action == "generate_and_use"
+                or (action == "generate" and bool(stored.get("recommendationInUse"))),
+            }
+        elif not stored:
+            blockers.append(
+                f"{p.get('name')!r} has no rule recommendations to {action.replace('_', ' ')}; generate them "
+                "first (action='generate_and_use' with networks)."
+            )
+        elif action == "use":
+            new = {**stored, "recommendationInUse": True}
+        elif action == "stop_using":
+            if not stored.get("recommendationInUse"):
+                blockers.append("Nothing to change: the recommendations are not in use.")
+            new = {**stored, "recommendationInUse": False}
+        elif action == "refresh":
+            new = dict(stored)
+        new.pop("lastUpdatedTime", None)
+        query = REC_ACTIONS[action]
+        side_effects = ["Takes effect on devices after the next deployment."]
+        if builds or action in ("use", "refresh"):
+            side_effects.append(
+                "Recommendations come from the host data network discovery collected (OS, services, client "
+                f"apps). Without it (FMC UI: {DISCOVERY_GUI}, discover hosts and applications on these "
+                "networks) FMC has little to match and changes few rules."
+            )
+        level_now = new.get("securityLevel") or stored.get("securityLevel")
+        mode = cur.get("inspectionMode") or p.get("inspectionMode") or "PREVENTION"
+        if level_now in ("LEVEL_3", "LEVEL_4") and action != "remove":
+            side_effects.append(
+                f"{level_now} enables more rules, including rules whose default action drops or blocks: "
+                f"in a {mode} policy that can drop traffic that passes today. Review with "
+                "fmc_get_intrusion_policy (rule_counts) before deploying."
+            )
+        if new.get("acceptDisabledRules"):
+            side_effects.append(
+                "acceptDisabledRules: rules FMC thinks don't apply to these hosts are disabled."
+            )
+        if action == "remove":
+            side_effects.append(
+                "The recommended rule states are removed: rules go back to the base policy's."
+            )
+
+        async def apply() -> Any:
+            try:
+                # re-read: FMC's PUT replaces the whole policy, so never send a preview-time copy
+                fresh = await app.api.get(one)
+                body = editable(fresh)
+                body.pop("ruleRecommendation", None)
+                if new:
+                    body["ruleRecommendation"] = new
+                res = await app.api.put(
+                    one, body, params={"ruleRecommendationAction": query} if query else None
+                )
+                after = await app.api.get(one, params={"includeCount": "true"})
+            finally:
+                app.invalidate_cache()
+            after = after if isinstance(after, dict) else res if isinstance(res, dict) else {}
+            return {
+                "policy": p.get("name"),
+                "action": action,
+                "recommendations": recommendation_row(after),
+                "rule_counts": (after.get("metadata") or {}).get("ruleCount"),
+                "next": "fmc_deploy to the devices using it",
+            }
+
+        return await fmc_preview(
+            ctx,
+            tool="fmc_set_intrusion_recommendations",
+            args={
+                "policy": policy,
+                "action": action,
+                "networks": networks,
+                "security_level": security_level,
+                "accept_disabled": accept_disabled,
+                "domain": domain,
+            },
+            confirm=confirm,
+            owned=[p],
+            plan=Plan(
+                f"{action.replace('_', ' ').capitalize()} rule recommendations in intrusion policy "
+                f"{p.get('name')!r}"
+                + (
+                    f" (level {new['securityLevel'][-1]}, {len(new['networks'])} network(s))"
+                    if builds and new.get("networks")
+                    else ""
+                ),
+                details={
+                    "current": recommendation_row(cur),
+                    "new": recommendation_row({"ruleRecommendation": new}) if new else None,
+                    "fmc_action": query or "(none: recommendationInUse=false)",
+                    "used_by": usage_row(p),
+                    "ui": REC_GUI,
+                },
+                fingerprint={"policy": p["id"], "stored": stored, "refs": [r["id"] for r in refs]},
+                blockers=blockers,
+                side_effects=side_effects,
             ),
             apply=apply,
         )
