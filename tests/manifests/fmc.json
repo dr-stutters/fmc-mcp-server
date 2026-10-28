@@ -709,6 +709,10 @@
       "tier": "write",
       "title": "Create Security Intelligence feed"
     },
+    "fmc_create_sla_monitor": {
+      "tier": "write",
+      "title": "Create SLA monitor"
+    },
     "fmc_create_static_route": {
       "tier": "write",
       "title": "Create static route"
@@ -812,6 +816,10 @@
     "fmc_delete_si_object": {
       "tier": "write",
       "title": "Delete Security Intelligence feed or list"
+    },
+    "fmc_delete_sla_monitor": {
+      "tier": "write",
+      "title": "Delete SLA monitor"
     },
     "fmc_delete_static_route": {
       "tier": "write",

@@ -239,6 +239,57 @@ def route_key(r: dict[str, Any]) -> tuple[str, frozenset[str], str]:
     return str(r.get("interfaceName", "")).lower(), nets, gateway
 
 
+def failover_check(new: dict[str, Any], others: list[dict[str, Any]]) -> tuple[dict[str, Any], list[str]]:
+    """Dual-ISP failover around a new static route, against the other routes of its table to the same
+    networks: for a tracked route, the floating backups (higher metric) and warnings when there is none,
+    one has the same metric or one is preferred; for an untracked route, the tracked route it backs up."""
+    nets = frozenset(str(n.get("id")) for n in new.get("selectedNetworks") or [])
+    same = [r for r in others if frozenset(str(n.get("id")) for n in r.get("selectedNetworks") or []) == nets]
+    metric = int(new.get("metricValue") or 1)
+    dest = ", ".join(ref_label(n) for n in new.get("selectedNetworks") or [])
+    out: dict[str, Any] = {}
+    warnings: list[str] = []
+
+    def label(r: dict[str, Any]) -> str:
+        row = route_row("static4", r)
+        return f"via {row['gateway']} on {row['interface']} (metric {row['metric']}, id {row['id']})"
+
+    tracking = new.get("routeTracking")
+    if tracking:
+        backups = [r for r in same if int(r.get("metricValue") or 1) > metric]
+        out["floating_backup"] = [route_row("static4", r) for r in backups]
+        equal = [r for r in same if int(r.get("metricValue") or 1) == metric]
+        better = [r for r in same if int(r.get("metricValue") or 1) < metric]
+        if not same:
+            warnings.append(
+                f"No other route to {dest} in this table: while {ref_label(tracking)} is down these networks "
+                f"have no route. Add a floating backup through the other ISP with a higher metric "
+                f"(fmc_create_static_route metric={min(metric + 9, 254)})."
+            )
+        for r in equal:
+            warnings.append(
+                f"The route {label(r)} has the same metric as this tracked route: it is no floating backup "
+                f"(FTD load-shares or refuses equal routes on different interfaces). Give it a higher metric."
+            )
+        for r in better:
+            warnings.append(
+                f"The route {label(r)} has a lower metric: it wins while both are up, so tracking this one "
+                "changes nothing. The tracked primary needs the lowest metric."
+            )
+    else:
+        primaries = [r for r in same if r.get("routeTracking")]
+        backed = [r for r in primaries if int(r.get("metricValue") or 1) < metric]
+        if backed:
+            out["backs_up"] = [route_row("static4", r) for r in backed]
+        for r in primaries:
+            if int(r.get("metricValue") or 1) >= metric:
+                warnings.append(
+                    f"The tracked route {label(r)} has a metric no lower than this one ({metric}): give this "
+                    "route a higher metric to make it the floating backup."
+                )
+    return out, warnings
+
+
 # --- logical interfaces (fmc_create_interface) ----------------------------------------------------
 
 CreateKind = Literal["loopback", "vti", "etherchannel", "bvi"]
@@ -1223,13 +1274,24 @@ def register(reg: ToolRegistrar) -> None:
         virtual_router: Annotated[
             str | None, Field(description="Virtual router (VRF) name/UUID; default the global table")
         ] = None,
+        track: Annotated[
+            str | None,
+            Field(
+                description="SLA monitor name/UUID (fmc_create_sla_monitor) this route tracks: it leaves the "
+                "routing table while the monitor is down, so a floating route to the same networks with a "
+                "higher metric takes over. IPv4 routes only"
+            ),
+        ] = None,
         domain: Domain = None,
         confirm: Confirm = None,
     ) -> dict[str, Any]:
         """Add a static route (IPv4 or IPv6, picked from the gateway) to a device, in the global table
         or a virtual router. Destinations must be network/host objects; a CIDR is accepted when an
-        object with that value exists (create one with fmc_create_object otherwise). Takes effect
-        after fmc_deploy; check with fmc_list_routes and fmc_run_show_command('show route')."""
+        object with that value exists (create one with fmc_create_object otherwise). Dual-ISP failover:
+        the primary route with track=<SLA monitor> and a floating backup through the other ISP with a
+        higher metric; the preview names the backup and warns when there is none or it has the same
+        metric. Takes effect after fmc_deploy; check with fmc_list_routes and
+        fmc_run_show_command('show route', 'show sla monitor operational-state')."""
         app: FmcApp = get_client(ctx)
         dev = await resolve_device(app, device, domain)
         base, vr_name = await routing_base(app, dev, virtual_router, domain)
@@ -1284,6 +1346,18 @@ def register(reg: ToolRegistrar) -> None:
             "metricValue": metric,
             "isTunneled": False,
         }
+        if track:
+            if version != 4:
+                blockers.append("Route tracking (SLA monitor) is for IPv4 static routes only.")
+            else:
+                _, monitor = await resolve_object(app, track, domain, ["sla_monitor"])
+                body["routeTracking"] = {
+                    "id": monitor["id"],
+                    "type": "SLAMonitor",
+                    "name": monitor.get("name"),
+                }
+        warnings: list[str] = []
+        failover: dict[str, Any] = {}
         sub = "ipv4staticroutes" if version == 4 else "ipv6staticroutes"
         path = await app.config_path(f"{base}/{sub}", domain)
         if selected and not blockers:
@@ -1297,6 +1371,7 @@ def register(reg: ToolRegistrar) -> None:
                     f"{dev.get('name')} already has this route ({vr_name or 'global table'}, id "
                     f"{dup.get('id')}, metric {dup.get('metricValue')}); delete it first or change it."
                 )
+            failover, warnings = failover_check(body, [r for r in existing.items if route_key(r) != want])
         return await fmc_preview(
             ctx,
             tool="fmc_create_static_route",
@@ -1307,12 +1382,18 @@ def register(reg: ToolRegistrar) -> None:
                 "gateway": gateway,
                 "metric": metric,
                 "virtual_router": virtual_router,
+                "track": track,
                 "domain": domain,
             },
             confirm=confirm,
             plan=Plan(
                 f"Add static route on {dev.get('name')} ({vr_name or 'global table'})",
-                details={"route": route_row(f"static{version}", body), "body": body},
+                details={
+                    "route": route_row(f"static{version}", body),
+                    **failover,
+                    **({"warnings": warnings} if warnings else {}),
+                    "body": body,
+                },
                 fingerprint={"device": dev["id"], "body": body},
                 blockers=blockers,
                 side_effects=["Takes effect on the device after the next deployment."],
