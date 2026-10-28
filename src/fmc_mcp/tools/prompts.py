@@ -1555,6 +1555,90 @@ Stop and report when a step fails; keep notes of what each step returned.
 """
 
 
+def _replace_device_text(
+    old_device: str,
+    new_name: str,
+    new_host: str,
+    copy_shared_policies: bool,
+    old_reachable: bool,
+    delete_old: bool,
+    domain: str | None,
+) -> str:
+    """fmc_replace_device (F93): snapshot -> register -> copy -> licences -> deploy -> diff -> prove ->
+    optional delete of the old record."""
+    old, new = _q(old_device, "old_device"), _q(new_name, "new_name")
+    if old.lower() == new.lower():
+        raise InvalidRequest("new_name must differ from old_device: FMC needs both records during the copy.")
+    host = _q(new_host, "new_host")
+    dom = _q(domain, "domain") if domain else None
+    d = f", domain={dom}" if dom else ""
+    shared = "true" if copy_shared_policies else "false"
+    if old_reachable:
+        snap = tool_ref("fmc_device_snapshot")
+        snapshot = f"""1. Before: {snap} with devices=[{old}], label="before rma"{d}
+   (routes, interfaces, tunnels, the deployed version; read-only). Keep the file or YAML: step 6
+   compares the new unit with it."""
+    else:
+        snapshot = f"""1. Before: the old unit is not reachable, so there is no live snapshot. Its
+   configuration is still in FMC: {tool_ref("fmc_export_device_config")} with device={old}{d}
+   records it (read-only). Keep the export: step 6 compares the new unit with it."""
+    if delete_old:
+        delete = f"""8. Remove the old record, only when steps 6 and 7 passed:
+   {tool_ref("fmc_delete_device")} with device={old}{d} (dangerous, preview-first). Before
+   confirming, check the preview names {old} and nothing else; VPN topologies, device groups and
+   change tickets that still name the old record must be moved to {new} first
+   (fmc_diff_device_config's vpn section shows the topologies)."""
+    else:
+        delete = f"""8. The old record {old} stays (delete_old=false). Once the RMA is closed it can be
+   removed with {tool_ref("fmc_delete_device")} (dangerous); say so in the report."""
+    return f"""Replace FTD {old} with a new unit {new} at {host} (RMA, or a clone of the same box): FMC's
+Copy Configuration procedure. Work through the steps in order and stop at the first failure. Every
+write is preview-first: show each preview to the user and confirm only after they approve it.
+
+0. Preconditions (read-only). {tool_ref("fmc_status")}; {tool_ref("fmc_get_device")} with device={old}{d}:
+   note its model, software version, licences, performance tier, access policy and whether it is in an
+   HA pair or cluster. An HA unit or cluster node is not replaced this way: stop and say so (an HA
+   RMA re-joins the new unit to the pair instead). {tool_ref("fmc_list_devices")} with name={new}{d}:
+   if {new} is already registered, go to step 3. The new FTD must run the same model and software
+   version as {old} (reimage or upgrade it first) and point at this FMC (`configure manager add
+   <fmc> <reg_key>` on its CLI; the key is the server's FMC_FTD_REG_KEY, never typed here).
+
+{snapshot}
+
+2. Register the new unit: {tool_ref("fmc_register_device")} with name={new}, host={host},
+   access_policy=<{old}'s access policy>, license_caps=<{old}'s licences>,
+   performance_tier=<{old}'s tier, FTDv only>{d}, wait=true. It waits for the registration and FMC's
+   initial deployment; {tool_ref("fmc_get_device")} with device={new} must then be connected.
+
+3. Copy the configuration: {tool_ref("fmc_copy_device_config")} with source={old}, targets=[{new}],
+   copy_shared_policies={shared}{d}. Read the preview: no blockers (model and version match, {new} is
+   standalone), and `targets_lose` lists what {new} gives up (a freshly registered unit has little).
+   Confirm after approval; the result is FMC's finished task (or {tool_ref("fmc_get_task")} with its id).
+
+4. Licences: {tool_ref("fmc_get_device")} with device={new} and compare its licences with {old}'s from
+   step 0. Add any missing one with {tool_ref("fmc_set_device_licenses")} with device={new}, add=[...]{d}.
+
+5. Deploy: {tool_ref("fmc_pending_changes")} with device={new}{d} (expect the copied interfaces, routes and
+   policies), then {tool_ref("fmc_deploy")} with devices=[{new}], wait=true{d}. The new unit now uses the old
+   unit's data-interface addresses: the old one must be off the network (or its interfaces down).
+
+6. Compare: {tool_ref("fmc_diff_device_config")} with a=<the step 1 snapshot or export>, b={new}{d}. Expected
+   differences are only the device's own: name, management address, serial and, for a clone,
+   interface addresses. Any difference in routing, assigned policies, NAT or VPN membership is a
+   failure: name its section and key.
+
+7. Prove the policy: {tool_ref("fmc_prove_policy")} with device={new}{d} and the flows the old unit carried
+   (ask the user, or take them from the change record: inside to outside allowed, a blocked flow, a
+   VPN flow), each with its expected verdict. Every row must be `pass`. When {old} is still registered
+   and reachable (a clone), run the same table with device={old}: both must give the same verdicts.
+
+{delete}
+
+9. Report: old and new unit (model, version, serial), each step with its result, the diff of step 6,
+   the prove table of step 7, and what is left (licences, the old record, VPN peers to update).
+"""
+
+
 def register(reg: ToolRegistrar) -> None:
     @reg.prompt(
         title="Why is this traffic blocked?",
@@ -2048,4 +2132,44 @@ def register(reg: ToolRegistrar) -> None:
             inside_host,
             test_destination,
             domain,
+        )
+
+    @reg.prompt(
+        title="Replace an FTD (RMA)",
+        uses=["fmc"],
+        tier=Tier.DANGEROUS,
+        example={
+            "old_device": "mcp-ftd2",
+            "new_name": "mcp-ftd3",
+            "new_host": "192.0.2.13",
+            "copy_shared_policies": "true",
+            "old_reachable": "true",
+            "delete_old": "false",
+            "domain": "Global/mcp-test-leaf",
+        },
+    )
+    def fmc_replace_device(
+        old_device: Annotated[str, Field(description="The FTD being replaced (its FMC name or UUID)")],
+        new_name: Annotated[str, Field(description="FMC display name for the replacement FTD")],
+        new_host: Annotated[str, Field(description="The replacement FTD's management IP (or DNS name)")],
+        copy_shared_policies: Annotated[
+            bool,
+            Field(description="Also copy the old unit's shared policies (access, NAT, platform settings)"),
+        ] = True,
+        old_reachable: Annotated[
+            bool, Field(description="The old unit still answers (snapshot it live); false for a dead unit")
+        ] = True,
+        delete_old: Annotated[
+            bool, Field(description="Unregister the old record at the end, after the checks pass")
+        ] = False,
+        domain: Annotated[
+            str | None, Field(description="FMC domain for every call; the server's default if omitted")
+        ] = None,
+    ) -> str:
+        """Replace a failed FTD (RMA) or clone one onto a new box with FMC's Copy Configuration: snapshot
+        the old unit (or export its record), register the new one, fmc_copy_device_config, match the
+        licences, deploy, compare the two configurations, prove the policy on the new unit, and
+        optionally unregister the old record. Every write is previewed and approved first."""
+        return _replace_device_text(
+            old_device, new_name, new_host, copy_shared_policies, old_reachable, delete_old, domain
         )
