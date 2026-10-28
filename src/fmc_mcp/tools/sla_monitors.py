@@ -57,13 +57,18 @@ async def resolve_monitor(app: FmcApp, ref: str, domain: str | None) -> dict[str
     return m
 
 
-async def routes_tracking(app: FmcApp, monitor_id: str, domain: str | None) -> list[dict[str, Any]]:
-    """Every IPv4 static route (global table and each virtual router, on every device of the domain)
-    whose routeTracking is this SLA monitor. FMC's usage API doesn't report route tracking, so the
-    routes are read."""
+async def routes_tracking(
+    app: FmcApp, monitor_id: str, domain: str | None, device: dict[str, Any] | None = None
+) -> list[dict[str, Any]]:
+    """Every IPv4 static route (global table and each virtual router, on every device of the domain, or
+    only on `device`) whose routeTracking is this SLA monitor. FMC's usage API doesn't report route
+    tracking, so the routes are read."""
     found: list[dict[str, Any]] = []
-    devices = await app.all(await app.config_path(DEVICES, domain), expanded=False, cap=2000)
-    for dev in devices.items:
+    if device is not None:
+        devs = [device]
+    else:
+        devs = (await app.all(await app.config_path(DEVICES, domain), expanded=False, cap=2000)).items
+    for dev in devs:
         base = f"{DEVICES}/{dev['id']}/routing"
         tables: list[tuple[str, str | None]] = [(base, None)]
         try:
@@ -95,6 +100,42 @@ def describe_route(r: dict[str, Any]) -> str:
         f"{r.get('device')} ({r.get('table')}): {nets} via {r.get('gateway')} on {r.get('interface')} "
         f"(id {r.get('id')})"
     )
+
+
+def leftover_warning(sla_id: Any, where: str) -> str:
+    """FMC 10.0 removes a tracked route but not the 'sla monitor' it pushed for it (fmc #364, seen live):
+    the probe keeps running on the device after the deploy."""
+    sid = sla_id if sla_id is not None else "<id>"
+    return (
+        f"FMC leaves 'sla monitor {sid}' (and its schedule) on {where} after the deploy: the probe keeps "
+        f"running, harmless as nothing tracks it. Remove it with a FlexConfig 'no sla monitor {sid}', or "
+        f"accept it and reuse SLA ID {sid} for the next monitor on that device, which overwrites it."
+    )
+
+
+def probe_timing_blockers(frequency: int, threshold_ms: int, timeout_ms: int) -> list[str]:
+    blockers = []
+    if threshold_ms > timeout_ms:
+        blockers.append(f"threshold_ms ({threshold_ms}) can't exceed timeout_ms ({timeout_ms}).")
+    if timeout_ms > frequency * 1000:
+        blockers.append(
+            f"timeout_ms ({timeout_ms}) can't exceed the frequency ({frequency} s): the next probe would "
+            "start before the last one timed out."
+        )
+    return blockers
+
+
+def probe_address(monitor_address: str) -> tuple[str, list[str]]:
+    """The probe target as FMC stores it, and why it can't be one."""
+    try:
+        addr = ipaddress.ip_address(monitor_address.strip())
+    except ValueError:
+        raise InvalidRequest(f"monitor_address must be an IPv4 address, got {monitor_address!r}.") from None
+    if addr.version != 4:
+        return str(addr), ["SLA monitors probe IPv4 addresses only (route tracking is IPv4 only)."]
+    if addr.is_multicast or addr.is_unspecified or addr.is_loopback:
+        return str(addr), [f"{addr} can't answer an echo probe; use the ISP next hop or a host beyond it."]
+    return str(addr), []
 
 
 def register(reg: ToolRegistrar) -> None:
@@ -137,18 +178,8 @@ def register(reg: ToolRegistrar) -> None:
         a floating backup with a higher metric). Takes effect after fmc_deploy; check with
         fmc_run_show_command('show sla monitor operational-state')."""
         app: FmcApp = get_client(ctx)
-        blockers: list[str] = []
         warnings: list[str] = []
-        try:
-            addr = ipaddress.ip_address(monitor_address.strip())
-        except ValueError:
-            raise InvalidRequest(
-                f"monitor_address must be an IPv4 address, got {monitor_address!r}."
-            ) from None
-        if addr.version != 4:
-            blockers.append("SLA monitors probe IPv4 addresses only (route tracking is IPv4 only).")
-        elif addr.is_multicast or addr.is_unspecified or addr.is_loopback:
-            blockers.append(f"{addr} can't answer an echo probe; use the ISP next hop or a host beyond it.")
+        addr, blockers = probe_address(monitor_address)
         res = RefResolver(app, domain)
         objs = [await res.single(i, ZONE_TYPES, "security zone or interface group") for i in interfaces]
         existing = (await app.all(await app.config_path(SLA_MONITORS, domain), cap=5000)).items
@@ -161,13 +192,7 @@ def register(reg: ToolRegistrar) -> None:
         elif sla_id in used:
             other = next(m.get("name") for m in existing if m.get("slaId") == sla_id)
             blockers.append(f"SLA ID {sla_id} is already used by {other!r}; pick another or omit sla_id.")
-        if threshold_ms > timeout_ms:
-            blockers.append(f"threshold_ms ({threshold_ms}) can't exceed timeout_ms ({timeout_ms}).")
-        if timeout_ms > frequency * 1000:
-            blockers.append(
-                f"timeout_ms ({timeout_ms}) can't exceed the frequency ({frequency} s): the next probe would "
-                "start before the last one timed out."
-            )
+        blockers += probe_timing_blockers(frequency, threshold_ms, timeout_ms)
         if frequency > 300:
             warnings.append(
                 f"A probe every {frequency} s means failover can take that long; branch designs use 5-60 s."
@@ -176,7 +201,7 @@ def register(reg: ToolRegistrar) -> None:
             "name": name.strip(),
             "type": "SLAMonitor",
             "slaId": sla_id,
-            "monitorAddress": str(addr),
+            "monitorAddress": addr,
             "interfaceObjects": objs,
             "frequency": frequency,
             "threshold": threshold_ms,
@@ -223,6 +248,125 @@ def register(reg: ToolRegistrar) -> None:
             apply=lambda: applied(app, lambda: app.api.post(path, body)),
         )
 
+    @reg.write(title="Update SLA monitor")
+    async def fmc_update_sla_monitor(
+        ctx: Context,
+        monitor: Annotated[str, Field(description="SLA monitor name or UUID")],
+        monitor_address: Annotated[
+            str | None,
+            Field(description="New IPv4 address to probe (e.g. the ISP's next hop, or a host beyond it)"),
+        ] = None,
+        interfaces: Annotated[
+            list[str] | None,
+            Field(
+                min_length=1,
+                description="Replace the security zones or interface groups (names/UUIDs) the probes leave "
+                "through",
+            ),
+        ] = None,
+        frequency: Annotated[int | None, Field(ge=1, le=604800, description="Seconds between probes")] = None,
+        threshold_ms: Annotated[
+            int | None,
+            Field(ge=0, le=2147483647, description="Milliseconds above which a reply counts as late"),
+        ] = None,
+        timeout_ms: Annotated[
+            int | None, Field(ge=0, le=604800000, description="Milliseconds to wait for a reply")
+        ] = None,
+        description: Annotated[str | None, Field(description="New description ('' clears it)")] = None,
+        domain: Domain = None,
+        confirm: Confirm = None,
+    ) -> dict[str, Any]:
+        """Change an SLA monitor: the probe target, the zones/interface groups it leaves through, and its
+        timing (frequency, threshold, timeout). Fields not given keep their value; the SLA ID stays (a new
+        ID would leave the old 'sla monitor' on the devices). Reads the monitor and PUTs the full object.
+        The preview lists the static routes that track it: their devices pick the change up on the next
+        fmc_deploy, and a target that stops answering withdraws those routes (the floating backup takes
+        over), which is how an ISP cut-over test is run. Check with fmc_run_show_command('show sla monitor
+        operational-state')."""
+        app: FmcApp = get_client(ctx)
+        current = await resolve_monitor(app, monitor, domain)
+        body = editable(current)
+        blockers: list[str] = []
+        warnings: list[str] = []
+        if monitor_address is not None:
+            body["monitorAddress"], bad = probe_address(monitor_address)
+            blockers += bad
+        if interfaces is not None:
+            res = RefResolver(app, domain)
+            body["interfaceObjects"] = [
+                await res.single(i, ZONE_TYPES, "security zone or interface group") for i in interfaces
+            ]
+            body.pop("interfaceNames", None)  # inline names can only be removed in a PUT (spec)
+        for key, value in (("frequency", frequency), ("threshold", threshold_ms), ("timeout", timeout_ms)):
+            if value is not None:
+                body[key] = value
+        if description is not None:
+            if description:
+                body["description"] = description
+            else:
+                body.pop("description", None)
+        timing = [body.get(k) for k in ("frequency", "threshold", "timeout")]
+        if all(isinstance(v, int) for v in timing):
+            blockers += probe_timing_blockers(*timing)  # type: ignore[arg-type]
+        if frequency is not None and frequency > 300:
+            warnings.append(
+                f"A probe every {frequency} s means failover can take that long; branch designs use 5-60 s."
+            )
+        before, after = monitor_row(current), monitor_row(body)
+        changes = {k: {"from": before[k], "to": after[k]} for k in after if before.get(k) != after[k]}
+        if not changes:
+            blockers.append("Nothing to change: the monitor already has these settings.")
+        tracked = await routes_tracking(app, str(current["id"]), domain)
+        devices = sorted({str(r.get("device")) for r in tracked})
+        side = (
+            [
+                f"Pushed to {', '.join(devices)} on the next fmc_deploy (static routes tracking it: "
+                + "; ".join(describe_route(r) for r in tracked)
+                + ")."
+            ]
+            if tracked
+            else ["No static route tracks this monitor: nothing changes on a device."]
+        )
+        if tracked and "monitor_address" in changes:
+            side.append(
+                "If the new target doesn't answer, the monitor goes down and those routes are withdrawn: "
+                "traffic moves to the floating backup route (or is lost without one)."
+            )
+        path = await app.config_path(f"{SLA_MONITORS}/{current['id']}", domain)
+        return await fmc_preview(
+            ctx,
+            tool="fmc_update_sla_monitor",
+            owned=[current],
+            args={
+                "monitor": monitor,
+                "monitor_address": monitor_address,
+                "interfaces": interfaces,
+                "frequency": frequency,
+                "threshold_ms": threshold_ms,
+                "timeout_ms": timeout_ms,
+                "description": description,
+                "domain": domain,
+            },
+            confirm=confirm,
+            plan=Plan(
+                f"Update SLA monitor {current.get('name')!r} (SLA ID {current.get('slaId')})",
+                details={
+                    "changes": changes,
+                    "monitor": after,
+                    "tracked_by_routes": tracked,
+                    **({"warnings": warnings} if warnings else {}),
+                },
+                fingerprint={
+                    "monitor": editable(current),
+                    "body": body,
+                    "routes": [r["id"] for r in tracked],
+                },
+                blockers=blockers,
+                side_effects=side,
+            ),
+            apply=lambda: applied(app, lambda: app.api.put(path, body)),
+        )
+
     @reg.write(title="Delete SLA monitor", destructive=True)
     async def fmc_delete_sla_monitor(
         ctx: Context,
@@ -255,6 +399,10 @@ def register(reg: ToolRegistrar) -> None:
                 details={"monitor": monitor_row(current), "tracked_by_routes": tracked},
                 fingerprint={"monitor": editable(current), "routes": [r["id"] for r in tracked]},
                 blockers=blockers,
+                side_effects=[
+                    leftover_warning(current.get("slaId"), "each device whose route tracked this monitor"),
+                    "Nothing else changes on a device: no route tracks it any more.",
+                ],
             ),
             apply=lambda: applied(app, lambda: app.api.delete(path)),
         )

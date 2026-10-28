@@ -92,7 +92,10 @@ def dev(i: str, name: str) -> dict[str, Any]:
 class Lab:
     """A small stateful FMC: health policies and device records change with the writes."""
 
-    def __init__(self, fmc: respx.MockRouter, *, record_put_works: bool = True) -> None:
+    def __init__(
+        self, fmc: respx.MockRouter, *, record_put_works: bool = True, shuffle: bool = False
+    ) -> None:
+        self.shuffle, self.gets = shuffle, 0
         self.policies: dict[str, dict[str, Any]] = {INITIAL_ID: copy.deepcopy(INITIAL), FMC_HP_ID: FMC_HP}
         self.devices = {A: dev(A, "ftd-a"), B: dev(B, "ftd-b")}
         self.record_put_works = record_put_works
@@ -132,7 +135,14 @@ class Lab:
 
     def get_policy(self, request: httpx.Request) -> httpx.Response:
         p = self.policies.get(request.url.path.rsplit("/", 1)[1])
-        return httpx.Response(200, json=p) if p else httpx.Response(404, json={})
+        if not p:
+            return httpx.Response(404, json={})
+        if self.shuffle and p.get("healthModules"):  # FMC 10.0: a different module order on every GET
+            self.gets += 1
+            mods = p["healthModules"]
+            k = self.gets % len(mods)
+            p = {**p, "healthModules": mods[k:] + mods[:k]}
+        return httpx.Response(200, json=p)
 
     def create(self, request: httpx.Request) -> httpx.Response:
         body = json.loads(request.content)
@@ -410,3 +420,43 @@ async def test_assign_falls_back_when_the_record_put_is_refused(lab: Lab, fmc: r
     )
     _, out = await confirm("fmc_assign_health_policy", {"policy": "mcp-edge", "devices": ["ftd-a"]})
     assert out.get("result", out)["assigned"] == [{"device": "ftd-a", "via": "policy_assignment"}]
+
+
+# --- #363: FMC 10.0 returns healthModules in a different order on every GET ------------------------------
+
+
+async def test_confirm_survives_a_reordered_module_list(fmc: respx.MockRouter) -> None:
+    lab = Lab(fmc, shuffle=True)
+    args = {"name": "mcp-edge", "modules": {"hm_cpu": {"warning": 60, "critical": 85}}, "devices": ["ftd-a"]}
+    preview, out = await confirm("fmc_create_health_policy", args)
+    assert "changed since the preview" not in json.dumps(out), out
+    assert lab.post.call_count == 1 and lab.put.called and lab.devices[A]["healthPolicy"]["id"] == NEW_ID
+    assert [r["module"] for r in out.get("result", out)["modules"]] == ["hm_cpu"]
+
+    lab.policies[NEW_ID]["healthModules"].append({**MEM, "moduleId": "hm_disk_status"})
+    _, moved = await confirm("fmc_assign_health_policy", {"policy": "mcp-edge", "devices": ["ftd-b"]})
+    assert "changed since the preview" not in json.dumps(moved), moved
+    assert lab.devices[B]["healthPolicy"]["id"] == NEW_ID
+
+    puts = lab.put.call_count
+    _, upd = await confirm(
+        "fmc_update_health_policy", {"policy": "mcp-edge", "module": "hm_mu", "warning": 70}
+    )
+    assert "changed since the preview" not in json.dumps(upd), upd
+    assert lab.put.call_count == puts + 1
+
+
+async def test_previews_list_modules_in_id_order(fmc: respx.MockRouter) -> None:
+    Lab(fmc, shuffle=True)
+    args = {"name": "mcp-edge", "modules": {"hm_mu": {"warning": 70}, "hm_cpu": {"warning": 60}}}
+    async with Client(server()) as c:
+        a = await run(c, "fmc_create_health_policy", args)
+        b = await run(c, "fmc_create_health_policy", args)
+        got = [
+            await run(c, "fmc_get_health_policy", {"policy": INITIAL_ID, "response_format": "json"})
+            for _ in range(2)
+        ]
+    assert a["preview"]["module_changes"] == b["preview"]["module_changes"]
+    assert [r["module"] for r in a["preview"]["module_changes"]] == ["hm_cpu", "hm_mu"]
+    assert got[0]["modules"] == got[1]["modules"]
+    assert [r["module"] for r in got[0]["modules"]] == ["hm_chm", "hm_cpu", "hm_mu"]

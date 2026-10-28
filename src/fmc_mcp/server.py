@@ -160,8 +160,10 @@ Workflows:
   'show bfd neighbors'.
 - Dual-ISP failover (tracked static route): fmc_create_sla_monitor (ISP-1 next hop, outside zone) ->
   fmc_create_static_route(track=<monitor>, metric=1) via ISP-1 -> a floating route via ISP-2 (metric 10)
-  -> fmc_deploy -> 'show route' / 'show sla monitor operational-state'. fmc_delete_sla_monitor is
-  blocked while a route tracks it; list them with fmc_list_objects(type='sla_monitor').
+  -> fmc_deploy -> 'show route' / 'show sla monitor operational-state'. ISP cut-over test:
+  fmc_update_sla_monitor (target, zones, timing). fmc_delete_sla_monitor is blocked while a route tracks it;
+  list them with fmc_list_objects(type='sla_monitor'). FMC leaves 'sla monitor <id>' on a device after its
+  last tracking route goes: the delete previews say how to clean it up.
 - SD-WAN (hub and spoke over VTIs): zone the WAN and inside interfaces (fmc_update_interface) ->
   fmc_create_sdwan_topology (hub DVTI, spoke pool, spokes, backup hub, iBGP overlay) -> fmc_deploy hubs
   and spokes -> fmc_get_vpn_topology / fmc_list_vpn_tunnels; add or remove branches and the backup hub

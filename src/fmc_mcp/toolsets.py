@@ -271,6 +271,7 @@ CATALOGUE: dict[str, tuple[str, tuple[str, ...]]] = {
             "fmc_delete_vrf",
             "fmc_get_routing",
             "fmc_list_routes",
+            "fmc_update_sla_monitor",
         ),
     ),
     "sdwan": (

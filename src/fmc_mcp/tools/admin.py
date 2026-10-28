@@ -67,6 +67,13 @@ def module_row(m: dict[str, Any]) -> dict[str, Any]:
     return {k: v for k, v in row.items() if v is not None}
 
 
+def module_rows(mods: list[dict[str, Any]]) -> list[dict[str, Any]]:
+    """module_row per module, sorted by module id: FMC 10.0 returns healthModules in a different order
+    on every GET, so anything compared across calls (a confirm fingerprint, a preview) must not
+    depend on it."""
+    return [module_row(m) for m in sorted(mods, key=lambda m: str(m.get("moduleId", "")).lower())]
+
+
 def _with_thresholds(m: dict[str, Any], new: dict[str, Any]) -> dict[str, Any]:
     """The module with the new enabled/threshold values; per-alert thresholds (alertConfig, yellow/red)
     that equalled the old module thresholds follow the new ones, as in the FMC UI."""
@@ -297,7 +304,7 @@ def register(reg: ToolRegistrar) -> None:
             "default": p.get("defaultPolicy"),
             "description": p.get("description"),
             "devices": users.get(p.get("id", "")),
-            "modules": [module_row(m) for m in p.get("healthModules") or []],
+            "modules": module_rows(p.get("healthModules") or []),
             "id": p.get("id"),
         }
         return object_reply(out, fmt=response_format)
