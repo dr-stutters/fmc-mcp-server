@@ -1,5 +1,5 @@
 {
-  "core_version": "0.19.0",
+  "core_version": "0.20.0",
   "manifest": 1,
   "prefix": "fmc",
   "prompts": {
@@ -655,6 +655,49 @@
         "catc",
         "ise"
       ]
+    },
+    "suite_segmentation_audit": {
+      "arguments": [
+        "site",
+        "segments",
+        "intent",
+        "lab",
+        "framework",
+        "servers"
+      ],
+      "references": [
+        "catsdwan_list_devices",
+        "catsdwan_list_config_groups",
+        "catsdwan_get_config_group",
+        "catsdwan_list_policies",
+        "catsdwan_get_policy",
+        "catsdwan_list_policy_groups",
+        "catsdwan_get_firewall_policy",
+        "catsdwan_omp_routes",
+        "ise_list_sgts",
+        "ise_list_ip_sgt_mappings",
+        "ise_list_sgt_vn_vlan",
+        "ise_get_egress_matrix",
+        "fmc_list_access_rules",
+        "fmc_find_address",
+        "fmc_rule_lookup",
+        "fmc_prove_policy",
+        "catc_get_sda_fabric",
+        "catc_list_ip_pools",
+        "catc_get_group_policy_enforcement",
+        "cml_get_layer3_addresses",
+        "cml_check_reachability"
+      ],
+      "rendered": true,
+      "suite": true,
+      "tier": "read",
+      "uses": [
+        "catsdwan",
+        "ise",
+        "fmc",
+        "catc",
+        "cml"
+      ]
     }
   },
   "server": "fmc-mcp-server",
@@ -665,31 +708,52 @@
     },
     "fmc_apply_device_template": {
       "tier": "dangerous",
-      "title": "Apply device template"
+      "title": "Apply device template",
+      "toolsets": [
+        "devices"
+      ]
     },
     "fmc_assign_health_policy": {
       "tier": "write",
-      "title": "Assign health policy"
+      "title": "Assign health policy",
+      "toolsets": [
+        "admin"
+      ]
     },
     "fmc_assign_policy": {
       "tier": "write",
-      "title": "Assign policy to devices"
+      "title": "Assign policy to devices",
+      "toolsets": [
+        "policy"
+      ]
     },
     "fmc_backup_devices": {
       "tier": "dangerous",
-      "title": "Back up devices"
+      "title": "Back up devices",
+      "toolsets": [
+        "admin"
+      ]
     },
     "fmc_bulk_update_access_rules": {
       "tier": "write",
-      "title": "Bulk-edit access rules"
+      "title": "Bulk-edit access rules",
+      "toolsets": [
+        "policy"
+      ]
     },
     "fmc_change_tickets": {
       "tier": "read",
-      "title": "Change-management tickets"
+      "title": "Change-management tickets",
+      "toolsets": [
+        "deploy"
+      ]
     },
     "fmc_clear_hit_counts": {
       "tier": "write",
-      "title": "Clear rule hit counts"
+      "title": "Clear rule hit counts",
+      "toolsets": [
+        "policy"
+      ]
     },
     "fmc_compare_snapshot": {
       "tier": "read",
@@ -697,459 +761,801 @@
     },
     "fmc_configure_bfd": {
       "tier": "write",
-      "title": "Configure BFD"
+      "title": "Configure BFD",
+      "toolsets": [
+        "routing"
+      ]
     },
     "fmc_configure_bgp": {
       "tier": "write",
-      "title": "Configure BGP"
+      "title": "Configure BGP",
+      "toolsets": [
+        "routing"
+      ]
     },
     "fmc_configure_dhcp": {
       "tier": "write",
-      "title": "Configure DHCP server / relay"
+      "title": "Configure DHCP server / relay",
+      "toolsets": [
+        "devices"
+      ]
     },
     "fmc_configure_dns": {
       "tier": "write",
-      "title": "Configure DNS (platform settings)"
+      "title": "Configure DNS (platform settings)",
+      "toolsets": [
+        "platform"
+      ]
     },
     "fmc_configure_ecmp_zone": {
       "tier": "write",
-      "title": "Configure ECMP zone"
+      "title": "Configure ECMP zone",
+      "toolsets": [
+        "sdwan"
+      ]
     },
     "fmc_configure_eigrp": {
       "tier": "write",
-      "title": "Configure EIGRP"
+      "title": "Configure EIGRP",
+      "toolsets": [
+        "routing"
+      ]
     },
     "fmc_configure_ha_monitoring": {
       "tier": "write",
-      "title": "Configure HA monitored interface"
+      "title": "Configure HA monitored interface",
+      "toolsets": [
+        "ha"
+      ]
     },
     "fmc_configure_mgmt_access": {
       "tier": "write",
-      "title": "Configure ICMP / HTTPS management access"
+      "title": "Configure ICMP / HTTPS management access",
+      "toolsets": [
+        "platform"
+      ]
     },
     "fmc_configure_netflow": {
       "tier": "write",
-      "title": "Configure NetFlow export (platform settings)"
+      "title": "Configure NetFlow export (platform settings)",
+      "toolsets": [
+        "platform"
+      ]
     },
     "fmc_configure_ntp": {
       "tier": "write",
-      "title": "Configure NTP"
+      "title": "Configure NTP",
+      "toolsets": [
+        "platform"
+      ]
     },
     "fmc_configure_ospf": {
       "tier": "write",
-      "title": "Configure OSPF"
+      "title": "Configure OSPF",
+      "toolsets": [
+        "routing"
+      ]
     },
     "fmc_configure_snmp": {
       "tier": "write",
-      "title": "Configure SNMP"
+      "title": "Configure SNMP",
+      "toolsets": [
+        "platform"
+      ]
     },
     "fmc_configure_ssh_access": {
       "tier": "write",
-      "title": "Configure SSH management access"
+      "title": "Configure SSH management access",
+      "toolsets": [
+        "platform"
+      ]
     },
     "fmc_configure_syslog": {
       "tier": "write",
-      "title": "Configure syslog (platform settings)"
+      "title": "Configure syslog (platform settings)",
+      "toolsets": [
+        "platform"
+      ]
     },
     "fmc_configure_wan_interface": {
       "tier": "write",
-      "title": "Configure WAN interface"
+      "title": "Configure WAN interface",
+      "toolsets": [
+        "sdwan"
+      ]
     },
     "fmc_contain_host": {
       "tier": "write",
-      "title": "Contain a host (quarantine)"
+      "title": "Contain a host (quarantine)",
+      "toolsets": [
+        "intel"
+      ]
     },
     "fmc_copy_device_config": {
       "tier": "dangerous",
-      "title": "Copy device configuration (RMA / clone)"
+      "title": "Copy device configuration (RMA / clone)",
+      "toolsets": [
+        "devices"
+      ]
     },
     "fmc_cpu_profile": {
       "tier": "write",
-      "title": "Snort 3 CPU profiling"
+      "title": "Snort 3 CPU profiling",
+      "toolsets": [
+        "troubleshoot"
+      ]
     },
     "fmc_create_access_policy": {
       "tier": "write",
-      "title": "Create access control policy"
+      "title": "Create access control policy",
+      "toolsets": [
+        "policy"
+      ]
     },
     "fmc_create_access_rule": {
       "tier": "write",
-      "title": "Create access rule"
+      "title": "Create access rule",
+      "toolsets": [
+        "policy"
+      ]
     },
     "fmc_create_address_pool": {
       "tier": "write",
-      "title": "Create RA VPN address pool"
+      "title": "Create RA VPN address pool",
+      "toolsets": [
+        "vpn"
+      ]
     },
     "fmc_create_app_route": {
       "tier": "write",
-      "title": "Create application route"
+      "title": "Create application route",
+      "toolsets": [
+        "sdwan"
+      ]
     },
     "fmc_create_application_filter": {
       "tier": "write",
-      "title": "Create application filter"
+      "title": "Create application filter",
+      "toolsets": [
+        "objects"
+      ]
     },
     "fmc_create_category": {
       "tier": "write",
-      "title": "Create access policy category"
+      "title": "Create access policy category",
+      "toolsets": [
+        "policy"
+      ]
     },
     "fmc_create_cert_enrollment": {
       "tier": "write",
-      "title": "Create certificate enrollment object"
+      "title": "Create certificate enrollment object",
+      "toolsets": [
+        "tls"
+      ]
     },
     "fmc_create_cipher_suite_list": {
       "tier": "write",
-      "title": "Create cipher suite list"
+      "title": "Create cipher suite list",
+      "toolsets": [
+        "tls"
+      ]
     },
     "fmc_create_decryption_policy": {
       "tier": "write",
-      "title": "Create decryption policy"
+      "title": "Create decryption policy",
+      "toolsets": [
+        "tls"
+      ]
     },
     "fmc_create_decryption_rule": {
       "tier": "write",
-      "title": "Create decryption rule"
+      "title": "Create decryption rule",
+      "toolsets": [
+        "tls"
+      ]
     },
     "fmc_create_device_group": {
       "tier": "write",
-      "title": "Create device group"
+      "title": "Create device group",
+      "toolsets": [
+        "devices"
+      ]
     },
     "fmc_create_device_template": {
       "tier": "write",
-      "title": "Create device template"
+      "title": "Create device template",
+      "toolsets": [
+        "devices"
+      ]
     },
     "fmc_create_dns_policy": {
       "tier": "write",
-      "title": "Create DNS policy"
+      "title": "Create DNS policy",
+      "toolsets": [
+        "intel"
+      ]
     },
     "fmc_create_dynamic_object": {
       "tier": "write",
-      "title": "Create dynamic object"
+      "title": "Create dynamic object",
+      "toolsets": [
+        "objects"
+      ]
     },
     "fmc_create_file_policy": {
       "tier": "write",
-      "title": "Create file policy"
+      "title": "Create file policy",
+      "toolsets": [
+        "threat"
+      ]
     },
     "fmc_create_file_rule": {
       "tier": "write",
-      "title": "Create file rule"
+      "title": "Create file rule",
+      "toolsets": [
+        "threat"
+      ]
     },
     "fmc_create_group": {
       "tier": "write",
-      "title": "Create object group"
+      "title": "Create object group",
+      "toolsets": [
+        "objects"
+      ]
     },
     "fmc_create_group_policy": {
       "tier": "write",
-      "title": "Create RA VPN group policy"
+      "title": "Create RA VPN group policy",
+      "toolsets": [
+        "vpn"
+      ]
     },
     "fmc_create_ha_pair": {
       "tier": "dangerous",
-      "title": "Form HA pair"
+      "title": "Form HA pair",
+      "toolsets": [
+        "ha"
+      ]
     },
     "fmc_create_health_policy": {
       "tier": "write",
-      "title": "Create health policy"
+      "title": "Create health policy",
+      "toolsets": [
+        "admin"
+      ]
     },
     "fmc_create_identity_policy": {
       "tier": "write",
-      "title": "Create identity policy"
+      "title": "Create identity policy",
+      "toolsets": [
+        "identity"
+      ]
     },
     "fmc_create_identity_rule": {
       "tier": "write",
-      "title": "Create identity rule"
+      "title": "Create identity rule",
+      "toolsets": [
+        "identity"
+      ]
     },
     "fmc_create_inline_set": {
       "tier": "write",
-      "title": "Create inline set"
+      "title": "Create inline set",
+      "toolsets": [
+        "devices"
+      ]
     },
     "fmc_create_interface": {
       "tier": "write",
-      "title": "Create interface"
+      "title": "Create interface",
+      "toolsets": [
+        "devices"
+      ]
     },
     "fmc_create_internal_ca": {
       "tier": "write",
-      "title": "Create internal CA (key generated on FMC)"
+      "title": "Create internal CA (key generated on FMC)",
+      "toolsets": [
+        "tls"
+      ]
     },
     "fmc_create_intrusion_policy": {
       "tier": "write",
-      "title": "Create intrusion policy"
+      "title": "Create intrusion policy",
+      "toolsets": [
+        "threat"
+      ]
     },
     "fmc_create_intrusion_rule": {
       "tier": "write",
-      "title": "Create custom intrusion rule"
+      "title": "Create custom intrusion rule",
+      "toolsets": [
+        "threat"
+      ]
     },
     "fmc_create_nat_policy": {
       "tier": "write",
-      "title": "Create NAT policy"
+      "title": "Create NAT policy",
+      "toolsets": [
+        "policy"
+      ]
     },
     "fmc_create_nat_rule": {
       "tier": "write",
-      "title": "Create NAT rule"
+      "title": "Create NAT rule",
+      "toolsets": [
+        "policy"
+      ]
     },
     "fmc_create_network_analysis_policy": {
       "tier": "write",
-      "title": "Create network analysis policy"
+      "title": "Create network analysis policy",
+      "toolsets": [
+        "threat"
+      ]
     },
     "fmc_create_object": {
       "tier": "write",
-      "title": "Create object"
+      "title": "Create object",
+      "toolsets": [
+        "objects"
+      ]
     },
     "fmc_create_platform_settings_policy": {
       "tier": "write",
-      "title": "Create platform settings policy"
+      "title": "Create platform settings policy",
+      "toolsets": [
+        "platform"
+      ]
     },
     "fmc_create_prefilter_policy": {
       "tier": "write",
-      "title": "Create prefilter policy"
+      "title": "Create prefilter policy",
+      "toolsets": [
+        "policy"
+      ]
     },
     "fmc_create_prefilter_rule": {
       "tier": "write",
-      "title": "Create prefilter rule"
+      "title": "Create prefilter rule",
+      "toolsets": [
+        "policy"
+      ]
     },
     "fmc_create_prefix_list": {
       "tier": "write",
-      "title": "Create prefix list"
+      "title": "Create prefix list",
+      "toolsets": [
+        "routing"
+      ]
     },
     "fmc_create_ravpn": {
       "tier": "write",
-      "title": "Create RA VPN policy"
+      "title": "Create RA VPN policy",
+      "toolsets": [
+        "vpn"
+      ]
     },
     "fmc_create_realm": {
       "tier": "write",
-      "title": "Create AD/LDAP realm"
+      "title": "Create AD/LDAP realm",
+      "toolsets": [
+        "identity"
+      ]
     },
     "fmc_create_route_map": {
       "tier": "write",
-      "title": "Create route map"
+      "title": "Create route map",
+      "toolsets": [
+        "routing"
+      ]
     },
     "fmc_create_s2s_vpn": {
       "tier": "write",
-      "title": "Create site-to-site VPN"
+      "title": "Create site-to-site VPN",
+      "toolsets": [
+        "vpn"
+      ]
     },
     "fmc_create_sdwan_topology": {
       "tier": "write",
-      "title": "Create SD-WAN topology"
+      "title": "Create SD-WAN topology",
+      "toolsets": [
+        "sdwan"
+      ]
     },
     "fmc_create_security_zone": {
       "tier": "write",
-      "title": "Create security zone"
+      "title": "Create security zone",
+      "toolsets": [
+        "objects"
+      ]
     },
     "fmc_create_si_feed": {
       "tier": "write",
-      "title": "Create Security Intelligence feed"
+      "title": "Create Security Intelligence feed",
+      "toolsets": [
+        "intel"
+      ]
     },
     "fmc_create_sla_monitor": {
       "tier": "write",
-      "title": "Create SLA monitor"
+      "title": "Create SLA monitor",
+      "toolsets": [
+        "routing"
+      ]
     },
     "fmc_create_static_route": {
       "tier": "write",
-      "title": "Create static route"
+      "title": "Create static route",
+      "toolsets": [
+        "routing"
+      ]
     },
     "fmc_create_subinterface": {
       "tier": "write",
-      "title": "Create subinterface"
+      "title": "Create subinterface",
+      "toolsets": [
+        "devices"
+      ]
     },
     "fmc_create_time_range": {
       "tier": "write",
-      "title": "Create time range"
+      "title": "Create time range",
+      "toolsets": [
+        "objects"
+      ]
     },
     "fmc_create_trusted_ca": {
       "tier": "write",
-      "title": "Create trusted CA certificate"
+      "title": "Create trusted CA certificate",
+      "toolsets": [
+        "identity"
+      ]
     },
     "fmc_create_vrf": {
       "tier": "write",
-      "title": "Create VRF"
+      "title": "Create VRF",
+      "toolsets": [
+        "routing"
+      ]
     },
     "fmc_delete_access_rule": {
       "tier": "write",
-      "title": "Delete access rule"
+      "title": "Delete access rule",
+      "toolsets": [
+        "policy"
+      ]
     },
     "fmc_delete_app_route": {
       "tier": "write",
-      "title": "Delete application route"
+      "title": "Delete application route",
+      "toolsets": [
+        "sdwan"
+      ]
     },
     "fmc_delete_category": {
       "tier": "write",
-      "title": "Delete access policy category"
+      "title": "Delete access policy category",
+      "toolsets": [
+        "policy"
+      ]
     },
     "fmc_delete_certificate": {
       "tier": "write",
-      "title": "Delete certificate object"
+      "title": "Delete certificate object",
+      "toolsets": [
+        "tls"
+      ]
     },
     "fmc_delete_decryption_rule": {
       "tier": "write",
-      "title": "Delete decryption rule"
+      "title": "Delete decryption rule",
+      "toolsets": [
+        "tls"
+      ]
     },
     "fmc_delete_device": {
       "tier": "dangerous",
-      "title": "Delete (unregister) device"
+      "title": "Delete (unregister) device",
+      "toolsets": [
+        "devices"
+      ]
     },
     "fmc_delete_device_group": {
       "tier": "write",
-      "title": "Delete device group"
+      "title": "Delete device group",
+      "toolsets": [
+        "devices"
+      ]
     },
     "fmc_delete_device_template": {
       "tier": "write",
-      "title": "Delete device template"
+      "title": "Delete device template",
+      "toolsets": [
+        "devices"
+      ]
     },
     "fmc_delete_dynamic_object": {
       "tier": "write",
-      "title": "Delete dynamic object"
+      "title": "Delete dynamic object",
+      "toolsets": [
+        "objects"
+      ]
     },
     "fmc_delete_file_rule": {
       "tier": "write",
-      "title": "Delete file rule"
+      "title": "Delete file rule",
+      "toolsets": [
+        "threat"
+      ]
     },
     "fmc_delete_health_policy": {
       "tier": "write",
-      "title": "Delete health policy"
+      "title": "Delete health policy",
+      "toolsets": [
+        "admin"
+      ]
     },
     "fmc_delete_identity_rule": {
       "tier": "write",
-      "title": "Delete identity rule"
+      "title": "Delete identity rule",
+      "toolsets": [
+        "identity"
+      ]
     },
     "fmc_delete_inline_set": {
       "tier": "write",
-      "title": "Delete inline set"
+      "title": "Delete inline set",
+      "toolsets": [
+        "devices"
+      ]
     },
     "fmc_delete_interface": {
       "tier": "write",
-      "title": "Delete interface"
+      "title": "Delete interface",
+      "toolsets": [
+        "devices"
+      ]
     },
     "fmc_delete_intrusion_rule": {
       "tier": "write",
-      "title": "Delete custom intrusion rule"
+      "title": "Delete custom intrusion rule",
+      "toolsets": [
+        "threat"
+      ]
     },
     "fmc_delete_nat_rule": {
       "tier": "write",
-      "title": "Delete NAT rule"
+      "title": "Delete NAT rule",
+      "toolsets": [
+        "policy"
+      ]
     },
     "fmc_delete_object": {
       "tier": "write",
-      "title": "Delete object"
+      "title": "Delete object",
+      "toolsets": [
+        "objects"
+      ]
     },
     "fmc_delete_objects": {
       "tier": "dangerous",
-      "title": "Delete objects in bulk"
+      "title": "Delete objects in bulk",
+      "toolsets": [
+        "objects"
+      ]
     },
     "fmc_delete_policy": {
       "tier": "dangerous",
-      "title": "Delete policy"
+      "title": "Delete policy",
+      "toolsets": [
+        "policy"
+      ]
     },
     "fmc_delete_prefilter_rule": {
       "tier": "write",
-      "title": "Delete prefilter rule"
+      "title": "Delete prefilter rule",
+      "toolsets": [
+        "policy"
+      ]
     },
     "fmc_delete_realm": {
       "tier": "write",
-      "title": "Delete realm"
+      "title": "Delete realm",
+      "toolsets": [
+        "identity"
+      ]
     },
     "fmc_delete_s2s_vpn": {
       "tier": "write",
-      "title": "Delete site-to-site VPN"
+      "title": "Delete site-to-site VPN",
+      "toolsets": [
+        "vpn"
+      ]
     },
     "fmc_delete_si_object": {
       "tier": "write",
-      "title": "Delete Security Intelligence feed or list"
+      "title": "Delete Security Intelligence feed or list",
+      "toolsets": [
+        "intel"
+      ]
     },
     "fmc_delete_sla_monitor": {
       "tier": "write",
-      "title": "Delete SLA monitor"
+      "title": "Delete SLA monitor",
+      "toolsets": [
+        "routing"
+      ]
     },
     "fmc_delete_static_route": {
       "tier": "write",
-      "title": "Delete static route"
+      "title": "Delete static route",
+      "toolsets": [
+        "routing"
+      ]
     },
     "fmc_delete_vrf": {
       "tier": "write",
-      "title": "Delete VRF"
+      "title": "Delete VRF",
+      "toolsets": [
+        "routing"
+      ]
     },
     "fmc_deploy": {
       "tier": "dangerous",
-      "title": "Deploy configuration"
+      "title": "Deploy configuration",
+      "toolsets": [
+        "deploy"
+      ]
     },
     "fmc_device_health": {
       "tier": "read",
-      "title": "Device health"
+      "title": "Device health",
+      "toolsets": [
+        "troubleshoot"
+      ]
     },
     "fmc_device_metrics": {
       "tier": "read",
-      "title": "Device metrics over time"
+      "title": "Device metrics over time",
+      "toolsets": [
+        "troubleshoot"
+      ]
     },
     "fmc_device_snapshot": {
       "tier": "read",
-      "title": "Snapshot device state"
+      "title": "Snapshot device state",
+      "toolsets": [
+        "devices"
+      ]
     },
     "fmc_diff_device_config": {
       "tier": "read",
-      "title": "Compare device configurations"
+      "title": "Compare device configurations",
+      "toolsets": [
+        "devices"
+      ]
     },
     "fmc_diff_policy_bundle": {
       "tier": "read",
-      "title": "Diff policy bundles"
+      "title": "Diff policy bundles",
+      "toolsets": [
+        "migrate"
+      ]
     },
     "fmc_dns_block": {
       "tier": "write",
-      "title": "Block or unblock domains (DNS)"
+      "title": "Block or unblock domains (DNS)",
+      "toolsets": [
+        "intel"
+      ]
     },
     "fmc_download_realm": {
       "tier": "write",
-      "title": "Download realm users and groups"
+      "title": "Download realm users and groups",
+      "toolsets": [
+        "identity"
+      ]
     },
     "fmc_enroll_certificate": {
       "tier": "dangerous",
-      "title": "Enrol, re-enrol, refresh or delete a device certificate"
+      "title": "Enrol, re-enrol, refresh or delete a device certificate",
+      "toolsets": [
+        "tls"
+      ]
     },
     "fmc_export_access_rules": {
       "tier": "read",
-      "title": "Export access rules"
+      "title": "Export access rules",
+      "toolsets": [
+        "migrate"
+      ]
     },
     "fmc_export_device_config": {
       "tier": "read",
-      "title": "Export a device configuration"
+      "title": "Export a device configuration",
+      "toolsets": [
+        "devices"
+      ]
     },
     "fmc_export_policy_bundle": {
       "tier": "read",
-      "title": "Export a policy bundle"
+      "title": "Export a policy bundle",
+      "toolsets": [
+        "migrate"
+      ]
     },
     "fmc_find_address": {
       "tier": "read",
-      "title": "Find where an address appears"
+      "title": "Find where an address appears",
+      "toolsets": [
+        "objects"
+      ]
     },
     "fmc_find_application": {
       "tier": "read",
-      "title": "Find applications and application filters"
+      "title": "Find applications and application filters",
+      "toolsets": [
+        "objects"
+      ]
     },
     "fmc_find_indicator": {
       "tier": "read",
-      "title": "Find where a domain, URL or hash appears"
+      "title": "Find where a domain, URL or hash appears",
+      "toolsets": [
+        "intel"
+      ]
     },
     "fmc_find_intrusion_rules": {
       "tier": "read",
-      "title": "Find intrusion rules"
+      "title": "Find intrusion rules",
+      "toolsets": [
+        "threat"
+      ]
     },
     "fmc_find_object": {
       "tier": "read",
-      "title": "Find objects by value"
+      "title": "Find objects by value",
+      "toolsets": [
+        "objects"
+      ]
     },
     "fmc_flexconfig_review": {
       "tier": "read",
-      "title": "Review FlexConfig"
+      "title": "Review FlexConfig",
+      "toolsets": [
+        "devices"
+      ]
     },
     "fmc_get_access_policy": {
       "tier": "read",
-      "title": "Get access control policy"
+      "title": "Get access control policy",
+      "toolsets": [
+        "policy"
+      ]
     },
     "fmc_get_access_rule": {
       "tier": "read",
-      "title": "Get access rule"
+      "title": "Get access rule",
+      "toolsets": [
+        "policy"
+      ]
     },
     "fmc_get_certificate": {
       "tier": "read",
-      "title": "Certificates for TLS decryption"
+      "title": "Certificates for TLS decryption",
+      "toolsets": [
+        "tls"
+      ]
     },
     "fmc_get_decryption_policy": {
       "tier": "read",
-      "title": "Decryption policies"
+      "title": "Decryption policies",
+      "toolsets": [
+        "tls"
+      ]
     },
     "fmc_get_definition": {
       "tier": "read",
@@ -1157,75 +1563,129 @@
     },
     "fmc_get_device": {
       "tier": "read",
-      "title": "Get device"
+      "title": "Get device",
+      "toolsets": [
+        "devices"
+      ]
     },
     "fmc_get_device_template": {
       "tier": "read",
-      "title": "Get device template"
+      "title": "Get device template",
+      "toolsets": [
+        "devices"
+      ]
     },
     "fmc_get_dns_policy": {
       "tier": "read",
-      "title": "DNS policies"
+      "title": "DNS policies",
+      "toolsets": [
+        "intel"
+      ]
     },
     "fmc_get_file_policy": {
       "tier": "read",
-      "title": "File policies"
+      "title": "File policies",
+      "toolsets": [
+        "threat"
+      ]
     },
     "fmc_get_ha_status": {
       "tier": "read",
-      "title": "Get HA pair status"
+      "title": "Get HA pair status",
+      "toolsets": [
+        "ha"
+      ]
     },
     "fmc_get_health_policy": {
       "tier": "read",
-      "title": "Health policies"
+      "title": "Health policies",
+      "toolsets": [
+        "admin"
+      ]
     },
     "fmc_get_hit_counts": {
       "tier": "read",
-      "title": "Rule hit counts"
+      "title": "Rule hit counts",
+      "toolsets": [
+        "troubleshoot"
+      ]
     },
     "fmc_get_identity_policy": {
       "tier": "read",
-      "title": "Identity policies"
+      "title": "Identity policies",
+      "toolsets": [
+        "identity"
+      ]
     },
     "fmc_get_identity_sources": {
       "tier": "read",
-      "title": "Identity sources (ISE/pxGrid, realms, sessions)"
+      "title": "Identity sources (ISE/pxGrid, realms, sessions)",
+      "toolsets": [
+        "identity"
+      ]
     },
     "fmc_get_intrusion_policy": {
       "tier": "read",
-      "title": "Intrusion policy summary"
+      "title": "Intrusion policy summary",
+      "toolsets": [
+        "threat"
+      ]
     },
     "fmc_get_network_analysis_policy": {
       "tier": "read",
-      "title": "Network analysis policies"
+      "title": "Network analysis policies",
+      "toolsets": [
+        "threat"
+      ]
     },
     "fmc_get_object": {
       "tier": "read",
-      "title": "Get object"
+      "title": "Get object",
+      "toolsets": [
+        "objects"
+      ]
     },
     "fmc_get_platform_settings": {
       "tier": "read",
-      "title": "Get platform settings"
+      "title": "Get platform settings",
+      "toolsets": [
+        "platform"
+      ]
     },
     "fmc_get_profiler_results": {
       "tier": "read",
-      "title": "Snort profiler results"
+      "title": "Snort profiler results",
+      "toolsets": [
+        "troubleshoot"
+      ]
     },
     "fmc_get_ravpn": {
       "tier": "read",
-      "title": "Get remote-access VPN"
+      "title": "Get remote-access VPN",
+      "toolsets": [
+        "vpn"
+      ]
     },
     "fmc_get_realm": {
       "tier": "read",
-      "title": "Realms (AD/LDAP)"
+      "title": "Realms (AD/LDAP)",
+      "toolsets": [
+        "identity"
+      ]
     },
     "fmc_get_routing": {
       "tier": "read",
-      "title": "Get device routing"
+      "title": "Get device routing",
+      "toolsets": [
+        "routing"
+      ]
     },
     "fmc_get_security_intelligence": {
       "tier": "read",
-      "title": "Security Intelligence settings"
+      "title": "Security Intelligence settings",
+      "toolsets": [
+        "intel"
+      ]
     },
     "fmc_get_task": {
       "tier": "read",
@@ -1233,83 +1693,143 @@
     },
     "fmc_get_vpn_topology": {
       "tier": "read",
-      "title": "Get VPN topology"
+      "title": "Get VPN topology",
+      "toolsets": [
+        "vpn"
+      ]
     },
     "fmc_ha_action": {
       "tier": "dangerous",
-      "title": "Break, switch or delete HA pair"
+      "title": "Break, switch or delete HA pair",
+      "toolsets": [
+        "ha"
+      ]
     },
     "fmc_hardening_check": {
       "tier": "read",
-      "title": "FTD hardening check"
+      "title": "FTD hardening check",
+      "toolsets": [
+        "platform"
+      ]
     },
     "fmc_import_access_rules": {
       "tier": "write",
-      "title": "Import access rules"
+      "title": "Import access rules",
+      "toolsets": [
+        "migrate"
+      ]
     },
     "fmc_import_certificate_files": {
       "tier": "write",
-      "title": "Import certificate and key files (FMC_PKI_DIR)"
+      "title": "Import certificate and key files (FMC_PKI_DIR)",
+      "toolsets": [
+        "tls"
+      ]
     },
     "fmc_import_objects": {
       "tier": "write",
-      "title": "Import objects"
+      "title": "Import objects",
+      "toolsets": [
+        "objects"
+      ]
     },
     "fmc_import_policy_bundle": {
       "tier": "dangerous",
-      "title": "Import a policy bundle"
+      "title": "Import a policy bundle",
+      "toolsets": [
+        "migrate"
+      ]
     },
     "fmc_install_internal_ca_cert": {
       "tier": "write",
-      "title": "Install signed certificate on an internal CA"
+      "title": "Install signed certificate on an internal CA",
+      "toolsets": [
+        "tls"
+      ]
     },
     "fmc_license_status": {
       "tier": "read",
-      "title": "FMC licensing status"
+      "title": "FMC licensing status",
+      "toolsets": [
+        "admin"
+      ]
     },
     "fmc_list_access_rules": {
       "tier": "read",
-      "title": "List access rules"
+      "title": "List access rules",
+      "toolsets": [
+        "policy"
+      ]
     },
     "fmc_list_audit_records": {
       "tier": "read",
-      "title": "FMC audit records"
+      "title": "FMC audit records",
+      "toolsets": [
+        "admin"
+      ]
     },
     "fmc_list_backups": {
       "tier": "read",
-      "title": "List backups"
+      "title": "List backups",
+      "toolsets": [
+        "admin"
+      ]
     },
     "fmc_list_certificates": {
       "tier": "read",
-      "title": "List certificates with days left"
+      "title": "List certificates with days left",
+      "toolsets": [
+        "tls"
+      ]
     },
     "fmc_list_cipher_suite_lists": {
       "tier": "read",
-      "title": "Cipher suite lists"
+      "title": "Cipher suite lists",
+      "toolsets": [
+        "tls"
+      ]
     },
     "fmc_list_clusters": {
       "tier": "read",
-      "title": "List clusters"
+      "title": "List clusters",
+      "toolsets": [
+        "devices"
+      ]
     },
     "fmc_list_deployable_devices": {
       "tier": "read",
-      "title": "List devices with undeployed changes"
+      "title": "List devices with undeployed changes",
+      "toolsets": [
+        "deploy"
+      ]
     },
     "fmc_list_deployments": {
       "tier": "read",
-      "title": "Deployment history"
+      "title": "Deployment history",
+      "toolsets": [
+        "deploy"
+      ]
     },
     "fmc_list_device_groups": {
       "tier": "read",
-      "title": "List device groups"
+      "title": "List device groups",
+      "toolsets": [
+        "devices"
+      ]
     },
     "fmc_list_device_interfaces": {
       "tier": "read",
-      "title": "List device interfaces"
+      "title": "List device interfaces",
+      "toolsets": [
+        "devices"
+      ]
     },
     "fmc_list_device_templates": {
       "tier": "read",
-      "title": "List device templates"
+      "title": "List device templates",
+      "toolsets": [
+        "devices"
+      ]
     },
     "fmc_list_devices": {
       "tier": "read",
@@ -1321,131 +1841,227 @@
     },
     "fmc_list_dynamic_objects": {
       "tier": "read",
-      "title": "List dynamic objects"
+      "title": "List dynamic objects",
+      "toolsets": [
+        "objects"
+      ]
     },
     "fmc_list_ha_pairs": {
       "tier": "read",
-      "title": "List HA pairs"
+      "title": "List HA pairs",
+      "toolsets": [
+        "ha"
+      ]
     },
     "fmc_list_health_alerts": {
       "tier": "read",
-      "title": "List health alerts"
+      "title": "List health alerts",
+      "toolsets": [
+        "troubleshoot"
+      ]
     },
     "fmc_list_nat_rules": {
       "tier": "read",
-      "title": "List NAT rules"
+      "title": "List NAT rules",
+      "toolsets": [
+        "policy"
+      ]
     },
     "fmc_list_object_overrides": {
       "tier": "read",
-      "title": "Object overrides"
+      "title": "Object overrides",
+      "toolsets": [
+        "objects"
+      ]
     },
     "fmc_list_objects": {
       "tier": "read",
-      "title": "List objects"
+      "title": "List objects",
+      "toolsets": [
+        "objects"
+      ]
     },
     "fmc_list_policies": {
       "tier": "read",
-      "title": "List policies"
+      "title": "List policies",
+      "toolsets": [
+        "policy"
+      ]
     },
     "fmc_list_policy_assignments": {
       "tier": "read",
-      "title": "List policy assignments"
+      "title": "List policy assignments",
+      "toolsets": [
+        "policy"
+      ]
     },
     "fmc_list_prefilter_rules": {
       "tier": "read",
-      "title": "List prefilter rules"
+      "title": "List prefilter rules",
+      "toolsets": [
+        "policy"
+      ]
     },
     "fmc_list_routes": {
       "tier": "read",
-      "title": "List device routes"
+      "title": "List device routes",
+      "toolsets": [
+        "routing"
+      ]
     },
     "fmc_list_users": {
       "tier": "read",
-      "title": "FMC users"
+      "title": "FMC users",
+      "toolsets": [
+        "admin"
+      ]
     },
     "fmc_list_vpn_topologies": {
       "tier": "read",
-      "title": "List VPN topologies"
+      "title": "List VPN topologies",
+      "toolsets": [
+        "vpn"
+      ]
     },
     "fmc_list_vpn_tunnels": {
       "tier": "read",
-      "title": "Site-to-site VPN tunnel status"
+      "title": "Site-to-site VPN tunnel status",
+      "toolsets": [
+        "vpn"
+      ]
     },
     "fmc_live_connections": {
       "tier": "read",
-      "title": "Live connections on a device"
+      "title": "Live connections on a device",
+      "toolsets": [
+        "troubleshoot"
+      ]
     },
     "fmc_map_dynamic_object": {
       "tier": "write",
-      "title": "Map IPs to a dynamic object"
+      "title": "Map IPs to a dynamic object",
+      "toolsets": [
+        "objects"
+      ]
     },
     "fmc_migrate_flexconfig": {
       "tier": "dangerous",
-      "title": "Migrate FlexConfig to native configuration"
+      "title": "Migrate FlexConfig to native configuration",
+      "toolsets": [
+        "devices"
+      ]
     },
     "fmc_packet_tracer": {
       "tier": "read",
-      "title": "Packet tracer"
+      "title": "Packet tracer",
+      "toolsets": [
+        "troubleshoot"
+      ]
     },
     "fmc_pending_changes": {
       "tier": "read",
-      "title": "Pending changes for a device"
+      "title": "Pending changes for a device",
+      "toolsets": [
+        "deploy"
+      ]
     },
     "fmc_plan_policy_bundle_import": {
       "tier": "read",
-      "title": "Plan a policy bundle import"
+      "title": "Plan a policy bundle import",
+      "toolsets": [
+        "migrate"
+      ]
     },
     "fmc_policy_audit": {
       "tier": "read",
-      "title": "Audit an access policy"
+      "title": "Audit an access policy",
+      "toolsets": [
+        "policy"
+      ]
     },
     "fmc_policy_lock": {
       "tier": "write",
-      "title": "Lock or unlock an access policy"
+      "title": "Lock or unlock an access policy",
+      "toolsets": [
+        "policy"
+      ]
     },
     "fmc_prove_policy": {
       "tier": "read",
-      "title": "Prove a policy with expected flows"
+      "title": "Prove a policy with expected flows",
+      "toolsets": [
+        "troubleshoot"
+      ]
     },
     "fmc_recent_activity": {
       "tier": "read",
-      "title": "Recent activity (health, audit, deployments)"
+      "title": "Recent activity (health, audit, deployments)",
+      "toolsets": [
+        "troubleshoot"
+      ]
     },
     "fmc_register_device": {
       "tier": "dangerous",
-      "title": "Register device"
+      "title": "Register device",
+      "toolsets": [
+        "devices"
+      ]
     },
     "fmc_register_devices": {
       "tier": "dangerous",
-      "title": "Register several devices"
+      "title": "Register several devices",
+      "toolsets": [
+        "devices"
+      ]
     },
     "fmc_release_host": {
       "tier": "write",
-      "title": "Release a contained host"
+      "title": "Release a contained host",
+      "toolsets": [
+        "intel"
+      ]
     },
     "fmc_rename_category": {
       "tier": "write",
-      "title": "Rename access policy category"
+      "title": "Rename access policy category",
+      "toolsets": [
+        "policy"
+      ]
     },
     "fmc_replace_object": {
       "tier": "write",
-      "title": "Replace an object everywhere"
+      "title": "Replace an object everywhere",
+      "toolsets": [
+        "objects"
+      ]
     },
     "fmc_rollback_deployment": {
       "tier": "dangerous",
-      "title": "Roll back a deployment"
+      "title": "Roll back a deployment",
+      "toolsets": [
+        "deploy"
+      ]
     },
     "fmc_rule_lookup": {
       "tier": "read",
-      "title": "Which access rule matches a flow"
+      "title": "Which access rule matches a flow",
+      "toolsets": [
+        "troubleshoot"
+      ]
     },
     "fmc_run_show_command": {
       "tier": "read",
-      "title": "Run a show command on devices"
+      "title": "Run a show command on devices",
+      "toolsets": [
+        "troubleshoot"
+      ]
     },
     "fmc_sdwan_status": {
       "tier": "read",
-      "title": "SD-WAN status"
+      "title": "SD-WAN status",
+      "toolsets": [
+        "sdwan"
+      ]
     },
     "fmc_search_spec": {
       "tier": "read",
@@ -1453,63 +2069,108 @@
     },
     "fmc_service_chain_check": {
       "tier": "read",
-      "title": "FTD as an SD-WAN service-chain firewall"
+      "title": "FTD as an SD-WAN service-chain firewall",
+      "toolsets": [
+        "troubleshoot"
+      ]
     },
     "fmc_set_access_logging": {
       "tier": "write",
-      "title": "Set access policy logging (syslog)"
+      "title": "Set access policy logging (syslog)",
+      "toolsets": [
+        "platform"
+      ]
     },
     "fmc_set_banner": {
       "tier": "write",
-      "title": "Set login banner (platform settings)"
+      "title": "Set login banner (platform settings)",
+      "toolsets": [
+        "platform"
+      ]
     },
     "fmc_set_base_policy": {
       "tier": "write",
-      "title": "Set an access policy's base policy (inheritance)"
+      "title": "Set an access policy's base policy (inheritance)",
+      "toolsets": [
+        "policy"
+      ]
     },
     "fmc_set_connection_profile": {
       "tier": "write",
-      "title": "Set RA VPN connection profile"
+      "title": "Set RA VPN connection profile",
+      "toolsets": [
+        "vpn"
+      ]
     },
     "fmc_set_decryption_policy": {
       "tier": "write",
-      "title": "Link decryption policy to access policy"
+      "title": "Link decryption policy to access policy",
+      "toolsets": [
+        "tls"
+      ]
     },
     "fmc_set_device_licenses": {
       "tier": "write",
-      "title": "Set device licences"
+      "title": "Set device licences",
+      "toolsets": [
+        "devices"
+      ]
     },
     "fmc_set_dns_policy": {
       "tier": "write",
-      "title": "Link DNS policy to access policy"
+      "title": "Link DNS policy to access policy",
+      "toolsets": [
+        "intel"
+      ]
     },
     "fmc_set_intrusion_recommendations": {
       "tier": "write",
-      "title": "Set intrusion rule recommendations"
+      "title": "Set intrusion rule recommendations",
+      "toolsets": [
+        "threat"
+      ]
     },
     "fmc_set_intrusion_rule_state": {
       "tier": "write",
-      "title": "Set intrusion rule state"
+      "title": "Set intrusion rule state",
+      "toolsets": [
+        "threat"
+      ]
     },
     "fmc_set_object_override": {
       "tier": "write",
-      "title": "Set object override"
+      "title": "Set object override",
+      "toolsets": [
+        "objects"
+      ]
     },
     "fmc_set_prefilter_policy": {
       "tier": "write",
-      "title": "Link prefilter policy to access policy"
+      "title": "Link prefilter policy to access policy",
+      "toolsets": [
+        "policy"
+      ]
     },
     "fmc_set_si_lists": {
       "tier": "write",
-      "title": "Use SI feeds and lists in a policy"
+      "title": "Use SI feeds and lists in a policy",
+      "toolsets": [
+        "intel"
+      ]
     },
     "fmc_shadowed_rules": {
       "tier": "read",
-      "title": "Find shadowed access rules"
+      "title": "Find shadowed access rules",
+      "toolsets": [
+        "policy"
+      ]
     },
     "fmc_si_block": {
       "tier": "write",
-      "title": "Security Intelligence block/unblock"
+      "title": "Security Intelligence block/unblock",
+      "toolsets": [
+        "intel"
+      ]
     },
     "fmc_snapshot": {
       "tier": "read",
@@ -1517,7 +2178,10 @@
     },
     "fmc_snort_profile": {
       "tier": "write",
-      "title": "Snort rule profiling"
+      "title": "Snort rule profiling",
+      "toolsets": [
+        "troubleshoot"
+      ]
     },
     "fmc_status": {
       "tier": "read",
@@ -1525,99 +2189,171 @@
     },
     "fmc_test_realm": {
       "tier": "read",
-      "title": "Test realm directory connection"
+      "title": "Test realm directory connection",
+      "toolsets": [
+        "identity"
+      ]
     },
     "fmc_threat_posture": {
       "tier": "read",
-      "title": "Threat-defense posture of an access policy"
+      "title": "Threat-defense posture of an access policy",
+      "toolsets": [
+        "threat"
+      ]
     },
     "fmc_ticket": {
       "tier": "write",
-      "title": "Open, submit or discard a ticket"
+      "title": "Open, submit or discard a ticket",
+      "toolsets": [
+        "deploy"
+      ]
     },
     "fmc_tls_decryption_check": {
       "tier": "read",
-      "title": "What TLS decryption does to a flow"
+      "title": "What TLS decryption does to a flow",
+      "toolsets": [
+        "tls"
+      ]
     },
     "fmc_unused_objects": {
       "tier": "read",
-      "title": "Find unused objects"
+      "title": "Find unused objects",
+      "toolsets": [
+        "objects"
+      ]
     },
     "fmc_update_access_rule": {
       "tier": "write",
-      "title": "Update access rule"
+      "title": "Update access rule",
+      "toolsets": [
+        "policy"
+      ]
     },
     "fmc_update_decryption_policy": {
       "tier": "write",
-      "title": "Update decryption policy settings"
+      "title": "Update decryption policy settings",
+      "toolsets": [
+        "tls"
+      ]
     },
     "fmc_update_decryption_rule": {
       "tier": "write",
-      "title": "Update decryption rule"
+      "title": "Update decryption rule",
+      "toolsets": [
+        "tls"
+      ]
     },
     "fmc_update_device_group": {
       "tier": "write",
-      "title": "Change device group"
+      "title": "Change device group",
+      "toolsets": [
+        "devices"
+      ]
     },
     "fmc_update_group": {
       "tier": "write",
-      "title": "Update object group"
+      "title": "Update object group",
+      "toolsets": [
+        "objects"
+      ]
     },
     "fmc_update_health_policy": {
       "tier": "write",
-      "title": "Update health policy module"
+      "title": "Update health policy module",
+      "toolsets": [
+        "admin"
+      ]
     },
     "fmc_update_inline_set": {
       "tier": "write",
-      "title": "Update inline set"
+      "title": "Update inline set",
+      "toolsets": [
+        "devices"
+      ]
     },
     "fmc_update_interface": {
       "tier": "write",
-      "title": "Configure interface"
+      "title": "Configure interface",
+      "toolsets": [
+        "devices"
+      ]
     },
     "fmc_update_nat_rule": {
       "tier": "write",
-      "title": "Update NAT rule"
+      "title": "Update NAT rule",
+      "toolsets": [
+        "policy"
+      ]
     },
     "fmc_update_object": {
       "tier": "write",
-      "title": "Update object"
+      "title": "Update object",
+      "toolsets": [
+        "objects"
+      ]
     },
     "fmc_update_prefilter_rule": {
       "tier": "write",
-      "title": "Update prefilter rule"
+      "title": "Update prefilter rule",
+      "toolsets": [
+        "policy"
+      ]
     },
     "fmc_update_sdwan_topology": {
       "tier": "write",
-      "title": "Update SD-WAN topology"
+      "title": "Update SD-WAN topology",
+      "toolsets": [
+        "sdwan"
+      ]
     },
     "fmc_update_sla_monitor": {
       "tier": "write",
-      "title": "Update SLA monitor"
+      "title": "Update SLA monitor",
+      "toolsets": [
+        "routing"
+      ]
     },
     "fmc_upgrade_status": {
       "tier": "read",
-      "title": "Version and upgrade status"
+      "title": "Version and upgrade status",
+      "toolsets": [
+        "admin"
+      ]
     },
     "fmc_upload_si_list": {
       "tier": "write",
-      "title": "Upload Security Intelligence list"
+      "title": "Upload Security Intelligence list",
+      "toolsets": [
+        "intel"
+      ]
     },
     "fmc_user_identity_sessions": {
       "tier": "read",
-      "title": "User identity sessions"
+      "title": "User identity sessions",
+      "toolsets": [
+        "identity"
+      ]
     },
     "fmc_user_ip_lookup": {
       "tier": "read",
-      "title": "Who is on an IP / where is a user"
+      "title": "Who is on an IP / where is a user",
+      "toolsets": [
+        "identity"
+      ]
     },
     "fmc_vpn_status": {
       "tier": "read",
-      "title": "VPN status"
+      "title": "VPN status",
+      "toolsets": [
+        "vpn"
+      ]
     },
     "fmc_where_used": {
       "tier": "read",
-      "title": "Where is an object used"
+      "title": "Where is an object used",
+      "toolsets": [
+        "objects"
+      ]
     }
   },
   "version": "0.19.0"
