@@ -63,6 +63,7 @@ def sd(fmc: respx.MockRouter) -> respx.MockRouter:
         "ospfinterface",
         "bfdpolicies",
         "ospfv3routes",
+        "eigrproutes",
         "virtualrouters",
     ):
         fmc.get(f"{R}/{sub}").mock(return_value=empty())

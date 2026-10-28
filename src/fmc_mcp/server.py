@@ -39,6 +39,7 @@ from fmc_mcp.tools import (
     dhcp,
     dns,
     dynamic_objects,
+    eigrp,
     enrollment,
     file_policy,
     find_address,
@@ -146,8 +147,11 @@ Workflows:
   fmc_configure_mgmt_access, fmc_set_banner. Hardening against a baseline (each finding with its source and
   fix tool): fmc_hardening_check; an auditor's evidence pack: the fmc_compliance_evidence prompt
   (fmc_export_access_rules evidence=true: hits, logging, last change and user, deployment, ticket per rule).
-- Dynamic routing: fmc_get_routing (BGP, OSPF, ECMP, PBR, VRFs) -> fmc_configure_bgp /
-  fmc_configure_ospf / fmc_create_vrf -> fmc_deploy -> fmc_run_show_command('show route').
+- Dynamic routing: fmc_get_routing (BGP, OSPF, EIGRP, ECMP, PBR, VRFs) -> fmc_configure_bgp /
+  fmc_configure_ospf / fmc_configure_eigrp / fmc_create_vrf -> fmc_deploy ->
+  fmc_run_show_command('show route'). EIGRP (ASA/IOS migrations): fmc_configure_eigrp(as_number,
+  add_networks, interfaces (passive, timers, MD5 key_file in FMC_PKI_DIR), neighbors, redistribute with a
+  route map, summary_addresses, stub) -> fmc_deploy -> 'show eigrp neighbors' / 'show route eigrp'.
   Route policy: fmc_create_prefix_list / fmc_create_route_map, then fmc_configure_bgp
   (neighbor_route_map_in/out, neighbor_prefix_list_in/out, max_prefix, default_originate,
   redistribute) or fmc_configure_ospf(redistribute) -> fmc_deploy -> 'show route bgp'.
@@ -385,6 +389,7 @@ REGISTER: list[Callable[[ToolRegistrar], None]] = [
     sla_monitors.register,
     app_routing.register,
     bfd.register,
+    eigrp.register,
     intrusion.register,
     file_policy.register,
     network_analysis.register,
