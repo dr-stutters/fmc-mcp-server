@@ -1,5 +1,25 @@
 # Changelog
 
+## 0.19.0 (2026-10-28)
+
+More FMC depth from the 96-hour run: native EIGRP, a FlexConfig review and migration, and a DHCP fix for FMC 10.0. Core moves
+to v0.19.0 (four new suite prompts: `suite_access_review`, `suite_asbuilt_drift`, `suite_decommission_site`,
+`suite_maintenance_window`). Three new tools and four prompts: 239 tools (93 read, 130 write, 16 dangerous) and eighteen
+prompts.
+
+### Added
+- `fmc_configure_eigrp` (native EIGRP on FTD: networks, passive/timers/MD5 interfaces with keys from FMC_PKI_DIR, neighbors,
+  summaries, redistribution with route maps, stub; global or VRF) and an EIGRP section in `fmc_get_routing` (F98, #347, #366).
+- `fmc_flexconfig_review` (FlexConfig policies, their devices and the objects whose names match a feature FMC 10.0 configures
+  natively, with the GUI path where REST has no object list) and `fmc_migrate_flexconfig` (dangerous: FMC's FlexConfig
+  migration, task followed, then `fmc_pending_changes`) (F101, #350, #368).
+- stutters-mcp-core v0.19.0: suite prompts `suite_access_review`, `suite_asbuilt_drift`, `suite_decommission_site` and
+  `suite_maintenance_window` (stutters-mcp-core#171, #367).
+
+### Fixed
+- `fmc_configure_dhcp` names interfaces by their hardware name (Ethernet0/3, Ethernet0/0.3020) in DHCP server and relay
+  bodies, which FMC 10.0 requires; the preview label shows the subinterface, not its parent (#362, #365).
+
 ## 0.18.0 (2026-10-28)
 
 Wave 9 FMC depth: RA VPN authoring, dual-ISP failover, DHCP, BFD, inline sets, Snort 3 recommendations, health policies and
