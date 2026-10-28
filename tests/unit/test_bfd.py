@@ -292,3 +292,29 @@ async def test_bgp_bfd_with_a_matching_policy_only_reminds_about_the_peer(fmc: r
         "bfd'), or the session stays down."
     ]
     assert off["status"] == "blocked" and "already configured that way" in off["blockers"][0]
+
+
+async def test_microsecond_template_keeps_its_unit_unless_both_intervals_are_given(
+    fmc: respx.MockRouter,
+) -> None:
+    mount(fmc, policies=[FX["bfdpolicy_single"]])
+    tpls = copy.deepcopy(FX["bfdtemplates"])
+    us = tpls["items"][0]
+    us.update({"txRxInterval": "MICROSECONDS", "minTransmit": 50000, "minReceive": 50000})
+    fmc.get(TEMPLATES).mock(return_value=httpx.Response(200, json=tpls))
+    base = {"device": DEV["name"], "template": "mcp-bfd-single", "interface": "outside"}
+    async with Client(server()) as c:
+        mult = await run(c, "fmc_configure_bfd", {**base, "multiplier": 4})
+        half = await run(c, "fmc_configure_bfd", {**base, "min_tx_ms": 300})
+        both = await run(c, "fmc_configure_bfd", {**base, "min_tx_ms": 300, "min_rx_ms": 300})
+    sent = mult["preview"]["requests"][0]["body"]
+    assert (
+        sent["txRxInterval"] == "MICROSECONDS"
+        and sent["minTransmit"] == 50000
+        and sent["txRxMultiplier"] == 4
+    )
+    assert half["status"] == "blocked" and "microseconds" in half["blockers"][0]
+    after = both["preview"]["requests"][0]["body"]
+    assert (
+        after["txRxInterval"] == "MILLISECONDS" and after["minTransmit"] == 300 and after["minReceive"] == 300
+    )

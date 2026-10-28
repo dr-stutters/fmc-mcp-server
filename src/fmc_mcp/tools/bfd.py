@@ -399,8 +399,16 @@ def register(reg: ToolRegistrar) -> None:
                     "txRxMultiplier": DEFAULT_MULTIPLIER,
                 }
             )
-            if tpl is not None and timers and str(body.get("txRxInterval")) == "MICROSECONDS":
-                body["txRxInterval"] = "MILLISECONDS"  # the *_ms values below are milliseconds
+            if tpl is not None and str(body.get("txRxInterval")) == "MICROSECONDS":
+                # the *_ms values are milliseconds: switch the unit only when both intervals are given (the
+                # other would stay in microseconds and be read as milliseconds); otherwise keep it as it is
+                if min_tx_ms is not None and min_rx_ms is not None:
+                    body["txRxInterval"] = "MILLISECONDS"
+                elif min_tx_ms is not None or min_rx_ms is not None:
+                    blockers.append(
+                        f"BFD template {tpl.get('name')!r} has its intervals in microseconds: give both "
+                        "min_tx_ms and min_rx_ms to change them to milliseconds."
+                    )
             if min_tx_ms is not None:
                 body["minTransmit"] = min_tx_ms
             if min_rx_ms is not None:
