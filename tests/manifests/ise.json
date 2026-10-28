@@ -1,0 +1,1132 @@
+{
+  "core_version": "0.19.0",
+  "manifest": 1,
+  "prefix": "ise",
+  "prompts": {
+    "ise_aaa_chain_check": {
+      "arguments": [
+        "nad",
+        "site",
+        "switch",
+        "user",
+        "minutes"
+      ],
+      "references": [
+        "ise_get_nad",
+        "ise_audit_nads",
+        "ise_list_nodes",
+        "ise_get_auth_list",
+        "ise_recent_auth_failures",
+        "ise_why_auth_failed",
+        "ise_list_identity_sources",
+        "ise_get_ad_join_point",
+        "ise_pxgrid_status",
+        "ise_list_pxgrid_clients",
+        "catc_get_policy_servers",
+        "catc_network_services_health",
+        "catc_list_devices",
+        "catc_run_show_commands",
+        "fmc_get_realm",
+        "fmc_test_realm",
+        "fmc_get_identity_sources",
+        "cml_run_commands",
+        "ise_test_ad_user",
+        "win_get_dns_records",
+        "catc_update_policy_server",
+        "catc_accept_ise_certificate",
+        "ise_create_nad",
+        "ise_update_nad",
+        "ise_approve_pxgrid_client"
+      ],
+      "rendered": true,
+      "tier": "read",
+      "uses": [
+        "ise",
+        "catc",
+        "fmc",
+        "cml",
+        "win"
+      ]
+    },
+    "ise_deployment_health_review": {
+      "arguments": [
+        "cert_warn_days",
+        "site",
+        "role"
+      ],
+      "references": [
+        "ise_deployment_health",
+        "ise_list_nodes",
+        "ise_list_certificates",
+        "ise_get_license_status",
+        "ise_pxgrid_status",
+        "ise_list_pxgrid_clients",
+        "ise_list_identity_sources",
+        "ise_get_ad_join_point",
+        "ise_list_sxp_connections",
+        "ise_list_sxp_bindings",
+        "ise_list_admin_users",
+        "ise_list_admin_groups",
+        "ise_get_admin_access",
+        "ise_audit_nads",
+        "ise_get_backup_status",
+        "ise_list_csrs",
+        "ise_generate_csr",
+        "ise_export_csr",
+        "ise_bind_certificate",
+        "ise_import_trusted_cert",
+        "fmc_list_certificates",
+        "fmc_enroll_certificate",
+        "fmc_import_certificate_files",
+        "catc_get_policy_servers",
+        "catc_accept_ise_certificate",
+        "catc_list_devices",
+        "win_sign_csr"
+      ],
+      "rendered": true,
+      "tier": "read",
+      "uses": [
+        "ise",
+        "fmc",
+        "catc",
+        "win"
+      ]
+    },
+    "ise_incident_timeline": {
+      "arguments": [
+        "mac",
+        "ip",
+        "username",
+        "minutes"
+      ],
+      "references": [
+        "ise_find_session",
+        "ise_endpoint_360",
+        "ise_get_auth_history",
+        "ise_recent_auth_failures",
+        "ise_list_anc_endpoints",
+        "fmc_list_audit_records",
+        "fmc_list_deployments",
+        "fmc_device_health",
+        "catc_device_360",
+        "catc_client_360",
+        "catc_list_events",
+        "catc_list_issues",
+        "catc_list_audit_logs"
+      ],
+      "rendered": false,
+      "tier": "read",
+      "uses": [
+        "ise",
+        "fmc",
+        "catc"
+      ]
+    },
+    "ise_onboard_nad": {
+      "arguments": [
+        "name",
+        "ip",
+        "switch",
+        "location",
+        "device_type",
+        "protocols",
+        "source_interface",
+        "vrf",
+        "ise_address",
+        "site",
+        "test_user",
+        "mac"
+      ],
+      "references": [
+        "ise_get_nad",
+        "ise_list_ndgs",
+        "ise_list_nodes",
+        "ise_create_ndg",
+        "ise_create_nad",
+        "ise_update_nad",
+        "ise_audit_nads",
+        "ise_policy_explain",
+        "ise_admin_policy_explain",
+        "ise_get_auth_list",
+        "ise_recent_auth_failures",
+        "ise_find_session",
+        "ise_delete_object",
+        "cml_run_commands",
+        "cml_configure_node",
+        "catc_get_device",
+        "catc_list_devices",
+        "catc_run_show_commands",
+        "catc_get_site_settings",
+        "catc_update_site_aaa_settings",
+        "catc_provision_devices",
+        "catc_create_template",
+        "catc_commit_template",
+        "catc_preview_template",
+        "catc_deploy_template"
+      ],
+      "rendered": false,
+      "tier": "write",
+      "uses": [
+        "ise",
+        "cml",
+        "catc"
+      ]
+    },
+    "ise_onboard_sdwan_edges": {
+      "arguments": [
+        "site",
+        "edges",
+        "service_vpn",
+        "loopback",
+        "ise_address",
+        "protocols",
+        "location_root",
+        "sdwan_group",
+        "test_user"
+      ],
+      "references": [
+        "ise_list_nodes",
+        "ise_list_ndgs",
+        "ise_audit_nads",
+        "ise_list_policy_sets",
+        "ise_list_identity_sources",
+        "ise_list_command_sets",
+        "ise_create_ndg",
+        "ise_create_nad",
+        "ise_update_nad",
+        "ise_set_shell_profile",
+        "ise_create_authz_profile",
+        "ise_create_policy_set",
+        "ise_create_authn_rule",
+        "ise_create_authz_rule",
+        "ise_admin_policy_explain",
+        "ise_policy_explain",
+        "ise_get_nad",
+        "ise_get_auth_list",
+        "ise_recent_auth_failures",
+        "catsdwan_list_devices",
+        "catsdwan_get_device",
+        "catsdwan_routes",
+        "catsdwan_ping",
+        "catsdwan_get_feature_parcel",
+        "catsdwan_set_feature_parcel",
+        "catsdwan_set_device_variables",
+        "catsdwan_get_device_config",
+        "catsdwan_deploy_config_group",
+        "catsdwan_device_state"
+      ],
+      "rendered": false,
+      "tier": "write",
+      "uses": [
+        "ise",
+        "catsdwan"
+      ]
+    },
+    "ise_quarantine_host": {
+      "arguments": [
+        "reason",
+        "mac",
+        "ip",
+        "username",
+        "anc_policy",
+        "fmc_block",
+        "switch"
+      ],
+      "references": [
+        "ise_find_session",
+        "ise_endpoint_360",
+        "ise_list_anc_policies",
+        "ise_list_anc_endpoints",
+        "ise_get_policy_set"
+      ],
+      "rendered": false,
+      "tier": "read",
+      "uses": [
+        "ise",
+        "fmc",
+        "cml",
+        "catc"
+      ]
+    },
+    "ise_troubleshoot_endpoint_access": {
+      "arguments": [
+        "mac",
+        "username",
+        "ip",
+        "switch",
+        "minutes"
+      ],
+      "references": [
+        "ise_find_session",
+        "ise_recent_auth_failures",
+        "ise_why_auth_failed",
+        "ise_endpoint_360",
+        "ise_get_auth_history",
+        "ise_get_policy_set",
+        "ise_get_nad",
+        "ise_list_anc_endpoints"
+      ],
+      "rendered": false,
+      "tier": "read",
+      "uses": [
+        "ise",
+        "cml",
+        "catc"
+      ]
+    },
+    "suite_access_review": {
+      "arguments": [
+        "stale_days",
+        "scope",
+        "servers"
+      ],
+      "references": [
+        "ise_list_admin_users",
+        "ise_get_admin_access",
+        "catc_list_users",
+        "catc_get_external_authentication",
+        "fmc_list_users",
+        "fmc_list_roles",
+        "fmc_get_external_auth",
+        "catsdwan_list_users",
+        "catsdwan_get_aaa",
+        "cml_list_users",
+        "cml_get_auth_config",
+        "win_list_ad_groups",
+        "win_get_ad_user",
+        "win_run_powershell_json"
+      ],
+      "rendered": true,
+      "suite": true,
+      "tier": "read",
+      "uses": [
+        "ise",
+        "catc",
+        "fmc",
+        "catsdwan",
+        "cml",
+        "win"
+      ]
+    },
+    "suite_asbuilt_drift": {
+      "arguments": [
+        "site",
+        "device",
+        "checks",
+        "servers"
+      ],
+      "references": [
+        "netbox_site_summary",
+        "netbox_list_objects",
+        "catc_list_devices",
+        "catc_list_device_interfaces",
+        "catc_get_physical_topology",
+        "catc_get_vlan_topology"
+      ],
+      "rendered": true,
+      "suite": true,
+      "tier": "read",
+      "uses": [
+        "netbox",
+        "catc"
+      ]
+    },
+    "suite_change_check": {
+      "arguments": [
+        "site",
+        "phase",
+        "change",
+        "before",
+        "servers",
+        "expected"
+      ],
+      "references": [
+        "catsdwan_snapshot",
+        "catsdwan_compare_snapshot",
+        "ise_snapshot",
+        "ise_compare_snapshot",
+        "catc_snapshot",
+        "catc_compare_snapshot",
+        "fmc_snapshot",
+        "fmc_compare_snapshot"
+      ],
+      "rendered": true,
+      "suite": true,
+      "tier": "read",
+      "uses": [
+        "catsdwan",
+        "ise",
+        "catc",
+        "fmc"
+      ]
+    },
+    "suite_decommission_site": {
+      "arguments": [
+        "site",
+        "subnets",
+        "dns_zone",
+        "servers"
+      ],
+      "references": [
+        "catsdwan_list_devices",
+        "catsdwan_get_device_config",
+        "catsdwan_remove_device",
+        "catsdwan_associate_config_group",
+        "catsdwan_set_edge_validity",
+        "catc_get_site",
+        "catc_list_devices",
+        "catc_get_sda_fabric",
+        "catc_list_ip_pools",
+        "catc_delete_fabric_site",
+        "catc_delete_device",
+        "catc_delete_ip_pool",
+        "catc_delete_site",
+        "ise_list_ndgs",
+        "ise_list_nads",
+        "ise_get_nad",
+        "ise_delete_nad",
+        "ise_delete_object",
+        "fmc_find_address",
+        "fmc_list_objects",
+        "fmc_where_used",
+        "fmc_delete_object",
+        "fmc_delete_objects",
+        "win_list_dhcp_scopes",
+        "win_list_dhcp_leases",
+        "win_list_dns_zones",
+        "win_get_dns_records",
+        "win_remove_dns_record",
+        "win_run_powershell_json"
+      ],
+      "rendered": true,
+      "suite": true,
+      "tier": "dangerous",
+      "uses": [
+        "catsdwan",
+        "catc",
+        "ise",
+        "fmc",
+        "win"
+      ]
+    },
+    "suite_maintenance_window": {
+      "arguments": [
+        "site",
+        "sdwan_version",
+        "catc_image",
+        "ise_patch",
+        "mode",
+        "window",
+        "servers"
+      ],
+      "references": [
+        "catsdwan_list_devices",
+        "catsdwan_list_software",
+        "catsdwan_snapshot",
+        "catsdwan_upgrade_software",
+        "catsdwan_compare_snapshot",
+        "catc_list_device_images",
+        "catc_list_images",
+        "catc_snapshot",
+        "catc_distribute_image",
+        "catc_activate_image",
+        "catc_compare_snapshot",
+        "ise_list_nodes",
+        "ise_list_patches",
+        "ise_deployment_health",
+        "ise_get_backup_status",
+        "ise_snapshot",
+        "ise_create_backup",
+        "ise_compare_snapshot"
+      ],
+      "rendered": true,
+      "suite": true,
+      "tier": "dangerous",
+      "uses": [
+        "catsdwan",
+        "catc",
+        "ise"
+      ]
+    }
+  },
+  "server": "ise-mcp-server",
+  "tools": {
+    "ise_add_ad_groups": {
+      "tier": "write",
+      "title": "Add AD groups to a join point"
+    },
+    "ise_admin_policy_explain": {
+      "tier": "read",
+      "title": "Explain a device-admin (TACACS+) login and command"
+    },
+    "ise_api_call": {
+      "tier": "dangerous",
+      "title": "Raw Cisco ISE API call"
+    },
+    "ise_apply_anc": {
+      "tier": "dangerous",
+      "title": "Apply ANC policy to an endpoint"
+    },
+    "ise_approve_pxgrid_client": {
+      "tier": "write",
+      "title": "Approve a pxGrid client"
+    },
+    "ise_audit_nads": {
+      "tier": "read",
+      "title": "Audit network devices"
+    },
+    "ise_bind_certificate": {
+      "tier": "dangerous",
+      "title": "Bind a CA-signed certificate to its CSR"
+    },
+    "ise_bulk_endpoints": {
+      "tier": "write",
+      "title": "Bulk create, update or delete endpoints"
+    },
+    "ise_bulk_internal_users": {
+      "tier": "write",
+      "title": "Bulk create, update or delete internal users"
+    },
+    "ise_clear_anc": {
+      "tier": "dangerous",
+      "title": "Clear ANC policy from an endpoint"
+    },
+    "ise_coa_bulk": {
+      "tier": "dangerous",
+      "title": "Bulk CoA by scope"
+    },
+    "ise_coa_disconnect": {
+      "tier": "dangerous",
+      "title": "CoA: disconnect a session"
+    },
+    "ise_coa_reauth": {
+      "tier": "dangerous",
+      "title": "CoA: reauthenticate a session"
+    },
+    "ise_compare_snapshot": {
+      "tier": "read",
+      "title": "Compare Cisco ISE snapshots"
+    },
+    "ise_create_ad_join_point": {
+      "tier": "write",
+      "title": "Create an AD join point"
+    },
+    "ise_create_anc_policy": {
+      "tier": "write",
+      "title": "Create ANC policy"
+    },
+    "ise_create_authn_rule": {
+      "tier": "write",
+      "title": "Create authentication rule"
+    },
+    "ise_create_authz_profile": {
+      "tier": "write",
+      "title": "Create authorization profile"
+    },
+    "ise_create_authz_rule": {
+      "tier": "write",
+      "title": "Create authorization rule"
+    },
+    "ise_create_backup": {
+      "tier": "dangerous",
+      "title": "Create a configuration backup"
+    },
+    "ise_create_group": {
+      "tier": "write",
+      "title": "Create identity or endpoint group"
+    },
+    "ise_create_guest_user": {
+      "tier": "write",
+      "title": "Create a guest account"
+    },
+    "ise_create_internal_user": {
+      "tier": "write",
+      "title": "Create internal user"
+    },
+    "ise_create_nad": {
+      "tier": "write",
+      "title": "Create network device"
+    },
+    "ise_create_ndg": {
+      "tier": "write",
+      "title": "Create network device group"
+    },
+    "ise_create_policy_set": {
+      "tier": "write",
+      "title": "Create policy set"
+    },
+    "ise_decline_pxgrid_client": {
+      "tier": "write",
+      "title": "Decline a pending pxGrid client"
+    },
+    "ise_delete_certificate": {
+      "tier": "dangerous",
+      "title": "Delete a certificate"
+    },
+    "ise_delete_csr": {
+      "tier": "write",
+      "title": "Delete a CSR"
+    },
+    "ise_delete_guest_user": {
+      "tier": "write",
+      "title": "Delete a guest account"
+    },
+    "ise_delete_nad": {
+      "tier": "dangerous",
+      "title": "Delete network device"
+    },
+    "ise_delete_object": {
+      "tier": "write",
+      "title": "Delete an ISE object"
+    },
+    "ise_delete_policy_rule": {
+      "tier": "dangerous",
+      "title": "Delete a policy rule"
+    },
+    "ise_delete_policy_set": {
+      "tier": "dangerous",
+      "title": "Delete a policy set"
+    },
+    "ise_delete_profiling_rule": {
+      "tier": "write",
+      "title": "Delete a custom profiling rule"
+    },
+    "ise_delete_pxgrid_client": {
+      "tier": "write",
+      "title": "Delete a pxGrid client"
+    },
+    "ise_delete_repository": {
+      "tier": "dangerous",
+      "title": "Delete a backup repository"
+    },
+    "ise_delete_session": {
+      "tier": "dangerous",
+      "title": "Delete a stale MnT session"
+    },
+    "ise_delete_trustsec_object": {
+      "tier": "write",
+      "title": "Delete an IP-SGT mapping or SXP connection"
+    },
+    "ise_deploy_ip_sgt": {
+      "tier": "dangerous",
+      "title": "Deploy IP-SGT mappings to devices (SSH)"
+    },
+    "ise_deployment_health": {
+      "tier": "read",
+      "title": "Deployment health check"
+    },
+    "ise_diff_config": {
+      "tier": "read",
+      "title": "Diff ISE configuration exports"
+    },
+    "ise_endpoint_360": {
+      "tier": "read",
+      "title": "Endpoint 360"
+    },
+    "ise_endpoint_summary": {
+      "tier": "read",
+      "title": "Endpoint summary"
+    },
+    "ise_explain_profile": {
+      "tier": "read",
+      "title": "Explain an endpoint's profile"
+    },
+    "ise_export_config": {
+      "tier": "read",
+      "title": "Export ISE configuration as YAML"
+    },
+    "ise_export_csr": {
+      "tier": "read",
+      "title": "Export a CSR (PEM)"
+    },
+    "ise_extend_guest_user": {
+      "tier": "write",
+      "title": "Extend a guest account"
+    },
+    "ise_find_session": {
+      "tier": "read",
+      "title": "Find a session"
+    },
+    "ise_generate_csr": {
+      "tier": "write",
+      "title": "Generate a CSR"
+    },
+    "ise_get_accounting": {
+      "tier": "read",
+      "title": "RADIUS accounting totals for a MAC"
+    },
+    "ise_get_ad_join_point": {
+      "tier": "read",
+      "title": "Get an AD join point (config + join status)"
+    },
+    "ise_get_admin_access": {
+      "tier": "read",
+      "title": "Explain an ISE admin's access"
+    },
+    "ise_get_auth_history": {
+      "tier": "read",
+      "title": "Authentication history for a MAC"
+    },
+    "ise_get_auth_list": {
+      "tier": "read",
+      "title": "Sessions authenticated in a time window"
+    },
+    "ise_get_authz_profile": {
+      "tier": "read",
+      "title": "Get an authorization profile"
+    },
+    "ise_get_backup_status": {
+      "tier": "read",
+      "title": "Last configuration backup"
+    },
+    "ise_get_dacl": {
+      "tier": "read",
+      "title": "Get a downloadable ACL"
+    },
+    "ise_get_definition": {
+      "tier": "read",
+      "title": "Describe a Cisco ISE API path or schema"
+    },
+    "ise_get_egress_matrix": {
+      "tier": "read",
+      "title": "TrustSec egress matrix"
+    },
+    "ise_get_guest_locations": {
+      "tier": "read",
+      "title": "Guest locations and SSIDs"
+    },
+    "ise_get_guest_user": {
+      "tier": "read",
+      "title": "Get a guest account"
+    },
+    "ise_get_internal_user": {
+      "tier": "read",
+      "title": "Get an internal user"
+    },
+    "ise_get_license_status": {
+      "tier": "read",
+      "title": "ISE license status"
+    },
+    "ise_get_mac_randomization": {
+      "tier": "read",
+      "title": "Random MAC (RCM) and endpoint ownership settings"
+    },
+    "ise_get_nad": {
+      "tier": "read",
+      "title": "Get a network device"
+    },
+    "ise_get_policy_set": {
+      "tier": "read",
+      "title": "Get a policy set with its rules"
+    },
+    "ise_get_pxgrid_client": {
+      "tier": "read",
+      "title": "Get a pxGrid client"
+    },
+    "ise_get_tacacs_servers": {
+      "tier": "read",
+      "title": "List TACACS+ external servers and sequences"
+    },
+    "ise_get_task": {
+      "tier": "read",
+      "title": "Get an ISE task's status"
+    },
+    "ise_get_trustsec_settings": {
+      "tier": "read",
+      "title": "TrustSec general settings"
+    },
+    "ise_import_config": {
+      "tier": "dangerous",
+      "title": "Import ISE configuration from an export"
+    },
+    "ise_import_trusted_cert": {
+      "tier": "write",
+      "title": "Import a trusted (CA) certificate"
+    },
+    "ise_issue_pxgrid_client_cert": {
+      "tier": "write",
+      "title": "Issue a pxGrid client certificate"
+    },
+    "ise_join_ad": {
+      "tier": "dangerous",
+      "title": "Join ISE nodes to Active Directory"
+    },
+    "ise_leave_ad": {
+      "tier": "dangerous",
+      "title": "Leave Active Directory"
+    },
+    "ise_list_active_sessions": {
+      "tier": "read",
+      "title": "List active sessions"
+    },
+    "ise_list_ad_groups": {
+      "tier": "read",
+      "title": "Search an AD domain's groups"
+    },
+    "ise_list_admin_groups": {
+      "tier": "read",
+      "title": "List ISE admin groups"
+    },
+    "ise_list_admin_users": {
+      "tier": "read",
+      "title": "List ISE admin users"
+    },
+    "ise_list_allowed_protocols": {
+      "tier": "read",
+      "title": "List allowed protocols services"
+    },
+    "ise_list_anc_endpoints": {
+      "tier": "read",
+      "title": "List endpoints under ANC"
+    },
+    "ise_list_anc_policies": {
+      "tier": "read",
+      "title": "List ANC policies"
+    },
+    "ise_list_authz_profiles": {
+      "tier": "read",
+      "title": "List authorization profiles"
+    },
+    "ise_list_certificates": {
+      "tier": "read",
+      "title": "List certificates"
+    },
+    "ise_list_command_sets": {
+      "tier": "read",
+      "title": "List TACACS+ command sets"
+    },
+    "ise_list_conditions": {
+      "tier": "read",
+      "title": "List library conditions"
+    },
+    "ise_list_csrs": {
+      "tier": "read",
+      "title": "List certificate signing requests"
+    },
+    "ise_list_custom_attributes": {
+      "tier": "read",
+      "title": "List endpoint custom attributes"
+    },
+    "ise_list_dacls": {
+      "tier": "read",
+      "title": "List downloadable ACLs"
+    },
+    "ise_list_dictionary_attributes": {
+      "tier": "read",
+      "title": "List policy dictionary attributes"
+    },
+    "ise_list_endpoint_groups": {
+      "tier": "read",
+      "title": "List endpoint identity groups"
+    },
+    "ise_list_endpoints": {
+      "tier": "read",
+      "title": "List endpoints"
+    },
+    "ise_list_failure_reasons": {
+      "tier": "read",
+      "title": "Search failure reasons"
+    },
+    "ise_list_guest_portals": {
+      "tier": "read",
+      "title": "List guest and sponsor portals"
+    },
+    "ise_list_guest_types": {
+      "tier": "read",
+      "title": "List guest types"
+    },
+    "ise_list_guest_users": {
+      "tier": "read",
+      "title": "List guest accounts"
+    },
+    "ise_list_identity_groups": {
+      "tier": "read",
+      "title": "List user identity groups"
+    },
+    "ise_list_identity_sources": {
+      "tier": "read",
+      "title": "List identity sources"
+    },
+    "ise_list_internal_users": {
+      "tier": "read",
+      "title": "List internal users"
+    },
+    "ise_list_ip_sgt_mappings": {
+      "tier": "read",
+      "title": "List IP-SGT mappings"
+    },
+    "ise_list_nads": {
+      "tier": "read",
+      "title": "List network devices (NADs)"
+    },
+    "ise_list_ndgs": {
+      "tier": "read",
+      "title": "List network device groups"
+    },
+    "ise_list_nodes": {
+      "tier": "read",
+      "title": "List ISE deployment nodes"
+    },
+    "ise_list_patches": {
+      "tier": "read",
+      "title": "List installed patches"
+    },
+    "ise_list_policy_sets": {
+      "tier": "read",
+      "title": "List policy sets"
+    },
+    "ise_list_posture_policies": {
+      "tier": "read",
+      "title": "List posture policies"
+    },
+    "ise_list_posture_requirements": {
+      "tier": "read",
+      "title": "List posture requirements"
+    },
+    "ise_list_profiler_profiles": {
+      "tier": "read",
+      "title": "List profiler profiles"
+    },
+    "ise_list_profiling_rules": {
+      "tier": "read",
+      "title": "List custom profiling rules"
+    },
+    "ise_list_pxgrid_clients": {
+      "tier": "read",
+      "title": "List pxGrid clients"
+    },
+    "ise_list_rbac_policies": {
+      "tier": "read",
+      "title": "List ISE RBAC policies"
+    },
+    "ise_list_repositories": {
+      "tier": "read",
+      "title": "List backup repositories"
+    },
+    "ise_list_sgacls": {
+      "tier": "read",
+      "title": "List SGACLs"
+    },
+    "ise_list_sgts": {
+      "tier": "read",
+      "title": "List security group tags"
+    },
+    "ise_list_shell_profiles": {
+      "tier": "read",
+      "title": "List TACACS+ shell profiles"
+    },
+    "ise_list_sponsor_groups": {
+      "tier": "read",
+      "title": "List sponsor groups"
+    },
+    "ise_list_sxp_bindings": {
+      "tier": "read",
+      "title": "List SXP bindings"
+    },
+    "ise_list_sxp_connections": {
+      "tier": "read",
+      "title": "List SXP connections"
+    },
+    "ise_nad_radius_stats": {
+      "tier": "read",
+      "title": "Per-NAD RADIUS latency and timeouts"
+    },
+    "ise_policy_audit": {
+      "tier": "read",
+      "title": "Audit ISE policy hygiene"
+    },
+    "ise_policy_explain": {
+      "tier": "read",
+      "title": "Explain which policy rule a request would hit"
+    },
+    "ise_profiler_status": {
+      "tier": "read",
+      "title": "Profiler status per PSN"
+    },
+    "ise_push_trustsec_matrix": {
+      "tier": "dangerous",
+      "title": "Push TrustSec policy to devices (CoA)"
+    },
+    "ise_pxgrid_status": {
+      "tier": "read",
+      "title": "pxGrid service status"
+    },
+    "ise_recent_auth_failures": {
+      "tier": "read",
+      "title": "Recent authentication failures"
+    },
+    "ise_reinstate_guest_user": {
+      "tier": "write",
+      "title": "Reinstate a suspended guest account"
+    },
+    "ise_release_rejected_endpoint": {
+      "tier": "write",
+      "title": "Release rejected endpoints"
+    },
+    "ise_reprofile_endpoint": {
+      "tier": "dangerous",
+      "title": "Reprofile an endpoint (CoA)"
+    },
+    "ise_reset_hitcounts": {
+      "tier": "dangerous",
+      "title": "Reset policy hit counters"
+    },
+    "ise_search_spec": {
+      "tier": "read",
+      "title": "Search the Cisco ISE API spec"
+    },
+    "ise_set_allowed_protocols": {
+      "tier": "write",
+      "title": "Create or harden an allowed-protocols service"
+    },
+    "ise_set_cert_auth_profile": {
+      "tier": "write",
+      "title": "Create or update a certificate authentication profile"
+    },
+    "ise_set_command_set": {
+      "tier": "write",
+      "title": "Create or replace a TACACS+ command set"
+    },
+    "ise_set_custom_attribute": {
+      "tier": "write",
+      "title": "Create or delete an endpoint custom attribute"
+    },
+    "ise_set_dacl": {
+      "tier": "write",
+      "title": "Create or update a downloadable ACL"
+    },
+    "ise_set_default_egress_rule": {
+      "tier": "dangerous",
+      "title": "Set the ANY-ANY default egress rule"
+    },
+    "ise_set_egress_policy": {
+      "tier": "write",
+      "title": "Set an egress matrix cell"
+    },
+    "ise_set_endpoint": {
+      "tier": "write",
+      "title": "Create or update an endpoint"
+    },
+    "ise_set_guest_type": {
+      "tier": "write",
+      "title": "Create or update a guest type"
+    },
+    "ise_set_identity_sequence": {
+      "tier": "write",
+      "title": "Create or update an identity source sequence"
+    },
+    "ise_set_ip_sgt": {
+      "tier": "write",
+      "title": "Create or update a static IP-SGT mapping"
+    },
+    "ise_set_mac_randomization": {
+      "tier": "write",
+      "title": "Set random MAC (RCM) and endpoint ownership"
+    },
+    "ise_set_profiling_rule": {
+      "tier": "write",
+      "title": "Create or update a custom profiling rule"
+    },
+    "ise_set_pxgrid_settings": {
+      "tier": "write",
+      "title": "Set the pxGrid approval settings"
+    },
+    "ise_set_repository": {
+      "tier": "write",
+      "title": "Create or update a backup repository"
+    },
+    "ise_set_sgt": {
+      "tier": "write",
+      "title": "Create or update an SGT"
+    },
+    "ise_set_shell_profile": {
+      "tier": "write",
+      "title": "Create or update a TACACS+ shell profile"
+    },
+    "ise_set_sponsor_group": {
+      "tier": "write",
+      "title": "Create or update a sponsor group"
+    },
+    "ise_set_sxp_connection": {
+      "tier": "write",
+      "title": "Create or update an SXP connection"
+    },
+    "ise_set_tacacs_server": {
+      "tier": "write",
+      "title": "Create or update a TACACS+ external server"
+    },
+    "ise_set_tacacs_server_sequence": {
+      "tier": "write",
+      "title": "Create or update a TACACS+ server sequence"
+    },
+    "ise_set_trustsec_settings": {
+      "tier": "write",
+      "title": "Change TrustSec general settings"
+    },
+    "ise_snapshot": {
+      "tier": "read",
+      "title": "Cisco ISE snapshot"
+    },
+    "ise_status": {
+      "tier": "read",
+      "title": "Cisco ISE status"
+    },
+    "ise_suspend_guest_user": {
+      "tier": "write",
+      "title": "Suspend a guest account"
+    },
+    "ise_test_ad_user": {
+      "tier": "read",
+      "title": "Test an AD user (lookup + groups)"
+    },
+    "ise_test_command_set": {
+      "tier": "read",
+      "title": "Test a command against TACACS+ command sets"
+    },
+    "ise_trustsec_device_report": {
+      "tier": "read",
+      "title": "TrustSec policy status per device"
+    },
+    "ise_unused_objects": {
+      "tier": "read",
+      "title": "Find unused ISE objects"
+    },
+    "ise_update_authz_profile": {
+      "tier": "write",
+      "title": "Update authorization profile"
+    },
+    "ise_update_guest_user": {
+      "tier": "write",
+      "title": "Update a guest account's details"
+    },
+    "ise_update_internal_user": {
+      "tier": "write",
+      "title": "Update internal user"
+    },
+    "ise_update_nad": {
+      "tier": "write",
+      "title": "Update network device"
+    },
+    "ise_update_node_services": {
+      "tier": "dangerous",
+      "title": "Enable or disable node services"
+    },
+    "ise_update_policy_rule": {
+      "tier": "write",
+      "title": "Update a policy rule"
+    },
+    "ise_update_policy_set": {
+      "tier": "write",
+      "title": "Update policy set"
+    },
+    "ise_where_used": {
+      "tier": "read",
+      "title": "Where is an ISE object used"
+    },
+    "ise_why_auth_failed": {
+      "tier": "read",
+      "title": "Why did authentication fail?"
+    }
+  },
+  "version": "0.19.0"
+}

@@ -54,11 +54,8 @@ HERE = Path(__file__).resolve().parent.parent
 
 
 def _external() -> dict[str, list[str]]:
-    """Other servers' tool names: their committed manifests, plus hand-kept lists until they publish one."""
-    tools = {k: list(v) for k, v in load_tool_manifests(HERE / "manifests").items()}
-    cml = json.loads((HERE / "external" / "cml-tools.json").read_text())["cml"]
-    tools.setdefault("cml", cml)
-    return tools
+    """Other servers' tool names, from their committed manifests (ise, catc, cat-sdwan, cml)."""
+    return {k: list(v) for k, v in load_tool_manifests(HERE / "manifests").items()}
 
 
 def _server() -> FastMCP[Any]:
@@ -69,21 +66,13 @@ async def test_inbound_references(fmc: respx.MockRouter) -> None:
     await assert_inbound_references(_server(), "fmc", HERE / "manifests")
 
 
-# Peer snapshot tools the suite pack's change check (C53) calls that their servers have not shipped yet; a
-# waiver for a tool a committed peer manifest now lists fails, so the list shrinks as peers ship.
-PEER_PENDING = [
-    "catc_compare_snapshot",
-    "catc_snapshot",
-    "catsdwan_compare_snapshot",
-    "catsdwan_snapshot",
-    "ise_compare_snapshot",
-    "ise_snapshot",
-]
-
-
 async def test_suite_pack(fmc: respx.MockRouter) -> None:
-    """Core's suite prompt pack (C48) is registered and its fmc leg tools (fmc_snapshot, ...) exist."""
-    await assert_suite_pack(_server(), "fmc", HERE / "manifests", pending=PEER_PENDING)
+    """Core's suite prompt pack (C48) is registered and its fmc leg tools (fmc_snapshot, ...) exist.
+
+    The committed ise, catc, cat-sdwan and cml manifests all carry their snapshot tools now, so every leg is
+    checked; tools a suite prompt itself marks pending (core 0.19, stutters-mcp-core#171) are waived by core.
+    """
+    await assert_suite_pack(_server(), "fmc", HERE / "manifests")
 
 
 async def test_prompt_snapshots(fmc: respx.MockRouter) -> None:

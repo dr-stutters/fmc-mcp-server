@@ -1,0 +1,365 @@
+{
+  "core_version": "0.19.0",
+  "manifest": 1,
+  "prefix": "cml",
+  "prompts": {
+    "cml_build_test_lab": {
+      "arguments": [
+        "recipe",
+        "reuse"
+      ],
+      "references": [
+        "cml_list_recipes",
+        "cml_plan_licences",
+        "cml_stop_lab",
+        "cml_build_recipe",
+        "cml_start_lab",
+        "cml_wait_for_converged",
+        "cml_verify_recipe",
+        "cml_run_commands",
+        "cml_get_node_console_log"
+      ],
+      "rendered": true,
+      "tier": "write",
+      "uses": [
+        "cml"
+      ]
+    },
+    "cml_replicate_site": {
+      "arguments": [
+        "site",
+        "fidelity",
+        "max_nodes"
+      ],
+      "references": [],
+      "rendered": false,
+      "tier": "write",
+      "uses": [
+        "cml",
+        "catc",
+        "ise",
+        "fmc"
+      ]
+    }
+  },
+  "server": "cml-mcp-server",
+  "tools": {
+    "cml_add_node": {
+      "tier": "write",
+      "title": "Add node"
+    },
+    "cml_annotate_lab": {
+      "tier": "write",
+      "title": "Annotate lab"
+    },
+    "cml_api_call": {
+      "tier": "dangerous",
+      "title": "Raw Cisco Modeling Labs API call"
+    },
+    "cml_apply_link_scenario": {
+      "tier": "write",
+      "title": "Apply link scenario"
+    },
+    "cml_build_lab": {
+      "tier": "write",
+      "title": "Build lab from spec"
+    },
+    "cml_build_recipe": {
+      "tier": "write",
+      "title": "Build a lab recipe"
+    },
+    "cml_capture": {
+      "tier": "write",
+      "title": "Capture and summarize"
+    },
+    "cml_capture_wireless": {
+      "tier": "write",
+      "title": "Capture wireless traffic"
+    },
+    "cml_check_reachability": {
+      "tier": "read",
+      "title": "Check reachability"
+    },
+    "cml_clear_link_scenarios": {
+      "tier": "write",
+      "title": "Clear link scenarios"
+    },
+    "cml_compare_snapshot": {
+      "tier": "read",
+      "title": "Compare lab snapshots"
+    },
+    "cml_configure_node": {
+      "tier": "write",
+      "title": "Configure node via CLI"
+    },
+    "cml_configure_nodes": {
+      "tier": "write",
+      "title": "Configure several nodes via CLI"
+    },
+    "cml_connect_nodes": {
+      "tier": "write",
+      "title": "Connect nodes"
+    },
+    "cml_create_image_definition": {
+      "tier": "write",
+      "title": "Create an image definition"
+    },
+    "cml_create_lab": {
+      "tier": "write",
+      "title": "Create lab"
+    },
+    "cml_delete_image": {
+      "tier": "dangerous",
+      "title": "Delete an image"
+    },
+    "cml_delete_lab": {
+      "tier": "dangerous",
+      "title": "Delete lab"
+    },
+    "cml_delete_link": {
+      "tier": "dangerous",
+      "title": "Delete link"
+    },
+    "cml_delete_node": {
+      "tier": "dangerous",
+      "title": "Delete node"
+    },
+    "cml_diff_lab": {
+      "tier": "read",
+      "title": "Diff labs"
+    },
+    "cml_diff_node_config": {
+      "tier": "read",
+      "title": "Diff a node's configuration"
+    },
+    "cml_export_lab": {
+      "tier": "read",
+      "title": "Export lab YAML"
+    },
+    "cml_export_topology": {
+      "tier": "read",
+      "title": "Export topology diagram"
+    },
+    "cml_extract_node_configs": {
+      "tier": "write",
+      "title": "Save running configs"
+    },
+    "cml_get_definition": {
+      "tier": "read",
+      "title": "Describe a Cisco Modeling Labs API path or schema"
+    },
+    "cml_get_image_files": {
+      "tier": "read",
+      "title": "List image files"
+    },
+    "cml_get_lab": {
+      "tier": "read",
+      "title": "Get lab"
+    },
+    "cml_get_lab_topology": {
+      "tier": "read",
+      "title": "Lab topology"
+    },
+    "cml_get_layer3_addresses": {
+      "tier": "read",
+      "title": "Layer-3 addresses"
+    },
+    "cml_get_licensing": {
+      "tier": "read",
+      "title": "CML licensing"
+    },
+    "cml_get_link": {
+      "tier": "read",
+      "title": "Get link"
+    },
+    "cml_get_link_scenarios": {
+      "tier": "read",
+      "title": "Link scenarios"
+    },
+    "cml_get_node": {
+      "tier": "read",
+      "title": "Get node"
+    },
+    "cml_get_node_console_log": {
+      "tier": "read",
+      "title": "Node console log"
+    },
+    "cml_get_node_definition": {
+      "tier": "read",
+      "title": "Get node definition"
+    },
+    "cml_get_pyats_testbed": {
+      "tier": "read",
+      "title": "pyATS testbed"
+    },
+    "cml_get_resource_usage": {
+      "tier": "read",
+      "title": "CML resource usage"
+    },
+    "cml_get_system_health": {
+      "tier": "read",
+      "title": "CML system health"
+    },
+    "cml_import_lab": {
+      "tier": "write",
+      "title": "Import lab from YAML"
+    },
+    "cml_list_annotations": {
+      "tier": "read",
+      "title": "List annotations"
+    },
+    "cml_list_capture_packets": {
+      "tier": "read",
+      "title": "List captured packets"
+    },
+    "cml_list_external_connectors": {
+      "tier": "read",
+      "title": "List external connectors"
+    },
+    "cml_list_image_definitions": {
+      "tier": "read",
+      "title": "List image definitions"
+    },
+    "cml_list_interfaces": {
+      "tier": "read",
+      "title": "List interfaces"
+    },
+    "cml_list_lab_events": {
+      "tier": "read",
+      "title": "List lab events"
+    },
+    "cml_list_labs": {
+      "tier": "read",
+      "title": "List labs"
+    },
+    "cml_list_links": {
+      "tier": "read",
+      "title": "List links"
+    },
+    "cml_list_node_definitions": {
+      "tier": "read",
+      "title": "List node definitions"
+    },
+    "cml_list_nodes": {
+      "tier": "read",
+      "title": "List nodes"
+    },
+    "cml_list_recipes": {
+      "tier": "read",
+      "title": "List lab recipes"
+    },
+    "cml_list_sample_labs": {
+      "tier": "read",
+      "title": "List sample labs"
+    },
+    "cml_load_sample_lab": {
+      "tier": "write",
+      "title": "Load sample lab"
+    },
+    "cml_plan_licences": {
+      "tier": "read",
+      "title": "Plan node licences"
+    },
+    "cml_plan_replica": {
+      "tier": "read",
+      "title": "Plan a site replica"
+    },
+    "cml_run_commands": {
+      "tier": "read",
+      "title": "Run show commands"
+    },
+    "cml_run_recipe_action": {
+      "tier": "write",
+      "title": "Run a recipe action"
+    },
+    "cml_save_capture": {
+      "tier": "write",
+      "title": "Save packet capture to a file"
+    },
+    "cml_search_spec": {
+      "tier": "read",
+      "title": "Search the Cisco Modeling Labs API spec"
+    },
+    "cml_set_interface_state": {
+      "tier": "write",
+      "title": "Set interface state"
+    },
+    "cml_set_link_condition": {
+      "tier": "write",
+      "title": "Set link conditioning"
+    },
+    "cml_set_link_state": {
+      "tier": "write",
+      "title": "Link up/down"
+    },
+    "cml_set_node_config": {
+      "tier": "write",
+      "title": "Set node configuration"
+    },
+    "cml_set_node_state": {
+      "tier": "write",
+      "title": "Start or stop node"
+    },
+    "cml_snapshot": {
+      "tier": "read",
+      "title": "Lab snapshot"
+    },
+    "cml_start_capture": {
+      "tier": "write",
+      "title": "Start packet capture"
+    },
+    "cml_start_lab": {
+      "tier": "write",
+      "title": "Start lab"
+    },
+    "cml_status": {
+      "tier": "read",
+      "title": "Cisco Modeling Labs status"
+    },
+    "cml_stop_capture": {
+      "tier": "write",
+      "title": "Stop packet capture"
+    },
+    "cml_stop_lab": {
+      "tier": "write",
+      "title": "Stop lab"
+    },
+    "cml_stop_labs": {
+      "tier": "write",
+      "title": "Stop several labs"
+    },
+    "cml_summarize_capture": {
+      "tier": "read",
+      "title": "Summarize packet capture"
+    },
+    "cml_update_interface": {
+      "tier": "write",
+      "title": "Pin interface MAC"
+    },
+    "cml_update_node": {
+      "tier": "write",
+      "title": "Update node"
+    },
+    "cml_upload_image": {
+      "tier": "dangerous",
+      "title": "Upload a disk image"
+    },
+    "cml_verify_recipe": {
+      "tier": "read",
+      "title": "Verify a lab recipe"
+    },
+    "cml_wait_for_converged": {
+      "tier": "read",
+      "title": "Wait for convergence"
+    },
+    "cml_wipe_lab": {
+      "tier": "dangerous",
+      "title": "Wipe lab"
+    },
+    "cml_wipe_node": {
+      "tier": "dangerous",
+      "title": "Wipe node"
+    }
+  },
+  "version": "0.15.0"
+}
