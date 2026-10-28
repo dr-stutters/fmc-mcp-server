@@ -38,7 +38,7 @@ from fmc_mcp.tools.device_config import (
     resolve_device,
     static_network,
 )
-from fmc_mcp.tools.devices import DEVICES, DeviceRef, interface_row
+from fmc_mcp.tools.devices import DEVICES, DeviceRef
 from fmc_mcp.tools.object_writes import editable
 
 SERVER = "dhcp/dhcpserver"
@@ -144,8 +144,8 @@ async def device_dhcp(app: FmcApp, device: dict[str, Any], domain: str | None) -
         return None
     names: dict[str, str] = {}
     try:
-        for kind, i in await device_interfaces(app, dev_id, domain, DHCP_KINDS):
-            names[str(i.get("id"))] = str(i.get("ifname") or interface_row(kind, i)["name"])
+        for _, i in await device_interfaces(app, dev_id, domain, DHCP_KINDS):
+            names[str(i.get("id"))] = str(i.get("ifname") or hw_name(i))
     except UpstreamError:
         pass
     return dhcp_summary(found.get("server"), found.get("relay"), names)
@@ -187,20 +187,32 @@ def pool_blockers(pool: str, net: ipaddress.IPv4Interface | None, label: str) ->
     return out
 
 
+def hw_name(i: dict[str, Any]) -> str:
+    """An interface's hardware name as FMC lists it: a subinterface is its parent's name + '.' +
+    subIntfId (Ethernet0/0.3020); the interface record itself names only the parent."""
+    name = str(i.get("name") or "")
+    if i.get("subIntfId") is not None and "." not in name:
+        name = f"{name}.{i['subIntfId']}"
+    return name
+
+
 def iface_ref(i: dict[str, Any]) -> dict[str, Any]:
-    """An interface reference in a DHCP body: FMC names the interface by its logical name there."""
-    return {"id": i["id"], "type": i.get("type"), "name": i.get("ifname") or i.get("name")}
+    """An interface reference in a DHCP body. FMC 10.0 names the interface by its hardware name there
+    (Ethernet0/3, Ethernet0/0.3020) and refuses the logical name with 400 "Invalid 'name' ... for
+    Interface"; its own GET of the settings returns the hardware name too."""
+    return {"id": i["id"], "type": i.get("type"), "name": hw_name(i)}
 
 
 def same_iface(ref: Any, i: dict[str, Any]) -> bool:
+    """Whether a DHCP body's interface reference is this interface: by id, else by its hardware name or
+    its logical name (older bodies and FMC releases carry the logical one). A subinterface's bare parent
+    name (Ethernet0/0) is the parent's, not the subinterface's."""
     if not isinstance(ref, dict):
         return False
     if ref.get("id") and i.get("id"):
         return str(ref["id"]).lower() == str(i["id"]).lower()
-    return str(ref.get("name", "")).lower() in {
-        str(i.get("ifname", "")).lower(),
-        str(i.get("name", "")).lower(),
-    }
+    want = str(ref.get("name", "")).lower()
+    return bool(want) and want in {str(i.get("ifname") or "").lower(), hw_name(i).lower()}
 
 
 Placeholder = dict[str, Any]  # a host object to create on confirm: {name, type, value}
@@ -338,7 +350,8 @@ def register(reg: ToolRegistrar) -> None:
             raise InvalidRequest(
                 f"{iface.get('name')} has no logical name; name it first (fmc_update_interface)."
             )
-        label = f"{iface.get('ifname')} ({iface.get('name')})"
+        label = f"{iface.get('ifname')} ({hw_name(iface)})"
+        names = {str(i.get("id")): str(i.get("ifname") or hw_name(i)) for _, i in items}
         s_path, s_cur = await singleton(app, str(dev["id"]), SERVER, domain)
         r_path, r_cur = await singleton(app, str(dev["id"]), RELAY, domain)
         server = copy.deepcopy(editable(s_cur))
@@ -539,11 +552,11 @@ def register(reg: ToolRegistrar) -> None:
             return {
                 "device": label_dev,
                 "applied": done,
-                "dhcp": dhcp_summary(fill_hosts(s_body, made), fill_hosts(r_body, made)),
+                "dhcp": dhcp_summary(fill_hosts(s_body, made), fill_hosts(r_body, made), names),
                 "next": f"fmc_deploy to {label_dev}, then fmc_run_show_command('show dhcpd state')",
             }
 
-        after = dhcp_summary(s_body, r_body)
+        after = dhcp_summary(s_body, r_body, names)
         return await fmc_preview(
             ctx,
             tool="fmc_configure_dhcp",
