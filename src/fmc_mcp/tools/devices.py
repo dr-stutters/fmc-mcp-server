@@ -25,6 +25,7 @@ from fmc_mcp.tools.common import Domain, ref_label, resolve_in, slim
 DEVICES = "devices/devicerecords"
 HA_PAIRS = "devicehapairs/ftddevicehapairs"
 CLUSTERS = "deviceclusters/ftddevicecluster"
+INLINE_SETS = "inlinesets"  # IPS-only interface pairs (F96)
 
 INTERFACE_KINDS = {
     "physical": "physicalinterfaces",
@@ -295,6 +296,42 @@ def logical_details(i: dict[str, Any]) -> dict[str, Any]:
     return out
 
 
+async def inline_sets(app: FmcApp, device_id: str, domain: str | None) -> list[dict[str, Any]]:
+    """Every inline set of a device (expanded); a model or version without them (404/405) has none."""
+    try:
+        page = await app.all(await app.config_path(f"{DEVICES}/{device_id}/{INLINE_SETS}", domain), cap=500)
+    except UpstreamError as e:
+        if e.status_code in (404, 405):
+            return []
+        raise
+    return list(page.items)
+
+
+def pair_names(s: dict[str, Any]) -> list[list[str]]:
+    return [
+        [ref_label(p.get("first") or {}), ref_label(p.get("second") or {})]
+        for p in s.get("inlinepairs") or []
+    ]
+
+
+def inline_set_row(s: dict[str, Any]) -> dict[str, Any]:
+    """An inline set in plain words, for previews, fmc_get_device and the device export."""
+    row = {
+        "name": s.get("name"),
+        "id": s.get("id"),
+        "pairs": pair_names(s),
+        "tap_mode": bool(s.get("tapMode")),
+        "fail_open_snort_down": s.get("failOpenSnortDown"),
+        "fail_open_snort_busy": s.get("failOpenSnortBusy"),
+        "propagate_link_state": s.get("propogateLinkState"),
+        "strict_tcp": s.get("strictTCPEnforcement"),
+        "mtu": s.get("mtu"),
+        "bypass": s.get("bypass"),
+        "description": s.get("description"),
+    }
+    return {k: v for k, v in row.items() if v is not None}
+
+
 async def zone_names(app: FmcApp, domain: str | None) -> dict[str, str]:
     """Security zone id -> name. Interfaces reference their zone by id only."""
     key = f"zones:{domain or ''}"
@@ -343,12 +380,18 @@ def register(reg: ToolRegistrar) -> None:
     async def fmc_get_device(ctx: Context, device: DeviceRef, domain: Domain = None) -> ToolResult:
         """Get one managed device in full: model, serial, version, health and message, license
         capabilities, performance tier, assigned access/health policies, HA/cluster role and
-        deployment status. Interfaces are listed by fmc_list_device_interfaces."""
+        deployment status, and its inline sets (IPS-only interface pairs: tap mode, fail-open). Interfaces
+        are listed by fmc_list_device_interfaces."""
         app: FmcApp = get_client(ctx)
         d = await resolve_in(app, DEVICES, device, "device", domain)
         if not d.get("model") and d.get("id"):
             d = await app.api.get(await app.config_path(f"{DEVICES}/{d['id']}", domain))
-        return object_result(slim(d))
+        out = slim(d)
+        if d.get("id"):
+            sets = await inline_sets(app, str(d["id"]), domain)
+            if sets:
+                out["inline_sets"] = [inline_set_row(s) for s in sets]
+        return object_result(out)
 
     @reg.read(title="List device interfaces")
     async def fmc_list_device_interfaces(

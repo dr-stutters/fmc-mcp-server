@@ -50,6 +50,8 @@ DELETABLE_KINDS = {"subinterface", "etherchannel", "vlan", "vti", "loopback", "b
 # a VTI PUT that echoes managementOnly with 400 "Fields: { managementOnly } must be excluded from json
 # payload" (seen live on an SD-WAN spoke's static VTI, 2026-10-18).
 GET_ONLY_FIELDS: dict[str, tuple[str, ...]] = {"vti": ("managementOnly",)}
+# fmc_update_interface mode -> FMC's interface `mode` (NONE is routed).
+IFACE_MODES = {"routed": "NONE", "inline": "INLINE", "passive": "PASSIVE"}
 ASSIGNABLE = {
     "access": "AccessPolicy",
     "nat": "FTDNatPolicy",
@@ -762,15 +764,24 @@ def register(reg: ToolRegistrar) -> None:
         ipv4: Ipv4Setting = None,
         mtu: Annotated[int | None, Field(ge=64, le=9198, description="MTU; omit to keep")] = None,
         description: Annotated[str | None, Field(description="Description ('' clears it)")] = None,
+        mode: Annotated[
+            Literal["routed", "inline", "passive"] | None,
+            Field(
+                description="Physical interface / EtherChannel mode: routed (FMC 'None'), inline (an inline "
+                "set member, fmc_create_inline_set) or passive (IPS-only, a SPAN copy); omit to keep"
+            ),
+        ] = None,
         domain: Domain = None,
         confirm: Confirm = None,
     ) -> dict[str, Any]:
         """Configure an existing device interface (physical, subinterface, EtherChannel, VLAN, VTI,
-        loopback or BVI): logical name, admin state, security zone, IPv4 (static or DHCP), MTU and
-        description. Only the fields you pass change. A routed data interface needs a logical name to
-        carry traffic or join a zone; loopbacks and BVIs take no zone, loopbacks and VTIs no DHCP, and
-        an address on a VTI replaces the one it borrowed. Preview shows the before/after; deploy with
-        fmc_deploy. New loopbacks, VTIs, EtherChannels and BVIs: fmc_create_interface."""
+        loopback or BVI): logical name, admin state, security zone, IPv4 (static or DHCP), MTU,
+        description and, on physical interfaces and EtherChannels, the mode (routed, or IPS-only inline /
+        passive: no address, an INLINE / PASSIVE zone). Only the fields you pass change. A routed data
+        interface needs a logical name to carry traffic or join a zone; loopbacks and BVIs take no zone,
+        loopbacks and VTIs no DHCP, and an address on a VTI replaces the one it borrowed. Preview shows
+        the before/after; deploy with fmc_deploy. New loopbacks, VTIs, EtherChannels and BVIs:
+        fmc_create_interface; inline pairs: fmc_create_inline_set."""
         app: FmcApp = get_client(ctx)
         dev = await resolve_device(app, device, domain)
         items = await device_interfaces(app, dev["id"], domain)
@@ -817,6 +828,8 @@ def register(reg: ToolRegistrar) -> None:
                 desired["description"] = description
             else:
                 desired.pop("description", None)
+        if mode is not None:
+            desired["mode"] = IFACE_MODES[mode]
         if kind == "physical" and desired.get("ifname") and desired.get("mode") in (None, "NONE"):
             desired["mode"] = "NONE"  # routed
         zones = await zone_names(app, domain)
@@ -847,6 +860,30 @@ def register(reg: ToolRegistrar) -> None:
                     '"Security zone should be in same mode as of Interface mode type"). Use a SWITCHED '
                     "zone (fmc_create_security_zone interface_mode='SWITCHED')."
                 )
+        ips_mode = str(desired.get("mode") or "NONE").upper()
+        if mode is not None and kind not in ("physical", "etherchannel"):
+            blockers.append(
+                f"Only physical interfaces and EtherChannels have a mode; {kind} is always routed."
+            )
+        elif ips_mode in ("INLINE", "PASSIVE"):
+            what = "An inline" if ips_mode == "INLINE" else "A passive"
+            if desired.get("ipv4"):
+                blockers.append(
+                    f"{what} interface takes no IP address: clear it in the same call "
+                    "(ipv4='none'), after moving any routes, NAT or VPN off its logical name."
+                )
+            if not desired.get("ifname"):
+                blockers.append(f"{what} interface needs a logical_name.")
+            zid = (desired.get("securityZone") or {}).get("id")
+            if zid:
+                zone = await app.api.get(await app.config_path(f"object/securityzones/{zid}", domain))
+                zmode = str(zone.get("interfaceMode") or "").upper()
+                if zmode and zmode != ips_mode:
+                    blockers.append(
+                        f"{what} interface needs a security zone of mode {ips_mode} and "
+                        f"{zone.get('name')!r} is {zmode}: pass security_zone='none' or such a zone "
+                        f"(fmc_create_security_zone interface_mode='{ips_mode}')."
+                    )
         if kind == "loopback" and mtu is not None:
             blockers.append("A loopback has no MTU setting.")
         if current.get("managementOnly") or str(current.get("name", "")).lower().startswith("management"):
@@ -866,6 +903,7 @@ def register(reg: ToolRegistrar) -> None:
                 "ipv4": ipv4,
                 "mtu": mtu,
                 "description": description,
+                "mode": mode,
                 "domain": domain,
             },
             confirm=confirm,
