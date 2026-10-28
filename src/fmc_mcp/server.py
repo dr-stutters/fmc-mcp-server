@@ -75,6 +75,7 @@ from fmc_mcp.tools import (
     sdwan_status,
     security_intel,
     service_chain,
+    sla_monitors,
     snapshot,
     system,
     templates,
@@ -137,6 +138,10 @@ Workflows:
   Route policy: fmc_create_prefix_list / fmc_create_route_map, then fmc_configure_bgp
   (neighbor_route_map_in/out, neighbor_prefix_list_in/out, max_prefix, default_originate,
   redistribute) or fmc_configure_ospf(redistribute) -> fmc_deploy -> 'show route bgp'.
+- Dual-ISP failover (tracked static route): fmc_create_sla_monitor (ISP-1 next hop, outside zone) ->
+  fmc_create_static_route(track=<monitor>, metric=1) via ISP-1 -> a floating route via ISP-2 (metric 10)
+  -> fmc_deploy -> 'show route' / 'show sla monitor operational-state'. fmc_delete_sla_monitor is
+  blocked while a route tracks it; list them with fmc_list_objects(type='sla_monitor').
 - SD-WAN (hub and spoke over VTIs): zone the WAN and inside interfaces (fmc_update_interface) ->
   fmc_create_sdwan_topology (hub DVTI, spoke pool, spokes, backup hub, iBGP overlay) -> fmc_deploy hubs
   and spokes -> fmc_get_vpn_topology / fmc_list_vpn_tunnels; add or remove branches and the backup hub
@@ -359,6 +364,7 @@ REGISTER: list[Callable[[ToolRegistrar], None]] = [
     hardening.register,
     routing.register,
     route_policy.register,
+    sla_monitors.register,
     app_routing.register,
     intrusion.register,
     file_policy.register,
