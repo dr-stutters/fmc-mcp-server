@@ -225,3 +225,121 @@ async def test_list_and_where_used(lab: respx.MockRouter) -> None:
     (row,) = listed["results"]
     assert row["value"] == "192.0.2.10" and row["sla_id"] == 1
     assert used["in_use"] and used["used_by"][0]["device"] == DEV["name"]
+
+
+# --- fmc #364: fmc_update_sla_monitor, and the 'sla monitor' FMC leaves on the device -----------------
+
+
+def monitor_by_id(fmc: respx.MockRouter, m: dict[str, Any]) -> None:
+    fmc.get(f"{CFG}/object/slamonitors/{m['id']}").mock(return_value=httpx.Response(200, json=m))
+
+
+async def test_update_sla_monitor_puts_the_full_object(lab: respx.MockRouter) -> None:
+    current = {**MON, "description": "ISP-1", "metadata": {"timestamp": 1}, "links": {"self": "x"}}
+    monitors(lab, current)
+    monitor_by_id(lab, current)
+    routes(lab, route("192.0.2.1", 1, iface="outside", tracked=True, rid="r-tracked"))
+    put = lab.put(f"{CFG}/object/slamonitors/{MON['id']}").mock(return_value=httpx.Response(200, json=MON))
+    args = {"monitor": "mcp-sla-isp1", "monitor_address": "203.0.113.99", "frequency": 10, "timeout_ms": 2000}
+    args["threshold_ms"] = 1000
+    preview, done = await confirm("fmc_update_sla_monitor", args)
+    p = preview["preview"]
+    assert p["changes"] == {
+        "monitor_address": {"from": "192.0.2.10", "to": "203.0.113.99"},
+        "frequency_s": {"from": 60, "to": 10},
+        "threshold_ms": {"from": 5000, "to": 1000},
+        "timeout_ms": {"from": 5000, "to": 2000},
+    }
+    assert p["tracked_by_routes"][0]["id"] == "r-tracked"
+    side = " ".join(preview["side_effects"])
+    assert DEV["name"] in side and "next fmc_deploy" in side and "floating backup" in side
+    body = json.loads(put.calls.last.request.content)
+    assert body == {
+        **MON,
+        "description": "ISP-1",
+        "monitorAddress": "203.0.113.99",
+        "frequency": 10,
+        "threshold": 1000,
+        "timeout": 2000,
+    }  # no metadata/links; slaId, zones, tos, packets and size kept
+    assert done["status"] == "applied"
+
+
+async def test_update_sla_monitor_zones_and_blockers(lab: respx.MockRouter) -> None:
+    monitors(lab, {**MON, "interfaceNames": ["outside"]})
+    routes(lab)
+    put = lab.put(f"{CFG}/object/slamonitors/{MON['id']}").mock(return_value=httpx.Response(200, json=MON))
+    preview, _ = await confirm(
+        "fmc_update_sla_monitor", {"monitor": "mcp-sla-isp1", "interfaces": [ZONES[0]["name"]]}
+    )
+    assert "No static route tracks this monitor" in " ".join(preview["side_effects"])
+    body = json.loads(put.calls.last.request.content)
+    assert body["interfaceObjects"] == [
+        {"id": ZONES[0]["id"], "type": "SecurityZone", "name": ZONES[0]["name"]}
+    ]
+    assert "interfaceNames" not in body
+    put.reset()
+    out = await preview_of(
+        "fmc_update_sla_monitor",
+        {"monitor": "mcp-sla-isp1", "threshold_ms": 6000, "monitor_address": "224.0.0.5"},
+    )
+    assert out["status"] == "blocked" and not put.called
+    text = " ".join(out["blockers"])
+    assert "can't exceed timeout_ms" in text and "can't answer an echo probe" in text
+    out = await preview_of("fmc_update_sla_monitor", {"monitor": "mcp-sla-isp1", "frequency": 60})
+    assert out["status"] == "blocked" and any("Nothing to change" in b for b in out["blockers"])
+
+
+async def test_update_object_points_to_update_sla_monitor(lab: respx.MockRouter) -> None:
+    monitors(lab, MON)
+    from fastmcp.exceptions import ToolError
+
+    with pytest.raises(ToolError, match="fmc_update_sla_monitor"):
+        await preview_of(
+            "fmc_update_object", {"object": "mcp-sla-isp1", "type": "sla_monitor", "value": "192.0.2.9"}
+        )
+
+
+async def test_delete_sla_monitor_names_the_leftover(lab: respx.MockRouter) -> None:
+    monitors(lab, MON)
+    out = await preview_of("fmc_delete_sla_monitor", {"monitor": "mcp-sla-isp1"})
+    side = " ".join(out["side_effects"])
+    assert "leaves 'sla monitor 1'" in side and "no sla monitor 1" in side and "reuse SLA ID 1" in side
+
+
+async def test_delete_last_tracking_route_warns_about_the_leftover(lab: respx.MockRouter) -> None:
+    monitors(lab, MON)
+    monitor_by_id(lab, MON)
+    tracked = route("192.0.2.1", 1, iface="outside", tracked=True)
+    tracked["id"] = "0050568a-0c0b-0ed3-0000-021474855101"
+    routes(lab, tracked, route("198.51.100.1", 10))
+    lab.get(f"{DEVPATH}/routing/ipv4staticroutes/{tracked['id']}").mock(
+        return_value=httpx.Response(200, json=tracked)
+    )
+    args = {"device": "mcp-ftd1", "route_id": tracked["id"]}
+    out = await preview_of("fmc_delete_static_route", args)
+    side = " ".join(out["side_effects"])
+    assert "last route on mcp-ftd1 tracking SLA monitor mcp-sla-isp1" in side
+    assert "no sla monitor 1" in side
+    # a second route still tracks the monitor on this device: no leftover yet
+    other = {**tracked, "id": "0050568a-0c0b-0ed3-0000-021474855102"}
+    routes(lab, tracked, other)
+    out = await preview_of("fmc_delete_static_route", args)
+    assert "sla monitor" not in " ".join(out["side_effects"])
+
+
+async def test_delete_untracked_route_has_no_sla_note(lab: respx.MockRouter) -> None:
+    plain = {**route("198.51.100.1", 10), "id": "0050568a-0c0b-0ed3-0000-021474855103"}
+    lab.get(f"{DEVPATH}/routing/ipv4staticroutes/{plain['id']}").mock(
+        return_value=httpx.Response(200, json=plain)
+    )
+    out = await preview_of("fmc_delete_static_route", {"device": "mcp-ftd1", "route_id": plain["id"]})
+    assert out["side_effects"] == ["Removed from the device on the next deployment."]
+
+
+async def test_delete_subinterface_names_it_in_the_action(lab: respx.MockRouter) -> None:
+    sub = {"type": "SubInterface", "name": "Ethernet0/3", "subIntfId": 3999, "vlanId": 3999, "id": "sub-3999"}
+    lab.get(f"{DEVPATH}/subinterfaces").mock(return_value=items([sub]))
+    out = await preview_of("fmc_delete_interface", {"device": "mcp-ftd1", "interface": "Ethernet0/3.3999"})
+    assert out["status"] == "preview", out
+    assert out["action"] == "Delete subinterface interface Ethernet0/3.3999 on mcp-ftd1"

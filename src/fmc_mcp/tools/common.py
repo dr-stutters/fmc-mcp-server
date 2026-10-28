@@ -53,7 +53,7 @@ OBJECT_TYPES: dict[str, ObjType] = {
         ObjType("geolocation", "object/geolocations", "Geolocation", "other", writable=False),
         # FMC's spec lists only the collection GET/POST; GET and DELETE by id work on FMC 10.0.1
         ObjType("cipher_suite_list", "object/ciphersuitelists", "CipherSuiteList", "other"),
-        # Route tracking (F92): create with fmc_create_sla_monitor, delete with fmc_delete_sla_monitor
+        # Route tracking (F92): fmc_create_sla_monitor, fmc_update_sla_monitor, fmc_delete_sla_monitor
         ObjType("sla_monitor", "object/slamonitors", "SLAMonitor", "other"),
     )
 }

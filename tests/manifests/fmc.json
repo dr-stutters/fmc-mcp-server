@@ -1591,6 +1591,10 @@
       "tier": "write",
       "title": "Update SD-WAN topology"
     },
+    "fmc_update_sla_monitor": {
+      "tier": "write",
+      "title": "Update SLA monitor"
+    },
     "fmc_upgrade_status": {
       "tier": "read",
       "title": "Version and upgrade status"
