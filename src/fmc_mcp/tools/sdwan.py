@@ -1,11 +1,11 @@
-"""Firewall SD-WAN (F51a): build and change FMC's SD-WAN wizard topology (AUTO_VPN hub and spoke).
+"""FTD SD-WAN (F51a): build and change FMC's SD-WAN wizard topology (AUTO_VPN hub and spoke).
 
 The wizard's topology is an `FTDS2SVpn` with `topologyType: AUTO_VPN` (with HUB_AND_SPOKE FMC silently
 drops `autoVpnSettings`). Each hub terminates spokes on a dynamic VTI (DVTI) that borrows its address
 from a loopback, and hands each spoke a tunnel address from an `IPv4AddressPool`; spokes are added on
 their physical WAN interface and FMC builds the spoke's static VTI itself. With iBGP on, FMC generates
 the overlay routing (`router bgp <AS>` with community-tagged route maps and the inside networks
-redistributed). Reads stay on fmc_list_vpn_topologies(kind='sdwan') and fmc_get_vpn_topology; delete
+redistributed). Reads stay on fmc_list_vpn_topologies(kind='ftdsdwan') and fmc_get_vpn_topology; delete
 with fmc_delete_s2s_vpn.
 """
 
@@ -29,6 +29,7 @@ from fmc_mcp._core import (
 )
 from fmc_mcp.client import FmcApp, is_uuid
 from fmc_mcp.preview import fmc_preview
+from fmc_mcp.renames import tool_alias
 from fmc_mcp.tools.common import Domain, pick_by_name, ref_label, resolve_object
 from fmc_mcp.tools.device_config import device_interfaces, iref, pick_interface
 from fmc_mcp.tools.devices import DEVICES, INTERFACE_KINDS
@@ -212,7 +213,7 @@ async def plan_pool(app: FmcApp, ref: str, new_name: str, domain: str | None) ->
             "name": new_name,
             "ipAddressRange": f"{hosts[1]}-{hosts[-1]}",
             "mask": str(net.netmask),
-            "description": "SD-WAN spoke tunnel addresses (fmc_create_sdwan_topology)",
+            "description": "SD-WAN spoke tunnel addresses (fmc_create_ftdsdwan_topology)",
         }
         return PoolPlan(None, body, net, str(hosts[0]))
     full = await app.config_path(POOLS, domain)
@@ -311,7 +312,7 @@ async def plan_hub(
         "securityZone": {"id": zone["id"], "type": "SecurityZone", "name": zone.get("name")},
         "ipAddressAssignmentType": "BORROW_IP_FROM_INTERFACE",
         "ipsecMode": "ipv4",
-        "description": "SD-WAN hub DVTI (fmc_create_sdwan_topology)",
+        "description": "SD-WAN hub DVTI (fmc_create_ftdsdwan_topology)",
     }
     return hub
 
@@ -460,7 +461,7 @@ async def plan_spoke_loopbacks(
             "ifname": OSPF_LOOPBACK,
             "ipv4": {"static": {"address": str(ip), "netmask": "255.255.255.255"}},
             "description": "SD-WAN OSPF overlay: the spoke tunnel borrows this address "
-            "(fmc_create_sdwan_topology)",
+            "(fmc_create_ftdsdwan_topology)",
         }
     return blockers
 
@@ -679,8 +680,8 @@ def _deploy_note(names: list[str]) -> str:
 
 
 def register(reg: ToolRegistrar) -> None:
-    @reg.write(title="Create SD-WAN topology")
-    async def fmc_create_sdwan_topology(
+    @reg.write(title="Create FTD SD-WAN topology")
+    async def fmc_create_ftdsdwan_topology(
         ctx: Context,
         name: Annotated[str, Field(description="New topology name", min_length=1, max_length=64)],
         hub: Annotated[str, Field(description="Primary hub FTD or HA pair (name/UUID)")],
@@ -771,7 +772,7 @@ def register(reg: ToolRegistrar) -> None:
         domain: Domain = None,
         confirm: Confirm = None,
     ) -> dict[str, Any]:
-        """Build an SD-WAN hub-and-spoke topology the way FMC's SD-WAN wizard does (FMC 7.6+): a
+        """Build an FTD SD-WAN hub-and-spoke topology the way FMC's SD-WAN wizard does (FMC 7.6+): a
         dynamic VTI on the hub (created from its WAN interface and a loopback when it doesn't exist), a
         spoke tunnel address pool, the spokes on their WAN interfaces (FMC builds each spoke's VTI and
         addresses it from the pool), an optional backup hub with its own DVTI and pool, IKEv2, and iBGP
@@ -1086,7 +1087,7 @@ def register(reg: ToolRegistrar) -> None:
         shown_ike = {**ike_v2, "manualPreSharedKey": MASK} if pre_shared_key else ike_v2
         return await fmc_preview(
             ctx,
-            tool="fmc_create_sdwan_topology",
+            tool="fmc_create_ftdsdwan_topology",
             args={
                 "name": name,
                 "hub": hub,
@@ -1159,8 +1160,8 @@ def register(reg: ToolRegistrar) -> None:
             apply=apply,
         )
 
-    @reg.write(title="Update SD-WAN topology")
-    async def fmc_update_sdwan_topology(
+    @reg.write(title="Update FTD SD-WAN topology")
+    async def fmc_update_ftdsdwan_topology(
         ctx: Context,
         topology: TopologyRef,
         add_spokes: Spokes = None,
@@ -1189,8 +1190,8 @@ def register(reg: ToolRegistrar) -> None:
         domain: Domain = None,
         confirm: Confirm = None,
     ) -> dict[str, Any]:
-        """Change an SD-WAN (AUTO_VPN) topology: add or remove spokes, add or remove a backup hub (with
-        its own DVTI and spoke pool, created as in fmc_create_sdwan_topology), or switch ECMP. Spokes
+        """Change an FTD SD-WAN (AUTO_VPN) topology: add or remove spokes, add or remove a backup hub (with
+        its own DVTI and spoke pool, created as in fmc_create_ftdsdwan_topology), or switch ECMP. Spokes
         added to an OSPF overlay get a /32 loopback from spoke_loopbacks that their tunnel borrows. The
         preview lists the endpoints before and after and the devices to deploy: adding or removing a
         spoke changes the hubs' configuration too, and a hub change reaches every spoke. The primary
@@ -1208,7 +1209,7 @@ def register(reg: ToolRegistrar) -> None:
         if str(t.get("topologyType")) != "AUTO_VPN" and not t.get("autoVpnSettings"):
             raise InvalidRequest(
                 f"{t.get('name')!r} is not an SD-WAN topology ({t.get('topologyType')}); this tool "
-                "only changes AUTO_VPN topologies (fmc_create_sdwan_topology)."
+                "only changes AUTO_VPN topologies (fmc_create_ftdsdwan_topology)."
             )
         path = await app.config_path(f"{S2S}/{t['id']}", domain)
         endpoints = (await app.all(f"{path}/endpoints", cap=2000)).items
@@ -1317,7 +1318,8 @@ def register(reg: ToolRegistrar) -> None:
                 blockers.append(
                     f"{sp.device['name']}: backup_wan_interface needs the second-WAN topology {companion!r} "
                     "(FMC 10.0.1 drops backupInterfaces on AUTO_VPN spokes). Create the topology with "
-                    "fmc_create_sdwan_topology(hub_backup_wan_interface=..., backup_wan_pool=...) to get it."
+                    "fmc_create_ftdsdwan_topology(hub_backup_wan_interface=..., backup_wan_pool=...) to get "
+                    "it."
                 )
             elif sp.backup and sp.device["id"] in c_by_dev:
                 blockers.append(f"{sp.device['name']} is already in {companion!r}.")
@@ -1433,7 +1435,7 @@ def register(reg: ToolRegistrar) -> None:
 
         return await fmc_preview(
             ctx,
-            tool="fmc_update_sdwan_topology",
+            tool="fmc_update_ftdsdwan_topology",
             owned=[t, c_topo],
             args={
                 "topology": topology,
@@ -1487,3 +1489,11 @@ def register(reg: ToolRegistrar) -> None:
             ),
             apply=apply,
         )
+
+    # F86: the pre-0.20.0 names, one minor release (renames.py)
+    reg.write(title="Create FTD SD-WAN topology (deprecated name)", name="fmc_create_sdwan_topology")(
+        tool_alias(fmc_create_ftdsdwan_topology, "fmc_create_sdwan_topology")
+    )
+    reg.write(title="Update FTD SD-WAN topology (deprecated name)", name="fmc_update_sdwan_topology")(
+        tool_alias(fmc_update_ftdsdwan_topology, "fmc_update_sdwan_topology")
+    )

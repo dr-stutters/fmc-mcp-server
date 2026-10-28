@@ -66,8 +66,8 @@ async def test_several_areas_exclusions_and_tiers_on_top(fmc: respx.MockRouter) 
     tools, prompts = await names(server(toolsets="troubleshoot, policy"))
     assert tools == toolsets.TOOLSETS["troubleshoot"] | toolsets.TOOLSETS["policy"] | CORE
     assert "fmc_why_blocked" in prompts and "fmc_vpn_troubleshoot" not in prompts
-    tools, _ = await names(server(toolsets="all,-sdwan,-tls"))
-    assert not tools & (toolsets.TOOLSETS["sdwan"] | toolsets.TOOLSETS["tls"])
+    tools, _ = await names(server(toolsets="all,-ftdsdwan,-tls"))
+    assert not tools & (toolsets.TOOLSETS["ftdsdwan"] | toolsets.TOOLSETS["tls"])
     assert toolsets.TOOLSETS["vpn"] <= tools
     # the tiers still apply: objects without writes = the object reads
     tools, _ = await names(create_server(make_settings(toolsets="objects")))
@@ -95,7 +95,7 @@ def test_unknown_toolsets_fail_at_startup(spec: str, message: str) -> None:
 def test_parse() -> None:
     assert toolsets.parse(None) is None and toolsets.parse(" , ") is None
     assert toolsets.parse("Troubleshoot") == {"troubleshoot", "core"}
-    assert toolsets.parse("-sdwan") == set(toolsets.TOOLSETS) - {"sdwan"}
+    assert toolsets.parse("-ftdsdwan") == set(toolsets.TOOLSETS) - {"ftdsdwan"}
     assert toolsets.parse("all") == set(toolsets.TOOLSETS)
 
 
@@ -125,3 +125,29 @@ def test_readme_lists_every_toolset() -> None:
     readme = (Path(__file__).resolve().parent.parent.parent / "README.md").read_text()
     for area, (blurb, _) in toolsets.CATALOGUE.items():
         assert f"| `{area}` |" in readme and blurb in readme, f"README toolsets table: {area}"
+
+
+async def test_old_sdwan_toolset_name_selects_the_same_tools_and_warns(fmc: respx.MockRouter) -> None:
+    """F86: `sdwan` is `ftdsdwan` (FTD SD-WAN) for one minor release; fmc_status warns about the old name."""
+    assert toolsets.parse("sdwan") == toolsets.parse("ftdsdwan") == {"ftdsdwan", "core"}
+    assert toolsets.parse("all,-sdwan") == toolsets.parse("all,-ftdsdwan")
+    old_tools, old_prompts = await names(server(toolsets="sdwan"))
+    new_tools, new_prompts = await names(server(toolsets="ftdsdwan"))
+    assert old_tools == new_tools and old_prompts == new_prompts
+    assert {"fmc_ftdsdwan_status", "fmc_sdwan_status", "fmc_create_ftdsdwan_topology"} <= new_tools
+    assert {"fmc_ftdsdwan_troubleshoot", "fmc_sdwan_troubleshoot"} <= new_prompts
+    status = await call_tool(server(toolsets="sdwan,vpn"), "fmc_status")
+    assert status["fmc"]["toolsets"]["loaded"] == ["core", "ftdsdwan", "vpn"]
+    (warning,) = status["fmc"]["toolsets"]["warnings"]
+    assert "toolset 'sdwan' is now 'ftdsdwan'" in warning
+    new_status = await call_tool(server(toolsets="ftdsdwan,vpn"), "fmc_status")
+    assert "warnings" not in new_status["fmc"]["toolsets"]
+
+
+def test_renamed_tools_share_an_area_with_their_new_names() -> None:
+    from fmc_mcp.renames import RENAMED_PROMPTS, RENAMED_TOOLS
+
+    for old, new in RENAMED_TOOLS.items():
+        assert toolsets.AREA_OF[old] == toolsets.AREA_OF[new] == "ftdsdwan"
+    for old, new in RENAMED_PROMPTS.items():
+        assert toolsets.PROMPT_TOOLSETS[old] == toolsets.PROMPT_TOOLSETS[new]

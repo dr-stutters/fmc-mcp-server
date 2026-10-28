@@ -217,15 +217,18 @@ def register(reg: ToolRegistrar) -> None:
     async def fmc_list_vpn_topologies(
         ctx: Context,
         kind: Annotated[
-            Literal["all", "site_to_site", "sdwan"] | None,
-            Field(description="all (default), site_to_site (classic) or sdwan (AUTO_VPN hub and spoke)"),
+            Literal["all", "site_to_site", "ftdsdwan", "sdwan"] | None,
+            Field(
+                description="all (default), site_to_site (classic) or ftdsdwan (FTD SD-WAN: FMC's AUTO_VPN "
+                "hub and spoke; 'sdwan' is the deprecated name)"
+            ),
         ] = None,
         domain: Domain = None,
         limit: Annotated[int, Field(ge=1, le=1000)] = 100,
         offset: Annotated[int, Field(ge=0)] = 0,
         response_format: ResponseFormat = "markdown",
     ) -> ToolResult:
-        """Site-to-site and SD-WAN VPN topologies: kind (point-to-point, hub and spoke, full mesh;
+        """Site-to-site and FTD SD-WAN VPN topologies: kind (point-to-point, hub and spoke, full mesh;
         'SD-WAN' for FMC's AUTO_VPN topologies), route- or policy-based, IKE versions, and per
         topology how many tunnels are up and down. Details: fmc_get_vpn_topology."""
         app: FmcApp = get_client(ctx)
@@ -240,7 +243,7 @@ def register(reg: ToolRegistrar) -> None:
         for t in topos.items:
             row = topology_row(t)
             sdwan = row["kind"].startswith("SD-WAN")
-            if kind == "sdwan" and not sdwan or kind == "site_to_site" and sdwan:
+            if kind in ("ftdsdwan", "sdwan") and not sdwan or kind == "site_to_site" and sdwan:
                 continue
             c = counts.get(str(t.get("id")), {})
             row["tunnels_up"] = c.get("TUNNEL_UP", 0)
@@ -250,7 +253,7 @@ def register(reg: ToolRegistrar) -> None:
 
     @reg.read(title="Get VPN topology")
     async def fmc_get_vpn_topology(ctx: Context, topology: TopologyRef, domain: Domain = None) -> Any:
-        """One site-to-site or SD-WAN VPN topology in full: kind, route/policy-based, every endpoint
+        """One site-to-site or FTD SD-WAN VPN topology in full: kind, route/policy-based, every endpoint
         (device or extranet peer, interface or VTI, protected networks, NAT exemption, hub/spoke
         role), IKE settings (versions, policies, authentication; the pre-shared key is masked),
         IPsec settings (proposals, PFS, lifetimes) and the live tunnel states FMC monitors."""
@@ -566,7 +569,7 @@ def register(reg: ToolRegistrar) -> None:
         endpoints = await app.all(f"{base}/endpoints", cap=2000)
         rows = [endpoint_row(e) for e in endpoints.items]
         side_effects = ["The tunnels go down when the devices are next deployed."]
-        companion = f"{t.get('name')}-wan2"  # fmc_create_sdwan_topology's second-WAN topology
+        companion = f"{t.get('name')}-wan2"  # fmc_create_ftdsdwan_topology's second-WAN topology
         if t.get("topologyType") == "AUTO_VPN":
             try:
                 await resolve_topology(app, companion, domain)

@@ -363,7 +363,7 @@ def test_onboard_branch_steps_in_order() -> None:
     steps = [
         "fmc_license_status",
         "fmc_get_vpn_topology",
-        "fmc_sdwan_status",
+        "fmc_ftdsdwan_status",
         "fmc_register_device",
         "fmc_list_device_templates",
         "fmc_apply_device_template",
@@ -372,7 +372,7 @@ def test_onboard_branch_steps_in_order() -> None:
         "fmc_create_nat_rule",
         "fmc_rule_lookup",
         "fmc_deploy",
-        "fmc_update_sdwan_topology",
+        "fmc_update_ftdsdwan_topology",
         "fmc_list_deployments",
         "fmc_list_vpn_tunnels",
         "fmc_packet_tracer",

@@ -68,6 +68,35 @@
         "fmc"
       ]
     },
+    "fmc_ftdsdwan_troubleshoot": {
+      "arguments": [
+        "application",
+        "branch",
+        "destination",
+        "source",
+        "topology"
+      ],
+      "references": [
+        "fmc_ftdsdwan_status",
+        "fmc_get_routing",
+        "fmc_api_call",
+        "fmc_run_show_command",
+        "fmc_get_vpn_topology",
+        "fmc_list_vpn_tunnels",
+        "fmc_list_health_alerts",
+        "fmc_packet_tracer",
+        "fmc_why_blocked",
+        "fmc_update_ftdsdwan_topology",
+        "fmc_create_ftdsdwan_topology",
+        "fmc_pending_changes",
+        "fmc_deploy"
+      ],
+      "rendered": true,
+      "tier": "read",
+      "uses": [
+        "fmc"
+      ]
+    },
     "fmc_ha_failover_check": {
       "arguments": [
         "ha_pair",
@@ -129,7 +158,7 @@
         "fmc_get_device",
         "fmc_get_access_policy",
         "fmc_create_access_policy",
-        "fmc_sdwan_status",
+        "fmc_ftdsdwan_status",
         "cml_run_commands",
         "fmc_register_device",
         "fmc_get_device_template",
@@ -150,7 +179,7 @@
         "fmc_create_access_rule",
         "fmc_run_show_command",
         "fmc_deploy",
-        "fmc_update_sdwan_topology",
+        "fmc_update_ftdsdwan_topology",
         "fmc_list_deployments",
         "fmc_list_vpn_tunnels",
         "fmc_packet_tracer",
@@ -362,7 +391,7 @@
         "topology"
       ],
       "references": [
-        "fmc_sdwan_status",
+        "fmc_ftdsdwan_status",
         "fmc_get_routing",
         "fmc_api_call",
         "fmc_run_show_command",
@@ -371,8 +400,8 @@
         "fmc_list_health_alerts",
         "fmc_packet_tracer",
         "fmc_why_blocked",
-        "fmc_update_sdwan_topology",
-        "fmc_create_sdwan_topology",
+        "fmc_update_ftdsdwan_topology",
+        "fmc_create_ftdsdwan_topology",
         "fmc_pending_changes",
         "fmc_deploy"
       ],
@@ -442,7 +471,7 @@
         "fmc_configure_bgp",
         "fmc_create_nat_rule",
         "fmc_create_access_rule",
-        "fmc_sdwan_troubleshoot"
+        "fmc_ftdsdwan_troubleshoot"
       ],
       "rendered": true,
       "tier": "read",
@@ -831,6 +860,10 @@
       "tier": "write",
       "title": "Create file rule"
     },
+    "fmc_create_ftdsdwan_topology": {
+      "tier": "write",
+      "title": "Create FTD SD-WAN topology"
+    },
     "fmc_create_group": {
       "tier": "write",
       "title": "Create object group"
@@ -925,7 +958,7 @@
     },
     "fmc_create_sdwan_topology": {
       "tier": "write",
-      "title": "Create SD-WAN topology"
+      "title": "Create FTD SD-WAN topology (deprecated name)"
     },
     "fmc_create_security_zone": {
       "tier": "write",
@@ -1134,6 +1167,10 @@
     "fmc_flexconfig_review": {
       "tier": "read",
       "title": "Review FlexConfig"
+    },
+    "fmc_ftdsdwan_status": {
+      "tier": "read",
+      "title": "FTD SD-WAN status"
     },
     "fmc_get_access_policy": {
       "tier": "read",
@@ -1445,7 +1482,7 @@
     },
     "fmc_sdwan_status": {
       "tier": "read",
-      "title": "SD-WAN status"
+      "title": "FTD SD-WAN status (deprecated name)"
     },
     "fmc_search_spec": {
       "tier": "read",
@@ -1559,6 +1596,10 @@
       "tier": "write",
       "title": "Change device group"
     },
+    "fmc_update_ftdsdwan_topology": {
+      "tier": "write",
+      "title": "Update FTD SD-WAN topology"
+    },
     "fmc_update_group": {
       "tier": "write",
       "title": "Update object group"
@@ -1589,7 +1630,7 @@
     },
     "fmc_update_sdwan_topology": {
       "tier": "write",
-      "title": "Update SD-WAN topology"
+      "title": "Update FTD SD-WAN topology (deprecated name)"
     },
     "fmc_update_sla_monitor": {
       "tier": "write",

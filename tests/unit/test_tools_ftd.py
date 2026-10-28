@@ -377,7 +377,7 @@ async def test_run_show_command_checks_fmc_allowlist_first(ftd: respx.MockRouter
     async with Client(server()) as c:
         for bad, hint in (
             ("show bgp summary", "show route bgp"),
-            ("show path-monitoring", "fmc_sdwan_status"),
+            ("show path-monitoring", "fmc_ftdsdwan_status"),
         ):
             with pytest.raises(ToolError, match="not supported by FMC's command API") as e:
                 await run(c, "fmc_run_show_command", {"device": "nonexistent-device", "command": bad})

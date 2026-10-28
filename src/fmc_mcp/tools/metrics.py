@@ -7,7 +7,7 @@ snort_avg, system_avg, in %), `mem` (bytes plus used_percentage_system/lina/snor
 interface and an 'all' row: input/output bytes and packets, drop_packets, errors, ... as counters since the
 interface was cleared, plus status gauges), `conn_stats` (connections and xlates in use and the most used,
 connections per second all/tcp/udp), `asp_drops` (one counter per accelerated-security-path drop reason)
-and `snort` (flows, blocked/bypassed packets, queue use), besides `pathmonitoring` (fmc_sdwan_status),
+and `snort` (flows, blocked/bypassed packets, queue use), besides `pathmonitoring` (fmc_ftdsdwan_status),
 `disk_stats` and `critical_process`. An unknown metric name answers an empty result. `regexFilter`
 matches the label named like the metric (cpu, mem, interface = the hardware name), not the description.
 Counters are turned into rates here (difference over time, a reset counts from zero); the samples are

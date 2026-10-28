@@ -108,7 +108,9 @@ Changes made in FMC reach the firewalls only after a **deployment** (`fmc_deploy
 
 ## Tools
 
-There are 240 tools when every tier is enabled (93 read, 131 write, 16 dangerous; the dangerous tier turns `fmc_api_call` into a raw call), and eighteen workflow prompts (`fmc_why_blocked`, `fmc_firewall_health_review`, `fmc_sdwan_troubleshoot`, `fmc_vpn_troubleshoot`, `fmc_threat_defense_review`, `fmc_prove_user_policy`, `fmc_compliance_evidence`, `suite_change_check`, `suite_access_review`, `suite_asbuilt_drift`; `fmc_rule_change_review` and `fmc_policy_cleanup`, write tier; `fmc_onboard_ftd`, `fmc_onboard_branch`, `fmc_ha_failover_check`, `fmc_replace_device`, `suite_decommission_site` and `suite_maintenance_window`, dangerous tier). The `suite_*` prompts come from stutters-mcp-core and span products: `suite_access_review` lists who can change what on every connected platform (admin accounts, roles and the external groups that grant them, resolved to people through Active Directory); `suite_asbuilt_drift` checks whether NetBox has drifted from the wiring; `suite_decommission_site` removes one site everywhere it exists without leaving orphans (here: the FMC network objects for the site's subnets, after `fmc_where_used`); `suite_maintenance_window` runs one maintenance window at a site across products. Legs whose tools a server does not ship yet are marked pending in the prompt. `FMC_TOOLSETS` loads only some areas of them (see "Toolsets").
+There are 243 tools when every tier is enabled (94 read, 133 write, 16 dangerous; the dangerous tier turns `fmc_api_call` into a raw call), and nineteen workflow prompts (`fmc_why_blocked`, `fmc_firewall_health_review`, `fmc_ftdsdwan_troubleshoot`, `fmc_vpn_troubleshoot`, `fmc_threat_defense_review`, `fmc_prove_user_policy`, `fmc_compliance_evidence`, `suite_change_check`, `suite_access_review`, `suite_asbuilt_drift`; `fmc_rule_change_review` and `fmc_policy_cleanup`, write tier; `fmc_onboard_ftd`, `fmc_onboard_branch`, `fmc_ha_failover_check`, `fmc_replace_device`, `suite_decommission_site` and `suite_maintenance_window`, dangerous tier). The `suite_*` prompts come from stutters-mcp-core and span products: `suite_access_review` lists who can change what on every connected platform (admin accounts, roles and the external groups that grant them, resolved to people through Active Directory); `suite_asbuilt_drift` checks whether NetBox has drifted from the wiring; `suite_decommission_site` removes one site everywhere it exists without leaving orphans (here: the FMC network objects for the site's subnets, after `fmc_where_used`); `suite_maintenance_window` runs one maintenance window at a site across products. Legs whose tools a server does not ship yet are marked pending in the prompt. `FMC_TOOLSETS` loads only some areas of them (see "Toolsets").
+
+**Renamed in 0.20.0 (F86):** the FTD SD-WAN tools are `fmc_ftdsdwan_status`, `fmc_create_ftdsdwan_topology` and `fmc_update_ftdsdwan_topology`, the prompt is `fmc_ftdsdwan_troubleshoot` and the toolset is `ftdsdwan`, so they don't read as Catalyst SD-WAN (cat-sdwan-mcp-server, `catsdwan_*`). The old names `fmc_sdwan_status`, `fmc_create_sdwan_topology`, `fmc_update_sdwan_topology`, `fmc_sdwan_troubleshoot` and the toolset `sdwan` still work in 0.20.x as deprecated aliases (same result plus `renamed_to`; `fmc_status` warns about the old toolset name) and go in 0.21.0. Those three alias tools are counted above.
 
 **Read**
 
@@ -117,7 +119,7 @@ There are 240 tools when every tier is enabled (93 read, 131 write, 16 dangerous
 | System | `fmc_status`, `fmc_list_domains`, `fmc_list_audit_records`, `fmc_get_task`, `fmc_license_status` |
 | Activity (on demand) | `fmc_list_health_alerts`, `fmc_recent_activity` |
 | Devices | `fmc_list_devices`, `fmc_get_device`, `fmc_list_device_interfaces`, `fmc_list_routes`, `fmc_get_routing`, `fmc_get_platform_settings`, `fmc_list_ha_pairs`, `fmc_get_ha_status`, `fmc_list_clusters`, `fmc_list_device_groups` (members; a group goes wherever devices do: `group:<name>`) |
-| VPN | `fmc_list_vpn_topologies` (incl. SD-WAN), `fmc_get_vpn_topology`, `fmc_get_ravpn`, `fmc_vpn_status` (every site-to-site topology's tunnels with each device's IKE and IPsec SAs, traffic each way, last rekey and the routes over the VTIs; degraded tunnels first), `fmc_sdwan_status` (per branch: WAN links with path metrics, the path each app route takes now and why, tunnels and iBGP, ranked degraded links) |
+| VPN | `fmc_list_vpn_topologies` (incl. FTD SD-WAN: `kind='ftdsdwan'`), `fmc_get_vpn_topology`, `fmc_get_ravpn`, `fmc_vpn_status` (every site-to-site topology's tunnels with each device's IKE and IPsec SAs, traffic each way, last rekey and the routes over the VTIs; degraded tunnels first), `fmc_ftdsdwan_status` (per branch: WAN links with path metrics, the path each app route takes now and why, tunnels and iBGP, ranked degraded links) |
 | Device templates (FMC 7.6+) | `fmc_list_device_templates`, `fmc_get_device_template` (interfaces, variables, model mappings, VPN/SD-WAN settings, overridable objects, devices it was applied to; passwords masked) |
 | Troubleshooting | `fmc_packet_tracer` (`ingress_hop` / `expect_next_hop`: the FTD leg of an SD-WAN service chain, `chain_leg` says where the flow entered and whether it leaves back to the edge), `fmc_service_chain_check` (an FTD as a Catalyst SD-WAN service-chain firewall: interfaces on the edge links, link state, zones, routes back to the edge, the access policy's verdict for the chained flows, each failure with its fix tool), `fmc_run_show_command` (one device, or up to 25 at once: `devices`, HA pairs, a device `group`; a row per device), `fmc_get_hit_counts`, `fmc_device_health`, `fmc_device_metrics` (CPU, memory, throughput, connections and drops over a window: min/avg/max, peaks, dips and a compact series), `fmc_list_vpn_tunnels`, `fmc_live_connections` (a host's or user's connections on one FTD: peers, state, bytes, duration, rule, user), `fmc_user_identity_sessions` (who is on an IP, where a user is logged in), `fmc_prove_policy` (a table of flows with expected verdicts, each packet-traced on the FTD it crosses: pass / fail / mismatch with the deciding rule and the user the device saw), `fmc_get_profiler_results` (a Snort rule or CPU profiler run's result) |
 | Policies | `fmc_list_policies`, `fmc_get_access_policy` (base policy chain, lock holder, rule categories), `fmc_list_access_rules`, `fmc_get_access_rule`, `fmc_list_nat_rules`, `fmc_list_prefilter_rules`, `fmc_list_policy_assignments` |
@@ -215,12 +217,12 @@ Notes on some read tools:
 | Identity (AD/LDAP) | `fmc_create_trusted_ca` (CA for LDAPS), `fmc_create_realm` (bind password write-only), `fmc_download_realm` (users and groups now; needs `FMC_UI_USERNAME`), `fmc_delete_realm`, `fmc_create_identity_policy`, `fmc_create_identity_rule` (PASSIVE / ACTIVE / NO), `fmc_delete_identity_rule`; access rules on users and groups: `fmc_create_access_rule` / `fmc_update_access_rule` `users=[...]` |
 | DNS | `fmc_create_dns_policy`, `fmc_set_dns_policy`, `fmc_dns_block` (block/unblock domains via custom SI DNS lists; NXDOMAIN or drop) |
 | Licences | `fmc_set_device_licenses` (IPS, MALWARE_DEFENSE, URL, ...; a device or a device group in one preview) |
-| Device groups | `fmc_create_device_group`, `fmc_update_device_group` (add, remove, rename), `fmc_delete_device_group`; `fmc_deploy`, `fmc_assign_policy`, `fmc_backup_devices`, `fmc_set_device_licenses`, `fmc_device_metrics` and `fmc_sdwan_status(branch=...)` take a group |
+| Device groups | `fmc_create_device_group`, `fmc_update_device_group` (add, remove, rename), `fmc_delete_device_group`; `fmc_deploy`, `fmc_assign_policy`, `fmc_backup_devices`, `fmc_set_device_licenses`, `fmc_device_metrics` and `fmc_ftdsdwan_status(branch=...)` take a group |
 | Admin | `fmc_update_health_policy` (module on/off, thresholds), `fmc_create_health_policy` (from the default or another policy, per-module thresholds, optional devices), `fmc_assign_health_policy` (devices or `group:<name>`; preview shows the threshold changes per device), `fmc_delete_health_policy` (refused while assigned), `fmc_set_object_override` (per-device object values) |
 | Containment | `fmc_contain_host`, `fmc_release_host` (instant, no deploy); `fmc_si_block` (Security Intelligence block list for IPs, networks, URLs; logged; needs a deploy) |
 | Security Intelligence feeds and lists | `fmc_create_si_feed` (IP, URL or DNS feed FMC downloads on a schedule), `fmc_upload_si_list` (custom list from text, validated; replaces its own lists), `fmc_set_si_lists` (feeds, custom lists and Talos categories into an access policy's SI block or do-not-block list; DNS ones into its DNS policy as block, allow or monitor rules), `fmc_delete_si_object` |
 | HA | `fmc_configure_ha_monitoring` (monitored interfaces, standby IPs, failover MACs) |
-| VPN | `fmc_create_s2s_vpn` (point-to-point IKEv2 PSK; policy- or route-based), `fmc_delete_s2s_vpn`; SD-WAN: `fmc_create_sdwan_topology` (wizard hub and spoke: hub DVTI, spoke pool, spokes on their WAN interfaces, backup hub, a second WAN tunnel per spoke through the companion topology `<name>-wan2`, iBGP overlay), `fmc_update_sdwan_topology` (add or remove spokes, their second WAN and the backup hub, ECMP) |
+| VPN | `fmc_create_s2s_vpn` (point-to-point IKEv2 PSK; policy- or route-based), `fmc_delete_s2s_vpn`; FTD SD-WAN: `fmc_create_ftdsdwan_topology` (wizard hub and spoke: hub DVTI, spoke pool, spokes on their WAN interfaces, backup hub, a second WAN tunnel per spoke through the companion topology `<name>-wan2`, iBGP overlay), `fmc_update_ftdsdwan_topology` (add or remove spokes, their second WAN and the backup hub, ECMP) |
 | VPN | `fmc_create_s2s_vpn` (point-to-point IKEv2 PSK; policy- or route-based), `fmc_delete_s2s_vpn` |
 | Remote-access VPN | `fmc_create_address_pool` (IPv4 range + mask, or IPv6 start/prefix + count), `fmc_create_group_policy` (SSL/IKEv2, split tunnel with a standard ACL, DNS servers and split DNS, default domain, banner, pools, Secure Client VPN profile, idle timeout), `fmc_create_ravpn` (access zones, identity certificate from an F75 enrollment, Secure Client images, local realm; the preview names the identity NAT rule to add for NAT exemption), `fmc_set_connection_profile` (create or change a profile: group policy, AAA via ISE RADIUS or an AD realm, local or certificate authentication, pools, aliases, the policy's address assignment switches; shows the targeted devices). Uploading Secure Client packages and profiles stays in the FMC UI |
 | Device templates | `fmc_create_device_template` (generated from a standalone FTD, or empty from a firewall mode and access policy), `fmc_delete_device_template` |
@@ -285,19 +287,19 @@ MD5 password, because FMC returns it masked and a PUT would replace it, unless y
 - **Site-to-site VPN:** `fmc_create_s2s_vpn` -> `fmc_deploy` both peers -> `fmc_vpn_status` (tunnels, SAs and
   routes over the VTIs per device, degraded first) or `fmc_list_vpn_tunnels`. In FMC
   evaluation mode only DES crypto deploys; the tool picks it and says so.
-- **SD-WAN branches:** zone the WAN and inside interfaces (`fmc_update_interface`) -> `fmc_create_sdwan_topology`
+- **FTD SD-WAN branches:** zone the WAN and inside interfaces (`fmc_update_interface`) -> `fmc_create_ftdsdwan_topology`
   (creates the hub's loopback, DVTI and spoke pool when missing, then the AUTO_VPN topology, IKEv2 and the
   endpoints; a failed step deletes what it created) -> `fmc_deploy` hubs and spokes -> `fmc_get_vpn_topology`,
-  `show route bgp`. New branch: `fmc_update_sdwan_topology add_spokes=[...]`, then deploy the spoke and the hubs.
+  `show route bgp`. New branch: `fmc_update_ftdsdwan_topology add_spokes=[...]`, then deploy the spoke and the hubs.
 - **"The VPN to X is down":** the `fmc_vpn_troubleshoot` prompt starts from `fmc_vpn_status` and walks IKE (key
   mismatch vs dead path), IPsec (one-way traffic), routing over the tunnel, NAT exemption and access rules
   (`fmc_packet_tracer`, `fmc_rule_lookup`), then proposes one previewed fix.
-- **Onboard an SD-WAN branch, end to end:** the `fmc_onboard_branch` prompt (dangerous tier) registers the FTD
+- **Onboard an FTD SD-WAN branch, end to end:** the `fmc_onboard_branch` prompt (dangerous tier) registers the FTD
   (the key comes from the server's `FMC_FTD_REG_KEY`, never from the conversation), configures it from a device
   template when one fits or by hand (interfaces and zones, underlay route, NAT, access policy, the hubs' return
-  path), adds it with `fmc_update_sdwan_topology`, deploys the hubs and the branch by name, verifies the tunnel,
+  path), adds it with `fmc_update_ftdsdwan_topology`, deploys the hubs and the branch by name, verifies the tunnel,
   overlay routes and a policy flow, and ends with a hand-off record of flows for `fmc_prove_policy`.
-- **"Teams is slow at branch Y":** the `fmc_sdwan_troubleshoot` prompt walks `fmc_sdwan_status` (path metrics,
+- **"Teams is slow at branch Y":** the `fmc_ftdsdwan_troubleshoot` prompt walks `fmc_ftdsdwan_status` (path metrics,
   degraded links) -> the app-route rule and the interface it picks now -> the overlay tunnels and BGP ->
   `fmc_packet_tracer`, then proposes one previewed fix.
 - **Was the branch firewall busy during the outage?** `fmc_device_metrics(device, since='2026-10-18T09:30:00Z',
@@ -493,7 +495,7 @@ including nested groups, to ranges, then walk the rules in order. The results ar
 | `FMC_BUNDLE_DIR` | off | Directory `fmc_export_policy_bundle`, `fmc_export_device_config` and `fmc_device_snapshot` also write bundles, device exports and snapshots to (and `fmc_diff_policy_bundle` / `fmc_diff_device_config` read their file names from); `fmc_hardening_check` reads edited baselines from it (`baseline='<file>.yaml'`). Off: both are only returned inline. |
 | `FMC_PKI_DIR` | off | Directory on the server host that `fmc_import_certificate_files` reads PEM certificate, key and passphrase files from, and `fmc_create_cert_enrollment` PKCS12, CA certificate and SCEP/EST password files (keys and passwords never pass through MCP). Off: file imports are refused; `fmc_create_internal_ca` and self-signed enrollments still work (FMC or the device generates the key). In Docker, bind-mount it read-only (see `docker-compose.yml`). |
 | `FMC_PKI_PASSPHRASE` | | Passphrase of the PKCS12 files `fmc_create_cert_enrollment` reads from `FMC_PKI_DIR` when the call names no `passphrase_file` (also `_FILE` / `_REF`) |
-| `FMC_TOOLSETS` | every area | Load only some areas of the tool surface, e.g. `troubleshoot,objects,deploy` or `all,-sdwan,-tls` (see "Toolsets"). The tiers still apply on top. |
+| `FMC_TOOLSETS` | every area | Load only some areas of the tool surface, e.g. `troubleshoot,objects,deploy` or `all,-ftdsdwan,-tls` (see "Toolsets"). The tiers still apply on top. |
 | `FMC_ALLOW_IGNORE_WARNING` | `false` | Allow `fmc_deploy(ignore_warning=true)` (the preview must then list the FMC warnings being ignored) |
 | `MCP_TRANSPORT` | `stdio` | `stdio` or `http` |
 | `MCP_HOST`, `MCP_PORT`, `MCP_PATH` | `0.0.0.0`, `8000`, `/mcp` | HTTP listener |
@@ -532,8 +534,8 @@ name:
 
 ```bash
 FMC_TOOLSETS=troubleshoot,policy,objects     # "why is this blocked?" and rule changes
-FMC_TOOLSETS=vpn,sdwan,routing,deploy        # branch connectivity
-FMC_TOOLSETS=all,-sdwan,-tls                 # everything but two areas
+FMC_TOOLSETS=vpn,ftdsdwan,routing,deploy     # branch connectivity
+FMC_TOOLSETS=all,-ftdsdwan,-tls              # everything but two areas
 ```
 
 - `core` is always loaded: `fmc_status`, `fmc_search_spec`, `fmc_get_definition`, `fmc_api_call` (reaches
@@ -555,6 +557,7 @@ checks it against the registered tools.
 | `admin` | 11 (6/4/1) | FMC itself: backups, upgrades, health policy, users, audit log, Smart Licensing |  |
 | `deploy` | 7 (4/1/2) | pending changes, deployments, rollback, change-management tickets | `fmc_onboard_branch`, `fmc_onboard_ftd`, `fmc_replace_device`, `fmc_rule_change_review` |
 | `devices` | 30 (10/14/6) | device records, registration, licences, interfaces, DHCP, clusters, device groups and templates, FlexConfig | `fmc_onboard_branch`, `fmc_onboard_ftd`, `fmc_replace_device` |
+| `ftdsdwan` | 10 (2/8/0) | FTD SD-WAN (not Catalyst SD-WAN): hub and spoke topologies, WAN interfaces, app-aware routing, branch health; the old name `sdwan` still works until 0.21.0 | `fmc_onboard_branch`, `fmc_ftdsdwan_troubleshoot` (and the deprecated `fmc_sdwan_troubleshoot`) |
 | `ha` | 5 (2/1/2) | FTD high-availability pairs: status, forming, switch/break, monitored interfaces | `fmc_ha_failover_check` |
 | `identity` | 13 (6/7/0) | users in rules: realms (AD/LDAP), identity policies, ISE identity source, user-IP sessions | `fmc_prove_user_policy` |
 | `intel` | 13 (3/10/0) | blocking by reputation: Security Intelligence feeds and lists, DNS policy, host containment |  |
@@ -563,7 +566,6 @@ checks it against the registered tools.
 | `platform` | 12 (2/10/0) | platform settings: syslog, connection logging, NTP, SNMP, DNS, NetFlow, SSH/HTTPS/ICMP, banner, hardening | `fmc_compliance_evidence` |
 | `policy` | 31 (9/21/1) | access control, NAT and prefilter: policies, rules, categories, inheritance, locks, assignments, hygiene | `fmc_policy_cleanup`, `fmc_rule_change_review`, `fmc_why_blocked` |
 | `routing` | 15 (2/13/0) | static routes, SLA monitors, BGP, OSPF, EIGRP, BFD, VRFs, prefix lists and route maps |  |
-| `sdwan` | 7 (1/6/0) | SD-WAN hub and spoke topologies, WAN interfaces, application-aware routing, branch health | `fmc_onboard_branch`, `fmc_sdwan_troubleshoot` |
 | `threat` | 14 (5/9/0) | intrusion (IPS), file/malware and network analysis policies, an ACP's threat posture | `fmc_threat_defense_review` |
 | `tls` | 18 (5/12/1) | TLS decryption policies and rules, cipher suite lists, certificates (days left, enrolment), readiness check |  |
 | `troubleshoot` | 14 (12/2/0) | why is traffic blocked or slow: packet tracer, rule lookup, hit counts, show commands, live state, profiling | `fmc_firewall_health_review`, `fmc_prove_user_policy`, `fmc_why_blocked` |

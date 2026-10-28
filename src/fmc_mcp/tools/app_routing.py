@@ -6,7 +6,7 @@ best path metric: jitter, packet loss, round-trip time or MOS).
 FMC stores an application route as an extended access list (the match: applications, networks,
 ports, users) plus a forwarding action in the device's policy-based route for the ingress interfaces.
 These tools build both, preview-first; nothing reaches the FTD until fmc_deploy. Check on the device
-with fmc_sdwan_status (app routes and the WAN links they use) and fmc_get_routing; FMC 10.0.1's
+with fmc_ftdsdwan_status (app routes and the WAN links they use) and fmc_get_routing; FMC 10.0.1's
 command API doesn't pass 'show policy-route' or 'show path-monitoring' through.
 """
 
@@ -544,7 +544,7 @@ def register(reg: ToolRegistrar) -> None:
         Traffic that matches leaves through the egress interface chosen by `order_by`; the rest
         follows the routing table. The preview shows the match, the ingress and egress interfaces
         with their priority and path monitoring. Deploy to apply; check with
-        fmc_sdwan_status (app routes, path in use). Remove with fmc_delete_app_route."""
+        fmc_ftdsdwan_status (app routes, path in use). Remove with fmc_delete_app_route."""
         app: FmcApp = get_client(ctx)
         dev = await resolve_device(app, device, domain)
         base, vr_name = await routing_base(app, dev, virtual_router, domain)
@@ -717,7 +717,7 @@ def register(reg: ToolRegistrar) -> None:
             return {
                 "applied": [*steps, pbr_step[0]],
                 "extended_access_list": {"id": acl.get("id"), "name": acl.get("name")},
-                "next": "fmc_deploy, then fmc_sdwan_status (app routes and the path each uses)",
+                "next": "fmc_deploy, then fmc_ftdsdwan_status (app routes and the path each uses)",
             }
 
         return await fmc_preview(
@@ -783,7 +783,7 @@ def register(reg: ToolRegistrar) -> None:
     ) -> dict[str, Any]:
         """Remove an application route: its forwarding action leaves the policy-based route (the
         policy-based route is deleted when nothing is left in it) and its extended access list is
-        deleted unless another route still uses it or keep_access_list is set. fmc_sdwan_status lists a
+        deleted unless another route still uses it or keep_access_list is set. fmc_ftdsdwan_status lists a
         device's app routes. Deploy to apply; the traffic then follows the routing table again."""
         app: FmcApp = get_client(ctx)
         dev = await resolve_device(app, device, domain)

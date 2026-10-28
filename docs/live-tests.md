@@ -41,7 +41,7 @@ Inputs that depend on your own FMC and FTD come from these variables, in the env
 | `FMC_LIVE_IDENTITY_USER` | `mcp-alice` | Optional: the user expected on `FMC_LIVE_IDENTITY_IP` |
 | `FMC_LIVE_HYGIENE_POLICY` | `mcp-test-hygiene-acp` | An access policy seeded with one finding per static `fmc_policy_audit` check (any-any allow, two rules differing only in destination, a duplicate host, a rule on an expired time range, a rule that logs nothing), for `test_live_hygiene.py` |
 
-### SD-WAN matrix (`test_live_sdwan_matrix.py`, F53)
+### FTD SD-WAN matrix (`test_live_sdwan_matrix.py`, F53)
 
 | Variable | Example | Used by |
 |---|---|---|
@@ -62,7 +62,7 @@ Inputs that depend on your own FMC and FTD come from these variables, in the env
 | `FMC_LIVE_SDWAN_ONBOARD` | `t1-spoke3` | C4: the spoke left out of the topology and onboarded from a template of the first spoke |
 | `FMC_LIVE_SDWAN_ONBOARD_VAR_<NAME>` | `FMC_LIVE_SDWAN_ONBOARD_VAR_INSIDEIP=...` | C4: template variable values for the onboarded spoke |
 
-The cells, their evidence and the fault runs are recorded in [sdwan-matrix.md](sdwan-matrix.md).
+The cells, their evidence and the fault runs are recorded in [ftdsdwan-matrix.md](ftdsdwan-matrix.md).
 
 The FTD tests (`needs_ftd`) need `FMC_LIVE_DEVICE`, `FMC_LIVE_FTD_HOST`, `FMC_LIVE_FTD_REG_KEY`,
 `FMC_LIVE_FTD_OUTSIDE_IP`, `FMC_LIVE_FTD_GATEWAY` and `FMC_LIVE_TRACE_TARGET`.

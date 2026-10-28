@@ -1,4 +1,4 @@
-"""F51a: SD-WAN topology authoring (fmc_create_sdwan_topology / fmc_update_sdwan_topology).
+"""F51a: SD-WAN topology authoring (fmc_create_ftdsdwan_topology / fmc_update_ftdsdwan_topology).
 
 Fixtures: tests/fixtures/sdwan_lab.json, keyed by API path like `capture_fixtures.py --sdwan` writes it.
 """
@@ -114,7 +114,7 @@ NEW = {
 async def test_create_builds_pool_loopback_dvti_then_topology(fmc: respx.MockRouter) -> None:
     log = lab(fmc, topologies=False)
     async with Client(server()) as c:
-        preview = await run(c, "fmc_create_sdwan_topology", NEW)
+        preview = await run(c, "fmc_create_ftdsdwan_topology", NEW)
         assert preview["status"] == "preview", preview
         steps = preview["preview"]["steps"]
         assert steps[:3] == [
@@ -123,7 +123,7 @@ async def test_create_builds_pool_loopback_dvti_then_topology(fmc: respx.MockRou
             "create DVTI 'sdwan-dvti' on mcp-sdwan-t1-hub2",
         ]
         assert log == []  # the preview wrote nothing
-        done = await run(c, "fmc_create_sdwan_topology", {**NEW, "confirm": preview["confirm"]})
+        done = await run(c, "fmc_create_ftdsdwan_topology", {**NEW, "confirm": preview["confirm"]})
     order = [m for m, _ in log]
     assert order == [
         "POST object/ipv4addresspools",
@@ -171,16 +171,16 @@ async def test_create_reuses_dvti_and_pool_with_backup_hub(fmc: respx.MockRouter
         "spokes": [{"device": "mcp-sdwan-t1-spoke3", "wan_interface": "outside1"}],
     }
     async with Client(server()) as c:
-        blocked = await run(c, "fmc_create_sdwan_topology", args)
+        blocked = await run(c, "fmc_create_ftdsdwan_topology", args)
         assert blocked["status"] == "blocked" and "overlap" in blocked["blockers"][0]
         args["backup_spoke_pool"] = "10.255.254.0/24"
-        preview = await run(c, "fmc_create_sdwan_topology", args)
+        preview = await run(c, "fmc_create_ftdsdwan_topology", args)
         assert preview["status"] == "preview", preview
         hubs = preview["preview"]["hubs"]
         assert hubs[0]["dvti"] == "Virtual-Template1" and hubs[0]["spoke_pool"] == "mcp-sdwan-t1-pool"
         assert hubs[1]["role"] == "backup hub" and "(new" in hubs[1]["dvti"]
         assert any("asymmetric" in e for e in preview["side_effects"])
-        await run(c, "fmc_create_sdwan_topology", {**args, "confirm": preview["confirm"]})
+        await run(c, "fmc_create_ftdsdwan_topology", {**args, "confirm": preview["confirm"]})
     order = [m for m, _ in log]
     assert order[:3] == [  # nothing created for the primary hub: its DVTI and pool exist
         "POST object/ipv4addresspools",
@@ -204,7 +204,7 @@ async def test_create_reuses_dvti_and_pool_with_backup_hub(fmc: respx.MockRouter
 async def test_create_blockers(fmc: respx.MockRouter, change: dict[str, Any], blocker: str) -> None:
     lab(fmc)  # the recorded topology mcp-sdwan-t1 exists
     async with Client(server()) as c:
-        out = await run(c, "fmc_create_sdwan_topology", {**NEW, **change})
+        out = await run(c, "fmc_create_ftdsdwan_topology", {**NEW, **change})
     assert out["status"] == "blocked" and any(blocker in b for b in out["blockers"]), out
 
 
@@ -222,7 +222,7 @@ async def test_create_blockers(fmc: respx.MockRouter, change: dict[str, Any], bl
 async def test_create_validation(fmc: respx.MockRouter, bad: dict[str, Any]) -> None:
     lab(fmc, topologies=False)
     async with Client(server()) as c:
-        r = await c.call_tool("fmc_create_sdwan_topology", {**NEW, **bad}, raise_on_error=False)
+        r = await c.call_tool("fmc_create_ftdsdwan_topology", {**NEW, **bad}, raise_on_error=False)
     assert r.is_error
 
 
@@ -231,11 +231,11 @@ async def test_failure_rolls_back_newest_first_and_masks_key(fmc: respx.MockRout
     log = lab(fmc, topologies=False, fail={"POST policy/ftds2svpns/topo-new/endpoints": bad})
     args = {**NEW, "pre_shared_key": "sekrit-key-123"}
     async with Client(server()) as c:
-        preview = await run(c, "fmc_create_sdwan_topology", args)
+        preview = await run(c, "fmc_create_ftdsdwan_topology", args)
         assert "sekrit-key-123" not in json.dumps(preview)
         assert preview["preview"]["ike_v2"]["manualPreSharedKey"] == "********"
         res = await c.call_tool(
-            "fmc_create_sdwan_topology", {**args, "confirm": preview["confirm"]}, raise_on_error=False
+            "fmc_create_ftdsdwan_topology", {**args, "confirm": preview["confirm"]}, raise_on_error=False
         )
     text = res.content[0].text  # type: ignore[union-attr]
     assert res.is_error and "sekrit-key-123" not in text and "deleted again" in text
@@ -252,7 +252,7 @@ async def test_evaluation_mode_and_ospf_overlay(fmc: respx.MockRouter) -> None:
     lab(fmc, evaluation=True, topologies=False)
     async with Client(server()) as c:
         out = await run(
-            c, "fmc_create_sdwan_topology", {**NEW, "overlay": "ospf", "spoke_loopbacks": "10.255.9.0/24"}
+            c, "fmc_create_ftdsdwan_topology", {**NEW, "overlay": "ospf", "spoke_loopbacks": "10.255.9.0/24"}
         )
     assert out["preview"]["ike_v2"]["policies"][0]["name"] == "DES-SHA-SHA-LATEST"
     assert out["preview"]["topology"]["autoVpnSettings"]["routeSettings"] == {"enableBgp": False}
@@ -305,7 +305,7 @@ def ospf_lab(fmc: respx.MockRouter, *, metadata: bool = True) -> list[tuple[str,
 async def test_ospf_overlay_spoke_tunnels_borrow_a_loopback(fmc: respx.MockRouter) -> None:
     log = ospf_lab(fmc)
     async with Client(server()) as c:
-        preview = await run(c, "fmc_create_sdwan_topology", OSPF)
+        preview = await run(c, "fmc_create_ftdsdwan_topology", OSPF)
         assert preview["status"] == "preview", preview
         steps = preview["preview"]["steps"]
         assert "create loopback 'sdwan-ospf-lo' 10.255.9.1/32 on mcp-sdwan-t1-spoke3" in steps
@@ -314,7 +314,7 @@ async def test_ospf_overlay_spoke_tunnels_borrow_a_loopback(fmc: respx.MockRoute
         )
         assert preview["preview"]["spokes"][0]["tunnel_borrows"] == "sdwan-ospf-lo (new) 10.255.9.1/32"
         assert log == []
-        done = await run(c, "fmc_create_sdwan_topology", {**OSPF, "confirm": preview["confirm"]})
+        done = await run(c, "fmc_create_ftdsdwan_topology", {**OSPF, "confirm": preview["confirm"]})
     order = [m for m, _ in log]
     assert order == [
         "POST object/ipv4addresspools",
@@ -345,8 +345,8 @@ async def test_ospf_borrow_finds_the_new_vti_without_endpoint_metadata(fmc: resp
     log = ospf_lab(fmc, metadata=False)
     args = {**OSPF, "spoke_loopbacks": ["10.255.9.21/32"]}
     async with Client(server()) as c:
-        preview = await run(c, "fmc_create_sdwan_topology", args)
-        await run(c, "fmc_create_sdwan_topology", {**args, "confirm": preview["confirm"]})
+        preview = await run(c, "fmc_create_ftdsdwan_topology", args)
+        await run(c, "fmc_create_ftdsdwan_topology", {**args, "confirm": preview["confirm"]})
     puts = [(m, b) for m, b in log if m.startswith("PUT devices/")]
     assert [m for m, _ in puts] == ["PUT devices/devicerecords/d-sp3/virtualtunnelinterfaces/svti-new"]
     assert puts[0][1]["borrowIPfrom"]["id"] == "new-4"
@@ -366,9 +366,9 @@ async def test_ospf_reuses_a_spoke_loopback_with_the_address(fmc: respx.MockRout
     have["ipv4"] = {"static": {"address": "10.255.9.1", "netmask": "255.255.255.255"}}
     fmc.get(f"{CFG}/devices/devicerecords/d-sp3/loopbackinterfaces").mock(return_value=items([have]))
     async with Client(server()) as c:
-        preview = await run(c, "fmc_create_sdwan_topology", OSPF)
+        preview = await run(c, "fmc_create_ftdsdwan_topology", OSPF)
         assert preview["preview"]["spokes"][0]["tunnel_borrows"] == "Loopback3 10.255.9.1/32"
-        await run(c, "fmc_create_sdwan_topology", {**OSPF, "confirm": preview["confirm"]})
+        await run(c, "fmc_create_ftdsdwan_topology", {**OSPF, "confirm": preview["confirm"]})
     assert "POST devices/devicerecords/d-sp3/loopbackinterfaces" not in [m for m, _ in log]
     assert log[-1][1]["borrowIPfrom"]["id"] == "lo-sp3"
 
@@ -386,7 +386,7 @@ async def test_ospf_reuses_a_spoke_loopback_with_the_address(fmc: respx.MockRout
 async def test_ospf_blockers(fmc: respx.MockRouter, change: dict[str, Any], blocker: str) -> None:
     ospf_lab(fmc)
     async with Client(server()) as c:
-        out = await run(c, "fmc_create_sdwan_topology", {**OSPF, **change})
+        out = await run(c, "fmc_create_ftdsdwan_topology", {**OSPF, **change})
     assert out["status"] == "blocked" and any(blocker in b for b in out["blockers"]), out
 
 
@@ -403,14 +403,14 @@ async def test_ospf_blockers(fmc: respx.MockRouter, change: dict[str, Any], bloc
 async def test_ospf_validation(fmc: respx.MockRouter, change: dict[str, Any], error: str) -> None:
     lab(fmc, topologies=False)
     async with Client(server()) as c:
-        r = await c.call_tool("fmc_create_sdwan_topology", {**OSPF, **change}, raise_on_error=False)
+        r = await c.call_tool("fmc_create_ftdsdwan_topology", {**OSPF, **change}, raise_on_error=False)
     assert r.is_error and error in r.content[0].text  # type: ignore[union-attr]
 
 
 async def test_bgp_overlay_has_no_ospf_warning(fmc: respx.MockRouter) -> None:
     lab(fmc, topologies=False)
     async with Client(server()) as c:
-        out = await run(c, "fmc_create_sdwan_topology", NEW)
+        out = await run(c, "fmc_create_ftdsdwan_topology", NEW)
     assert "warnings" not in out["preview"]
     assert not any("unnumbered" in s for s in out["side_effects"])
 
@@ -423,12 +423,12 @@ async def test_update_adds_and_removes_spokes(fmc: respx.MockRouter) -> None:
         "remove_spokes": ["mcp-sdwan-t1-spoke2"],
     }
     async with Client(server()) as c:
-        preview = await run(c, "fmc_update_sdwan_topology", args)
+        preview = await run(c, "fmc_update_ftdsdwan_topology", args)
         assert preview["status"] == "preview", preview
         after = preview["preview"]["endpoints_after"]
         assert "mcp-sdwan-t1-spoke2 (spoke)" not in after and "mcp-sdwan-t1-spoke3 (spoke)" in after
         assert "mcp-sdwan-t1-hub" in preview["side_effects"][0]  # the hub is deployed too
-        await run(c, "fmc_update_sdwan_topology", {**args, "confirm": preview["confirm"]})
+        await run(c, "fmc_update_ftdsdwan_topology", {**args, "confirm": preview["confirm"]})
     assert [m for m, _ in log] == [
         "DELETE policy/ftds2svpns/topo-t1/endpoints/ep-spoke2",
         "POST policy/ftds2svpns/topo-t1/endpoints",
@@ -465,16 +465,16 @@ async def test_update_adds_an_unnumbered_spoke_to_an_ospf_overlay(fmc: respx.Moc
     }
     async with Client(server()) as c:
         r = await c.call_tool(
-            "fmc_update_sdwan_topology", {**args, "spoke_loopbacks": None}, raise_on_error=False
+            "fmc_update_ftdsdwan_topology", {**args, "spoke_loopbacks": None}, raise_on_error=False
         )
         assert r.is_error and "runs an OSPF overlay" in r.content[0].text  # type: ignore[union-attr]
-        blocked = await run(c, "fmc_update_sdwan_topology", {**args, "spoke_loopbacks": ["10.255.255.77"]})
+        blocked = await run(c, "fmc_update_ftdsdwan_topology", {**args, "spoke_loopbacks": ["10.255.255.77"]})
         assert blocked["status"] == "blocked" and "spoke pool" in blocked["blockers"][0]
-        preview = await run(c, "fmc_update_sdwan_topology", args)
+        preview = await run(c, "fmc_update_ftdsdwan_topology", args)
         assert preview["status"] == "preview", preview
         assert preview["preview"]["add_spokes"][0]["tunnel_borrows"] == "sdwan-ospf-lo (new) 10.255.9.13/32"
         assert any("fmc_configure_ospf" in e for e in preview["side_effects"])
-        done = await run(c, "fmc_update_sdwan_topology", {**args, "confirm": preview["confirm"]})
+        done = await run(c, "fmc_update_ftdsdwan_topology", {**args, "confirm": preview["confirm"]})
     assert [m for m, _ in log] == [
         "POST devices/devicerecords/d-sp3/loopbackinterfaces",
         "POST policy/ftds2svpns/topo-t1/endpoints",
@@ -492,7 +492,7 @@ async def test_update_spoke_loopbacks_only_for_ospf(fmc: respx.MockRouter) -> No
         "spoke_loopbacks": "10.255.9.0/24",
     }
     async with Client(server()) as c:
-        r = await c.call_tool("fmc_update_sdwan_topology", args, raise_on_error=False)
+        r = await c.call_tool("fmc_update_ftdsdwan_topology", args, raise_on_error=False)
     assert r.is_error and "OSPF overlay" in r.content[0].text  # type: ignore[union-attr]
 
 
@@ -508,13 +508,13 @@ async def test_update_backup_hub_checks_pools(fmc: respx.MockRouter) -> None:
         "backup_spoke_pool": "10.255.255.0/24",
     }
     async with Client(server()) as c:
-        blocked = await run(c, "fmc_update_sdwan_topology", args)
+        blocked = await run(c, "fmc_update_ftdsdwan_topology", args)
         assert blocked["status"] == "blocked" and "overlap" in blocked["blockers"][0]
         args["backup_spoke_pool"] = "10.255.253.0/24"
-        preview = await run(c, "fmc_update_sdwan_topology", args)
+        preview = await run(c, "fmc_update_ftdsdwan_topology", args)
         deploy = preview["side_effects"][0]
         assert all(f"mcp-sdwan-t1-{r}" in deploy for r in ("hub", "hub2", "spoke1", "spoke2"))
-        await run(c, "fmc_update_sdwan_topology", {**args, "confirm": preview["confirm"]})
+        await run(c, "fmc_update_ftdsdwan_topology", {**args, "confirm": preview["confirm"]})
     ep = [b for m, b in log if m.endswith("/endpoints")][0]
     assert ep["peerType"] == "HUB" and ep["isPrimaryHub"] is False and ep["interface"]["id"] == "new-3"
 
@@ -522,22 +522,24 @@ async def test_update_backup_hub_checks_pools(fmc: respx.MockRouter) -> None:
 async def test_update_multipath_and_guards(fmc: respx.MockRouter) -> None:
     log = lab(fmc)
     async with Client(server()) as c:
-        preview = await run(c, "fmc_update_sdwan_topology", {"topology": "mcp-sdwan-t1", "multipath": False})
+        preview = await run(
+            c, "fmc_update_ftdsdwan_topology", {"topology": "mcp-sdwan-t1", "multipath": False}
+        )
         await run(
             c,
-            "fmc_update_sdwan_topology",
+            "fmc_update_ftdsdwan_topology",
             {"topology": "mcp-sdwan-t1", "multipath": False, "confirm": preview["confirm"]},
         )
         primary = await c.call_tool(
-            "fmc_update_sdwan_topology",
+            "fmc_update_ftdsdwan_topology",
             {"topology": "mcp-sdwan-t1", "remove_backup_hub": "mcp-sdwan-t1-hub"},
             raise_on_error=False,
         )
         nothing = await c.call_tool(
-            "fmc_update_sdwan_topology", {"topology": "mcp-sdwan-t1"}, raise_on_error=False
+            "fmc_update_ftdsdwan_topology", {"topology": "mcp-sdwan-t1"}, raise_on_error=False
         )
         not_spoke = await c.call_tool(
-            "fmc_update_sdwan_topology",
+            "fmc_update_ftdsdwan_topology",
             {"topology": "mcp-sdwan-t1", "remove_spokes": ["mcp-sdwan-t1-spoke3"]},
             raise_on_error=False,
         )
@@ -567,8 +569,8 @@ async def test_update_multipath_puts_only_top_level_fields(fmc: respx.MockRouter
     fmc.get(S2S).mock(return_value=items([live]))  # replaces the lab's route for the same path
     args = {"topology": "mcp-sdwan-t1", "multipath": False}
     async with Client(server()) as c:
-        preview = await run(c, "fmc_update_sdwan_topology", args)
-        out = await run(c, "fmc_update_sdwan_topology", {**args, "confirm": preview["confirm"]})
+        preview = await run(c, "fmc_update_ftdsdwan_topology", args)
+        out = await run(c, "fmc_update_ftdsdwan_topology", {**args, "confirm": preview["confirm"]})
     assert out["result"]["changed"] == ["multipath off"], out
     puts = [b for m, b in log if m == "PUT policy/ftds2svpns/topo-t1"]
     assert len(puts) == 1
@@ -596,7 +598,7 @@ async def test_update_refuses_classic_topology(fmc: respx.MockRouter) -> None:
     )
     async with Client(server()) as c:
         r = await c.call_tool(
-            "fmc_update_sdwan_topology",
+            "fmc_update_ftdsdwan_topology",
             {"topology": "mcp-sdwan-p2p", "multipath": True},
             raise_on_error=False,
         )
@@ -613,3 +615,44 @@ async def test_get_topology_shows_sdwan_roles(fmc: respx.MockRouter) -> None:
     assert eps["mcp-sdwan-t1-hub"]["spoke_pools"] == ["mcp-sdwan-t1-pool"]
     assert eps["mcp-sdwan-t1-spoke1"]["backup_interfaces"] == ["Ethernet0/1"]
     assert "primary_hub" not in eps["mcp-sdwan-t1-spoke2"]
+
+
+async def test_deprecated_update_alias_previews_and_confirms_like_the_new_name(fmc: respx.MockRouter) -> None:
+    """F86: fmc_update_sdwan_topology is fmc_update_ftdsdwan_topology plus `renamed_to`; a preview through
+    the old name confirms through it (the token is bound to the new tool)."""
+    log = lab(fmc)
+    args = {"topology": "mcp-sdwan-t1", "multipath": False}
+    async with Client(server()) as c:
+        new = await run(c, "fmc_update_ftdsdwan_topology", args)
+        old = await run(c, "fmc_update_sdwan_topology", args)
+        assert old["renamed_to"] == "fmc_update_ftdsdwan_topology"
+        assert old["deprecated"].startswith("Deprecated: use fmc_update_ftdsdwan_topology")
+        assert "call fmc_update_ftdsdwan_topology again" in old["how_to_apply"]  # steers to the new name
+        strip = {"confirm", "how_to_apply", "renamed_to", "deprecated", "expires_at", "expires_in"}
+        assert {k: v for k, v in old.items() if k not in strip} == {
+            k: v for k, v in new.items() if k not in strip
+        }
+        await run(c, "fmc_update_sdwan_topology", {**args, "confirm": old["confirm"]})
+        tools = {t.name: t for t in await c.list_tools()}
+    assert log[0][0] == "PUT policy/ftds2svpns/topo-t1"
+    for o, n in (
+        ("fmc_create_sdwan_topology", "fmc_create_ftdsdwan_topology"),
+        ("fmc_update_sdwan_topology", "fmc_update_ftdsdwan_topology"),
+    ):
+        assert (tools[o].description or "").startswith(f"Deprecated: use {n}")
+        assert tools[o].input_schema == tools[n].input_schema
+        a, b = tools[o].annotations, tools[n].annotations
+        assert a and b and (a.read_only_hint, a.destructive_hint) == (b.read_only_hint, b.destructive_hint)
+
+
+async def test_deprecated_create_alias_has_the_same_preview_and_builds(fmc: respx.MockRouter) -> None:
+    log = lab(fmc, topologies=False)
+    async with Client(server()) as c:
+        new = await run(c, "fmc_create_ftdsdwan_topology", NEW)
+        old = await run(c, "fmc_create_sdwan_topology", NEW)
+        assert old["status"] == "preview" and old["renamed_to"] == "fmc_create_ftdsdwan_topology"
+        assert old["preview"] == new["preview"] and log == []
+        done = await run(c, "fmc_create_sdwan_topology", {**NEW, "confirm": old["confirm"]})
+    assert done["renamed_to"] == "fmc_create_ftdsdwan_topology"
+    assert done["result"]["topology"]["kind"] == "SD-WAN (hub and spoke)"
+    assert [m for m, _ in log][-1] == "POST policy/ftds2svpns/topo-new/endpoints"

@@ -82,7 +82,7 @@ def test_supported_commands_split(command: str, split: tuple[str, str | None]) -
     [
         ("show bgp summary", "'show route bgp'"),
         ("show bgp neighbors", "'show route bgp'"),
-        ("show path-monitoring", "fmc_sdwan_status"),
+        ("show path-monitoring", "fmc_ftdsdwan_status"),
         ("show policy-route", "fmc_get_routing"),
         ("show ospf neighbor", "'show route ospf'"),
         ("show conn count", "fmc_packet_tracer"),

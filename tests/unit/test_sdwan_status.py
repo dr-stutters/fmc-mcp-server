@@ -1,5 +1,6 @@
-"""F51c: fmc_sdwan_status (WAN links, path metrics, app-route paths, tunnels, ranked degraded links) and the
-fmc_sdwan_troubleshoot prompt. Fixture: tests/fixtures/sdwan_lab.json (`show` holds the device outputs)."""
+"""F51c: fmc_ftdsdwan_status (WAN links, path metrics, app-route paths, tunnels, ranked degraded links) and
+the fmc_ftdsdwan_troubleshoot prompt. Fixture: tests/fixtures/sdwan_lab.json (`show` holds the device
+outputs)."""
 
 import json
 from typing import Any
@@ -164,7 +165,7 @@ def test_choose_path() -> None:
 async def test_status_for_a_branch(fmc: respx.MockRouter) -> None:
     ran = lab(fmc)
     async with Client(server()) as c:
-        out = await run(c, "fmc_sdwan_status", {"branch": "mcp-sdwan-t1-spoke1"})
+        out = await run(c, "fmc_ftdsdwan_status", {"branch": "mcp-sdwan-t1-spoke1"})
     assert [r.split(" ", 1)[0] for r in ran] == ["d-sp1"] * 4  # only the branch, four commands
     br = out["topologies"][0]["branches"]
     assert len(br) == 1 and br[0]["role"] == "spoke" and br[0]["tunnels_up"] == 2
@@ -196,12 +197,12 @@ async def test_status_for_a_device_group(fmc: respx.MockRouter) -> None:
     }
     fmc.get(f"{CFG}/devicegroups/devicegrouprecords").mock(return_value=items([group]))
     async with Client(server()) as c:
-        out = await run(c, "fmc_sdwan_status", {"branch": "group:t1-spokes"})
+        out = await run(c, "fmc_ftdsdwan_status", {"branch": "group:t1-spokes"})
     elsewhere = {**group, "name": "elsewhere", "members": [{"id": "d-other", "type": "Device"}]}
     fmc.get(f"{CFG}/devicegroups/devicegrouprecords").mock(return_value=items([elsewhere]))
     async with Client(server()) as c:  # a new server: the group list is cached per server for a minute
         with pytest.raises(ToolError, match="device group 'elsewhere' is in no SD-WAN topology"):
-            await run(c, "fmc_sdwan_status", {"branch": "elsewhere"})
+            await run(c, "fmc_ftdsdwan_status", {"branch": "elsewhere"})
     assert sorted({r.split(" ", 1)[0] for r in ran}) == ["d-sp1", "d-sp2"]
     assert len(out["topologies"][0]["branches"]) == 2
 
@@ -209,7 +210,7 @@ async def test_status_for_a_device_group(fmc: respx.MockRouter) -> None:
 async def test_status_ranks_every_branch_and_respects_budget(fmc: respx.MockRouter) -> None:
     ran = lab(fmc)
     async with Client(server()) as c:
-        out = await run(c, "fmc_sdwan_status", {"topology": "mcp-sdwan-t1", "max_devices": 2})
+        out = await run(c, "fmc_ftdsdwan_status", {"topology": "mcp-sdwan-t1", "max_devices": 2})
     assert sorted({r.split(" ", 1)[0] for r in ran}) == ["d-sp1", "d-sp2"]  # spokes first, hub skipped
     assert any("mcp-sdwan-t1-hub" in n for n in out["notes"])
     deg = out["degraded"]
@@ -224,7 +225,7 @@ async def test_status_ranks_every_branch_and_respects_budget(fmc: respx.MockRout
 async def test_status_survives_refused_commands(fmc: respx.MockRouter) -> None:
     lab(fmc, refused={"show path-monitoring", "show policy-route"})
     async with Client(server()) as c:
-        out = await run(c, "fmc_sdwan_status", {"branch": "mcp-sdwan-t1-spoke1", "show_commands": True})
+        out = await run(c, "fmc_ftdsdwan_status", {"branch": "mcp-sdwan-t1-spoke1", "show_commands": True})
     br = out["topologies"][0]["branches"][0]
     assert br["evidence"]["show path-monitoring"].startswith("not available")
     wan = {w["logical_name"]: w for w in br["wan_links"]}
@@ -237,15 +238,15 @@ async def test_status_survives_refused_commands(fmc: respx.MockRouter) -> None:
 async def test_status_without_commands_and_guards(fmc: respx.MockRouter) -> None:
     ran = lab(fmc)
     async with Client(server()) as c:
-        out = await run(c, "fmc_sdwan_status", {"show_commands": False})
+        out = await run(c, "fmc_ftdsdwan_status", {"show_commands": False})
         assert ran == [] and "evidence" not in out["topologies"][0]["branches"][0]
         fmc.get(f"{CFG}/policy/ftds2svpns").mock(
             return_value=items([{"id": "p", "name": "classic", "topologyType": "POINT_TO_POINT"}])
         )
-        r = await c.call_tool("fmc_sdwan_status", {"topology": "classic"}, raise_on_error=False)
+        r = await c.call_tool("fmc_ftdsdwan_status", {"topology": "classic"}, raise_on_error=False)
         assert r.is_error and "not an SD-WAN topology" in r.content[0].text  # type: ignore[union-attr]
-        none = await run(c, "fmc_sdwan_status", {})
-        assert none["topologies"] == [] and "fmc_create_sdwan_topology" in none["note"]
+        none = await run(c, "fmc_ftdsdwan_status", {})
+        assert none["topologies"] == [] and "fmc_create_ftdsdwan_topology" in none["note"]
 
 
 def test_troubleshoot_text_order_and_quoting() -> None:
@@ -253,12 +254,12 @@ def test_troubleshoot_text_order_and_quoting() -> None:
         "Teams", "mcp-sdwan-t1-spoke1", "52.112.0.10", "10.111.0.10", "mcp-sdwan-t1"
     )
     steps = [
-        "fmc_sdwan_status",
+        "fmc_ftdsdwan_status",
         "fmc_get_routing",
         "fmc_get_vpn_topology",
         "fmc_list_vpn_tunnels",
         "fmc_packet_tracer",
-        "fmc_update_sdwan_topology",
+        "fmc_update_ftdsdwan_topology",
         "fmc_pending_changes",
         "fmc_deploy",
     ]
@@ -278,8 +279,8 @@ def test_troubleshoot_text_order_and_quoting() -> None:
 async def test_troubleshoot_prompt_rendered(fmc: respx.MockRouter) -> None:
     async with Client(server()) as c:
         prompts = {p.name for p in await c.list_prompts()}
-        assert "fmc_sdwan_troubleshoot" in prompts
-        r = await c.get_prompt("fmc_sdwan_troubleshoot", {"application": "Teams", "branch": "spoke1"})
+        assert "fmc_ftdsdwan_troubleshoot" in prompts
+        r = await c.get_prompt("fmc_ftdsdwan_troubleshoot", {"application": "Teams", "branch": "spoke1"})
     body: Any = r.messages[0].content
     assert '"Teams" is slow' in body.text
 
@@ -334,7 +335,7 @@ async def test_fmc10_unsupported_commands_are_never_sent(fmc: respx.MockRouter) 
     """FMC 10.0.1's spec doesn't list show path-monitoring / policy-route / bgp summary: not sent at all."""
     ran = lab(fmc, refused=FMC10_REFUSES, outputs={"d-sp1": {"show route bgp": SHOW["show route bgp"]}})
     async with Client(server()) as c:
-        out = await run(c, "fmc_sdwan_status", {"topology": "mcp-sdwan-t1"})
+        out = await run(c, "fmc_ftdsdwan_status", {"topology": "mcp-sdwan-t1"})
     assert ran and {r.split(" ", 1)[1] for r in ran} == {"show crypto ikev2 stats", "show route bgp"}
     branches = {b["device"]: b for b in out["topologies"][0]["branches"]}
     sp1 = branches["mcp-sdwan-t1-spoke1"]
@@ -357,12 +358,12 @@ async def test_down_tunnel_psk_mismatch_vs_dead_path(fmc: respx.MockRouter) -> N
         return [x for d in out["degraded"] if d["interface"] == "overlay tunnel" for x in d["reasons"]]
 
     async with Client(server()) as c:
-        first = await run(c, "fmc_sdwan_status", args)
-        assert any("Call fmc_sdwan_status again" in r for r in tunnel_reasons(first))
+        first = await run(c, "fmc_ftdsdwan_status", args)
+        assert any("Call fmc_ftdsdwan_status again" in r for r in tunnel_reasons(first))
         outputs["d-sp2"]["show crypto ikev2 stats"] = ike_stats(11, 13)  # wrong PSK: auth failures grow
-        psk = await run(c, "fmc_sdwan_status", args)
+        psk = await run(c, "fmc_ftdsdwan_status", args)
         outputs["d-sp2"]["show crypto ikev2 stats"] = ike_stats(11, 15)  # dead WAN: only retransmits
-        dead = await run(c, "fmc_sdwan_status", args)
+        dead = await run(c, "fmc_ftdsdwan_status", args)
     assert any("pre-shared key" in r and "rose by 3" in r for r in tunnel_reasons(psk))
     assert any("doesn't answer" in r for r in tunnel_reasons(dead))
     assert not any("pre-shared key" in r for r in tunnel_reasons(dead))
@@ -376,7 +377,7 @@ async def test_hub_down_is_one_rolled_up_entry(fmc: respx.MockRouter) -> None:
     down["items"] = [{**t, "state": "TUNNEL_DOWN"} for t in down["items"]]
     fmc.get(f"{CFG}/health/tunnelstatuses").mock(return_value=httpx.Response(200, json=down))
     async with Client(server()) as c:
-        out = await run(c, "fmc_sdwan_status", {"topology": "mcp-sdwan-t1"})
+        out = await run(c, "fmc_ftdsdwan_status", {"topology": "mcp-sdwan-t1"})
     tunnels = [d for d in out["degraded"] if d["interface"] == "overlay tunnel"]
     assert len(tunnels) == 3  # each tunnel once (from its spoke), not from both ends
     assert {d["device"] for d in tunnels} == {"mcp-sdwan-t1-spoke1", "mcp-sdwan-t1-spoke2"}
@@ -419,7 +420,7 @@ async def test_app_route_over_a_down_tunnel_and_route_name(fmc: respx.MockRouter
         return_value=httpx.Response(200, json=pbr)
     )
     async with Client(server()) as c:
-        out = await run(c, "fmc_sdwan_status", {"branch": "mcp-sdwan-t1-spoke2"})
+        out = await run(c, "fmc_ftdsdwan_status", {"branch": "mcp-sdwan-t1-spoke2"})
     route = out["topologies"][0]["branches"][0]["app_routes"][0]
     assert route["name"] == "mcp-sdwan-t2-dc-route"  # FMC 10 PBRs have no name: the ACL's
     assert route["path_now"] is None and "down" in route["why"]  # its only tunnel is down
@@ -428,7 +429,7 @@ async def test_app_route_over_a_down_tunnel_and_route_name(fmc: respx.MockRouter
 async def test_fmc_tunnel_monitor_lag_is_flagged(fmc: respx.MockRouter) -> None:
     lab(fmc, refused=FMC10_REFUSES, outputs={"d-sp1": {"show crypto ikev2 stats": ike_stats(0, 0, 0)}})
     async with Client(server()) as c:
-        out = await run(c, "fmc_sdwan_status", {"branch": "mcp-sdwan-t1-spoke1"})
+        out = await run(c, "fmc_ftdsdwan_status", {"branch": "mcp-sdwan-t1-spoke1"})
     lag = [d for d in out["degraded"] if "lags" in d["reasons"][0]]
     assert lag and lag[0]["severity"] == "warning" and "2 tunnel(s) up" in lag[0]["reasons"][0]
 
@@ -472,7 +473,7 @@ def ha_lab(fmc: respx.MockRouter, primary: str, secondary: str) -> list[str]:
 async def test_ha_hub_row_matches_the_pair_and_reports_a_failed_unit(fmc: respx.MockRouter) -> None:
     ran = ha_lab(fmc, primary="Failed", secondary="Active")
     async with Client(server()) as c:
-        out = await run(c, "fmc_sdwan_status", {"topology": "mcp-sdwan-t1"})
+        out = await run(c, "fmc_ftdsdwan_status", {"topology": "mcp-sdwan-t1"})
     hub = next(b for b in out["topologies"][0]["branches"] if b["device"] == HA["name"])
     assert len(hub["tunnels"]) == 3 and hub["tunnels_up"] == 2  # '<pair>[<unit>]' tunnel ends match
     assert [w["logical_name"] for w in hub["wan_links"]] == ["outside1"]  # the members' WAN links
@@ -492,7 +493,7 @@ async def test_ha_hub_row_matches_the_pair_and_reports_a_failed_unit(fmc: respx.
 async def test_branch_given_as_an_ha_member_resolves_to_the_pair(fmc: respx.MockRouter) -> None:
     ha_lab(fmc, primary="Active", secondary="Standby")
     async with Client(server()) as c:
-        out = await run(c, "fmc_sdwan_status", {"branch": "mcp-sdwan-t1-hub2"})
+        out = await run(c, "fmc_ftdsdwan_status", {"branch": "mcp-sdwan-t1-hub2"})
     rows = out["topologies"][0]["branches"]
     assert [b["device"] for b in rows] == [HA["name"]] and rows[0]["role"] == "hub"
     assert not [d for d in out["degraded"] if d["interface"] == "HA pair"]  # active + standby is healthy
@@ -615,7 +616,7 @@ def metrics_lab(fmc: respx.MockRouter, sample: str) -> list[httpx.Request]:
 async def test_brownout_seen_through_the_health_monitor(fmc: respx.MockRouter) -> None:
     asked = metrics_lab(fmc, "brownout")
     async with Client(server()) as c:
-        out = await run(c, "fmc_sdwan_status", {"branch": "mcp-sdwan-t1-spoke1"})
+        out = await run(c, "fmc_ftdsdwan_status", {"branch": "mcp-sdwan-t1-spoke1"})
     flt = asked[0].url.params["filter"]
     assert len(asked) == 1 and "deviceUUIDs:d-sp1;metric:pathmonitoring;" in flt
     br = out["topologies"][0]["branches"][0]
@@ -646,7 +647,7 @@ async def test_unreachable_per_fmc_is_pending_and_still_degraded(fmc: respx.Mock
     data["items"][0]["response"] = json.dumps(prom)
     fmc.get(f"{CFG}/health/metrics").mock(return_value=httpx.Response(200, json=data))
     async with Client(server()) as c:
-        out = await run(c, "fmc_sdwan_status", {"branch": "mcp-sdwan-t1-spoke1"})
+        out = await run(c, "fmc_ftdsdwan_status", {"branch": "mcp-sdwan-t1-spoke1"})
     assert not asked  # the override answered
     br = out["topologies"][0]["branches"][0]
     vti = {w.get("logical_name"): w for w in br["wan_links"]}["mpls_static_vti_1"]
@@ -661,7 +662,7 @@ async def test_unreachable_per_fmc_is_pending_and_still_degraded(fmc: respx.Mock
 async def test_clean_links_from_the_health_monitor_are_ok(fmc: respx.MockRouter) -> None:
     metrics_lab(fmc, "baseline")
     async with Client(server()) as c:
-        out = await run(c, "fmc_sdwan_status", {"branch": "mcp-sdwan-t1-spoke1", "show_commands": False})
+        out = await run(c, "fmc_ftdsdwan_status", {"branch": "mcp-sdwan-t1-spoke1", "show_commands": False})
     wan = {w.get("logical_name"): w for w in out["topologies"][0]["branches"][0]["wan_links"]}
     assert wan["mpls"]["health"] == "ok" and wan["mpls"]["rtt_ms"] == 1.87 and wan["mpls"]["mos"] == 4.4
     assert not [d for d in out["degraded"] if d["interface"] in ("mpls", "inet")]
@@ -671,7 +672,7 @@ async def test_health_monitor_errors_degrade_to_a_note(fmc: respx.MockRouter) ->
     lab(fmc, refused=FMC10_REFUSES)
     fmc.get(f"{CFG}/health/metrics").mock(return_value=httpx.Response(500, json={"error": "boom"}))
     async with Client(server()) as c:
-        out = await run(c, "fmc_sdwan_status", {"branch": "mcp-sdwan-t1-spoke1"})
+        out = await run(c, "fmc_ftdsdwan_status", {"branch": "mcp-sdwan-t1-spoke1"})
     assert any(n.startswith("health/metrics (pathmonitoring)") for n in out["notes"])
     assert any("are not available" in n for n in out["notes"])
 
@@ -687,8 +688,38 @@ async def test_ha_hub_metrics_come_from_the_active_unit(fmc: respx.MockRouter) -
 
     fmc.get(f"{CFG}/health/metrics").mock(side_effect=metrics)
     async with Client(server()) as c:
-        out = await run(c, "fmc_sdwan_status", {"branch": HA["name"]})
+        out = await run(c, "fmc_ftdsdwan_status", {"branch": HA["name"]})
     assert asked and asked[0].startswith("deviceUUIDs:d-hub,d-hub2;")  # the members, not the pair id
     hub = out["topologies"][0]["branches"][0]
     wan = {w.get("logical_name"): w for w in hub["wan_links"]}
     assert wan["mpls"]["health"] == "critical" and wan["mpls"]["loss_pct"] == 33.0
+
+
+async def test_deprecated_status_alias_returns_the_same_result(fmc: respx.MockRouter) -> None:
+    """F86: fmc_sdwan_status is fmc_ftdsdwan_status plus `renamed_to` (one minor release)."""
+    lab(fmc)
+    async with Client(server()) as c:
+        new = await run(c, "fmc_ftdsdwan_status", {"branch": "mcp-sdwan-t1-spoke1"})
+        sdwan_status._IKE_SEEN.clear()  # the IKE counters compare between calls
+        old = await run(c, "fmc_sdwan_status", {"branch": "mcp-sdwan-t1-spoke1"})
+        tools = {t.name: t for t in await c.list_tools()}
+    assert old.pop("renamed_to") == "fmc_ftdsdwan_status"
+    assert old.pop("deprecated").startswith("Deprecated: use fmc_ftdsdwan_status")
+    assert old == new
+    assert (tools["fmc_sdwan_status"].description or "").startswith("Deprecated: use fmc_ftdsdwan_status")
+    assert tools["fmc_sdwan_status"].input_schema == tools["fmc_ftdsdwan_status"].input_schema
+
+
+async def test_deprecated_prompt_alias_renders_the_same_steps(fmc: respx.MockRouter) -> None:
+    args = {"application": "Teams", "branch": "spoke1", "topology": "t1"}
+    async with Client(server()) as c:
+        new = await c.get_prompt("fmc_ftdsdwan_troubleshoot", args)
+        old = await c.get_prompt("fmc_sdwan_troubleshoot", args)
+        prompts = {p.name: p for p in await c.list_prompts()}
+    new_text = new.messages[0].content.text  # type: ignore[union-attr]
+    old_text = old.messages[0].content.text  # type: ignore[union-attr]
+    assert old_text.startswith("(renamed_to: fmc_ftdsdwan_troubleshoot.")
+    assert old_text.endswith(new_text)
+    assert (prompts["fmc_sdwan_troubleshoot"].description or "").startswith(
+        "Deprecated: use fmc_ftdsdwan_troubleshoot"
+    )

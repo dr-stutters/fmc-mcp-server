@@ -1,19 +1,19 @@
 # fmc_sdwan_troubleshoot
 
-title: Troubleshoot an SD-WAN application
+title: Troubleshoot an FTD SD-WAN application (deprecated name)
 arguments: {"application": "Teams", "branch": "mcp-sdwan-t1-spoke1", "destination": "52.112.0.10", "source": "10.111.0.10", "topology": "mcp-sdwan-t1"}
 
-"App X is slow at branch Y": walks the SD-WAN path from the path metrics (fmc_sdwan_status) to
-the app-route rule, the interface it picks now and why, the overlay tunnels and BGP, and a packet
-tracer check, then proposes one previewed fix. Read-only until the user approves the fix.
+Deprecated: use fmc_ftdsdwan_troubleshoot (fmc_sdwan_troubleshoot was renamed in 0.20.0 and goes in 0.21.0). The same workflow as fmc_ftdsdwan_troubleshoot.
 
 ## user
 
-"Teams" is slow or failing at branch "mcp-sdwan-t1-spoke1". Find out which WAN path it takes, whether
+(renamed_to: fmc_ftdsdwan_troubleshoot. Deprecated: use fmc_ftdsdwan_troubleshoot (fmc_sdwan_troubleshoot was renamed in 0.20.0 and goes in 0.21.0).)
+
+"Teams" is slow or failing at FTD SD-WAN branch "mcp-sdwan-t1-spoke1". Find out which WAN path it takes, whether
 that path is degraded, and propose a fix. Steps 1-5 are read-only; any change in step 6 is
 preview-first and runs only after the user approves it.
 
-1. Path metrics: `fmc_sdwan_status` with branch="mcp-sdwan-t1-spoke1", topology="mcp-sdwan-t1". Note each WAN link's health,
+1. Path metrics: `fmc_ftdsdwan_status` with branch="mcp-sdwan-t1-spoke1", topology="mcp-sdwan-t1". Note each WAN link's health,
    status, RTT, jitter, loss and MOS, the overlay tunnels (and how many are up), the iBGP neighbors and
    the `degraded` list. A link that is down, or above the loss/RTT/jitter thresholds (or below the MOS
    one) the result lists, is a suspect. If a show command was "not available" (FMC 10.0.1 refuses
@@ -63,10 +63,10 @@ preview-first and runs only after the user approves it.
      routing/policybasedroutes entry (show the body; preview first);
    - when the branch has a single WAN tunnel: say so. A second tunnel on another WAN lives in the
      companion topology '<topology>-wan2' (a second hub DVTI on that WAN): add the branch there with
-     `fmc_update_sdwan_topology` (add_spokes, its backup WAN) when the companion exists,
-     else rebuild with `fmc_create_sdwan_topology`(hub_backup_wan_interface=...,
+     `fmc_update_ftdsdwan_topology` (add_spokes, its backup WAN) when the companion exists,
+     else rebuild with `fmc_create_ftdsdwan_topology`(hub_backup_wan_interface=...,
      backup_wan_pool=...);
    - when the carrier link itself is bad, say so: no FMC change fixes it.
    Then `fmc_pending_changes` with device="mcp-sdwan-t1-spoke1" and, after approval, `fmc_deploy`
-   (the branch, and the hubs when the topology changed). Re-run `fmc_sdwan_status` with
+   (the branch, and the hubs when the topology changed). Re-run `fmc_ftdsdwan_status` with
    branch="mcp-sdwan-t1-spoke1" afterwards to show the new path.
