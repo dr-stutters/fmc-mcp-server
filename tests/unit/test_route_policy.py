@@ -82,6 +82,7 @@ def mount(fmc: respx.MockRouter, bgp: dict[str, Any] | None = None) -> respx.Moc
         "policybasedroutes",
         "bfdpolicies",
         "ospfv3routes",
+        "eigrproutes",
     ):
         fmc.get(f"{R}/{sub}").mock(return_value=empty())
     for kind in ("physical", "sub", "etherchannel", "vlan", "virtualtunnel"):
