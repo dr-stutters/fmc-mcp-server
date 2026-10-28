@@ -175,8 +175,8 @@ def register(reg: ToolRegistrar) -> None:
     ) -> ToolResult:
         """List FMC objects of one type (hosts, networks, ranges, FQDNs, network/port/URL groups,
         ports, ICMP, URLs, security zones, interface groups, VLAN tags, dynamic objects, time ranges,
-        applications, URL categories, geolocations, cipher suite lists) with value or group members. To
-        find which objects contain an IP or port use fmc_find_object."""
+        applications, URL categories, geolocations, cipher suite lists, SLA monitors) with value or group
+        members. To find which objects contain an IP or port use fmc_find_object."""
         app: FmcApp = get_client(ctx)
         t = obj_type(type)
         path = await app.config_path(t.path, domain)
@@ -302,6 +302,17 @@ def register(reg: ToolRegistrar) -> None:
             if drill_down:
                 listed["rules"] = rows
             return listed
+        if t.key == "sla_monitor":
+            from fmc_mcp.tools.sla_monitors import routes_tracking  # imported here: avoids an import cycle
+
+            routes = await routes_tracking(app, str(obj["id"]), domain)
+            return {
+                "object": {"name": obj.get("name"), "type": obj.get("type"), "id": obj["id"]},
+                "in_use": bool(routes),
+                "used_by": routes,
+                "note": "FMC's usage API doesn't report route tracking, so every device's IPv4 static routes "
+                "(global table and virtual routers) were read.",
+            }
         usage_in = here
         try:
             usage = await _usage(app, obj, t, here)
