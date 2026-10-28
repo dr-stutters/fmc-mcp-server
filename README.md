@@ -108,7 +108,7 @@ Changes made in FMC reach the firewalls only after a **deployment** (`fmc_deploy
 
 ## Tools
 
-There are 237 tools when every tier is enabled (92 read, 130 write, 15 dangerous; the dangerous tier turns `fmc_api_call` into a raw call), and fourteen workflow prompts (`fmc_why_blocked`, `fmc_firewall_health_review`, `fmc_sdwan_troubleshoot`, `fmc_vpn_troubleshoot`, `fmc_threat_defense_review`, `fmc_prove_user_policy`, `fmc_compliance_evidence`, `suite_change_check`; `fmc_rule_change_review` and `fmc_policy_cleanup`, write tier; `fmc_onboard_ftd`, `fmc_onboard_branch`, `fmc_ha_failover_check` and `fmc_replace_device`, dangerous tier). `FMC_TOOLSETS` loads only some areas of them (see "Toolsets").
+There are 239 tools when every tier is enabled (93 read, 130 write, 16 dangerous; the dangerous tier turns `fmc_api_call` into a raw call), and fourteen workflow prompts (`fmc_why_blocked`, `fmc_firewall_health_review`, `fmc_sdwan_troubleshoot`, `fmc_vpn_troubleshoot`, `fmc_threat_defense_review`, `fmc_prove_user_policy`, `fmc_compliance_evidence`, `suite_change_check`; `fmc_rule_change_review` and `fmc_policy_cleanup`, write tier; `fmc_onboard_ftd`, `fmc_onboard_branch`, `fmc_ha_failover_check` and `fmc_replace_device`, dangerous tier). `FMC_TOOLSETS` loads only some areas of them (see "Toolsets").
 
 **Read**
 
@@ -132,6 +132,7 @@ There are 237 tools when every tier is enabled (92 read, 130 write, 15 dangerous
 | Analysis | `fmc_rule_lookup`, `fmc_shadowed_rules`, `fmc_policy_audit` (ranked hygiene findings with a fix each), `fmc_threat_posture` (intrusion and file policies and modes, TRUST/fastpath bypasses, SI and DNS coverage, decryption, device licences; findings with a fix each), `fmc_export_access_rules` (rows or CSV, re-importable; `evidence=true`: per rule its hits per device with first/last hit, logging, intrusion/file policy, last change and user from FMC's audit log, the deployment that pushed it, comments, the change ticket when change management is on, plus the policy's SI/DNS state) |
 | Compliance | `fmc_hardening_check` (a device or platform settings policy against a YAML baseline, default `ftd-hardening-v1` = [docs/baselines/ftd-hardening.yaml](docs/baselines/ftd-hardening.yaml), editable, each check with its source: SSH/HTTPS/ICMP access, SNMPv3, syslog and RFC 5424, NTP, banner, external authentication, DNS, HA interface monitoring, rule/VDB age, licences, backups, pending deployments; ranked findings, each with the existing tool that fixes it); prompt `fmc_compliance_evidence` (the auditor's evidence pack for one access policy) |
 | Device configuration | `fmc_export_device_config` (one FTD or HA pair by section: interfaces, routing, assigned policies, NAT rules, platform settings, VPN memberships, object overrides, out-of-band changes, versions and licences; versioned YAML, secrets masked), `fmc_diff_device_config` (two devices, a device and a template, or an export against the device now; field by field per section; with state sections: routes lost, tunnels down, interface changes, new alerts, hit-count deltas), `fmc_device_snapshot` (what up to 25 FTDs run now, for before/after evidence: routing table, interface state, failover, IKEv2/IPsec SAs, tunnels, hit counts, health alerts, deployed version, masked running-config sections; about ten requests per device), `fmc_snapshot` / `fmc_compare_snapshot` (core snapshot contract C53: a compact blob for a device group or name filter with deployment state, HA pair roles, interface link status, VPN tunnels and device health; the compare names what changed by severity; the FMC leg of the suite prompt `suite_change_check`) |
+| FlexConfig | `fmc_flexconfig_review` (a FlexConfig policy, the one on a device, or all: assigned devices and the FlexConfig objects whose names match a feature FMC 10.0 configures natively (EIGRP, PBR, ECMP, VXLAN, timeouts, NetFlow, BFD, OSPF, BGP, DNS, ...) with where to configure it and the tool for it; FMC's REST API returns neither a policy's object list nor any object's CLI, so it gives the GUI path and classifies names passed as `objects`) |
 | Policy bundles | `fmc_export_policy_bundle` (an access policy with everything it references, as versioned YAML), `fmc_diff_policy_bundle` (two bundles, or a bundle against live FMC), `fmc_plan_policy_bundle_import` (what an import would create, reuse, update or need first) |
 | Deployment | `fmc_list_deployable_devices`, `fmc_pending_changes`, `fmc_list_deployments` |
 | API spec | `fmc_search_spec`, `fmc_get_definition`, `fmc_api_call` (GET only) |
@@ -251,6 +252,7 @@ MD5 password, because FMC returns it masked and a PUT would replace it, unless y
 | `fmc_delete_objects` | Deletes many objects in one preview: by names, a name prefix or every unused object, across value objects and groups, zones, dynamic objects and policies; refuses built-ins, objects an ancestor domain owns and anything still in use (naming what uses it), deletes in dependency order with FMC's bulk DELETE. |
 | `fmc_backup_devices` | Backs up device configurations to FMC (not supported on FTDv). |
 | `fmc_enroll_certificate` | Enrols a certificate enrollment on a device, or re-enrols, refreshes or deletes it there (at once, no deployment) and waits for FMC's task; the preview shows the device's current enrolment and the RA VPN, S2S and decryption policies that reference the enrollment (delete is blocked while anything does). |
+| `fmc_migrate_flexconfig` | Runs FMC's FlexConfig migration for a FlexConfig policy on its devices (all assigned, or the ones named; a device not on the policy is refused): FMC turns FlexConfig for natively supported features into native routing, interface and platform configuration. The preview names `fmc_device_snapshot` as the step before and warns when no object name matches a native feature; the result follows FMC's task and points to `fmc_pending_changes`. Nothing reaches a device until `fmc_deploy`. |
 | `fmc_apply_device_template` | Applies a device template to one standalone FTD with its variable values and object overrides (replaces its interface, routing, policy and VPN/SD-WAN configuration); the preview lists every variable and override. |
 
 ### Workflows
@@ -524,7 +526,7 @@ of the server, and FMC's 120 requests/minute are shared by every API user of tha
 
 ### Toolsets (`FMC_TOOLSETS`, F46)
 
-With every tier on, the server registers 237 tools, and a client sends all their descriptions to the
+With every tier on, the server registers 239 tools, and a client sends all their descriptions to the
 model on every turn. Some clients also cap the number of tools. `FMC_TOOLSETS` loads only the areas you
 name:
 
@@ -552,7 +554,7 @@ checks it against the registered tools.
 | `core` | 9 (8/0/1) | always loaded: status, the API spec search and raw API call, domains, devices, tasks, change-check snapshots |  |
 | `admin` | 11 (6/4/1) | FMC itself: backups, upgrades, health policy, users, audit log, Smart Licensing |  |
 | `deploy` | 7 (4/1/2) | pending changes, deployments, rollback, change-management tickets | `fmc_onboard_branch`, `fmc_onboard_ftd`, `fmc_replace_device`, `fmc_rule_change_review` |
-| `devices` | 28 (9/14/5) | device records, registration, licences, interfaces, DHCP, clusters, device groups, device templates | `fmc_onboard_branch`, `fmc_onboard_ftd`, `fmc_replace_device` |
+| `devices` | 30 (10/14/6) | device records, registration, licences, interfaces, DHCP, clusters, device groups and templates, FlexConfig | `fmc_onboard_branch`, `fmc_onboard_ftd`, `fmc_replace_device` |
 | `ha` | 5 (2/1/2) | FTD high-availability pairs: status, forming, switch/break, monitored interfaces | `fmc_ha_failover_check` |
 | `identity` | 13 (6/7/0) | users in rules: realms (AD/LDAP), identity policies, ISE identity source, user-IP sessions | `fmc_prove_user_policy` |
 | `intel` | 13 (3/10/0) | blocking by reputation: Security Intelligence feeds and lists, DNS policy, host containment |  |

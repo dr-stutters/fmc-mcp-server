@@ -45,6 +45,7 @@ from fmc_mcp.tools import (
     find_address,
     find_indicator,
     fleet,
+    flexconfig,
     ha,
     hardening,
     health_policies,
@@ -117,6 +118,9 @@ Workflows:
 - Replace a failed FTD (RMA) or clone one onto a new box: fmc_register_device (the new unit) ->
   fmc_copy_device_config(source, targets) (same model and version, standalone targets) -> fmc_deploy ->
   fmc_diff_device_config(old, new) -> fmc_prove_policy; the fmc_replace_device prompt runs it end to end.
+- FlexConfig left over from an ASA migration: fmc_flexconfig_review (policy or device: objects whose names
+  match features FMC configures natively) -> fmc_device_snapshot -> fmc_migrate_flexconfig (FMC's converter,
+  dangerous) -> fmc_pending_changes -> fmc_deploy.
 - Change safely: make the change -> fmc_pending_changes (what the next deploy pushes) -> fmc_deploy
   -> fmc_run_show_command / fmc_list_deployments; undo a bad deployment with fmc_rollback_deployment.
   A change number from the user goes in `change_ref` on each write: the preview shows it, access rule
@@ -391,6 +395,7 @@ REGISTER: list[Callable[[ToolRegistrar], None]] = [
     network_analysis.register,
     admin.register,
     health_policies.register,
+    flexconfig.register,
     prefilter.register,
     security_intel.register,
     rule_io.register,

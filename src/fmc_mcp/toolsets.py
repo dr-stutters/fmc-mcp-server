@@ -78,7 +78,8 @@ CATALOGUE: dict[str, tuple[str, tuple[str, ...]]] = {
         ),
     ),
     "devices": (
-        "device records, registration, licences, interfaces, DHCP, clusters, device groups, device templates",
+        "device records, registration, licences, interfaces, DHCP, clusters, device groups and templates, "
+        "FlexConfig",
         (
             "fmc_apply_device_template",
             "fmc_configure_dhcp",
@@ -96,12 +97,14 @@ CATALOGUE: dict[str, tuple[str, tuple[str, ...]]] = {
             "fmc_device_snapshot",
             "fmc_diff_device_config",
             "fmc_export_device_config",
+            "fmc_flexconfig_review",
             "fmc_get_device",
             "fmc_get_device_template",
             "fmc_list_clusters",
             "fmc_list_device_groups",
             "fmc_list_device_interfaces",
             "fmc_list_device_templates",
+            "fmc_migrate_flexconfig",
             "fmc_register_device",
             "fmc_register_devices",
             "fmc_set_device_licenses",
