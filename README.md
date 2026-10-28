@@ -108,7 +108,7 @@ Changes made in FMC reach the firewalls only after a **deployment** (`fmc_deploy
 
 ## Tools
 
-There are 226 tools when every tier is enabled (92 read, 120 write, 14 dangerous; the dangerous tier turns `fmc_api_call` into a raw call), and thirteen workflow prompts (`fmc_why_blocked`, `fmc_firewall_health_review`, `fmc_sdwan_troubleshoot`, `fmc_vpn_troubleshoot`, `fmc_threat_defense_review`, `fmc_prove_user_policy`, `fmc_compliance_evidence`, `suite_change_check`; `fmc_rule_change_review` and `fmc_policy_cleanup`, write tier; `fmc_onboard_ftd`, `fmc_onboard_branch` and `fmc_ha_failover_check`, dangerous tier). `FMC_TOOLSETS` loads only some areas of them (see "Toolsets").
+There are 227 tools when every tier is enabled (92 read, 121 write, 14 dangerous; the dangerous tier turns `fmc_api_call` into a raw call), and thirteen workflow prompts (`fmc_why_blocked`, `fmc_firewall_health_review`, `fmc_sdwan_troubleshoot`, `fmc_vpn_troubleshoot`, `fmc_threat_defense_review`, `fmc_prove_user_policy`, `fmc_compliance_evidence`, `suite_change_check`; `fmc_rule_change_review` and `fmc_policy_cleanup`, write tier; `fmc_onboard_ftd`, `fmc_onboard_branch` and `fmc_ha_failover_check`, dangerous tier). `FMC_TOOLSETS` loads only some areas of them (see "Toolsets").
 
 **Read**
 
@@ -517,7 +517,7 @@ of the server, and FMC's 120 requests/minute are shared by every API user of tha
 
 ### Toolsets (`FMC_TOOLSETS`, F46)
 
-With every tier on, the server registers 226 tools, and a client sends all their descriptions to the
+With every tier on, the server registers 227 tools, and a client sends all their descriptions to the
 model on every turn. Some clients also cap the number of tools. `FMC_TOOLSETS` loads only the areas you
 name:
 
