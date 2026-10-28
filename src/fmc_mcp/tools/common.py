@@ -53,6 +53,8 @@ OBJECT_TYPES: dict[str, ObjType] = {
         ObjType("geolocation", "object/geolocations", "Geolocation", "other", writable=False),
         # FMC's spec lists only the collection GET/POST; GET and DELETE by id work on FMC 10.0.1
         ObjType("cipher_suite_list", "object/ciphersuitelists", "CipherSuiteList", "other"),
+        # Route tracking (F92): create with fmc_create_sla_monitor, delete with fmc_delete_sla_monitor
+        ObjType("sla_monitor", "object/slamonitors", "SLAMonitor", "other"),
     )
 }
 
@@ -78,6 +80,7 @@ ObjectTypeName = Literal[
     "url_category",
     "geolocation",
     "cipher_suite_list",
+    "sla_monitor",
 ]
 # Types that support FMC's `nameOrValue` and `unusedOnly` filters.
 FILTERABLE = {
@@ -300,6 +303,9 @@ def object_summary(obj: dict[str, Any]) -> dict[str, Any]:
         row["members"] = block_labels(obj)
     elif "data" in obj:
         row["value"] = obj["data"]
+    elif "monitorAddress" in obj:  # SLA monitor
+        row["value"] = obj["monitorAddress"]
+        row["sla_id"] = obj.get("slaId")
     if obj.get("interfaceMode"):
         row["mode"] = obj["interfaceMode"]
     if obj.get("description"):
