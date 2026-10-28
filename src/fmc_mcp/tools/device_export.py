@@ -72,6 +72,7 @@ from fmc_mcp.tools.devices import (
 )
 from fmc_mcp.tools.dhcp import RELAY as DHCP_RELAY
 from fmc_mcp.tools.dhcp import SERVER as DHCP_SERVER
+from fmc_mcp.tools.dhcp import hw_name
 from fmc_mcp.tools.platform_settings import LISTS, PS, SINGLE
 from fmc_mcp.tools.policies import NAT, RULE_CAP, policy_assignments
 from fmc_mcp.tools.templates import TEMPLATES, template_with_metadata
@@ -521,6 +522,17 @@ async def _dhcp(ctx: ExportContext) -> dict[str, Any]:
         lists = ("dhcpServers",) if key == "server" else ("dhcpRelayAgent", "dhcpRelayServers")
         for field_name in lists:
             for item in body.pop(field_name, None) or []:
+                ref = item.get("interface") or {}
+                if ref.get("type") == "SubInterface" and ref.get("id"):
+                    # FMC names a SubInterface reference by its parent (#370): use the full hardware name
+                    # so a pool on Ethernet0/3.3999 is not keyed like one on Ethernet0/3.
+                    subs = await ctx.memo(
+                        "dhcp subinterfaces",
+                        partial(ctx.items, f"{ctx.base}/{INTERFACE_KINDS['subinterface']}"),
+                    )
+                    full = next((hw_name(i) for i in subs if str(i.get("id")) == str(ref["id"])), None)
+                    if full:
+                        item = {**item, "interface": {**ref, "name": full}}
                 where = ref_label(item.get("interface") or {})
                 if field_name == "dhcpRelayServers":
                     where = f"{where} -> {ref_label(item.get('server') or {})}"
