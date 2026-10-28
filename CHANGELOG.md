@@ -1,5 +1,36 @@
 # Changelog
 
+## 0.18.0 (2026-10-28)
+
+Wave 9 FMC depth: RA VPN authoring, dual-ISP failover, DHCP, BFD, inline sets, Snort 3 recommendations, health policies and
+an RMA flow. Core stays 0.15.0 (v0.19.0 needs new prompt snapshots; left for its own adoption PR). Sixteen new tools and one
+prompt: 236 tools (92 read, 129 write, 15 dangerous) and fourteen prompts.
+
+### Added
+- RA VPN authoring tools `fmc_create_address_pool`, `fmc_create_group_policy`, `fmc_create_ravpn` and
+  `fmc_set_connection_profile` (F40a, #85, #351).
+- `fmc_create_sla_monitor` / `fmc_delete_sla_monitor` and `track=` on `fmc_create_static_route` for dual-ISP failover
+  (tracked primary + floating backup; the preview warns about a missing or equal-metric backup) (F92, #341, #352).
+- `fmc_configure_dhcp` (DHCP server pools and DHCP relay on FTD interfaces, preview-checked against the interface subnet);
+  `fmc_get_device` and `fmc_export_device_config` show DHCP settings (F94, #343, #353).
+- `fmc_create_inline_set` / `fmc_update_inline_set` / `fmc_delete_inline_set` for IPS-only inline pairs and tap mode;
+  `fmc_update_interface` takes `mode` (routed/inline/passive); inline sets in `fmc_get_device` and the device export
+  (F96, #345, #354).
+- `fmc_copy_device_config` (FMC Copy Configuration onto standalone FTDs; preview with model/version checks and what each
+  target loses; dangerous) and the `fmc_replace_device` RMA prompt (F93, #342, #355).
+- `fmc_set_intrusion_recommendations` (Snort 3 Secure Firewall rule recommendations: generate, use, refresh, stop using or
+  remove for protected networks at level 1-4) and the recommendation state, Snort engine and rule counts in
+  `fmc_get_intrusion_policy` (F97, #346, #357).
+- `fmc_configure_bfd` (BFD templates and single-/multi-hop BFD policies) and `bfd` (fall-over BFD) on `fmc_configure_bgp`,
+  with previews that flag a missing or mismatched BFD policy (F95, #344, #358).
+- Health policies: `fmc_create_health_policy` (from the default or another policy, per-module thresholds),
+  `fmc_assign_health_policy` (devices or a device group, threshold diff per device) and `fmc_delete_health_policy`
+  (refused while assigned); `fmc_onboard_ftd` / `fmc_onboard_branch` take `health_policy` (F100, #349, #360).
+
+### Fixed
+- `fmc_create_cert_enrollment` sends the PKCS12 bundle and the manual CA certificate as 64-character CRLF base64 lines, the
+  format FMC uses itself, so PKCS12 enrolment no longer fails on the FTD with "Base64 decode failed" (F75, #356, #359).
+
 ## 0.17.2 (2026-10-24)
 
 FTD as an SD-WAN service-chain target. Core stays 0.15.0. 220 tools and thirteen prompts.
