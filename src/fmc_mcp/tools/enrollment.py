@@ -252,6 +252,14 @@ def read_blob(pki_dir: Any, name: str, what: str) -> Blob:
     return Blob(name, data, (st.st_dev, st.st_ino, st.st_size, st.st_mtime_ns), bool(st.st_mode & 0o077))
 
 
+def wrap64(der: bytes) -> str:
+    """DER as base64 in 64-character lines with CRLF ends (and a final CRLF), the way FMC's own GET returns
+    a PKCS12 bundle. FMC hands the text to the FTD's `crypto ca import ... pkcs12` line by line, and the
+    FTD's base64 decoder fails ('Base64 decode failed') on one unbroken line of thousands of characters."""
+    b64 = base64.b64encode(der).decode()
+    return "".join(b64[i : i + 64] + "\r\n" for i in range(0, len(b64), 64))
+
+
 def pkcs12_der(data: bytes) -> bytes:
     """A PKCS12 file as DER: binary (.p12 / .pfx) or base64 text."""
     if data[:1] == b"\x30":
@@ -355,7 +363,8 @@ def load_pkcs12(settings: Any, pkcs12_file: str, passphrase_file: str | None) ->
         source = "FMC_PKI_PASSPHRASE (server setting)"
     else:
         phrase, source = None, ""
-    b64 = base64.b64encode(der).decode()
+    register_secret(base64.b64encode(der).decode())
+    b64 = wrap64(der)
     register_secret(b64)
     m.body = {"pkcs12Content": {"base64Certificate": b64, "passPhrase": phrase or ""}}
     m.shown = {
@@ -424,7 +433,7 @@ def load_ca(settings: Any, ca_cert: str | None, ca_cert_file: str | None) -> Mat
         text = ca_cert or ""
     if "PRIVATE KEY" in text:
         raise InvalidRequest("The CA certificate text contains a private key; give only the CA certificate.")
-    pem, der = pem_body(text)
+    _, der = pem_body(text)
     try:
         cert = x509.load_der_x509_certificate(der)
     except ValueError:
@@ -438,9 +447,7 @@ def load_ca(settings: Any, ca_cert: str | None, ca_cert_file: str | None) -> Mat
         )
     if info["days_left"] < 0:
         m.blockers.append(f"The CA certificate expired on {info['valid_until']}.")
-    body64 = "".join(pem.splitlines()[1:-1])
-    lines = "\n".join(body64[i : i + 64] for i in range(0, len(body64), 64))
-    m.body = {"caCertificate": {"caOnly": True, "base64Content": lines}}
+    m.body = {"caCertificate": {"caOnly": True, "base64Content": wrap64(der)}}
     m.shown = {
         "caCertificate": {"caOnly": True, "base64Content": f"<CA certificate {info['sha1_fingerprint']}>"}
     }
