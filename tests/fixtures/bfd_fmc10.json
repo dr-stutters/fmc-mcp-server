@@ -1,0 +1,114 @@
+{
+  "_source": "Spec-shaped (FMC 10.0.1 OpenAPI request/response examples for object/bfdtemplates and routing/bfdpolicies; the lab FMC had no BFD template or policy to record on 2026-10-28: both collections answered count 0). Interfaces follow ftd_physicalinterfaces.json, BGP follows bgp_preview_parity_fmc10.json. Documentation addresses only. Replace with a capture once F95 is proven live.",
+  "physicalinterfaces": {
+    "items": [
+      {
+        "type": "PhysicalInterface",
+        "id": "00000000-0000-0ed3-0000-0000000bfd01",
+        "name": "Ethernet0/0",
+        "ifname": "outside",
+        "enabled": true,
+        "MTU": 1500,
+        "mode": "NONE",
+        "managementOnly": false,
+        "ipv4": {"static": {"address": "198.51.100.1", "netmask": "30"}}
+      },
+      {
+        "type": "PhysicalInterface",
+        "id": "00000000-0000-0ed3-0000-0000000bfd02",
+        "name": "Ethernet0/1",
+        "ifname": "inside",
+        "enabled": true,
+        "MTU": 1500,
+        "mode": "NONE",
+        "managementOnly": false,
+        "ipv4": {"static": {"address": "192.0.2.1", "netmask": "24"}}
+      },
+      {
+        "type": "PhysicalInterface",
+        "id": "00000000-0000-0ed3-0000-0000000bfd03",
+        "name": "Ethernet0/2",
+        "enabled": false,
+        "MTU": 1500,
+        "mode": "NONE",
+        "managementOnly": false
+      }
+    ],
+    "paging": {"offset": 0, "limit": 25, "count": 3, "pages": 1}
+  },
+  "bfdtemplates": {
+    "items": [
+      {
+        "links": {"self": "/fmc_config/v1/domain/DomainUUID/object/bfdtemplates/bfdt-single"},
+        "type": "BFDTemplate",
+        "hopType": "SINGLE_HOP",
+        "name": "mcp-bfd-single",
+        "echo": "DISABLED",
+        "txRxInterval": "MILLISECONDS",
+        "txRxMultiplier": 3,
+        "minTransmit": 300,
+        "minReceive": 300,
+        "id": "bfdt-single",
+        "overridable": false,
+        "metadata": {"timestamp": 1613995959773, "lastUser": {"name": "admin"}}
+      },
+      {
+        "links": {"self": "/fmc_config/v1/domain/DomainUUID/object/bfdtemplates/bfdt-multi"},
+        "type": "BFDTemplate",
+        "hopType": "MULTI_HOP",
+        "name": "mcp-bfd-multi",
+        "txRxInterval": "MILLISECONDS",
+        "txRxMultiplier": 5,
+        "minTransmit": 51,
+        "minReceive": 52,
+        "authentication": {"authType": "MD5", "pwdEncryption": "UN_ENCRYPTED", "authKey": "********", "authKeyId": 1},
+        "id": "bfdt-multi",
+        "overridable": false,
+        "metadata": {"timestamp": 1613995959773, "lastUser": {"name": "admin"}}
+      }
+    ],
+    "paging": {"offset": 0, "limit": 25, "count": 2, "pages": 1}
+  },
+  "bfdpolicy_single": {
+    "links": {"self": "<fmc_url>/api/fmc_config/v1/domain/DomainUUID/devices/devicerecords/DeviceUUID/routing/bfdpolicies/bfdp-1"},
+    "metadata": {"timestamp": 1657286461000},
+    "id": "bfdp-1",
+    "type": "BFDPolicy",
+    "hopType": "SINGLE_HOP",
+    "interface": {"id": "00000000-0000-0ed3-0000-0000000bfd01", "type": "PhysicalInterface", "name": "Ethernet0/0"},
+    "template": {"id": "bfdt-single", "type": "BFDTemplate", "name": "mcp-bfd-single"}
+  },
+  "hosts": [
+    {"id": "00000000-0000-0ed3-0000-0000000bfd10", "type": "Host", "name": "mcp-bfd-lo-local", "value": "203.0.113.1"},
+    {"id": "00000000-0000-0ed3-0000-0000000bfd11", "type": "Host", "name": "mcp-bfd-lo-peer", "value": "203.0.113.9"},
+    {"id": "00000000-0000-0ed3-0000-0000000bfd12", "type": "Host", "name": "mcp-bfd-direct-peer", "value": "198.51.100.2"}
+  ],
+  "bgpgeneralsettings": {"id": "g1", "type": "BGPGeneralSetting", "name": "AsaBGPGeneralTable", "asNumber": "65000", "routerId": "AUTOMATIC"},
+  "bgp": {
+    "id": "b1",
+    "type": "bgp",
+    "name": "bgp",
+    "asNumber": "65000",
+    "addressFamilyIPv4": {
+      "type": "afipv4",
+      "id": "af1",
+      "neighbors": [
+        {
+          "type": "neighboripv4",
+          "ipv4Address": "198.51.100.2",
+          "remoteAs": "65001",
+          "neighborGeneral": {"shutdown": false, "fallOverBFD": "NONE", "enableAddress": true},
+          "neighborAdvanced": {"neighborHops": {"maxHopCount": 1}}
+        },
+        {
+          "type": "neighboripv4",
+          "ipv4Address": "203.0.113.9",
+          "remoteAs": "65002",
+          "neighborGeneral": {"shutdown": false, "fallOverBFD": "NONE", "enableAddress": true},
+          "neighborAdvanced": {"neighborHops": {"maxHopCount": 2}}
+        }
+      ],
+      "networks": []
+    }
+  }
+}

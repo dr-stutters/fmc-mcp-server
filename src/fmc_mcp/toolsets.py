@@ -248,8 +248,9 @@ CATALOGUE: dict[str, tuple[str, tuple[str, ...]]] = {
         ),
     ),
     "routing": (
-        "static routes, SLA monitors, BGP, OSPF, VRFs, prefix lists and route maps",
+        "static routes, SLA monitors, BGP, OSPF, BFD, VRFs, prefix lists and route maps",
         (
+            "fmc_configure_bfd",
             "fmc_configure_bgp",
             "fmc_configure_ospf",
             "fmc_create_prefix_list",
