@@ -32,6 +32,7 @@ from fmc_mcp.client import FmcApp
 from fmc_mcp.preview import fmc_preview
 from fmc_mcp.refs import NETWORK_TYPES, RefResolver
 from fmc_mcp.tools.app_routing import pbr_summary, wan_interfaces
+from fmc_mcp.tools.bfd import FALL_OVER, BfdMode, neighbor_bfd_warnings
 from fmc_mcp.tools.common import Domain, ref_label, ref_of
 from fmc_mcp.tools.device_config import (
     device_interfaces,
@@ -600,6 +601,14 @@ def register(reg: ToolRegistrar) -> None:
                 "matches (one permit entry with no match = always); turns default-originate on"
             ),
         ] = None,
+        bfd: Annotated[
+            BfdMode | None,
+            Field(
+                description="Fall-over BFD on `neighbor`: single_hop (directly connected peer, with a "
+                "single-hop BFD policy on the interface: fmc_configure_bfd), multi_hop (loopback peering), "
+                "auto (FMC detects the hop type) or none (off)"
+            ),
+        ] = None,
         redistribute: Annotated[
             list[Redistribution] | None,
             Field(
@@ -619,6 +628,11 @@ def register(reg: ToolRegistrar) -> None:
         neighbor and network lists before and after, and each request it sends (`requests`: method, path,
         body; an MD5 password masked). Deploy to apply; verify with
         fmc_run_show_command('show route') and the peer ('show bgp summary').
+
+        Fast failover (F95): bfd='single_hop'|'multi_hop'|'auto'|'none' sets the neighbor's fall-over BFD.
+        The preview warns when the device has no matching BFD policy (fmc_configure_bfd; the BFD session
+        stays down), when a multi-hop peer is directly connected or a single-hop one isn't, and that the
+        peer needs BFD too.
 
         Route policy on a neighbor (F77): inbound/outbound route maps and prefix lists (objects from
         fmc_create_route_map / fmc_create_prefix_list), a maximum-prefix limit and default-originate
@@ -668,6 +682,7 @@ def register(reg: ToolRegistrar) -> None:
                     remove_neighbor,
                     neighbor_description,
                     policy,
+                    bfd,
                 )
             ):
                 raise InvalidRequest("remove_bgp can't be combined with other changes.")
@@ -692,6 +707,8 @@ def register(reg: ToolRegistrar) -> None:
                 )
             if remove_neighbor and not neighbor:
                 raise InvalidRequest("remove_neighbor needs the neighbor address.")
+            if bfd is not None and (not neighbor or remove_neighbor):
+                raise InvalidRequest("bfd applies to `neighbor` (added or kept, not removed).")
             if filters.given():
                 resolved = await resolve_filters(refs, filters)
             remote_as = check_as(remote_as, "remote_as")
@@ -746,6 +763,8 @@ def register(reg: ToolRegistrar) -> None:
                         }
                         if neighbor_description:
                             n["neighborGeneral"]["description"] = neighbor_description
+                        if bfd is not None:
+                            n["neighborGeneral"]["fallOverBFD"] = FALL_OVER[bfd]
                         if filters.given():
                             n = apply_filters(n, filters, resolved)
                             touched = (None, addr)
@@ -758,6 +777,11 @@ def register(reg: ToolRegistrar) -> None:
                             changed["neighborGeneral"] = {
                                 **(existing.get("neighborGeneral") or {}),
                                 "description": neighbor_description,
+                            }
+                        if bfd is not None:
+                            changed["neighborGeneral"] = {
+                                **(changed.get("neighborGeneral") or {}),
+                                "fallOverBFD": FALL_OVER[bfd],
                             }
                         if filters.given():
                             changed = apply_filters(changed, filters, resolved)
@@ -840,6 +864,7 @@ def register(reg: ToolRegistrar) -> None:
                         withdraw,
                         local_as,
                         router_id,
+                        bfd,
                     )
                 ) or bool(touched and touched[0] is None)
                 if classic:
@@ -852,6 +877,12 @@ def register(reg: ToolRegistrar) -> None:
                             "networks": len(networks),
                         },
                     }
+            if bfd in ("single_hop", "multi_hop") and neighbor and not blockers:
+                bfd_warnings = await neighbor_bfd_warnings(
+                    app, dev, base, str(ipaddress.IPv4Address(neighbor.strip())), bfd, domain
+                )
+                if bfd_warnings:
+                    view["bfd_warnings"] = bfd_warnings
             if bgp:
                 steps.append(("update bgp", "PUT", f"{bgp_path}/{bgp['id']}", desired))
             else:
@@ -933,6 +964,7 @@ def register(reg: ToolRegistrar) -> None:
                 "max_prefix_warning_only": max_prefix_warning_only,
                 "default_originate": default_originate,
                 "default_originate_route_map": default_originate_route_map,
+                "bfd": bfd,
                 "redistribute": None if redistribute is None else [r.model_dump() for r in redistribute],
                 "virtual_router": virtual_router,
                 "domain": domain,

@@ -18,6 +18,7 @@ from fmc_mcp.tools import (
     admin,
     analysis,
     app_routing,
+    bfd,
     bulk_rules,
     bundle,
     bundle_import,
@@ -135,6 +136,9 @@ Workflows:
   Route policy: fmc_create_prefix_list / fmc_create_route_map, then fmc_configure_bgp
   (neighbor_route_map_in/out, neighbor_prefix_list_in/out, max_prefix, default_originate,
   redistribute) or fmc_configure_ospf(redistribute) -> fmc_deploy -> 'show route bgp'.
+  Fast failover (BFD): fmc_configure_bfd (template + single-hop policy on the interface toward the peer, or
+  multi-hop between loopbacks) -> fmc_configure_bgp(neighbor, bfd='single_hop') -> fmc_deploy ->
+  'show bfd neighbors'.
 - SD-WAN (hub and spoke over VTIs): zone the WAN and inside interfaces (fmc_update_interface) ->
   fmc_create_sdwan_topology (hub DVTI, spoke pool, spokes, backup hub, iBGP overlay) -> fmc_deploy hubs
   and spokes -> fmc_get_vpn_topology / fmc_list_vpn_tunnels; add or remove branches and the backup hub
@@ -351,6 +355,7 @@ REGISTER: list[Callable[[ToolRegistrar], None]] = [
     routing.register,
     route_policy.register,
     app_routing.register,
+    bfd.register,
     intrusion.register,
     file_policy.register,
     network_analysis.register,
