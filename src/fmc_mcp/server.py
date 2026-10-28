@@ -35,6 +35,7 @@ from fmc_mcp.tools import (
     device_groups,
     device_snapshot,
     devices,
+    dhcp,
     dns,
     dynamic_objects,
     enrollment,
@@ -105,6 +106,8 @@ Workflows:
   Loopbacks, VTIs, EtherChannels and BVIs: fmc_create_interface (then fmc_update_interface /
   fmc_delete_interface like any interface). Several FTDs at once (a lab or PoC rebuild):
   fmc_register_devices (one preview, one bulk request, one wait for all, a result per device).
+  Addresses for the branch LAN: fmc_configure_dhcp (a server pool on inside, or relay to a central
+  DHCP server; mode='off' removes either).
 - Roll out a branch from a device template (FMC 7.6+): fmc_create_device_template (from a working
   branch with source_device) -> fmc_get_device_template (variables, interfaces, VPN/SD-WAN settings)
   -> fmc_register_device (the new FTD) -> fmc_apply_device_template(template, device, variables)
@@ -391,6 +394,7 @@ REGISTER: list[Callable[[ToolRegistrar], None]] = [
     decryption_check.register,
     service_chain.register,
     dns.register,
+    dhcp.register,
     identity.register,
     identity_sources.register,
     prompts.register,
