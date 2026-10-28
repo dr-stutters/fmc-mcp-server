@@ -84,6 +84,8 @@ def ips(ftd: respx.MockRouter) -> respx.MockRouter:  # noqa: F811
     for z in [*ROUTED_ZONES, INLINE_ZONE]:
         ftd.get(f"{CFG}/object/securityzones/{z['id']}").mock(return_value=httpx.Response(200, json=z))
     ftd.get(f"{DEVPATH}/inlinesets").mock(return_value=empty())
+    for sub in ("dhcpserver", "dhcprelaysettings"):  # F94: no DHCP settings on this model
+        ftd.get(f"{DEVPATH}/dhcp/{sub}").mock(return_value=httpx.Response(404))
     return ftd
 
 

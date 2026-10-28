@@ -333,6 +333,8 @@ async def test_deployment_history_rows(fmc: respx.MockRouter) -> None:
 async def test_get_device_masks_reg_key(fmc: respx.MockRouter) -> None:
     dev = {"id": "d1", "name": "ftd1", "model": "FTDv", "regKey": "secret-key", "natID": "nat-secret"}
     fmc.get(f"{CFG}/devices/devicerecords").mock(return_value=items([dev]))
+    for sub in ("dhcpserver", "dhcprelaysettings"):  # F94: a model without DHCP settings
+        fmc.get(f"{CFG}/devices/devicerecords/d1/dhcp/{sub}").mock(return_value=httpx.Response(404))
     fmc.get(f"{CFG}/devices/devicerecords/d1/inlinesets").mock(return_value=items([]))  # F96: none
     data = await call("fmc_get_device", {"device": "ftd1"})
     text = json.dumps(data)
