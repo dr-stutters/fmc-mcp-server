@@ -46,6 +46,7 @@ from fmc_mcp.tools import (
     hygiene,
     identity,
     identity_sources,
+    inline_sets,
     intrusion,
     live,
     metrics,
@@ -157,6 +158,10 @@ Workflows:
   checks interfaces, link state, zones, routes back to the edge and the access policy, each failure with
   its fix tool; the live leg: fmc_packet_tracer(ingress_hop=<edge address>, expect_next_hop=<return
   address>) -> `chain_leg`; did the flow arrive: fmc_live_connections(host=...).
+- IPS-only (FTD as a bump in the wire behind another firewall): fmc_update_interface(mode='inline', logical
+  name, no address, an INLINE zone or none) on each member -> fmc_create_inline_set(device, name, pairs,
+  tap_mode=True for a pilot: drops nothing) -> fmc_deploy -> fmc_run_show_command('show inline-set');
+  go inline: fmc_update_inline_set(tap_mode=False) -> fmc_deploy; remove: fmc_delete_inline_set.
 - Block a host fast: map its IP into a dynamic object that a BLOCK rule references
   (fmc_map_dynamic_object); mapping changes need no deployment, only the rule does (once).
   fmc_contain_host / fmc_release_host do this for one host with the quarantine object (and propose
@@ -323,6 +328,7 @@ REGISTER: list[Callable[[ToolRegistrar], None]] = [
     threat_posture.register,
     deploy.register,
     device_config.register,
+    inline_sets.register,
     object_writes.register,
     conditions.register,
     object_import.register,

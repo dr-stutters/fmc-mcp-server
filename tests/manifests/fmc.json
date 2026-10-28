@@ -646,6 +646,10 @@
       "tier": "write",
       "title": "Create identity rule"
     },
+    "fmc_create_inline_set": {
+      "tier": "write",
+      "title": "Create inline set"
+    },
     "fmc_create_interface": {
       "tier": "write",
       "title": "Create interface"
@@ -789,6 +793,10 @@
     "fmc_delete_identity_rule": {
       "tier": "write",
       "title": "Delete identity rule"
+    },
+    "fmc_delete_inline_set": {
+      "tier": "write",
+      "title": "Delete inline set"
     },
     "fmc_delete_interface": {
       "tier": "write",
@@ -1337,6 +1345,10 @@
     "fmc_update_health_policy": {
       "tier": "write",
       "title": "Update health policy module"
+    },
+    "fmc_update_inline_set": {
+      "tier": "write",
+      "title": "Update inline set"
     },
     "fmc_update_interface": {
       "tier": "write",
