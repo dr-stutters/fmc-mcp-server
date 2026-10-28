@@ -211,6 +211,10 @@ def register(reg: ToolRegistrar) -> None:
         if new_name:
             desired["name"] = new_name
         if value is not None or protocol is not None:
+            if t.key == "sla_monitor":
+                raise InvalidRequest(
+                    "SLA monitors have several values (target, zones, timing): use fmc_update_sla_monitor."
+                )
             if t.key not in ("host", "network", "range", "fqdn", "port", "icmpv4", "url", "vlan_tag"):
                 raise InvalidRequest(
                     f"{t.key} objects have no single value; use fmc_update_group for members."

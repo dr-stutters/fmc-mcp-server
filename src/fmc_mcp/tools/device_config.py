@@ -1283,7 +1283,7 @@ def register(reg: ToolRegistrar) -> None:
             args={"device": device, "interface": interface, "domain": domain},
             confirm=confirm,
             plan=Plan(
-                f"Delete {kind} interface {current.get('name')} on {dev.get('name')}",
+                f"Delete {kind} interface {label} on {dev.get('name')}",
                 details={"interface": iface_summary(kind, current)},
                 fingerprint=editable(current),
                 blockers=list(dict.fromkeys(blockers)),
@@ -1450,8 +1450,9 @@ def register(reg: ToolRegistrar) -> None:
         domain: Domain = None,
         confirm: Confirm = None,
     ) -> dict[str, Any]:
-        """Delete one static route (IPv4 or IPv6) from a device. Preview shows the route. Takes effect
-        after fmc_deploy."""
+        """Delete one static route (IPv4 or IPv6) from a device. Preview shows the route, and warns when it
+        is the device's last route tracking an SLA monitor (FMC leaves that 'sla monitor' on the device).
+        Takes effect after fmc_deploy."""
         app: FmcApp = get_client(ctx)
         dev = await resolve_device(app, device, domain)
         base, vr_name = await routing_base(app, dev, virtual_router, domain)
@@ -1468,6 +1469,28 @@ def register(reg: ToolRegistrar) -> None:
             break
         if not current:
             raise NotFound(f"No static route {route_id!r} on {dev.get('name')} ({vr_name or 'global'}).", 404)
+        side = ["Removed from the device on the next deployment."]
+        tracking = current.get("routeTracking") or {}
+        others: list[str] = []
+        if tracking.get("id"):
+            # imported here: sla_monitors imports this module
+            from fmc_mcp.tools.sla_monitors import leftover_warning, resolve_monitor, routes_tracking
+
+            mid = str(tracking["id"])
+            others = sorted(
+                str(r["id"])
+                for r in await routes_tracking(app, mid, domain, dev)
+                if str(r["id"]) != current["id"]
+            )
+            if not others:
+                try:
+                    sla_id = (await resolve_monitor(app, mid, domain)).get("slaId")
+                except NotFound:
+                    sla_id = None
+                side.append(
+                    f"This is the last route on {dev.get('name')} tracking SLA monitor "
+                    f"{ref_label(tracking)}. " + leftover_warning(sla_id, str(dev.get("name")))
+                )
         path = await app.config_path(f"{base}/{sub}/{current['id']}", domain)
         return await fmc_preview(
             ctx,
@@ -1477,8 +1500,8 @@ def register(reg: ToolRegistrar) -> None:
             plan=Plan(
                 f"Delete static route on {dev.get('name')}",
                 details={"route": route_row(kind, current)},
-                fingerprint=editable(current),
-                side_effects=["Removed from the device on the next deployment."],
+                fingerprint={"route": editable(current), "other_tracking_routes": others},
+                side_effects=side,
             ),
             apply=lambda: applied(app, lambda: app.api.delete(path)),
         )
