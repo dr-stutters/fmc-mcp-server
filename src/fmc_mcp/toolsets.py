@@ -284,6 +284,7 @@ CATALOGUE: dict[str, tuple[str, tuple[str, ...]]] = {
             "fmc_get_file_policy",
             "fmc_get_intrusion_policy",
             "fmc_get_network_analysis_policy",
+            "fmc_set_intrusion_recommendations",
             "fmc_set_intrusion_rule_state",
             "fmc_threat_posture",
         ),

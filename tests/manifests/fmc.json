@@ -353,6 +353,7 @@
         "fmc_policy_audit",
         "fmc_get_security_intelligence",
         "fmc_get_intrusion_policy",
+        "fmc_set_intrusion_recommendations",
         "fmc_find_intrusion_rules",
         "fmc_list_policies",
         "fmc_update_access_rule",
@@ -1228,6 +1229,10 @@
     "fmc_set_dns_policy": {
       "tier": "write",
       "title": "Link DNS policy to access policy"
+    },
+    "fmc_set_intrusion_recommendations": {
+      "tier": "write",
+      "title": "Set intrusion rule recommendations"
     },
     "fmc_set_intrusion_rule_state": {
       "tier": "write",
