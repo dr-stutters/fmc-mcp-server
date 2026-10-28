@@ -268,7 +268,8 @@ def register(reg: ToolRegistrar) -> None:
     ) -> ToolResult:
         """List health policies (FMC and device policies, which one is the default, and which devices use
         each), or show one policy's modules with enabled state and warning/critical thresholds. Change a
-        threshold with fmc_update_health_policy."""
+        threshold with fmc_update_health_policy; a new policy for a device class: fmc_create_health_policy,
+        then fmc_assign_health_policy."""
         app: FmcApp = get_client(ctx)
         devs = await app.all(await app.config_path(DEVICES, domain))
         users: dict[str, list[str]] = {}

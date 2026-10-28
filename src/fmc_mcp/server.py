@@ -43,6 +43,7 @@ from fmc_mcp.tools import (
     fleet,
     ha,
     hardening,
+    health_policies,
     hygiene,
     identity,
     identity_sources,
@@ -262,8 +263,9 @@ Workflows:
   rules burn it?": fmc_snort_profile (rules ranked by time; each gid:sid goes to fmc_find_intrusion_rules /
   fmc_set_intrusion_rule_state) or fmc_cpu_profile (Snort 3 modules, 15-120 min); fmc_get_profiler_results.
 - Day-2 admin: fmc_upgrade_status (versions), fmc_list_backups / fmc_backup_devices,
-  fmc_get_health_policy / fmc_update_health_policy, fmc_list_users, fmc_list_object_overrides /
-  fmc_set_object_override (per-device values).
+  fmc_get_health_policy / fmc_update_health_policy, fmc_create_health_policy (from the default, tighter
+  thresholds per device class) / fmc_assign_health_policy / fmc_delete_health_policy, fmc_list_users,
+  fmc_list_object_overrides / fmc_set_object_override (per-device values).
 - Object cleanup and migrations at scale: fmc_delete_objects (by names, a name prefix or every unused
   object; one preview lists each victim and refuses built-ins, inherited and in-use objects),
   fmc_replace_object (A becomes B in every rule, group, NAT rule and static route, then optionally delete A),
@@ -370,6 +372,7 @@ REGISTER: list[Callable[[ToolRegistrar], None]] = [
     file_policy.register,
     network_analysis.register,
     admin.register,
+    health_policies.register,
     prefilter.register,
     security_intel.register,
     rule_io.register,

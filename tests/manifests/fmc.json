@@ -117,7 +117,8 @@
         "inside_ip",
         "inside_host",
         "test_destination",
-        "domain"
+        "domain",
+        "health_policy"
       ],
       "references": [
         "fmc_prove_policy",
@@ -141,6 +142,9 @@
         "fmc_assign_policy",
         "fmc_create_nat_policy",
         "fmc_create_nat_rule",
+        "fmc_get_health_policy",
+        "fmc_create_health_policy",
+        "fmc_assign_health_policy",
         "fmc_rule_lookup",
         "fmc_update_access_rule",
         "fmc_create_access_rule",
@@ -177,7 +181,8 @@
         "platform_settings",
         "test_destination",
         "template",
-        "devices"
+        "devices",
+        "health_policy"
       ],
       "references": [
         "fmc_status",
@@ -201,6 +206,9 @@
         "fmc_create_static_route",
         "fmc_assign_policy",
         "fmc_update_access_rule",
+        "fmc_get_health_policy",
+        "fmc_create_health_policy",
+        "fmc_assign_health_policy",
         "fmc_deploy",
         "fmc_list_deployments",
         "fmc_run_show_command",
@@ -482,6 +490,10 @@
       "tier": "dangerous",
       "title": "Apply device template"
     },
+    "fmc_assign_health_policy": {
+      "tier": "write",
+      "title": "Assign health policy"
+    },
     "fmc_assign_policy": {
       "tier": "write",
       "title": "Assign policy to devices"
@@ -638,6 +650,10 @@
       "tier": "dangerous",
       "title": "Form HA pair"
     },
+    "fmc_create_health_policy": {
+      "tier": "write",
+      "title": "Create health policy"
+    },
     "fmc_create_identity_policy": {
       "tier": "write",
       "title": "Create identity policy"
@@ -789,6 +805,10 @@
     "fmc_delete_file_rule": {
       "tier": "write",
       "title": "Delete file rule"
+    },
+    "fmc_delete_health_policy": {
+      "tier": "write",
+      "title": "Delete health policy"
     },
     "fmc_delete_identity_rule": {
       "tier": "write",
