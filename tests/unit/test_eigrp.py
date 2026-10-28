@@ -10,6 +10,7 @@ import httpx
 import pytest
 import respx
 from fastmcp import Client
+from fastmcp.exceptions import ToolError
 
 from fmc_mcp.server import create_server
 
@@ -341,3 +342,95 @@ async def test_argument_errors(fmc: respx.MockRouter, bad: dict[str, Any]) -> No
     async with Client(server()) as c:
         r = await c.call_tool("fmc_configure_eigrp", {"device": DEV["name"], **bad}, raise_on_error=False)
     assert r.is_error
+
+
+def plain_proc(all_interfaces: bool, selected: list[dict[str, Any]] | None = None) -> dict[str, Any]:
+    """PROC without its MD5 key (an edit isn't blocked by the masked key) and a synthetic passive setting."""
+    p = copy.deepcopy(PROC)
+    p["eigrpInterfaces"][0]["eigrpProtocolConfiguration"].pop("authentication")
+    p["basicConfiguration"]["passiveInterfaces"] = {
+        "selectedInterfaces": selected or [],
+        "allInterfaces": all_interfaces,
+    }
+    return p
+
+
+def iref(i: dict[str, Any]) -> dict[str, Any]:
+    return {k: i[k] for k in ("id", "type", "name", "ifname")}
+
+
+async def test_passive_all_replaces_the_selected_interfaces(fmc: respx.MockRouter) -> None:
+    proc = plain_proc(False, [iref(OUTSIDE)])
+    mount(fmc, procs=[proc])
+    put = fmc.put(f"{R}/eigrproutes/{proc['id']}").mock(return_value=httpx.Response(200, json={}))
+    args = {"device": DEV["name"], "passive_all": True}
+    async with Client(server()) as c:
+        preview = await run(c, "fmc_configure_eigrp", args)
+        done = await run(c, "fmc_configure_eigrp", {**args, "confirm": preview["confirm"]})
+    p = preview["preview"]
+    assert p["before"]["passive_interfaces"] == ["outside"]
+    assert p["after"]["passive_interfaces"] == "all"
+    assert any("replaces the selected passive interfaces (outside)" in w for w in p["warnings"])
+    assert any("all adjacencies" in w for w in p["warnings"])
+    assert p["requests"][0]["body"]["basicConfiguration"]["passiveInterfaces"] == {
+        "selectedInterfaces": [],
+        "allInterfaces": True,
+    }
+    assert done["status"] == "applied"
+    assert body(put)["basicConfiguration"]["passiveInterfaces"] == {
+        "selectedInterfaces": [],
+        "allInterfaces": True,
+    }
+
+
+async def test_passive_all_off_with_selected_interfaces(fmc: respx.MockRouter) -> None:
+    proc = plain_proc(True)
+    mount(fmc, procs=[proc])
+    put = fmc.put(f"{R}/eigrproutes/{proc['id']}").mock(return_value=httpx.Response(200, json={}))
+    args = {"device": DEV["name"], "passive_all": False, "interfaces": [{"name": "outside", "passive": True}]}
+    async with Client(server()) as c:
+        preview = await run(c, "fmc_configure_eigrp", args)
+        await run(c, "fmc_configure_eigrp", {**args, "confirm": preview["confirm"]})
+    p = preview["preview"]
+    assert p["before"]["passive_interfaces"] == "all"
+    assert p["after"]["passive_interfaces"] == ["outside"]
+    assert "warnings" not in p
+    assert body(put)["basicConfiguration"]["passiveInterfaces"] == {
+        "selectedInterfaces": [iref(OUTSIDE)],
+        "allInterfaces": False,
+    }
+
+
+@pytest.mark.parametrize(
+    ("stored", "args", "blocker"),
+    [
+        (True, {"passive_all": True}, "already passive"),
+        (False, {"passive_all": False}, "already off"),
+        (True, {"interfaces": [{"name": "outside", "passive": False}]}, "no per-interface"),
+        (
+            False,
+            {"passive_all": True, "interfaces": [{"name": "inside", "passive": True}]},
+            "no per-interface",
+        ),
+    ],
+)
+async def test_passive_all_blockers(
+    fmc: respx.MockRouter, stored: bool, args: dict[str, Any], blocker: str
+) -> None:
+    mount(fmc, procs=[plain_proc(stored)])
+    async with Client(server()) as c:
+        r = await run(c, "fmc_configure_eigrp", {"device": DEV["name"], **args})
+    assert r["status"] == "blocked"
+    assert any(blocker in b for b in r["blockers"])
+
+
+async def test_passive_all_confirm_refused_when_the_process_changed(fmc: respx.MockRouter) -> None:
+    mount(fmc, procs=[plain_proc(False)])
+    put = fmc.put(f"{R}/eigrproutes/{PROC['id']}").mock(return_value=httpx.Response(200, json={}))
+    args = {"device": DEV["name"], "passive_all": True}
+    async with Client(server()) as c:
+        preview = await run(c, "fmc_configure_eigrp", args)
+        fmc.get(f"{R}/eigrproutes").mock(return_value=items([plain_proc(False, [iref(OUTSIDE)])]))
+        with pytest.raises(ToolError):
+            await run(c, "fmc_configure_eigrp", {**args, "confirm": preview["confirm"]})
+    assert not put.called

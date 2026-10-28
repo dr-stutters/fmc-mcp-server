@@ -329,6 +329,14 @@ def register(reg: ToolRegistrar) -> None:
             ),
         ] = None,
         log_neighbor_changes: Annotated[bool | None, Field(description="Log adjacency changes")] = None,
+        passive_all: Annotated[
+            bool | None,
+            Field(
+                description="True: every routable interface passive (passive-interface default; FMC keeps no "
+                "per-interface exceptions, so selected passive interfaces are cleared); false: back to the "
+                "interfaces marked passive in `interfaces`"
+            ),
+        ] = None,
         remove_process: Annotated[bool, Field(description="Delete the whole EIGRP process")] = False,
         virtual_router: Annotated[
             str | None, Field(description="Virtual router (VRF) name/UUID; default the global table")
@@ -339,7 +347,8 @@ def register(reg: ToolRegistrar) -> None:
         """Native EIGRP on an FTD (no FlexConfig): create the process (AS + networks), or change its
         networks, per-interface settings (passive, hello/hold/delay, split horizon, MD5 key), static
         neighbours, redistribution (connected, static, OSPF, BGP with a route map from fmc_create_route_map
-        and a metric), interface summary addresses, router id and stub; or delete it. One EIGRP process per
+        and a metric), interface summary addresses, router id, stub and passive on all interfaces
+        (passive_all); or delete it. One EIGRP process per
         device or VRF. Interfaces whose address falls in a network run EIGRP. MD5 keys only as key_file
         (a file in FMC_PKI_DIR on the server): they never pass through MCP and are masked in the preview.
         The preview shows the process before and after and the request it sends (`requests`). Deploy to
@@ -369,7 +378,7 @@ def register(reg: ToolRegistrar) -> None:
                 summary_addresses,
                 stub,
             )
-        ) or any(x is not None for x in (router_id, default_metric, log_neighbor_changes))
+        ) or any(x is not None for x in (router_id, default_metric, log_neighbor_changes, passive_all))
         body: dict[str, Any] | None = None
         if remove_process:
             if changes:
@@ -381,8 +390,8 @@ def register(reg: ToolRegistrar) -> None:
             if not changes:
                 raise InvalidRequest(
                     "Nothing to change: give add_networks, interfaces, neighbors, redistribute, "
-                    "summary_addresses, router_id, stub, default_metric or log_neighbor_changes "
-                    "(or remove_process)."
+                    "summary_addresses, router_id, stub, default_metric, log_neighbor_changes or "
+                    "passive_all (or remove_process)."
                 )
             if proc is None:
                 if as_number is None:
@@ -446,6 +455,8 @@ def register(reg: ToolRegistrar) -> None:
             entries = [copy.deepcopy(e) for e in desired.get("eigrpInterfaces") or []]
             pas = dict(basic.get("passiveInterfaces") or {"allInterfaces": False})
             passive = list(pas.get("selectedInterfaces") or [])
+            was_all = bool(pas.get("allInterfaces"))
+            all_after = was_all if passive_all is None else passive_all
             new_keys: set[str] = set()
             seen_if: set[str] = set()
             for spec in interfaces or []:
@@ -479,7 +490,12 @@ def register(reg: ToolRegistrar) -> None:
                     raise InvalidRequest(f"{spec.name}: key_file and no_auth contradict each other.")
                 if spec.key_id is not None and not spec.key_file:
                     raise InvalidRequest(f"{spec.name}: key_id needs key_file (the key itself).")
-                if spec.passive is not None:
+                if spec.passive is not None and all_after:
+                    blockers.append(
+                        f"{spec.name}: every interface is passive (passive_all); FMC keeps no per-interface "
+                        "passive or non-passive exceptions. Give passive_all=false to pick interfaces."
+                    )
+                elif spec.passive is not None:
                     is_p = any(str(x.get("id")) == iid for x in passive)
                     if spec.passive and not is_p:
                         passive.append(_iref(iface))
@@ -555,6 +571,27 @@ def register(reg: ToolRegistrar) -> None:
                 desired["eigrpInterfaces"] = entries
             else:
                 desired.pop("eigrpInterfaces", None)
+            if passive_all is not None:
+                if passive_all == was_all:
+                    blockers.append(
+                        "Every interface is already passive."
+                        if was_all
+                        else "Passive on all interfaces is already off."
+                    )
+                if passive_all and passive:
+                    warnings.append(
+                        "passive_all replaces the selected passive interfaces ("
+                        + ", ".join(str(_iface_label(x)) for x in passive)
+                        + "): FMC stores either all interfaces or a list."
+                    )
+                if passive_all:
+                    warnings.append(
+                        "Every EIGRP interface stops sending hellos: all adjacencies on the device/VRF drop "
+                        "(networks are still advertised). Use it for a stub edge with no EIGRP peers."
+                    )
+            if all_after:
+                passive = []
+            pas["allInterfaces"] = all_after
             pas["selectedInterfaces"] = passive
             basic["passiveInterfaces"] = pas
 
@@ -808,6 +845,7 @@ def register(reg: ToolRegistrar) -> None:
                 "stub": stub,
                 "default_metric": None if default_metric is None else default_metric.model_dump(),
                 "log_neighbor_changes": log_neighbor_changes,
+                "passive_all": passive_all,
                 "remove_process": remove_process,
                 "virtual_router": virtual_router,
                 "domain": domain,
