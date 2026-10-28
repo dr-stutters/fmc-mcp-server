@@ -715,6 +715,10 @@
       "tier": "write",
       "title": "Configure ECMP zone"
     },
+    "fmc_configure_eigrp": {
+      "tier": "write",
+      "title": "Configure EIGRP"
+    },
     "fmc_configure_ha_monitoring": {
       "tier": "write",
       "title": "Configure HA monitored interface"

@@ -1,0 +1,148 @@
+{
+  "_source": "Spec-shaped (FMC 10.0.1 OpenAPI EigrpPolicyModel request/response examples for routing/eigrproutes POST, PUT, GET and DELETE; the lab FMC had no EIGRP process to record on 2026-10-28: the eigrproutes collection answered count 0). Interfaces follow bfd_fmc10.json. Documentation addresses only. Replace with a capture once F98 is proven live.",
+  "physicalinterfaces": {
+    "items": [
+      {
+        "type": "PhysicalInterface",
+        "id": "00000000-0000-0ed3-0000-0000000e1g01",
+        "name": "Ethernet0/0",
+        "ifname": "outside",
+        "enabled": true,
+        "MTU": 1500,
+        "mode": "NONE",
+        "managementOnly": false,
+        "ipv4": {
+          "static": {
+            "address": "198.51.100.1",
+            "netmask": "30"
+          }
+        }
+      },
+      {
+        "type": "PhysicalInterface",
+        "id": "00000000-0000-0ed3-0000-0000000e1g02",
+        "name": "Ethernet0/1",
+        "ifname": "inside",
+        "enabled": true,
+        "MTU": 1500,
+        "mode": "NONE",
+        "managementOnly": false,
+        "ipv4": {
+          "static": {
+            "address": "192.0.2.1",
+            "netmask": "24"
+          }
+        }
+      },
+      {
+        "type": "PhysicalInterface",
+        "id": "00000000-0000-0ed3-0000-0000000e1g03",
+        "name": "Ethernet0/2",
+        "enabled": true,
+        "MTU": 1500,
+        "mode": "NONE",
+        "managementOnly": false
+      }
+    ],
+    "paging": {
+      "offset": 0,
+      "limit": 25,
+      "count": 3,
+      "pages": 1
+    }
+  },
+  "networks": [
+    {
+      "id": "00000000-0000-0ed3-0000-0000000e1a10",
+      "type": "Network",
+      "name": "mcp-eigrp-inside",
+      "value": "192.0.2.0/24"
+    },
+    {
+      "id": "00000000-0000-0ed3-0000-0000000e1a11",
+      "type": "Network",
+      "name": "mcp-eigrp-summary",
+      "value": "198.51.100.0/24"
+    }
+  ],
+  "hosts": [
+    {
+      "id": "00000000-0000-0ed3-0000-0000000e1a20",
+      "type": "Host",
+      "name": "mcp-eigrp-peer",
+      "value": "192.0.2.2"
+    }
+  ],
+  "routemaps": [
+    {
+      "id": "00000000-0000-0ed3-0000-0000000e1b01",
+      "type": "RouteMap",
+      "name": "mcp-rm-default"
+    }
+  ],
+  "eigrp_with_md5": {
+    "links": {
+      "self": "<fmc_url>/api/fmc_config/v1/domain/DomainUUID/devices/devicerecords/DeviceUUID/routing/eigrproutes/00000000-0000-0ed3-0001-0000000e1e00"
+    },
+    "asNumber": "100",
+    "type": "EigrpRoute",
+    "id": "00000000-0000-0ed3-0001-0000000e1e00",
+    "basicConfiguration": {
+      "networks": [
+        {
+          "id": "00000000-0000-0ed3-0000-0000000e1a10",
+          "type": "Network",
+          "name": "mcp-eigrp-inside"
+        }
+      ],
+      "autoSummary": false,
+      "passiveInterfaces": {
+        "selectedInterfaces": [],
+        "allInterfaces": false
+      }
+    },
+    "advancedConfiguration": {
+      "logNeighborChanges": true
+    },
+    "eigrpInterfaces": [
+      {
+        "deviceInterface": {
+          "ifname": "inside",
+          "type": "PhysicalInterface",
+          "id": "00000000-0000-0ed3-0000-0000000e1g02",
+          "name": "Ethernet0/1"
+        },
+        "eigrpProtocolConfiguration": {
+          "authentication": {
+            "password": "*****",
+            "keyId": 2,
+            "md5auth": true,
+            "pwdEncryption": "UNENCRYPTED"
+          },
+          "splitHorizon": true,
+          "timers": {
+            "delay": 10,
+            "helloInterval": 5,
+            "holdTime": 15
+          }
+        }
+      }
+    ],
+    "redistributeProtocols": [
+      {
+        "protocol": "CONNECTED",
+        "matchExternal1": false,
+        "matchExternal2": false,
+        "matchInternal": false,
+        "matchNssaExternal1": false,
+        "matchNssaExternal2": false
+      }
+    ],
+    "distributionList": []
+  },
+  "vrf": {
+    "id": "00000000-0000-0ed3-0000-0000000e1c01",
+    "name": "mcp-vrf-blue",
+    "type": "VirtualRouter"
+  }
+}

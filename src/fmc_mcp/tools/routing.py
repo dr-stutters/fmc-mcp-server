@@ -42,6 +42,7 @@ from fmc_mcp.tools.device_config import (
     routing_base,
 )
 from fmc_mcp.tools.devices import DeviceRef
+from fmc_mcp.tools.eigrp import eigrp_summary
 from fmc_mcp.tools.object_writes import applied, editable
 from fmc_mcp.tools.route_policy import (
     NeighborFilters,
@@ -466,7 +467,9 @@ def register(reg: ToolRegistrar) -> None:
         """One view of the dynamic routing FMC holds for a device (or one VRF): BGP (AS, router id,
         neighbors with remote AS/state/BFD and their route maps, prefix lists, maximum prefix and
         default-originate, advertised networks, redistribution with route map and metric, per address
-        family), OSPFv2 processes (areas, networks, redistribution), OSPF interface settings, ECMP zones,
+        family), OSPFv2 processes (areas, networks, redistribution), EIGRP (AS, networks, passive and
+        per-interface timers/MD5 key ids (keys never shown), static neighbors, summaries, redistribution
+        with route map and metric, stub), OSPF interface settings, ECMP zones,
         policy-based routes (application routes: match, egress interfaces and how one is picked), WAN
         interfaces (priority, path monitoring, HTTP application monitoring), BFD policies, VRFs and
         the static route count. Configuration, not the
@@ -483,12 +486,14 @@ def register(reg: ToolRegistrar) -> None:
         )
         bgp = next(iter(await _items(app, f"{base}/bgp", domain)), None)
         ospf = await _items(app, f"{base}/ospfv2routes", domain)
-        await fill_names(PolicyRefs(app, domain), bgp, ospf)  # route-map / prefix-list names
+        eigrp = await _items(app, f"{base}/eigrproutes", domain)
+        await fill_names(PolicyRefs(app, domain), bgp, ospf, eigrp)  # route-map / prefix-list names
         out: dict[str, Any] = {
             "device": dev.get("name"),
             "table": vr_name or "global",
             "bgp": bgp_summary(general, bgp),
             "ospfv2": [ospf_summary(p) for p in ospf] or None,
+            "eigrp": [eigrp_summary(p) for p in eigrp] or None,
         }
         statics = len(await _items(app, f"{base}/ipv4staticroutes", domain)) + len(
             await _items(app, f"{base}/ipv6staticroutes", domain)

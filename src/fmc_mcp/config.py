@@ -60,7 +60,8 @@ class Settings(BaseServerSettings):
         "key and passphrase files from (an existing CA for decrypt-resign, a server certificate for "
         "decrypt-known-key), so private keys never pass through MCP. Unset: file imports are off "
         "(fmc_create_internal_ca still works: FMC generates the key). fmc_create_cert_enrollment reads "
-        "PKCS12 files, CA certificates and SCEP/EST password files from it too.",
+        "PKCS12 files, CA certificates and SCEP/EST password files from it too, and fmc_configure_eigrp "
+        "its interface MD5 keys (key_file).",
     )
     pki_passphrase: SecretStr | None = Field(
         default=None,

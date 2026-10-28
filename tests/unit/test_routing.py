@@ -88,6 +88,7 @@ def rt(fmc: respx.MockRouter) -> respx.MockRouter:
         "policybasedroutes",
         "bfdpolicies",
         "ospfv3routes",
+        "eigrproutes",
     ):
         fmc.get(f"{R}/{sub}").mock(return_value=empty())
     for kind in ("physical", "sub", "etherchannel", "vlan", "virtualtunnel"):
