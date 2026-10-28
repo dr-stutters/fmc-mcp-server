@@ -1,0 +1,909 @@
+{
+  "core_version": "0.15.0",
+  "manifest": 1,
+  "prefix": "catsdwan",
+  "prompts": {
+    "catsdwan_admin_access_via_ise": {
+      "arguments": [
+        "manager_ip",
+        "ise_ip",
+        "ad_group",
+        "ad_user",
+        "sdwan_group",
+        "vpn",
+        "keep_enabled"
+      ],
+      "references": [
+        "catsdwan_status",
+        "catsdwan_get_device_config",
+        "catsdwan_get_aaa",
+        "catsdwan_list_users",
+        "ise_status",
+        "ise_list_dictionary_attributes",
+        "win_list_ad_groups",
+        "win_create_ad_group",
+        "win_get_ad_user",
+        "win_create_ad_user",
+        "win_add_group_member",
+        "ise_get_ad_join_point",
+        "ise_list_ad_groups",
+        "ise_add_ad_groups",
+        "ise_test_ad_user",
+        "ise_get_nad",
+        "ise_create_nad",
+        "ise_update_nad",
+        "ise_create_authz_profile",
+        "ise_create_policy_set",
+        "ise_set_identity_sequence",
+        "ise_create_authn_rule",
+        "ise_create_authz_rule",
+        "ise_get_policy_set",
+        "catsdwan_test_login",
+        "catsdwan_set_external_authentication",
+        "ise_get_auth_list",
+        "ise_recent_auth_failures",
+        "ise_nad_radius_stats",
+        "ise_update_policy_rule"
+      ],
+      "rendered": true,
+      "tier": "dangerous",
+      "uses": [
+        "catsdwan",
+        "ise",
+        "win"
+      ]
+    },
+    "catsdwan_branch_health": {
+      "arguments": [
+        "site",
+        "lab"
+      ],
+      "references": [
+        "catsdwan_device_health",
+        "catsdwan_list_devices",
+        "netbox_site_summary",
+        "catsdwan_control_connections",
+        "catsdwan_bfd_sessions",
+        "catsdwan_app_route_stats",
+        "catsdwan_list_sla_classes",
+        "catsdwan_list_alarms",
+        "catsdwan_recent_activity",
+        "cml_get_link_scenarios"
+      ],
+      "rendered": true,
+      "tier": "read",
+      "uses": [
+        "catsdwan",
+        "cml",
+        "netbox"
+      ]
+    },
+    "catsdwan_brownout_drill": {
+      "arguments": [
+        "site",
+        "lab",
+        "scenario",
+        "sla_class"
+      ],
+      "references": [
+        "cml_apply_link_scenario",
+        "cml_clear_link_scenarios",
+        "catsdwan_list_devices",
+        "catsdwan_list_sla_classes",
+        "catsdwan_bfd_sessions",
+        "cml_get_lab_topology",
+        "catsdwan_list_tlocs",
+        "cml_get_link_scenarios",
+        "catsdwan_app_route_stats",
+        "catsdwan_tunnel_path",
+        "cml_check_reachability",
+        "catsdwan_list_alarms"
+      ],
+      "rendered": true,
+      "tier": "read",
+      "uses": [
+        "catsdwan",
+        "cml"
+      ]
+    },
+    "catsdwan_contain_host": {
+      "arguments": [
+        "host",
+        "reason",
+        "anc_policy",
+        "hours"
+      ],
+      "references": [
+        "catsdwan_find_host",
+        "catsdwan_containment_status",
+        "catsdwan_set_containment_baseline",
+        "catsdwan_deploy_policy_group",
+        "catsdwan_set_containment_acl",
+        "catsdwan_deploy_config_group",
+        "ise_find_session",
+        "ise_endpoint_360",
+        "ise_list_anc_policies",
+        "ise_create_anc_policy",
+        "ise_apply_anc",
+        "catsdwan_trustsec",
+        "catsdwan_trustsec_path",
+        "catsdwan_security_status",
+        "catsdwan_ping",
+        "ise_clear_anc",
+        "catsdwan_contain_at_edge",
+        "catsdwan_get_device_config",
+        "catsdwan_audit_log",
+        "catsdwan_release_at_edge"
+      ],
+      "rendered": true,
+      "tier": "dangerous",
+      "uses": [
+        "catsdwan",
+        "ise"
+      ]
+    },
+    "catsdwan_hub_failover_drill": {
+      "arguments": [
+        "hub",
+        "lab",
+        "method",
+        "vpns",
+        "sites",
+        "dc_services"
+      ],
+      "references": [
+        "cml_set_link_state",
+        "cml_set_node_state",
+        "catsdwan_snapshot",
+        "catsdwan_list_devices",
+        "catsdwan_omp_routes",
+        "catsdwan_list_tlocs",
+        "catsdwan_explain_path",
+        "catsdwan_list_sla_classes",
+        "catsdwan_app_route_stats",
+        "catsdwan_ping",
+        "cml_get_lab_topology",
+        "catsdwan_bfd_sessions",
+        "catsdwan_control_connections",
+        "cml_check_reachability",
+        "ise_deployment_health",
+        "fmc_get_ha_status",
+        "catsdwan_compare_snapshot",
+        "catsdwan_list_alarms"
+      ],
+      "rendered": true,
+      "tier": "read",
+      "uses": [
+        "catsdwan",
+        "cml",
+        "ise",
+        "fmc"
+      ]
+    },
+    "catsdwan_network_or_ise": {
+      "arguments": [
+        "site",
+        "nad",
+        "host",
+        "minutes"
+      ],
+      "references": [
+        "ise_deployment_health",
+        "catsdwan_find_host",
+        "catsdwan_list_devices",
+        "catsdwan_omp_routes",
+        "catsdwan_bfd_sessions",
+        "catsdwan_app_route_stats",
+        "catsdwan_ping",
+        "ise_nad_radius_stats",
+        "ise_get_nad",
+        "ise_why_auth_failed"
+      ],
+      "rendered": true,
+      "tier": "read",
+      "uses": [
+        "catsdwan",
+        "ise"
+      ]
+    },
+    "catsdwan_onboard_branch": {
+      "arguments": [
+        "site",
+        "chassis",
+        "config_group",
+        "hostname",
+        "lab"
+      ],
+      "references": [
+        "netbox_site_summary",
+        "netbox_prefix_utilization",
+        "netbox_next_available_ips",
+        "netbox_allocate_ips",
+        "catsdwan_list_wan_edges",
+        "catsdwan_onboard_edge",
+        "catsdwan_bootstrap_config",
+        "cml_build_recipe",
+        "cml_set_node_state",
+        "cml_configure_node",
+        "catsdwan_control_connections",
+        "cml_run_commands",
+        "catsdwan_set_device_variables",
+        "catsdwan_deploy_config_group",
+        "catsdwan_bfd_sessions",
+        "cml_check_reachability",
+        "netbox_add_journal_entry"
+      ],
+      "rendered": true,
+      "tier": "write",
+      "uses": [
+        "catsdwan",
+        "netbox",
+        "cml"
+      ]
+    },
+    "catsdwan_renew_with_enterprise_ca": {
+      "arguments": [
+        "controllers",
+        "ca_template",
+        "expiring_days"
+      ],
+      "references": [
+        "catsdwan_certificates",
+        "catsdwan_list_controllers",
+        "catsdwan_snapshot",
+        "catsdwan_control_connections",
+        "catsdwan_create_backup",
+        "win_get_ca_certificate",
+        "catsdwan_search_spec",
+        "catsdwan_api_call",
+        "catsdwan_sync_root_cert",
+        "win_list_ca_templates",
+        "catsdwan_renew_controller_certificate",
+        "win_sign_csr",
+        "catsdwan_compare_snapshot"
+      ],
+      "rendered": true,
+      "tier": "dangerous",
+      "uses": [
+        "catsdwan",
+        "win"
+      ]
+    },
+    "catsdwan_sgt_path": {
+      "arguments": [
+        "source",
+        "destination",
+        "vpn"
+      ],
+      "references": [
+        "catsdwan_find_host",
+        "ise_find_session",
+        "catsdwan_trustsec",
+        "ise_list_sgts",
+        "ise_list_sxp_bindings",
+        "ise_list_ip_sgt_mappings",
+        "catsdwan_trustsec_path",
+        "ise_get_egress_matrix",
+        "catsdwan_explain_path"
+      ],
+      "rendered": true,
+      "tier": "read",
+      "uses": [
+        "catsdwan",
+        "ise"
+      ]
+    },
+    "catsdwan_site_down": {
+      "arguments": [
+        "site",
+        "lab"
+      ],
+      "references": [
+        "catsdwan_list_devices",
+        "catsdwan_control_connections",
+        "catsdwan_bfd_sessions",
+        "catsdwan_list_alarms",
+        "catsdwan_recent_activity",
+        "catc_list_device_health",
+        "ise_get_auth_list",
+        "cml_get_node_console_log",
+        "cml_get_link_scenarios"
+      ],
+      "rendered": true,
+      "tier": "read",
+      "uses": [
+        "catsdwan",
+        "catc",
+        "ise",
+        "cml"
+      ]
+    },
+    "catsdwan_trace_through_firewall": {
+      "arguments": [
+        "source",
+        "destination",
+        "app",
+        "vpn"
+      ],
+      "references": [
+        "catsdwan_find_host",
+        "catsdwan_explain_path",
+        "catsdwan_service_chains",
+        "catsdwan_get_policy",
+        "fmc_find_address",
+        "fmc_list_devices",
+        "fmc_list_device_interfaces",
+        "fmc_packet_tracer",
+        "fmc_rule_lookup",
+        "fmc_get_hit_counts",
+        "fmc_device_health"
+      ],
+      "rendered": true,
+      "tier": "read",
+      "uses": [
+        "catsdwan",
+        "fmc"
+      ]
+    },
+    "catsdwan_why_is_app_slow": {
+      "arguments": [
+        "host",
+        "app",
+        "lab"
+      ],
+      "references": [
+        "ise_find_session",
+        "netbox_lookup_ip",
+        "catsdwan_list_devices",
+        "catsdwan_bfd_sessions",
+        "catsdwan_app_route_stats",
+        "catsdwan_list_sla_classes",
+        "catsdwan_recent_activity",
+        "fmc_list_devices",
+        "fmc_packet_tracer",
+        "cml_get_link_scenarios"
+      ],
+      "rendered": true,
+      "tier": "read",
+      "uses": [
+        "catsdwan",
+        "ise",
+        "fmc",
+        "cml",
+        "netbox"
+      ]
+    },
+    "catsdwan_why_is_voice_bad": {
+      "arguments": [
+        "site",
+        "host",
+        "sla_class",
+        "lab"
+      ],
+      "references": [
+        "catsdwan_find_host",
+        "ise_find_session",
+        "catsdwan_list_devices",
+        "catsdwan_list_sla_classes",
+        "catsdwan_app_route_stats",
+        "catsdwan_sla_history",
+        "catsdwan_tunnel_path",
+        "catsdwan_get_device_config",
+        "catsdwan_device_state",
+        "catsdwan_interface_stats",
+        "catc_client_360",
+        "catc_get_wlc_config",
+        "cml_get_link_scenarios"
+      ],
+      "rendered": true,
+      "tier": "read",
+      "uses": [
+        "catsdwan",
+        "catc",
+        "ise",
+        "cml"
+      ]
+    },
+    "catsdwan_wifi_lan_or_wan": {
+      "arguments": [
+        "host",
+        "site",
+        "lab"
+      ],
+      "references": [
+        "catsdwan_find_host",
+        "ise_find_session",
+        "catc_find_host",
+        "catc_client_360",
+        "catc_site_health_report",
+        "catc_list_device_health",
+        "catsdwan_site_health",
+        "catsdwan_tunnel_health",
+        "catsdwan_app_route_stats",
+        "catsdwan_list_sla_classes",
+        "catsdwan_bfd_sessions",
+        "cml_get_link_scenarios"
+      ],
+      "rendered": true,
+      "tier": "read",
+      "uses": [
+        "catsdwan",
+        "catc",
+        "ise",
+        "cml"
+      ]
+    },
+    "suite_change_check": {
+      "arguments": [
+        "site",
+        "phase",
+        "change",
+        "before",
+        "servers"
+      ],
+      "references": [
+        "catsdwan_snapshot",
+        "catsdwan_compare_snapshot",
+        "ise_snapshot",
+        "ise_compare_snapshot",
+        "catc_snapshot",
+        "catc_compare_snapshot",
+        "fmc_snapshot",
+        "fmc_compare_snapshot"
+      ],
+      "rendered": true,
+      "suite": true,
+      "tier": "read",
+      "uses": [
+        "catsdwan",
+        "ise",
+        "catc",
+        "fmc"
+      ]
+    }
+  },
+  "server": "cat-sdwan-mcp-server",
+  "tools": {
+    "catsdwan_activate_policy": {
+      "tier": "dangerous",
+      "title": "Activate SD-WAN centralised policy"
+    },
+    "catsdwan_admin_tech": {
+      "tier": "write",
+      "title": "Generate an SD-WAN admin-tech"
+    },
+    "catsdwan_api_call": {
+      "tier": "dangerous",
+      "title": "Raw SD-WAN Manager API call"
+    },
+    "catsdwan_app_route_stats": {
+      "tier": "read",
+      "title": "SD-WAN app-route statistics"
+    },
+    "catsdwan_associate_config_group": {
+      "tier": "write",
+      "title": "Associate devices with SD-WAN configuration group"
+    },
+    "catsdwan_associate_policy_group": {
+      "tier": "write",
+      "title": "Associate devices with SD-WAN policy group"
+    },
+    "catsdwan_attach_device_template": {
+      "tier": "write",
+      "title": "Attach SD-WAN device template"
+    },
+    "catsdwan_audit_log": {
+      "tier": "read",
+      "title": "SD-WAN audit log"
+    },
+    "catsdwan_bfd_sessions": {
+      "tier": "read",
+      "title": "SD-WAN BFD sessions"
+    },
+    "catsdwan_bootstrap_config": {
+      "tier": "read",
+      "title": "SD-WAN edge bootstrap configuration"
+    },
+    "catsdwan_certificates": {
+      "tier": "read",
+      "title": "SD-WAN certificates and trust"
+    },
+    "catsdwan_compare_snapshot": {
+      "tier": "read",
+      "title": "Compare Catalyst SD-WAN Manager snapshots"
+    },
+    "catsdwan_config_history": {
+      "tier": "read",
+      "title": "SD-WAN configuration history"
+    },
+    "catsdwan_contain_at_edge": {
+      "tier": "dangerous",
+      "title": "Contain a host at its SD-WAN edge only"
+    },
+    "catsdwan_containment_status": {
+      "tier": "read",
+      "title": "SD-WAN contained hosts and containment baseline"
+    },
+    "catsdwan_control_connections": {
+      "tier": "read",
+      "title": "SD-WAN control connections"
+    },
+    "catsdwan_create_backup": {
+      "tier": "write",
+      "title": "Create SD-WAN Manager backup"
+    },
+    "catsdwan_create_policy_group": {
+      "tier": "write",
+      "title": "Create SD-WAN policy group"
+    },
+    "catsdwan_delete_policy_group": {
+      "tier": "write",
+      "title": "Delete SD-WAN policy group"
+    },
+    "catsdwan_delete_security_profile": {
+      "tier": "write",
+      "title": "Delete an SD-WAN security profile"
+    },
+    "catsdwan_deploy_config_group": {
+      "tier": "write",
+      "title": "Deploy SD-WAN configuration group"
+    },
+    "catsdwan_deploy_policy_group": {
+      "tier": "write",
+      "title": "Deploy SD-WAN policy group"
+    },
+    "catsdwan_device_bringup": {
+      "tier": "read",
+      "title": "SD-WAN device bring-up checklist"
+    },
+    "catsdwan_device_health": {
+      "tier": "read",
+      "title": "SD-WAN device health"
+    },
+    "catsdwan_device_state": {
+      "tier": "read",
+      "title": "SD-WAN device state"
+    },
+    "catsdwan_explain_path": {
+      "tier": "read",
+      "title": "Explain SD-WAN path"
+    },
+    "catsdwan_export_site": {
+      "tier": "read",
+      "title": "Export an SD-WAN site as a twin spec"
+    },
+    "catsdwan_find_host": {
+      "tier": "read",
+      "title": "Find a host on the SD-WAN fabric"
+    },
+    "catsdwan_get_aaa": {
+      "tier": "read",
+      "title": "SD-WAN Manager AAA"
+    },
+    "catsdwan_get_config_group": {
+      "tier": "read",
+      "title": "Get SD-WAN configuration group"
+    },
+    "catsdwan_get_definition": {
+      "tier": "read",
+      "title": "Describe a Cisco Catalyst SD-WAN Manager API path or schema"
+    },
+    "catsdwan_get_device": {
+      "tier": "read",
+      "title": "Get SD-WAN device"
+    },
+    "catsdwan_get_device_config": {
+      "tier": "read",
+      "title": "Get SD-WAN device configuration"
+    },
+    "catsdwan_get_feature_parcel": {
+      "tier": "read",
+      "title": "Get SD-WAN feature parcel"
+    },
+    "catsdwan_get_firewall_policy": {
+      "tier": "read",
+      "title": "SD-WAN edge firewall policy"
+    },
+    "catsdwan_get_policy": {
+      "tier": "read",
+      "title": "Get SD-WAN policy"
+    },
+    "catsdwan_integrations": {
+      "tier": "read",
+      "title": "SD-WAN Manager integrations (ISE, pxGrid, partners)"
+    },
+    "catsdwan_interface_stats": {
+      "tier": "read",
+      "title": "SD-WAN interface statistics"
+    },
+    "catsdwan_licenses": {
+      "tier": "read",
+      "title": "SD-WAN licences"
+    },
+    "catsdwan_list_alarms": {
+      "tier": "read",
+      "title": "List SD-WAN alarms"
+    },
+    "catsdwan_list_backups": {
+      "tier": "read",
+      "title": "List SD-WAN Manager backups"
+    },
+    "catsdwan_list_config_groups": {
+      "tier": "read",
+      "title": "List SD-WAN configuration groups"
+    },
+    "catsdwan_list_controllers": {
+      "tier": "read",
+      "title": "List SD-WAN controllers"
+    },
+    "catsdwan_list_device_actions": {
+      "tier": "read",
+      "title": "List SD-WAN device actions"
+    },
+    "catsdwan_list_devices": {
+      "tier": "read",
+      "title": "List SD-WAN devices"
+    },
+    "catsdwan_list_events": {
+      "tier": "read",
+      "title": "List SD-WAN events"
+    },
+    "catsdwan_list_path_traces": {
+      "tier": "read",
+      "title": "SD-WAN path insight traces"
+    },
+    "catsdwan_list_policies": {
+      "tier": "read",
+      "title": "List SD-WAN policies"
+    },
+    "catsdwan_list_policy_groups": {
+      "tier": "read",
+      "title": "List SD-WAN policy groups"
+    },
+    "catsdwan_list_sla_classes": {
+      "tier": "read",
+      "title": "List SD-WAN SLA classes"
+    },
+    "catsdwan_list_software": {
+      "tier": "read",
+      "title": "List SD-WAN software"
+    },
+    "catsdwan_list_templates": {
+      "tier": "read",
+      "title": "List SD-WAN templates"
+    },
+    "catsdwan_list_tlocs": {
+      "tier": "read",
+      "title": "List SD-WAN TLOCs"
+    },
+    "catsdwan_list_users": {
+      "tier": "read",
+      "title": "List SD-WAN Manager users"
+    },
+    "catsdwan_list_wan_edges": {
+      "tier": "read",
+      "title": "List SD-WAN WAN edges"
+    },
+    "catsdwan_manager_health": {
+      "tier": "read",
+      "title": "SD-WAN Manager health"
+    },
+    "catsdwan_omp_peers": {
+      "tier": "read",
+      "title": "SD-WAN OMP peers"
+    },
+    "catsdwan_omp_routes": {
+      "tier": "read",
+      "title": "SD-WAN OMP routes"
+    },
+    "catsdwan_onboard_edge": {
+      "tier": "write",
+      "title": "Onboard SD-WAN WAN edge"
+    },
+    "catsdwan_path_insight": {
+      "tier": "write",
+      "title": "Run an SD-WAN path insight trace"
+    },
+    "catsdwan_ping": {
+      "tier": "read",
+      "title": "Ping from an SD-WAN device"
+    },
+    "catsdwan_reboot_devices": {
+      "tier": "dangerous",
+      "title": "Reboot SD-WAN devices"
+    },
+    "catsdwan_recent_activity": {
+      "tier": "read",
+      "title": "SD-WAN recent activity"
+    },
+    "catsdwan_release_at_edge": {
+      "tier": "dangerous",
+      "title": "Release a host contained at its SD-WAN edge"
+    },
+    "catsdwan_remove_device": {
+      "tier": "dangerous",
+      "title": "Remove SD-WAN WAN edge"
+    },
+    "catsdwan_renew_controller_certificate": {
+      "tier": "write",
+      "title": "Renew an SD-WAN controller certificate"
+    },
+    "catsdwan_routes": {
+      "tier": "read",
+      "title": "SD-WAN device routing table"
+    },
+    "catsdwan_search_spec": {
+      "tier": "read",
+      "title": "Search the Cisco Catalyst SD-WAN Manager API spec"
+    },
+    "catsdwan_security_events": {
+      "tier": "read",
+      "title": "SD-WAN security events"
+    },
+    "catsdwan_security_status": {
+      "tier": "read",
+      "title": "SD-WAN edge security status"
+    },
+    "catsdwan_service_chains": {
+      "tier": "read",
+      "title": "SD-WAN service chains"
+    },
+    "catsdwan_set_amp_profile": {
+      "tier": "write",
+      "title": "Set an SD-WAN AMP (file) profile"
+    },
+    "catsdwan_set_containment_acl": {
+      "tier": "dangerous",
+      "title": "Set the SD-WAN containment ACL"
+    },
+    "catsdwan_set_containment_baseline": {
+      "tier": "dangerous",
+      "title": "Set the SD-WAN containment baseline"
+    },
+    "catsdwan_set_device_variables": {
+      "tier": "write",
+      "title": "Set SD-WAN device variables"
+    },
+    "catsdwan_set_edge_validity": {
+      "tier": "write",
+      "title": "Set SD-WAN WAN edge validity"
+    },
+    "catsdwan_set_external_authentication": {
+      "tier": "write",
+      "title": "Set SD-WAN Manager external authentication"
+    },
+    "catsdwan_set_feature_parcel": {
+      "tier": "write",
+      "title": "Set SD-WAN feature parcel"
+    },
+    "catsdwan_set_firewall_policy": {
+      "tier": "dangerous",
+      "title": "Set SD-WAN edge firewall policy"
+    },
+    "catsdwan_set_inspection_profile": {
+      "tier": "write",
+      "title": "Set an SD-WAN advanced inspection profile"
+    },
+    "catsdwan_set_ips_profile": {
+      "tier": "write",
+      "title": "Set an SD-WAN IPS profile"
+    },
+    "catsdwan_set_ise_integration": {
+      "tier": "dangerous",
+      "title": "Set the SD-WAN Manager's ISE and pxGrid integration"
+    },
+    "catsdwan_set_security_object": {
+      "tier": "dangerous",
+      "title": "Set SD-WAN security object"
+    },
+    "catsdwan_set_security_policy": {
+      "tier": "write",
+      "title": "Set an SD-WAN embedded security policy (UTD)"
+    },
+    "catsdwan_set_service_chain": {
+      "tier": "write",
+      "title": "Set SD-WAN service chain (firewall service)"
+    },
+    "catsdwan_set_service_steering": {
+      "tier": "dangerous",
+      "title": "Set SD-WAN service steering policy"
+    },
+    "catsdwan_set_ssl_decryption": {
+      "tier": "write",
+      "title": "Set an SD-WAN SSL decryption policy"
+    },
+    "catsdwan_set_ssl_decryption_profile": {
+      "tier": "write",
+      "title": "Set an SD-WAN SSL decryption profile"
+    },
+    "catsdwan_set_ssl_proxy_ca": {
+      "tier": "write",
+      "title": "Set the SD-WAN SSL proxy CA"
+    },
+    "catsdwan_set_url_filtering_profile": {
+      "tier": "write",
+      "title": "Set an SD-WAN URL-filtering profile"
+    },
+    "catsdwan_site_health": {
+      "tier": "read",
+      "title": "SD-WAN site health"
+    },
+    "catsdwan_site_report": {
+      "tier": "read",
+      "title": "SD-WAN site report"
+    },
+    "catsdwan_sla_history": {
+      "tier": "read",
+      "title": "SD-WAN SLA history"
+    },
+    "catsdwan_snapshot": {
+      "tier": "read",
+      "title": "Catalyst SD-WAN Manager snapshot"
+    },
+    "catsdwan_ssl_proxy_ca": {
+      "tier": "read",
+      "title": "SD-WAN SSL proxy CA"
+    },
+    "catsdwan_status": {
+      "tier": "read",
+      "title": "Cisco Catalyst SD-WAN Manager status"
+    },
+    "catsdwan_sync_root_cert": {
+      "tier": "write",
+      "title": "Sync the SD-WAN root certificate"
+    },
+    "catsdwan_test_login": {
+      "tier": "read",
+      "title": "Test a login to the SD-WAN Manager"
+    },
+    "catsdwan_top_applications": {
+      "tier": "read",
+      "title": "SD-WAN top applications"
+    },
+    "catsdwan_topology": {
+      "tier": "read",
+      "title": "SD-WAN topology"
+    },
+    "catsdwan_traceroute": {
+      "tier": "read",
+      "title": "Traceroute from an SD-WAN device"
+    },
+    "catsdwan_trustsec": {
+      "tier": "read",
+      "title": "SD-WAN edge TrustSec state"
+    },
+    "catsdwan_trustsec_path": {
+      "tier": "read",
+      "title": "SGT path across the SD-WAN overlay"
+    },
+    "catsdwan_tunnel_health": {
+      "tier": "read",
+      "title": "SD-WAN tunnel health"
+    },
+    "catsdwan_tunnel_path": {
+      "tier": "read",
+      "title": "Simulate an SD-WAN flow (tunnel path)"
+    },
+    "catsdwan_tunnel_stats": {
+      "tier": "read",
+      "title": "SD-WAN tunnel statistics"
+    },
+    "catsdwan_upgrade_controllers": {
+      "tier": "write",
+      "title": "Upgrade SD-WAN controllers"
+    },
+    "catsdwan_upgrade_software": {
+      "tier": "dangerous",
+      "title": "Upgrade SD-WAN software"
+    },
+    "catsdwan_upload_utd_image": {
+      "tier": "write",
+      "title": "Upload a UTD engine image to the SD-WAN Manager"
+    },
+    "catsdwan_utd_status": {
+      "tier": "read",
+      "title": "SD-WAN UTD engine status"
+    }
+  },
+  "version": "0.8.0"
+}

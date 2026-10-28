@@ -1,5 +1,5 @@
 {
-  "core_version": "0.15.0",
+  "core_version": "0.19.0",
   "manifest": 1,
   "prefix": "fmc",
   "prompts": {
@@ -482,13 +482,71 @@
         "fmc"
       ]
     },
+    "suite_access_review": {
+      "arguments": [
+        "stale_days",
+        "scope",
+        "servers"
+      ],
+      "references": [
+        "ise_list_admin_users",
+        "ise_get_admin_access",
+        "catc_list_users",
+        "catc_get_external_authentication",
+        "fmc_list_users",
+        "fmc_list_roles",
+        "fmc_get_external_auth",
+        "catsdwan_list_users",
+        "catsdwan_get_aaa",
+        "cml_list_users",
+        "cml_get_auth_config",
+        "win_list_ad_groups",
+        "win_get_ad_user",
+        "win_run_powershell_json"
+      ],
+      "rendered": true,
+      "suite": true,
+      "tier": "read",
+      "uses": [
+        "ise",
+        "catc",
+        "fmc",
+        "catsdwan",
+        "cml",
+        "win"
+      ]
+    },
+    "suite_asbuilt_drift": {
+      "arguments": [
+        "site",
+        "device",
+        "checks",
+        "servers"
+      ],
+      "references": [
+        "netbox_site_summary",
+        "netbox_list_objects",
+        "catc_list_devices",
+        "catc_list_device_interfaces",
+        "catc_get_physical_topology",
+        "catc_get_vlan_topology"
+      ],
+      "rendered": true,
+      "suite": true,
+      "tier": "read",
+      "uses": [
+        "netbox",
+        "catc"
+      ]
+    },
     "suite_change_check": {
       "arguments": [
         "site",
         "phase",
         "change",
         "before",
-        "servers"
+        "servers",
+        "expected"
       ],
       "references": [
         "catsdwan_snapshot",
@@ -508,6 +566,94 @@
         "ise",
         "catc",
         "fmc"
+      ]
+    },
+    "suite_decommission_site": {
+      "arguments": [
+        "site",
+        "subnets",
+        "dns_zone",
+        "servers"
+      ],
+      "references": [
+        "catsdwan_list_devices",
+        "catsdwan_get_device_config",
+        "catsdwan_remove_device",
+        "catsdwan_associate_config_group",
+        "catsdwan_set_edge_validity",
+        "catc_get_site",
+        "catc_list_devices",
+        "catc_get_sda_fabric",
+        "catc_list_ip_pools",
+        "catc_delete_fabric_site",
+        "catc_delete_device",
+        "catc_delete_ip_pool",
+        "catc_delete_site",
+        "ise_list_ndgs",
+        "ise_list_nads",
+        "ise_get_nad",
+        "ise_delete_nad",
+        "ise_delete_object",
+        "fmc_find_address",
+        "fmc_list_objects",
+        "fmc_where_used",
+        "fmc_delete_object",
+        "fmc_delete_objects",
+        "win_list_dhcp_scopes",
+        "win_list_dhcp_leases",
+        "win_list_dns_zones",
+        "win_get_dns_records",
+        "win_remove_dns_record",
+        "win_run_powershell_json"
+      ],
+      "rendered": true,
+      "suite": true,
+      "tier": "dangerous",
+      "uses": [
+        "catsdwan",
+        "catc",
+        "ise",
+        "fmc",
+        "win"
+      ]
+    },
+    "suite_maintenance_window": {
+      "arguments": [
+        "site",
+        "sdwan_version",
+        "catc_image",
+        "ise_patch",
+        "mode",
+        "window",
+        "servers"
+      ],
+      "references": [
+        "catsdwan_list_devices",
+        "catsdwan_list_software",
+        "catsdwan_snapshot",
+        "catsdwan_upgrade_software",
+        "catsdwan_compare_snapshot",
+        "catc_list_device_images",
+        "catc_list_images",
+        "catc_snapshot",
+        "catc_distribute_image",
+        "catc_activate_image",
+        "catc_compare_snapshot",
+        "ise_list_nodes",
+        "ise_list_patches",
+        "ise_deployment_health",
+        "ise_get_backup_status",
+        "ise_snapshot",
+        "ise_create_backup",
+        "ise_compare_snapshot"
+      ],
+      "rendered": true,
+      "suite": true,
+      "tier": "dangerous",
+      "uses": [
+        "catsdwan",
+        "catc",
+        "ise"
       ]
     }
   },
