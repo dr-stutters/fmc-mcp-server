@@ -514,6 +514,10 @@
       "tier": "write",
       "title": "Configure BGP"
     },
+    "fmc_configure_dhcp": {
+      "tier": "write",
+      "title": "Configure DHCP server / relay"
+    },
     "fmc_configure_dns": {
       "tier": "write",
       "title": "Configure DNS (platform settings)"
