@@ -518,6 +518,10 @@
       "tier": "read",
       "title": "Compare Secure Firewall Management Center snapshots"
     },
+    "fmc_configure_bfd": {
+      "tier": "write",
+      "title": "Configure BFD"
+    },
     "fmc_configure_bgp": {
       "tier": "write",
       "title": "Configure BGP"
