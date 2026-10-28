@@ -108,7 +108,7 @@ Changes made in FMC reach the firewalls only after a **deployment** (`fmc_deploy
 
 ## Tools
 
-There are 235 tools when every tier is enabled (92 read, 129 write, 14 dangerous; the dangerous tier turns `fmc_api_call` into a raw call), and thirteen workflow prompts (`fmc_why_blocked`, `fmc_firewall_health_review`, `fmc_sdwan_troubleshoot`, `fmc_vpn_troubleshoot`, `fmc_threat_defense_review`, `fmc_prove_user_policy`, `fmc_compliance_evidence`, `suite_change_check`; `fmc_rule_change_review` and `fmc_policy_cleanup`, write tier; `fmc_onboard_ftd`, `fmc_onboard_branch` and `fmc_ha_failover_check`, dangerous tier). `FMC_TOOLSETS` loads only some areas of them (see "Toolsets").
+There are 236 tools when every tier is enabled (92 read, 129 write, 15 dangerous; the dangerous tier turns `fmc_api_call` into a raw call), and fourteen workflow prompts (`fmc_why_blocked`, `fmc_firewall_health_review`, `fmc_sdwan_troubleshoot`, `fmc_vpn_troubleshoot`, `fmc_threat_defense_review`, `fmc_prove_user_policy`, `fmc_compliance_evidence`, `suite_change_check`; `fmc_rule_change_review` and `fmc_policy_cleanup`, write tier; `fmc_onboard_ftd`, `fmc_onboard_branch`, `fmc_ha_failover_check` and `fmc_replace_device`, dangerous tier). `FMC_TOOLSETS` loads only some areas of them (see "Toolsets").
 
 **Read**
 
@@ -244,6 +244,7 @@ MD5 password, because FMC returns it masked and a PUT would replace it, unless y
 | `fmc_register_device` | Registers a device with FMC and waits for the initial deployment. |
 | `fmc_register_devices` | Registers several FTDs in one call (a lab or PoC rebuild): one preview for every row, one bulk request (one per device where FMC refuses bulk), one wait under one deadline for every registration and initial deployment, a result per device. Every row uses `FMC_FTD_REG_KEY` unless it has its own key; keys are never shown. An MCP background task with `MCP_TASKS=true`. |
 | `fmc_delete_device` | Removes a device from FMC. |
+| `fmc_copy_device_config` | FMC's Copy Configuration (an RMA, or a branch cloned onto a new box): copies a device's or HA pair's interfaces, routes and device settings (and, with `copy_shared_policies`, its shared policies) onto standalone FTDs, and follows FMC's task. The preview checks model and version, refuses an HA member or cluster node as a target, and lists what each target loses (from its export). Nothing reaches the device until `fmc_deploy`. |
 | `fmc_create_ha_pair` | Forms an HA pair: the failover link, and state replication over it or over a separate state link (`state_interface`). |
 | `fmc_ha_action` | Breaks, switches or deletes an HA pair. |
 | `fmc_delete_policy` | Deletes a whole policy. |
@@ -311,6 +312,10 @@ MD5 password, because FMC returns it masked and a PUT would replace it, unless y
   (`fmc_get_ha_status`: standby ready, links, monitored interfaces, config sync), a traffic baseline (packet
   tracer, and pings from a CML host with a loss series), the switch (`fmc_ha_action`, or in a lab the active
   unit powered off), then verifies roles, failover history and its reason, and reports the outage.
+- **Replace a failed FTD (RMA)?** The `fmc_replace_device` prompt snapshots the old unit (or exports its
+  record), registers the new one, copies the configuration (`fmc_copy_device_config`), matches the licences,
+  deploys, compares the two with `fmc_diff_device_config`, proves the policy and optionally unregisters the
+  old record.
 - **Is this rule change safe?** The `fmc_rule_change_review` prompt baselines the policy, runs sample flows
   through `fmc_rule_lookup` before and after, checks shadowing and overlap, previews the change and plans the
   deploy with a rollback.
@@ -519,7 +524,7 @@ of the server, and FMC's 120 requests/minute are shared by every API user of tha
 
 ### Toolsets (`FMC_TOOLSETS`, F46)
 
-With every tier on, the server registers 235 tools, and a client sends all their descriptions to the
+With every tier on, the server registers 236 tools, and a client sends all their descriptions to the
 model on every turn. Some clients also cap the number of tools. `FMC_TOOLSETS` loads only the areas you
 name:
 
@@ -546,8 +551,8 @@ checks it against the registered tools.
 |---|---|---|---|
 | `core` | 9 (8/0/1) | always loaded: status, the API spec search and raw API call, domains, devices, tasks, change-check snapshots |  |
 | `admin` | 11 (6/4/1) | FMC itself: backups, upgrades, health policy, users, audit log, Smart Licensing |  |
-| `deploy` | 7 (4/1/2) | pending changes, deployments, rollback, change-management tickets | `fmc_onboard_branch`, `fmc_onboard_ftd`, `fmc_rule_change_review` |
-| `devices` | 24 (9/11/4) | device records, registration, licences, interfaces, DHCP, clusters, device groups, device templates | `fmc_onboard_branch`, `fmc_onboard_ftd` |
+| `deploy` | 7 (4/1/2) | pending changes, deployments, rollback, change-management tickets | `fmc_onboard_branch`, `fmc_onboard_ftd`, `fmc_replace_device`, `fmc_rule_change_review` |
+| `devices` | 28 (9/14/5) | device records, registration, licences, interfaces, DHCP, clusters, device groups, device templates | `fmc_onboard_branch`, `fmc_onboard_ftd`, `fmc_replace_device` |
 | `ha` | 5 (2/1/2) | FTD high-availability pairs: status, forming, switch/break, monitored interfaces | `fmc_ha_failover_check` |
 | `identity` | 13 (6/7/0) | users in rules: realms (AD/LDAP), identity policies, ISE identity source, user-IP sessions | `fmc_prove_user_policy` |
 | `intel` | 13 (3/10/0) | blocking by reputation: Security Intelligence feeds and lists, DNS policy, host containment |  |
@@ -557,9 +562,9 @@ checks it against the registered tools.
 | `policy` | 31 (9/21/1) | access control, NAT and prefilter: policies, rules, categories, inheritance, locks, assignments, hygiene | `fmc_policy_cleanup`, `fmc_rule_change_review`, `fmc_why_blocked` |
 | `routing` | 13 (2/11/0) | static routes, SLA monitors, BGP, OSPF, BFD, VRFs, prefix lists and route maps |  |
 | `sdwan` | 7 (1/6/0) | SD-WAN hub and spoke topologies, WAN interfaces, application-aware routing, branch health | `fmc_onboard_branch`, `fmc_sdwan_troubleshoot` |
-| `threat` | 13 (5/8/0) | intrusion (IPS), file/malware and network analysis policies, an ACP's threat posture | `fmc_threat_defense_review` |
+| `threat` | 14 (5/9/0) | intrusion (IPS), file/malware and network analysis policies, an ACP's threat posture | `fmc_threat_defense_review` |
 | `tls` | 18 (5/12/1) | TLS decryption policies and rules, cipher suite lists, certificates (days left, enrolment), readiness check |  |
-| `troubleshoot` | 13 (11/2/0) | why is traffic blocked or slow: packet tracer, rule lookup, hit counts, show commands, live state, profiling | `fmc_firewall_health_review`, `fmc_prove_user_policy`, `fmc_why_blocked` |
+| `troubleshoot` | 14 (12/2/0) | why is traffic blocked or slow: packet tracer, rule lookup, hit counts, show commands, live state, profiling | `fmc_firewall_health_review`, `fmc_prove_user_policy`, `fmc_why_blocked` |
 | `vpn` | 11 (5/6/0) | site-to-site VPN topologies, tunnel status and troubleshooting, remote access VPN build and read | `fmc_vpn_troubleshoot` |
 
 ### Deploy safety rails (F18)

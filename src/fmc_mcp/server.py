@@ -26,6 +26,7 @@ from fmc_mcp.tools import (
     compliance,
     conditions,
     containment,
+    copy_config,
     dangerous,
     decryption,
     decryption_check,
@@ -112,6 +113,9 @@ Workflows:
   branch with source_device) -> fmc_get_device_template (variables, interfaces, VPN/SD-WAN settings)
   -> fmc_register_device (the new FTD) -> fmc_apply_device_template(template, device, variables)
   -> fmc_deploy (device and hubs) -> fmc_get_vpn_topology.
+- Replace a failed FTD (RMA) or clone one onto a new box: fmc_register_device (the new unit) ->
+  fmc_copy_device_config(source, targets) (same model and version, standalone targets) -> fmc_deploy ->
+  fmc_diff_device_config(old, new) -> fmc_prove_policy; the fmc_replace_device prompt runs it end to end.
 - Change safely: make the change -> fmc_pending_changes (what the next deploy pushes) -> fmc_deploy
   -> fmc_run_show_command / fmc_list_deployments; undo a bad deployment with fmc_rollback_deployment.
   A change number from the user goes in `change_ref` on each write: the preview shows it, access rule
@@ -347,6 +351,7 @@ REGISTER: list[Callable[[ToolRegistrar], None]] = [
     bulk_rules.register,
     dangerous.register,
     registration.register,
+    copy_config.register,
     troubleshoot.register,
     profiling.register,
     fleet.register,
