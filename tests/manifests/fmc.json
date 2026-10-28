@@ -981,6 +981,10 @@
       "tier": "read",
       "title": "Find objects by value"
     },
+    "fmc_flexconfig_review": {
+      "tier": "read",
+      "title": "Review FlexConfig"
+    },
     "fmc_get_access_policy": {
       "tier": "read",
       "title": "Get access control policy"
@@ -1224,6 +1228,10 @@
     "fmc_map_dynamic_object": {
       "tier": "write",
       "title": "Map IPs to a dynamic object"
+    },
+    "fmc_migrate_flexconfig": {
+      "tier": "dangerous",
+      "title": "Migrate FlexConfig to native configuration"
     },
     "fmc_packet_tracer": {
       "tier": "read",
