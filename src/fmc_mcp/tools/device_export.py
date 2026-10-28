@@ -62,7 +62,14 @@ from fmc_mcp.tools.bundle import (
 )
 from fmc_mcp.tools.common import SECRET_FIELDS, Domain, ref_label, resolve_in
 from fmc_mcp.tools.device_config import route_row
-from fmc_mcp.tools.devices import DEVICES, HA_PAIRS, INTERFACE_KINDS, interface_row
+from fmc_mcp.tools.devices import (
+    DEVICES,
+    HA_PAIRS,
+    INLINE_SETS,
+    INTERFACE_KINDS,
+    inline_set_row,
+    interface_row,
+)
 from fmc_mcp.tools.platform_settings import LISTS, PS, SINGLE
 from fmc_mcp.tools.policies import NAT, RULE_CAP, policy_assignments
 from fmc_mcp.tools.templates import TEMPLATES, template_with_metadata
@@ -396,6 +403,19 @@ async def _interfaces(ctx: ExportContext) -> dict[str, Any]:
     for kind, sub in INTERFACE_KINDS.items():
         for i in await ctx.items(f"{ctx.base}/{sub}"):
             _put(out, str(interface_row(kind, i)["name"]), interface_entry(kind, i, zones))
+    return _sorted(out)
+
+
+@export_section(
+    "inline_sets",
+    summary="IPS-only inline sets by name: interface pairs, tap mode, fail-open, link-state propagation",
+)
+async def _inline_sets(ctx: ExportContext) -> dict[str, Any]:
+    out: dict[str, Any] = {}
+    for s in await ctx.items(f"{ctx.base}/{INLINE_SETS}"):
+        row = {k: v for k, v in inline_set_row(s).items() if k not in ("name", "id")}
+        row["pairs"] = sorted(sorted(p) for p in row.get("pairs") or [])
+        _put(out, str(s.get("name")), norm(row))
     return _sorted(out)
 
 
