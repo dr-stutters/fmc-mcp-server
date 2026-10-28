@@ -1069,7 +1069,10 @@ carry on.
    {tool_ref("fmc_get_intrusion_policy")} with policy=<name>{d}: base policy, mode and overridden rules.
    In a PREVENTION policy, overrides that DISABLE a rule or turn a drop into ALERT or PASS are medium
    (list gid:sid and message); a custom policy based on "Connectivity Over Security" or "No Rules
-   Active" is info. When the user cares about a specific threat (e.g. Log4j),
+   Active" is info. A custom policy whose recommendations are off (not configured or not in use), or
+   last generated more than 30 days ago, is low: the fix is
+   {tool_ref("fmc_set_intrusion_recommendations")} (action="generate_and_use" with the inside networks, or
+   "refresh"). When the user cares about a specific threat (e.g. Log4j),
    {tool_ref("fmc_find_intrusion_rules")} with query=<text>, policy=<name>{d} shows whether it drops.
 
 5. Network analysis: step 1's network_analysis_policy is the one the access policy uses (FMC names
