@@ -29,7 +29,7 @@ sessions, so never the GUI `admin` or another integration's user.
 has a wheel with stutters-mcp-core bundled in; it needs only PyPI dependencies.
 
 ```bash
-WHEEL=https://github.com/dr-stutters/fmc-mcp-server/releases/download/v0.20.0/fmc_mcp_server-0.20.0-py3-none-any.whl
+WHEEL=https://github.com/dr-stutters/fmc-mcp-server/releases/download/v0.21.0/fmc_mcp_server-0.21.0-py3-none-any.whl
 export FMC_URL=https://fmc.example.com FMC_USERNAME=mcp-api-ro FMC_PASSWORD='...'
 uvx --from "$WHEEL" fmc-mcp-server check            # preflight: TLS, token, domains, role, version, rate limit
 claude mcp add fmc -e FMC_URL=$FMC_URL -e FMC_USERNAME=$FMC_USERNAME -e FMC_PASSWORD="$FMC_PASSWORD" \
@@ -43,7 +43,7 @@ Claude Desktop (`claude_desktop_config.json`), same idea:
   "mcpServers": {
     "fmc": {
       "command": "uvx",
-      "args": ["--from", "https://github.com/dr-stutters/fmc-mcp-server/releases/download/v0.20.0/fmc_mcp_server-0.20.0-py3-none-any.whl", "fmc-mcp-server"],
+      "args": ["--from", "https://github.com/dr-stutters/fmc-mcp-server/releases/download/v0.21.0/fmc_mcp_server-0.21.0-py3-none-any.whl", "fmc-mcp-server"],
       "env": {"FMC_URL": "https://fmc.example.com", "FMC_USERNAME": "mcp-api-ro", "FMC_PASSWORD": "..."}
     }
   }
@@ -119,7 +119,7 @@ Changes made in FMC reach the firewalls only after a **deployment** (`fmc_deploy
 
 There are 243 tools when every tier is enabled (94 read, 133 write, 16 dangerous; the dangerous tier turns `fmc_api_call` into a raw call), and twenty workflow prompts (`fmc_why_blocked`, `fmc_firewall_health_review`, `fmc_ftdsdwan_troubleshoot`, `fmc_vpn_troubleshoot`, `fmc_threat_defense_review`, `fmc_prove_user_policy`, `fmc_compliance_evidence`, `suite_change_check`, `suite_access_review`, `suite_asbuilt_drift`, `suite_segmentation_audit`; `fmc_rule_change_review` and `fmc_policy_cleanup`, write tier; `fmc_onboard_ftd`, `fmc_onboard_branch`, `fmc_ha_failover_check`, `fmc_replace_device`, `suite_decommission_site` and `suite_maintenance_window`, dangerous tier). The `suite_*` prompts come from stutters-mcp-core and span products: `suite_access_review` lists who can change what on every connected platform (admin accounts, roles and the external groups that grant them, resolved to people through Active Directory); `suite_asbuilt_drift` checks whether NetBox has drifted from the wiring; `suite_segmentation_audit` asks per segment pair whether A can reach B, with each layer's intended verdict (SD-WAN VPNs and policy, ISE SGACLs, SD-Access VNs; here: the FMC access rules between the segments' zones and networks, via `fmc_rule_lookup` and `fmc_prove_policy`) against a live CML reachability test, ending in a markdown + JSON evidence pack; `suite_decommission_site` removes one site everywhere it exists without leaving orphans (here: the FMC network objects for the site's subnets, after `fmc_where_used`); `suite_maintenance_window` runs one maintenance window at a site across products. Legs whose tools a server does not ship yet are marked pending in the prompt. `FMC_TOOLSETS` loads only some areas of them (see "Toolsets").
 
-**Renamed in 0.20.0 (F86):** the FTD SD-WAN tools are `fmc_ftdsdwan_status`, `fmc_create_ftdsdwan_topology` and `fmc_update_ftdsdwan_topology`, the prompt is `fmc_ftdsdwan_troubleshoot` and the toolset is `ftdsdwan`, so they don't read as Catalyst SD-WAN (cat-sdwan-mcp-server, `catsdwan_*`). The old names `fmc_sdwan_status`, `fmc_create_sdwan_topology`, `fmc_update_sdwan_topology`, `fmc_sdwan_troubleshoot` and the toolset `sdwan` still work in 0.20.x as deprecated aliases (same result plus `renamed_to`; `fmc_status` warns about the old toolset name) and go in 0.21.0. Those three alias tools are counted above.
+**Renamed in 0.20.0 (F86):** the FTD SD-WAN tools are `fmc_ftdsdwan_status`, `fmc_create_ftdsdwan_topology` and `fmc_update_ftdsdwan_topology`, the prompt is `fmc_ftdsdwan_troubleshoot` and the toolset is `ftdsdwan`, so they don't read as Catalyst SD-WAN (cat-sdwan-mcp-server, `catsdwan_*`). The old names `fmc_sdwan_status`, `fmc_create_sdwan_topology`, `fmc_update_sdwan_topology`, `fmc_sdwan_troubleshoot` and the toolset `sdwan` still work in 0.20.x and 0.21.x as deprecated aliases (same result plus `renamed_to`; `fmc_status` warns about the old toolset name) and go in 0.22.0. Those three alias tools are counted above.
 
 **Read**
 
@@ -569,7 +569,7 @@ checks it against the registered tools.
 | `admin` | 11 (6/4/1) | FMC itself: backups, upgrades, health policy, users, audit log, Smart Licensing |  |
 | `deploy` | 7 (4/1/2) | pending changes, deployments, rollback, change-management tickets | `fmc_onboard_branch`, `fmc_onboard_ftd`, `fmc_replace_device`, `fmc_rule_change_review` |
 | `devices` | 30 (10/14/6) | device records, registration, licences, interfaces, DHCP, clusters, device groups and templates, FlexConfig | `fmc_onboard_branch`, `fmc_onboard_ftd`, `fmc_replace_device` |
-| `ftdsdwan` | 10 (2/8/0) | FTD SD-WAN (not Catalyst SD-WAN): hub and spoke topologies, WAN interfaces, app-aware routing, branch health; the old name `sdwan` still works until 0.21.0 | `fmc_onboard_branch`, `fmc_ftdsdwan_troubleshoot` (and the deprecated `fmc_sdwan_troubleshoot`) |
+| `ftdsdwan` | 10 (2/8/0) | FTD SD-WAN (not Catalyst SD-WAN): hub and spoke topologies, WAN interfaces, app-aware routing, branch health; the old name `sdwan` still works until 0.22.0 | `fmc_onboard_branch`, `fmc_ftdsdwan_troubleshoot` (and the deprecated `fmc_sdwan_troubleshoot`) |
 | `ha` | 5 (2/1/2) | FTD high-availability pairs: status, forming, switch/break, monitored interfaces | `fmc_ha_failover_check` |
 | `identity` | 13 (6/7/0) | users in rules: realms (AD/LDAP), identity policies, ISE identity source, user-IP sessions | `fmc_prove_user_policy` |
 | `intel` | 13 (3/10/0) | blocking by reputation: Security Intelligence feeds and lists, DNS policy, host containment |  |
