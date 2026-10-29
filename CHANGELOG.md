@@ -1,5 +1,39 @@
 # Changelog
 
+## 0.20.0 (2026-10-29)
+
+The FTD SD-WAN tools get `ftdsdwan` names (F86), apart from Catalyst SD-WAN (cat-sdwan-mcp-server, `catsdwan_*`); the old
+names stay as deprecated aliases until 0.21.0. Plus `fmc_update_sla_monitor`, EIGRP `passive_all`, and fixes for DHCP on
+subinterfaces and health policy confirms on FMC 10.0. Core moves to v0.20.0 (suite prompt `suite_segmentation_audit`). One
+new tool and one new prompt, plus three tool aliases and one prompt alias under the old names: 243 tools (94 read, 133 write,
+16 dangerous; 240 without the aliases) and twenty prompts (nineteen without the alias).
+
+### Added
+- `fmc_update_sla_monitor` (SLA monitor target, zones and timing; a description-only change counts as a change) (F92, #364,
+  #374, #377).
+- `fmc_configure_eigrp` takes `passive_all` (passive on all interfaces, FMC's `passiveInterfaces.allInterfaces`) (F98, #373).
+- stutters-mcp-core v0.20.0: the suite prompt `suite_segmentation_audit`; fmc tools carry their `FMC_TOOLSETS` area as core
+  toolsets (no more "unknown toolset" warning); tool-surface budget test (#376).
+
+### Changed
+- Renamed (F86, #323, #375): the FTD SD-WAN tools are `fmc_ftdsdwan_status`, `fmc_create_ftdsdwan_topology` and
+  `fmc_update_ftdsdwan_topology`, the prompt is `fmc_ftdsdwan_troubleshoot`, the `FMC_TOOLSETS` area is `ftdsdwan` and
+  `fmc_list_vpn_topologies` takes `kind='ftdsdwan'`.
+- The SLA monitor and tracked-route delete previews warn that FMC leaves `sla monitor <id>` on the device;
+  `fmc_delete_interface` names a subinterface by its full name (#364, #374).
+
+### Deprecated
+- The old names `fmc_sdwan_status`, `fmc_create_sdwan_topology`, `fmc_update_sdwan_topology`, the prompt
+  `fmc_sdwan_troubleshoot`, the `FMC_TOOLSETS` area `sdwan` and `kind='sdwan'` still work (same result plus a `renamed_to`
+  note) and are removed in 0.21.0 (F86, #375).
+
+### Fixed
+- `fmc_create_health_policy` and `fmc_assign_health_policy` confirms were always refused on FMC 10.0, which returns health
+  modules in a different order on every read; module lists in previews and `fmc_get_health_policy` are now sorted by module
+  id (F100, #363, #371).
+- `fmc_configure_dhcp` sends subinterfaces by their parent's hardware name (FMC 10.0 refused them) and blocks DHCP server and
+  relay on one device (F94, #370, #372).
+
 ## 0.19.0 (2026-10-28)
 
 More FMC depth from the 96-hour run: native EIGRP, a FlexConfig review and migration, and a DHCP fix for FMC 10.0. Core moves
