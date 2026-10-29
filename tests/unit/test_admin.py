@@ -10,9 +10,10 @@ from fastmcp import Client
 from fmc_mcp.server import create_server
 from fmc_mcp.tools.admin import _with_thresholds
 
-from .conftest import CFG, items, make_settings
+from .conftest import CFG, fixture, items, make_settings
 
 DEV = {"id": "2c11eaca-c7e3-11f1-a7ce-a8b537b1b4bb", "name": "ftd1", "type": "Device", "sw_version": "10.0.0"}
+REC = fixture("compliance_fmc10")
 HP_ID = "1114175a-2eca-11f1-bc1d-b8e359adb5f3"
 CPU = {
     "moduleId": "hm_cpu",
@@ -72,6 +73,47 @@ async def test_no_backup_file_is_an_empty_list(fmc: respx.MockRouter) -> None:
     )
     async with Client(server()) as c:
         out = await run(c, "fmc_list_backups", {"response_format": "json"})
+    assert out["results"] == []
+
+
+async def test_manager_backups_get_without_query(fmc: respx.MockRouter) -> None:
+    """#380: backup/files/manager is a GET-by-id on FMC 10.0.1 (paging params get 400) and answers one
+    backup object, the recorded shape."""
+    route = fmc.get(f"{CFG}/backup/files/manager").mock(
+        return_value=httpx.Response(200, json=REC["backup_manager"])
+    )
+    async with Client(server()) as c:
+        out = await run(c, "fmc_list_backups", {"device": "manager", "response_format": "json"})
+    assert route.call_count == 1
+    assert route.calls.last.request.url.query == b""
+    [row] = out["results"]
+    assert row["target"] == "manager"
+    assert row["file"] == REC["backup_manager"]["fileName"]
+    assert row["created"] == "2026-10-19 02:02:50"
+
+
+async def test_device_backups_get_without_query(fmc: respx.MockRouter) -> None:
+    fmc.get(f"{CFG}/devices/devicerecords").mock(return_value=items([DEV]))
+    newer = {
+        **REC["backup_manager"],
+        "targetId": DEV["id"],
+        "fileName": "b.tar",
+        "creationDate": "2026-10-20 01:00:00",
+    }
+    older = {**newer, "fileName": "a.tar", "creationDate": "2026-10-18 01:00:00"}
+    route = fmc.get(f"{CFG}/backup/files/{DEV['id']}").mock(return_value=items([older, newer]))
+    async with Client(server()) as c:
+        out = await run(c, "fmc_list_backups", {"device": "ftd1", "response_format": "json"})
+    assert route.calls.last.request.url.query == b""
+    assert [r["file"] for r in out["results"]] == ["b.tar", "a.tar"]
+
+
+async def test_device_without_backup_is_an_empty_list(fmc: respx.MockRouter) -> None:
+    fmc.get(f"{CFG}/devices/devicerecords").mock(return_value=items([DEV]))
+    err = REC["backup_device_error"]
+    fmc.get(f"{CFG}/backup/files/{DEV['id']}").mock(return_value=httpx.Response(err["status"], json=err))
+    async with Client(server()) as c:
+        out = await run(c, "fmc_list_backups", {"device": "ftd1", "response_format": "json"})
     assert out["results"] == []
 
 
