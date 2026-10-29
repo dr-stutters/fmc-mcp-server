@@ -42,6 +42,7 @@ def monitor_row(m: dict[str, Any]) -> dict[str, Any]:
         "sla_id": m.get("slaId"),
         "monitor_address": m.get("monitorAddress"),
         "interfaces": [ref_label(i) for i in m.get("interfaceObjects") or []] or m.get("interfaceNames"),
+        "description": m.get("description") or None,
         "frequency_s": m.get("frequency"),
         "threshold_ms": m.get("threshold"),
         "timeout_ms": m.get("timeout"),

@@ -288,6 +288,11 @@ async def test_update_sla_monitor_zones_and_blockers(lab: respx.MockRouter) -> N
     assert "can't exceed timeout_ms" in text and "can't answer an echo probe" in text
     out = await preview_of("fmc_update_sla_monitor", {"monitor": "mcp-sla-isp1", "frequency": 60})
     assert out["status"] == "blocked" and any("Nothing to change" in b for b in out["blockers"])
+    # a description-only change is a change
+    args = {"monitor": "mcp-sla-isp1", "description": "ISP-1 probe"}
+    out = await preview_of("fmc_update_sla_monitor", args)
+    assert out["status"] == "preview", out
+    assert out["preview"]["changes"] == {"description": {"from": None, "to": "ISP-1 probe"}}
 
 
 async def test_update_object_points_to_update_sla_monitor(lab: respx.MockRouter) -> None:
