@@ -1,5 +1,24 @@
 # Changelog
 
+## 0.21.0 (2026-10-29)
+
+Two core 0.20.0 safety rails adopted from the 96-hour run: the back-out step (`Plan.undo`, C81) on the main write tools
+and FMC's backup-age hook for `MCP_REQUIRE_BACKUP_HOURS` (C73). The deprecated FTD SD-WAN aliases stay one more minor
+release and now go in 0.22.0. No new tools or prompts: 243 tools (94 read, 133 write, 16 dangerous; 240 without the
+aliases) and twenty prompts (nineteen without the alias). Core stays at v0.20.0.
+
+### Added
+- The main write tools (objects, groups, zones, access and NAT rules, static routes, interfaces, SLA monitors, health
+  policies) give their back-out step: `back-out: ...` in the preview and `undo` {tool, args} in the applied result and
+  audit log (C81, stutters-mcp-core#157, core 0.20.0 `Plan.undo`; #383).
+- With `MCP_REQUIRE_BACKUP_HOURS` set (C73, stutters-mcp-core#149), dangerous previews such as `fmc_deploy` show the age of
+  FMC's newest backup and are blocked when it is too old, missing or unreadable (#384).
+
+### Deprecated
+- The old FTD SD-WAN names `fmc_sdwan_status`, `fmc_create_sdwan_topology`, `fmc_update_sdwan_topology`, the prompt
+  `fmc_sdwan_troubleshoot`, the `FMC_TOOLSETS` area `sdwan` and `kind='sdwan'` still work and are now removed in 0.22.0
+  (was 0.21.0; kept while the F86 live check compares them with the new names) (F86, #323).
+
 ## 0.20.0 (2026-10-29)
 
 The FTD SD-WAN tools get `ftdsdwan` names (F86), apart from Catalyst SD-WAN (cat-sdwan-mcp-server, `catsdwan_*`); the old
