@@ -509,6 +509,7 @@ including nested groups, to ranges, then walk the rules in order. The results ar
 | `MCP_AUDIT_LOG`, `LOG_LEVEL` | `stderr`, `INFO` | Where the audit log goes, and the log level |
 | `MCP_ROLES` / `MCP_ROLES_FILE`, `MCP_DEFAULT_ROLE` | off, `ro` | Per-caller roles (`ro`/`rw`/`admin`) on top of the tiers (core `docs/PRODUCTION.md`) |
 | `MCP_DRY_RUN`, `MCP_CHANGE_WINDOW`, `MCP_DENY_TOOLS`, `MCP_MAX_BLAST_RADIUS`, `MCP_BLAST_RADIUS_OVERRIDES`, `MCP_TWO_PERSON_TOOLS` | off | Core safety rails (core `docs/PRODUCTION.md`); see "Deploy safety rails" |
+| `MCP_REQUIRE_BACKUP_HOURS`, `MCP_REQUIRE_BACKUP_TOOLS` | off, `@dangerous` | Backup-age rail (core C73): dangerous previews show the age of FMC's newest backup of itself and are blocked when it is older than N hours or unknown; see "Deploy safety rails" |
 
 ### Sessions and rate limits
 
@@ -597,6 +598,11 @@ MCP_ENABLE_DANGEROUS=false   # or MCP_DENY_TOOLS=fmc_api_call: no raw non-GET ca
   `ignore_warning=true` preview lists each FMC warning verbatim, for the same devices and pending version.
   At confirm the server tries once more without ignoring: if FMC's warnings differ from the previewed ones,
   nothing is deployed. The deploy window is also re-checked at confirm.
+- **Backup age:** with `MCP_REQUIRE_BACKUP_HOURS=24`, every dangerous preview (`fmc_deploy`, rollback, HA, ...)
+  has a `backup` block with the age of FMC's newest backup of itself (`fmc_list_backups(device='manager')`),
+  and is blocked when that is over 24 h, FMC has no backup, or the API user can't read backups.
+  `fmc_status` shows the setting under `server.rails.backup`. Take one in the FMC UI (System > Tools >
+  Backup/Restore) or waive it for a while with `fmc_waive_backup_check` (`MCP_RUNTIME_OVERRIDES=true`).
 - **Rollback:** defaults to the deployment before the current one; with an older `to_job` the preview lists
   every deployment it undoes.
 - **Previews** name the domain and the devices (with HA/cluster unit counts).
