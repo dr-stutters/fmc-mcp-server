@@ -271,6 +271,10 @@ def register(reg: ToolRegistrar) -> None:
         app: FmcApp = get_client(ctx)
         src, dst = _ip(source, "source"), _ip(destination, "destination")
         dev = await resolve_device(app, device, domain) if device else None
+        moved: str | None = None  # the device's own (child) domain, when the policy is read there
+        if dev is not None:
+            home, moved = await app.device_home(dev, domain)
+            domain = home if moved else domain
         if not policy:
             if dev is None:
                 raise InvalidRequest(
@@ -399,6 +403,8 @@ def register(reg: ToolRegistrar) -> None:
             },
             "rules_evaluated": evaluated,
         }
+        if moved:
+            out["domain"] = f"{moved} (the device's)"
         if dev_info:
             out["device"] = dev_info
         if identity:

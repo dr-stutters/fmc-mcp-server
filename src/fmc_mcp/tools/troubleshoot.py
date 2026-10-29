@@ -593,6 +593,9 @@ async def packet_trace(
     unless given; pass a DeviceContext as `context` and the device's `interfaces` to reuse ones already
     read (several flows on one device)."""
     protocol = protocol.lower()
+    # A child-domain device seen from Global: its zones and access policy (rule names) live in its domain.
+    home, moved = await app.device_home(dev, domain, strict=False)
+    domain = home if moved else domain
     ifaces = interfaces if interfaces is not None else await device_interfaces(app, dev["id"], domain)
     found_by = None
     if not input_interface:
@@ -643,6 +646,8 @@ async def packet_trace(
     flow = f"{protocol} {src}" + (f":{source_port}" if protocol != "icmp" else "")
     flow += f" -> {dst}" + (f":{destination_port}" if protocol != "icmp" else f" type {icmp_type}")
     out: dict[str, Any] = {"flow": flow, "input_interface": iface.get("ifname")}
+    if moved:
+        out["domain"] = f"{moved} (the device's)"
     if found_by:
         out["input_interface_found_by"] = found_by
     out["results"] = traces

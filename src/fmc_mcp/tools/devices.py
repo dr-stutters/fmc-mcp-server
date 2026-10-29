@@ -249,6 +249,25 @@ def device_row(d: dict[str, Any]) -> dict[str, Any]:
     }
 
 
+def owner_domain(d: dict[str, Any]) -> str:
+    """The UUID (lower case) of the domain that owns a listed device ('' when the record doesn't say)."""
+    return str((((d.get("metadata") or {}).get("domain")) or {}).get("id") or "").lower()
+
+
+async def device_rows(app: FmcApp, devices: list[dict[str, Any]], here: str) -> list[dict[str, Any]]:
+    """device_row() for each device, with a `domain` column when any of them belongs to a descendant of
+    the listed domain (Global's device list includes its child domains' devices, whose policies, zones
+    and objects live in that child domain)."""
+    rows = [device_row(d) for d in devices]
+    owners = [owner_domain(d) for d in devices]
+    if not any(o and o != here.lower() for o in owners):
+        return rows
+    out = []
+    for row, owner in zip(rows, owners, strict=True):
+        out.append({"name": row["name"], "domain": await app.domain_name(owner or here), **row})
+    return out
+
+
 def interface_row(kind: str, i: dict[str, Any]) -> dict[str, Any]:
     ipv4 = i.get("ipv4") or {}
     static = ipv4.get("static") or {}
@@ -368,12 +387,14 @@ def register(reg: ToolRegistrar) -> None:
         registered devices returns an empty list."""
         app: FmcApp = get_client(ctx)
         path = await app.config_path(DEVICES, domain)
+        here = await app.domain_uuid(domain)
         if name:
             page = await app.all(path)
-            rows = [device_row(d) for d in page.items if name.lower() in str(d.get("name", "")).lower()]
+            hits = [d for d in page.items if name.lower() in str(d.get("name", "")).lower()]
+            rows = await device_rows(app, hits, here)
             return list_result(page_of(rows, limit=limit, offset=offset), fmt=response_format)
         page = await app.page(path, limit=limit, offset=offset)
-        page.items = [device_row(d) for d in page.items]
+        page.items = await device_rows(app, page.items, here)
         return list_result(page, fmt=response_format)
 
     @reg.read(title="Get device")

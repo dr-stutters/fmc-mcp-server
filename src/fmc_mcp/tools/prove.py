@@ -114,7 +114,7 @@ class Placer:
     scanned: dict[str, list[tuple[str, dict[str, Any]]]] = field(default_factory=dict)  # one read each
     interfaces: dict[str, list[tuple[str, dict[str, Any]]]] = field(default_factory=dict)  # per kind
     pool: list[dict[str, Any]] | None = None
-    catalog: Catalog | None = None
+    catalogs: dict[str, Catalog] = field(default_factory=dict)  # per domain UUID
     left_out: list[str] = field(default_factory=list)
     failed: dict[tuple[str, bool], InvalidRequest | UpstreamError] = field(default_factory=dict)
 
@@ -154,10 +154,14 @@ class Placer:
         return self.scanned[dev["id"]]
 
     async def context(self, dev: dict[str, Any]) -> DeviceContext:
+        """Interfaces, zones and routes, read in the device's own domain (a child-domain device seen from
+        Global names zones that only its domain lists)."""
         if dev["id"] not in self.contexts:
-            self.catalog = self.catalog or Catalog(self.app, self.domain)
+            where, _ = await self.app.device_home(dev, self.domain, strict=False)
+            if where not in self.catalogs:
+                self.catalogs[where] = Catalog(self.app, where)
             self.contexts[dev["id"]] = await device_context(
-                self.app, dev, self.catalog, self.domain, interfaces=await self.scan(dev)
+                self.app, dev, self.catalogs[where], where, interfaces=await self.scan(dev)
             )
         return self.contexts[dev["id"]]
 
@@ -443,6 +447,8 @@ def register(reg: ToolRegistrar) -> None:
                 )
                 continue
             row = {**base, **judge(exp, traces[0], source), "input_interface": out.get("input_interface")}
+            if out.get("domain"):
+                row["domain"] = out["domain"]
             if len(traces) > 1:
                 row["units"] = len(traces)
             rows.append({k: v for k, v in row.items() if v is not None})
@@ -470,4 +476,6 @@ def register(reg: ToolRegistrar) -> None:
             "user_seen",
             "note",
         ]
+        if any(r.get("domain") for r in rows):  # a child-domain device traced from an ancestor domain
+            columns.insert(columns.index("device") + 1, "domain")
         return list_result(page_of(rows, limit=MAX_FLOWS), fmt=response_format, extra=extra, columns=columns)
