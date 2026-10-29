@@ -28,6 +28,7 @@ from fmc_mcp.tools.common import Domain, ref_label, resolve_in, resolve_object, 
 from fmc_mcp.tools.dangerous import Wait, finish
 from fmc_mcp.tools.device_groups import expand_devices
 from fmc_mcp.tools.devices import DEVICES, DeviceRef
+from fmc_mcp.tools.hardening import backup_rows
 from fmc_mcp.tools.object_writes import applied, editable, value_fields
 from fmc_mcp.tools.render import object_reply
 from fmc_mcp.undo import without_none
@@ -101,9 +102,16 @@ def _with_thresholds(m: dict[str, Any], new: dict[str, Any]) -> dict[str, Any]:
     return out
 
 
-async def _no_file_is_empty(app: FmcApp, path: str) -> list[dict[str, Any]]:
-    """FMC answers 400 'File not found.' when there is no backup at all."""
+async def _no_file_is_empty(app: FmcApp, path: str, *, target: bool = False) -> list[dict[str, Any]]:
+    """FMC answers 400 'File not found.' when there is no backup at all.
+
+    A target path (backup/files/manager or backup/files/<device>) is a GET-by-id on FMC 10.0.1: paging
+    parameters there get 400 'Invalid query parameter for the GETBYID operation.', and the answer is
+    one backup object (the newest) rather than a list. So a target is read with a plain GET and either
+    shape is normalised with backup_rows; only the unfiltered collection pages."""
     try:
+        if target:
+            return backup_rows(await app.api.get(path))
         page = await app.all(path, expanded=False, cap=1000)
     except ValidationFailed as e:
         if "file not found" in str(e).lower():
@@ -136,7 +144,7 @@ def register(reg: ToolRegistrar) -> None:
             else:
                 dev = await resolve_in(app, DEVICES, device, "device", domain)
                 suffix = f"{BACKUP_FILES}/{dev['id']}"
-        items = await _no_file_is_empty(app, await app.config_path(suffix, domain))
+        items = await _no_file_is_empty(app, await app.config_path(suffix, domain), target=bool(device))
         rows = sorted((backup_row(b) for b in items), key=lambda r: str(r.get("created", "")), reverse=True)
         return list_result(page_of(rows, limit=limit, offset=offset), fmt=response_format)
 
