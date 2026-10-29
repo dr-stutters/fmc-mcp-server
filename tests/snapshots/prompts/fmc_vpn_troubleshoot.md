@@ -116,5 +116,5 @@ call it again.
    After the user approves and the change is confirmed: `fmc_pending_changes` and
    `fmc_deploy` for the devices it touches (both ends where both changed), then run
    `fmc_vpn_status` with device="mcp-sdwan-t1-spoke1", topology="mcp-fw-t1" again and the packet tracer from step 6 to show the tunnel up and the flow passing.
-   SD-WAN WAN-link problems (loss, delay, the path an application takes): the
-   `fmc_sdwan_troubleshoot` prompt.
+   FTD SD-WAN WAN-link problems (loss, delay, the path an application takes): the
+   `fmc_ftdsdwan_troubleshoot` prompt.

@@ -1,4 +1,4 @@
-"""Firewall SD-WAN health (F51c): per branch, the WAN links with their path metrics, the overlay tunnels,
+"""FTD SD-WAN health (F51c): per branch, the WAN links with their path metrics, the overlay tunnels,
 which path each application route takes now and why, and a ranked list of degraded links.
 
 Sources, all queried when called (ADR-003): the SD-WAN topology's endpoints, `health/tunnelstatuses`,
@@ -31,6 +31,7 @@ from pydantic import Field
 
 from fmc_mcp._core import InvalidRequest, NotFound, ToolRegistrar, UpstreamError, get_client, object_result
 from fmc_mcp.client import FmcApp
+from fmc_mcp.renames import tool_alias
 from fmc_mcp.tools.common import Domain, ref_label
 from fmc_mcp.tools.device_groups import as_group, fleet_ids
 from fmc_mcp.tools.devices import DEVICES, HA_PAIRS
@@ -332,7 +333,7 @@ PATH_FIRST = (
 )
 
 
-def tunnel_down_cause(ike: dict[str, Any] | None, tool: str = "fmc_sdwan_status") -> str | None:
+def tunnel_down_cause(ike: dict[str, Any] | None, tool: str = "fmc_ftdsdwan_status") -> str | None:
     """What the IKEv2 counters say about a down tunnel: a key mismatch or a peer that doesn't answer.
     `tool` is the tool to call again for the growth between two calls."""
     if not ike:
@@ -851,8 +852,8 @@ def _is_sdwan(t: dict[str, Any]) -> bool:
 
 
 def register(reg: ToolRegistrar) -> None:
-    @reg.read(title="SD-WAN status")
-    async def fmc_sdwan_status(
+    @reg.read(title="FTD SD-WAN status")
+    async def fmc_ftdsdwan_status(
         ctx: Context,
         topology: Annotated[
             str | None, Field(description="SD-WAN topology (name/UUID); default every SD-WAN topology")
@@ -875,11 +876,12 @@ def register(reg: ToolRegistrar) -> None:
         ] = 6,
         domain: Domain = None,
     ) -> Any:
-        """SD-WAN health per branch: the WAN links (path-monitoring status and settings, RTT, jitter,
-        loss, MOS and peer reachability from FMC's health monitor, or 'show path-monitoring' where FMC
-        passes it through), the overlay tunnels and iBGP neighbors, every
-        application route (policy-based route) with the interface it uses now and why (the configured
-        ordering against the live metrics, with 'show policy-route' as evidence), and one ranked list
+        """FTD SD-WAN health per branch (Catalyst SD-WAN is a different product: catsdwan_*): the WAN
+        links (path-monitoring status and settings, RTT, jitter, loss, MOS and peer reachability from
+        FMC's health monitor, or 'show path-monitoring' where FMC passes it through), the overlay
+        tunnels and iBGP neighbors, every application route (policy-based route) with the interface it
+        uses now and why (the configured ordering against the live metrics, with 'show policy-route' as
+        evidence), and one ranked list
         of degraded links (down, lossy, slow, jittery or low MOS; a hub whose tunnels are all down is
         one entry). For a down tunnel the IKEv2 counters tell a pre-shared key mismatch (authentication
         failures growing between two calls) from a dead path (retransmits only). FMC 10.0.1 doesn't pass
@@ -903,7 +905,7 @@ def register(reg: ToolRegistrar) -> None:
                 t for t in (await app.all(await app.config_path(S2S, domain), cap=2000)).items if _is_sdwan(t)
             ]
         if not topos:
-            note = "No SD-WAN topologies (fmc_create_sdwan_topology builds one)."
+            note = "No SD-WAN topologies (fmc_create_ftdsdwan_topology builds one)."
             return object_result({"topologies": [], "note": note}, shape=False)
         want: dict[str, Any] | None = None
         want_ids: set[str] = set()
@@ -1015,3 +1017,8 @@ def register(reg: ToolRegistrar) -> None:
         if notes:
             result["notes"] = notes
         return object_result(result, shape=False)
+
+    # F86: the pre-0.20.0 name, one minor release (renames.py)
+    reg.read(title="FTD SD-WAN status (deprecated name)", name="fmc_sdwan_status")(
+        tool_alias(fmc_ftdsdwan_status, "fmc_sdwan_status")
+    )

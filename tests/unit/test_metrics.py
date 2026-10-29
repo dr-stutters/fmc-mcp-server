@@ -327,7 +327,7 @@ async def test_single_sample_counters_and_sdwan_pointer(fmc: respx.MockRouter) -
     assert r["drops"]["asp_drops"] == [
         {"reason": "acl-drop", "description": None, "count": 3, "meaning": metrics.ASP_MEANINGS["acl-drop"]}
     ]
-    assert "fmc_device_metrics" in str(tools["fmc_sdwan_status"].description)
+    assert "fmc_device_metrics" in str(tools["fmc_ftdsdwan_status"].description)
 
 
 # --- #208: summary, flat-zero series, markdown, drop meanings (recorded burst) ---------------------------

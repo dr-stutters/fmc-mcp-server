@@ -393,7 +393,8 @@ class FmcApp:
         self._version = str(info.get("serverVersion", "unknown"))
         default = await self.domain_uuid(None)
         devices = await self.api.get(await self.config_path("devices/devicerecords"), {"limit": 1})
-        selected = toolsets.describe(toolsets.parse(getattr(self.settings, "toolsets", None)))
+        spec = getattr(self.settings, "toolsets", None)
+        selected = toolsets.describe(toolsets.parse(spec), spec)
         return {
             "version": self._version,
             "hostname": info.get("hostname"),

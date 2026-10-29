@@ -207,7 +207,7 @@ async def capture_sdwan_routing(app: FmcApp, host: str) -> None:
 
 
 async def capture_sdwan_metrics(app: FmcApp, host: str) -> None:
-    """fmc_sdwan_status's path metrics (GET only): the last 10 minutes of health/metrics
+    """fmc_ftdsdwan_status's path metrics (GET only): the last 10 minutes of health/metrics
     metric=pathmonitoring for one branch, with its UUID replaced by the sdwan_lab id (d-sp1). FMC returns
     them only when the interface has path monitoring; its samples trail the device by up to ~5 minutes."""
     name = os.environ.get("FMC_LIVE_SDWAN_DEVICE") or sys.exit("--sdwan-metrics needs FMC_LIVE_SDWAN_DEVICE")

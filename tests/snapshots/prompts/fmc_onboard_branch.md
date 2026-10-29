@@ -1,19 +1,19 @@
 # fmc_onboard_branch
 
-title: Onboard an SD-WAN branch
+title: Onboard an FTD SD-WAN branch
 arguments: {"access_policy": "mcp-fw-base-acp", "domain": "Global/mcp-test-leaf", "health_policy": "mcp-edge", "host": "192.0.2.13", "inside_host": "10.77.14.10", "inside_interface": "Ethernet0/1", "inside_ip": "10.77.14.1/24", "name": "mcp-fw-branch1", "template": "mcp-fw-branch-tmpl", "test_destination": "10.77.0.10", "topology": "mcp-fw-t1", "variables": "{\"wanIp\": \"198.51.100.14/24\", \"insideIp\": \"10.77.14.1/24\"}", "wan_gateway": "198.51.100.1", "wan_interface": "Ethernet0/0", "wan_ip": "198.51.100.14/24"}
 
-Onboard a branch FTD into an SD-WAN topology end to end: register it (the key comes from the
+Onboard a branch FTD into an FTD SD-WAN topology end to end: register it (the key comes from the
 server's FMC_FTD_REG_KEY, never from the conversation), configure it from a device template when
 one fits or by hand (interfaces and zones, underlay route, NAT, access policy, hub return path),
-add it as a spoke with fmc_update_sdwan_topology, deploy the hubs and the branch, verify the
+add it as a spoke with fmc_update_ftdsdwan_topology, deploy the hubs and the branch, verify the
 tunnel, the overlay routes and a policy flow (packet tracer and real traffic), and end with a
 hand-off record of flows for fmc_prove_policy. Every write is previewed and approved first.
 
 ## user
 
-Onboard the branch FTD "mcp-fw-branch1" (management "192.0.2.13") into the SD-WAN topology "mcp-fw-t1" and prove it
-works: register it, configure it from a device template or by hand, add it as a spoke, deploy the hubs
+Onboard the branch FTD "mcp-fw-branch1" (management "192.0.2.13") into the FTD SD-WAN topology "mcp-fw-t1" and prove
+it works: register it, configure it from a device template or by hand, add it as a spoke, deploy the hubs
 and the branch, verify the tunnel, the overlay routes and a policy flow, and end with a hand-off record
 for `fmc_prove_policy`.
 Pass domain="Global/mcp-test-leaf" on every FMC call.
@@ -26,7 +26,7 @@ Stop and report when a step fails; keep notes of what each step returned.
      evaluation mode.
    - `fmc_list_devices`: "mcp-fw-branch1" must not be registered yet. If it is, connected and in no
      topology, skip step 2; otherwise stop and ask the user.
-   - `fmc_get_vpn_topology` topology="mcp-fw-t1": it must be an SD-WAN (AUTO_VPN) topology. Note
+   - `fmc_get_vpn_topology` topology="mcp-fw-t1": it must be an FTD SD-WAN (AUTO_VPN) topology. Note
      the hubs (primary and backup) and the WAN address each hub's DVTI listens on (the branch's WAN
      must reach it), the spokes and their WAN interface names, the overlay zone and
      routing (`sdwan`: iBGP or OSPF; an OSPF overlay needs spoke_loopbacks for a new spoke) and the spoke
@@ -41,7 +41,7 @@ Stop and report when a step fails; keep notes of what each step returned.
      preview lists the rules it inherits) and use that child as the access policy from step 2 on. The
      parent's Mandatory rules still run first. A parent locked by someone else (the preview names them)
      means a change is in progress: ask.
-   - `fmc_sdwan_status` topology="mcp-fw-t1": the hubs must be healthy before a branch joins.
+   - `fmc_ftdsdwan_status` topology="mcp-fw-t1": the hubs must be healthy before a branch joins.
 
 1. The FTD must point at this FMC: `show managers` on its CLI lists the FMC as pending (CML:
    `cml_run_commands` on the FTD node, 'show managers'). If it doesn't, the operator sets the
@@ -115,7 +115,7 @@ Stop and report when a step fails; keep notes of what each step returned.
       'ping <a hub WAN address>'. A tunnel can't come up over an underlay that doesn't work: fix this
       before step 5.
 
-5. Join the topology: `fmc_update_sdwan_topology` topology="mcp-fw-t1",
+5. Join the topology: `fmc_update_ftdsdwan_topology` topology="mcp-fw-t1",
    add_spokes=[{"device": "mcp-fw-branch1", "wan_interface": <the WAN logical name>, "inside_interfaces": ["inside"]}]
    (add backup_wan_interface when the other spokes have a second WAN tunnel, and spoke_loopbacks for an
    OSPF overlay). The preview lists the endpoints before and after, the tunnel address from the spoke
@@ -128,7 +128,7 @@ Stop and report when a step fails; keep notes of what each step returned.
 
 7. Verify (read-only). FMC's tunnel states trail the device by a few minutes: call again before calling
    a tunnel down.
-   a. Tunnel: `fmc_sdwan_status` topology="mcp-fw-t1", branch="mcp-fw-branch1": the WAN link, the tunnel to
+   a. Tunnel: `fmc_ftdsdwan_status` topology="mcp-fw-t1", branch="mcp-fw-branch1": the WAN link, the tunnel to
       every hub up, the overlay neighbours established, `degraded` empty. `fmc_list_vpn_tunnels`
       device="mcp-fw-branch1": TUNNEL_UP. Detail: `fmc_run_show_command` device="mcp-fw-branch1", command='show
       crypto ikev2 sa' (READY), then command='show crypto ipsec sa' (encaps and decaps both counting).

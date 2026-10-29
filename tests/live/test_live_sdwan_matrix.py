@@ -1,9 +1,9 @@
-"""F53 live SD-WAN matrix (#110): topology x component, recorded in docs/sdwan-matrix.md.
+"""F53 live SD-WAN matrix (#110): topology x component, recorded in docs/ftdsdwan-matrix.md.
 
 Topologies: T1 single hub + spokes, T2 dual hub, T3 HA-pair hub, T4 spoke-to-spoke (on the T1 devices).
 Components: C1 build/deploy/teardown, C2 overlay routing (iBGP; OSPF variant), C3 WAN interfaces and
-application routes, C4 device-template onboarding, C5 monitoring (fmc_sdwan_status and the
-fmc_sdwan_troubleshoot prompt).
+application routes, C4 device-template onboarding, C5 monitoring (fmc_ftdsdwan_status and the
+fmc_ftdsdwan_troubleshoot prompt).
 
 Everything lab-specific comes from FMC_LIVE_SDWAN_* variables (docs/live-tests.md); a cell whose
 variables are unset is skipped and the reason names them. Cells that write (create, deploy, delete)
@@ -13,7 +13,7 @@ FMC side, the matrix document records the fault runs.
 
 The devices must already be registered with routed WAN and inside interfaces that have logical names,
 security zones, addresses and routes to the hubs' WAN addresses (the F52 recipes plus the FMC-side
-setup in docs/sdwan-matrix.md). Each cell builds its own topology and deletes it again.
+setup in docs/ftdsdwan-matrix.md). Each cell builds its own topology and deletes it again.
 """
 
 from __future__ import annotations
@@ -78,7 +78,7 @@ def skip_reason(topology: str, component: str, writes: bool = True) -> str | Non
     if topology == "T2" and not live_env("FMC_LIVE_SDWAN_POOL2"):
         gone.append("FMC_LIVE_SDWAN_POOL2")
     if gone:
-        return f"{', '.join(gone)} not set (docs/live-tests.md, docs/sdwan-matrix.md)"
+        return f"{', '.join(gone)} not set (docs/live-tests.md, docs/ftdsdwan-matrix.md)"
     return None
 
 
@@ -162,7 +162,7 @@ async def topology(client: Client[Any], request: pytest.FixtureRequest) -> Async
     args = create_args(topo, comp, overlay, spokes)
     devices = members(topo)
     await teardown(client, args["name"], devices)
-    await apply(client, "fmc_create_sdwan_topology", args)
+    await apply(client, "fmc_create_ftdsdwan_topology", args)
     await deploy(client, devices, f"F53 {topo} {comp}")
     try:
         yield {
@@ -329,16 +329,16 @@ async def test_c4_template_onboarding(client: Client[Any], topology: dict[str, A
 async def test_c5_status_and_troubleshoot(client: Client[Any], topology: dict[str, Any]) -> None:
     status = await call(
         client,
-        "fmc_sdwan_status",
+        "fmc_ftdsdwan_status",
         {"topology": topology["name"], "max_devices": len(topology["devices"]), **domain_args()},
     )
     text = str(status)
     for spoke in topology["spokes"]:
-        assert spoke in text, f"{spoke} missing from fmc_sdwan_status"
+        assert spoke in text, f"{spoke} missing from fmc_ftdsdwan_status"
     prompt = await client.get_prompt(
-        "fmc_sdwan_troubleshoot", {"branch": topology["spokes"][0], "application": "ICMP"}
+        "fmc_ftdsdwan_troubleshoot", {"branch": topology["spokes"][0], "application": "ICMP"}
     )
-    assert "fmc_sdwan_status" in str(prompt.messages)
+    assert "fmc_ftdsdwan_status" in str(prompt.messages)
 
 
 def test_matrix_shape() -> None:

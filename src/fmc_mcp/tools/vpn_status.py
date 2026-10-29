@@ -664,7 +664,7 @@ def register(reg: ToolRegistrar) -> None:
         minutes), one-way traffic (encrypting without decrypting: routing, NAT exemption or an access
         rule on one side), IPsec errors, a route-based endpoint with no routes over its VTIs, and an HA
         pair without a working standby. Use it for "is the VPN to X up?" and as the first step of the
-        fmc_vpn_troubleshoot prompt; SD-WAN WAN-link metrics and app routes: fmc_sdwan_status.
+        fmc_vpn_troubleshoot prompt; SD-WAN WAN-link metrics and app routes: fmc_ftdsdwan_status.
         Read-only; queried when called: one FMC request per topology plus 4-5 show commands per device
         (limit them with device, topology or max_devices)."""
         app: FmcApp = get_client(ctx)
@@ -673,7 +673,7 @@ def register(reg: ToolRegistrar) -> None:
         else:
             topos = (await app.all(await app.config_path(S2S, domain), cap=2000)).items
         if not topos:
-            note = "No VPN topologies (fmc_create_s2s_vpn or fmc_create_sdwan_topology builds one)."
+            note = "No VPN topologies (fmc_create_s2s_vpn or fmc_create_ftdsdwan_topology builds one)."
             return object_result({"topologies": [], "note": note}, shape=False)
         try:
             pairs = (await app.all(await app.config_path(HA_PAIRS, domain))).items
@@ -899,7 +899,7 @@ def register(reg: ToolRegistrar) -> None:
         if any(str(t.get("topologyType")) == "AUTO_VPN" for t, _, _ in plan):
             notes.append(
                 "SD-WAN topologies: WAN-link path metrics, app routes and the branch view are in "
-                "fmc_sdwan_status."
+                "fmc_ftdsdwan_status."
             )
         if notes:
             result["notes"] = notes

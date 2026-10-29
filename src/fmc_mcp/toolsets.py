@@ -6,7 +6,8 @@ those areas (plus `core`, which is always on). The read/write/dangerous tiers (M
 MCP_ENABLE_DANGEROUS) and MCP_ALLOW_TOOLS / MCP_DENY_TOOLS still apply on top: `objects` without
 MCP_ENABLE_WRITES gives the object reads only.
 
-Syntax: comma-separated area names; `all` for every area; `-<area>` leaves one out (`all,-sdwan,-tls`).
+Syntax: comma-separated area names; `all` for every area; `-<area>` leaves one out (`all,-ftdsdwan,-tls`).
+Renamed areas (RENAMED_AREAS: `sdwan` is `ftdsdwan` since 0.20.0) are still accepted; fmc_status warns.
 Unknown names fail at startup with the list of areas. Unset or empty: every area (the default).
 
 Every tool is in exactly one area (TOOLSETS); tests/unit/test_toolsets.py checks the table against the
@@ -26,6 +27,7 @@ from __future__ import annotations
 
 import re
 from collections.abc import Callable, Iterable
+from dataclasses import replace
 from typing import Any, TypeVar
 
 from fmc_mcp._core import ToolRegistrar
@@ -277,15 +279,19 @@ CATALOGUE: dict[str, tuple[str, tuple[str, ...]]] = {
             "fmc_update_sla_monitor",
         ),
     ),
-    "sdwan": (
-        "SD-WAN hub and spoke topologies, WAN interfaces, application-aware routing, branch health",
+    "ftdsdwan": (
+        "FTD SD-WAN (not Catalyst SD-WAN): hub and spoke topologies, WAN interfaces, app-aware routing, "
+        "branch health",
         (
             "fmc_configure_ecmp_zone",
             "fmc_configure_wan_interface",
             "fmc_create_app_route",
+            "fmc_create_ftdsdwan_topology",
             "fmc_create_sdwan_topology",
             "fmc_delete_app_route",
+            "fmc_ftdsdwan_status",
             "fmc_sdwan_status",
+            "fmc_update_ftdsdwan_topology",
             "fmc_update_sdwan_topology",
         ),
     ),
@@ -380,13 +386,14 @@ PROMPT_TOOLSETS: dict[str, frozenset[str]] = {
     "fmc_compliance_evidence": frozenset({"migrate", "platform"}),
     "fmc_firewall_health_review": frozenset({"troubleshoot"}),
     "fmc_ha_failover_check": frozenset({"ha"}),
-    "fmc_onboard_branch": frozenset({"deploy", "devices", "sdwan"}),
+    "fmc_onboard_branch": frozenset({"deploy", "devices", "ftdsdwan"}),
     "fmc_onboard_ftd": frozenset({"deploy", "devices"}),
     "fmc_policy_cleanup": frozenset({"policy"}),
     "fmc_prove_user_policy": frozenset({"identity", "troubleshoot"}),
     "fmc_replace_device": frozenset({"deploy", "devices"}),
     "fmc_rule_change_review": frozenset({"deploy", "policy"}),
-    "fmc_sdwan_troubleshoot": frozenset({"sdwan"}),
+    "fmc_ftdsdwan_troubleshoot": frozenset({"ftdsdwan"}),
+    "fmc_sdwan_troubleshoot": frozenset({"ftdsdwan"}),
     "fmc_threat_defense_review": frozenset({"threat"}),
     "fmc_vpn_troubleshoot": frozenset({"vpn"}),
     "fmc_why_blocked": frozenset({"policy", "troubleshoot"}),
@@ -394,10 +401,27 @@ PROMPT_TOOLSETS: dict[str, frozenset[str]] = {
 
 SETTING = "FMC_TOOLSETS"
 
+# old area name -> new (F86): still accepted for one minor release, with a warning in fmc_status
+RENAMED_AREAS: dict[str, str] = {"sdwan": "ftdsdwan"}
+
+
+def _entries(spec: str | None) -> list[str]:
+    return [e.strip().lower() for e in re.split(r"[,\s]+", spec or "") if e.strip()]
+
+
+def renamed_in(spec: str | None) -> list[str]:
+    """The renamed area names `spec` still uses, as warnings for fmc_status."""
+    old = sorted({e.lstrip("-") for e in _entries(spec)} & set(RENAMED_AREAS))
+    return [
+        f"{SETTING}: toolset '{o}' is now '{RENAMED_AREAS[o]}' (FTD SD-WAN, apart from Catalyst SD-WAN); "
+        f"the old name goes in the next minor release."
+        for o in old
+    ]
+
 
 def parse(spec: str | None) -> frozenset[str] | None:
     """The areas FMC_TOOLSETS selects (core included); None = every area. ValueError on unknown names."""
-    entries = [e.strip().lower() for e in re.split(r"[,\s]+", spec or "") if e.strip()]
+    entries = _entries(spec)
     if not entries:
         return None
     chosen: set[str] = set()
@@ -405,6 +429,7 @@ def parse(spec: str | None) -> frozenset[str] | None:
     unknown: list[str] = []
     for entry in entries:
         name = entry[1:] if entry.startswith("-") else entry
+        name = RENAMED_AREAS.get(name, name)
         if name == "all":
             target = set(TOOLSETS)
         elif name in TOOLSETS:
@@ -429,15 +454,19 @@ def tools_in(areas: Iterable[str]) -> frozenset[str]:
     return frozenset(t for a in areas for t in TOOLSETS[a])
 
 
-def describe(selected: frozenset[str] | None) -> dict[str, Any] | None:
-    """For fmc_status: which areas are loaded and which are not (None when FMC_TOOLSETS is unset)."""
+def describe(selected: frozenset[str] | None, spec: str | None = None) -> dict[str, Any] | None:
+    """For fmc_status: which areas are loaded and which are not (None when FMC_TOOLSETS is unset), and
+    a warning per renamed area name `spec` still uses."""
     if selected is None:
         return None
-    return {
+    out: dict[str, Any] = {
         "loaded": sorted(selected),
         "not_loaded": sorted(set(TOOLSETS) - selected),
         "setting": SETTING,
     }
+    if warnings := renamed_in(spec):
+        out["warnings"] = warnings
+    return out
 
 
 def instructions_note(selected: frozenset[str] | None) -> str:
@@ -452,6 +481,16 @@ def instructions_note(selected: frozenset[str] | None) -> str:
     )
 
 
+def _core_names_renamed_areas(gate: Any) -> None:
+    """Core's gate parses FMC_TOOLSETS itself and knows no RENAMED_AREAS: map an old name (`sdwan`) to its
+    new one (`ftdsdwan`) there too, so core admits the same tools this module selects (F86 + C31)."""
+    sel = gate.selection
+    include = None if sel.include is None else frozenset(RENAMED_AREAS.get(n, n) for n in sel.include)
+    exclude = frozenset(RENAMED_AREAS.get(n, n) for n in sel.exclude)
+    if include != sel.include or exclude != sel.exclude:
+        gate.selection = replace(sel, include=include, exclude=exclude)
+
+
 class ToolsetRegistrar(ToolRegistrar):
     """The server's registrar with tools and prompts outside the selected areas skipped (and counted).
     Shares the base registrar's state, so tiers, safety rails and status see one registry."""
@@ -464,6 +503,7 @@ class ToolsetRegistrar(ToolRegistrar):
         base.mcp._fmc_toolset_skipped = skipped  # type: ignore[attr-defined]
         self.skipped = skipped
         base.toolsets.declare(TOOLSETS)  # FMC_TOOLSETS may name any area (core too): none is unknown to core
+        _core_names_renamed_areas(base.toolsets)
 
     def _gate(self, kw: dict[str, Any], factory: Callable[..., Callable[[F], F]]) -> Callable[[F], F]:
         """Register the tool with core's toolset= (C31: its area; none for core tools, which core always

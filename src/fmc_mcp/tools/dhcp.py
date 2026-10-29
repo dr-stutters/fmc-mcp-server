@@ -196,23 +196,44 @@ def hw_name(i: dict[str, Any]) -> str:
     return name
 
 
+def parent_name(i: dict[str, Any]) -> str:
+    """The hardware name without a subinterface's '.subIntfId' (Ethernet0/3 for Ethernet0/3.3999)."""
+    name = str(i.get("name") or "")
+    sub = i.get("subIntfId")
+    if sub is not None and name.endswith(f".{sub}"):
+        name = name[: -len(f".{sub}")]
+    return name
+
+
 def iface_ref(i: dict[str, Any]) -> dict[str, Any]:
     """An interface reference in a DHCP body. FMC 10.0 names the interface by its hardware name there
-    (Ethernet0/3, Ethernet0/0.3020) and refuses the logical name with 400 "Invalid 'name' ... for
-    Interface"; its own GET of the settings returns the hardware name too."""
+    (Ethernet0/3) and refuses the logical name with 400 "Invalid 'name' ... for Interface". A subinterface
+    goes by its own id, type SubInterface and its PARENT's hardware name (#370: FMC 10.0.1 refuses
+    'Ethernet0/3.3999' the same way, takes {id, type: SubInterface, name: Ethernet0/3} and returns that
+    shape on GET)."""
+    if i.get("subIntfId") is not None or i.get("type") == "SubInterface":
+        return {"id": i["id"], "type": "SubInterface", "name": parent_name(i)}
     return {"id": i["id"], "type": i.get("type"), "name": hw_name(i)}
 
 
 def same_iface(ref: Any, i: dict[str, Any]) -> bool:
-    """Whether a DHCP body's interface reference is this interface: by id, else by its hardware name or
-    its logical name (older bodies and FMC releases carry the logical one). A subinterface's bare parent
-    name (Ethernet0/0) is the parent's, not the subinterface's."""
+    """Whether a DHCP body's interface reference is this interface: by id (FMC's own bodies always carry
+    it; a SubInterface reference is named by its parent, so only the id tells two subinterfaces of one
+    parent apart), else by the full hardware name (Ethernet0/0.3020) or the logical name (older bodies).
+    A bare parent name (Ethernet0/0) never matches a subinterface, and a reference typed SubInterface
+    never matches a physical interface."""
     if not isinstance(ref, dict):
         return False
     if ref.get("id") and i.get("id"):
         return str(ref["id"]).lower() == str(i["id"]).lower()
+    if ref.get("type") and i.get("type") and (ref["type"] == "SubInterface") != (i["type"] == "SubInterface"):
+        return False
     want = str(ref.get("name", "")).lower()
     return bool(want) and want in {str(i.get("ifname") or "").lower(), hw_name(i).lower()}
+
+
+def _relay_on(a: dict[str, Any]) -> bool:
+    return bool(a.get("enableDHCPIPv4Relay", True) or a.get("enableDHCPIPv6Relay"))
 
 
 Placeholder = dict[str, Any]  # a host object to create on confirm: {name, type, value}
@@ -330,7 +351,8 @@ def register(reg: ToolRegistrar) -> None:
         interface (with the DNS servers, domain, lease and auto-config the device hands out with every
         pool); mode='relay' makes it a DHCP relay agent forwarding to central servers; mode='off' removes
         the interface's pool and relay agent. The preview refuses a pool outside the interface subnet or
-        holding its own address, and server and relay on one interface (switch with mode='off' first).
+        holding its own address, and server and relay on one device (FMC takes one or the other: turn
+        the pools or the relay off with mode='off' first).
         Takes effect after fmc_deploy; check with fmc_run_show_command('show dhcpd state' / 'show dhcpd
         binding'). fmc_get_device and fmc_export_device_config show the current DHCP settings."""
         app: FmcApp = get_client(ctx)
@@ -352,6 +374,12 @@ def register(reg: ToolRegistrar) -> None:
             )
         label = f"{iface.get('ifname')} ({hw_name(iface)})"
         names = {str(i.get("id")): str(i.get("ifname") or hw_name(i)) for _, i in items}
+
+        def nm(ref: Any) -> str:
+            """A body's interface reference by logical name (a SubInterface's own name is its parent's)."""
+            ref = ref if isinstance(ref, dict) else {}
+            return names.get(str(ref.get("id"))) or ref_label(ref)
+
         s_path, s_cur = await singleton(app, str(dev["id"]), SERVER, domain)
         r_path, r_cur = await singleton(app, str(dev["id"]), RELAY, domain)
         server = copy.deepcopy(editable(s_cur))
@@ -371,6 +399,13 @@ def register(reg: ToolRegistrar) -> None:
                     f"{label} is a DHCP relay agent; an interface can't be DHCP server and relay. Remove "
                     "the relay first: fmc_configure_dhcp(mode='off') on it."
                 )
+            others = [a for a in agents if a is not my_agent and _relay_on(a)]
+            if others:
+                on = ", ".join(sorted({nm(a.get("interface")) for a in others}))
+                blockers.append(
+                    f"{label_dev} has DHCP relay on {on}; FMC allows DHCP server or relay on a device, not "
+                    "both. Turn the relay off first: fmc_configure_dhcp(mode='off') on each relay interface."
+                )
             if pool is None and my_pool is None:
                 raise InvalidRequest(f"Give the pool for {label} ('a.b.c.d-a.b.c.e').")
             if pool is not None:
@@ -385,8 +420,7 @@ def register(reg: ToolRegistrar) -> None:
                         continue
                     if int(a) <= int(pb) and int(pa) <= int(b):
                         blockers.append(
-                            f"Pool {a}-{b} overlaps the pool {pa}-{pb} on "
-                            f"{ref_label(p.get('interface') or {})}."
+                            f"Pool {a}-{b} overlaps the pool {pa}-{pb} on {nm(p.get('interface'))}."
                         )
                 entry = {"interface": iface_ref(iface), "addressPool": f"{a}-{b}", "enableDHCP": True}
                 if my_pool is None:
@@ -430,6 +464,14 @@ def register(reg: ToolRegistrar) -> None:
                 blockers.append(
                     f"{label} has a DHCP server pool ({my_pool.get('addressPool')}); an interface can't be "
                     "DHCP server and relay. Remove the pool first: fmc_configure_dhcp(mode='off') on it."
+                )
+            others = [p for p in pools if p is not my_pool and p.get("enableDHCP", True)]
+            if others:
+                on = ", ".join(sorted({nm(p.get("interface")) for p in others}))
+                blockers.append(
+                    f"{label_dev} has DHCP server pools on {on}; FMC allows DHCP server or relay on a "
+                    "device, not both. Turn the pools off first: fmc_configure_dhcp(mode='off') on each "
+                    "pool interface."
                 )
             if not relay_servers and not servers:
                 raise InvalidRequest("Give relay_servers (the central DHCP servers).")

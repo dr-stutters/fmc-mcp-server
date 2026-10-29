@@ -129,7 +129,7 @@ Workflows:
   remove), fmc_delete_device_group. A group goes wherever devices do ('group:<name>', or its name):
   fmc_run_show_command(group=... or devices=[...]: one command on up to 25 devices, a row per device),
   fmc_deploy, fmc_assign_policy, fmc_backup_devices, fmc_set_device_licenses, fmc_device_metrics and
-  fmc_sdwan_status(branch=...).
+  fmc_ftdsdwan_status(branch=...).
 - HA: fmc_create_ha_pair (failover link; state_interface for a separate state link) ->
   fmc_configure_ha_monitoring (standby IPs) -> fmc_deploy the pair -> fmc_get_ha_status (each unit's own
   state, link status, last failover and why, ready_for_switch) -> fmc_ha_action switch. The
@@ -164,16 +164,18 @@ Workflows:
   fmc_update_sla_monitor (target, zones, timing). fmc_delete_sla_monitor is blocked while a route tracks it;
   list them with fmc_list_objects(type='sla_monitor'). FMC leaves 'sla monitor <id>' on a device after its
   last tracking route goes: the delete previews say how to clean it up.
-- SD-WAN (hub and spoke over VTIs): zone the WAN and inside interfaces (fmc_update_interface) ->
-  fmc_create_sdwan_topology (hub DVTI, spoke pool, spokes, backup hub, iBGP overlay) -> fmc_deploy hubs
-  and spokes -> fmc_get_vpn_topology / fmc_list_vpn_tunnels; add or remove branches and the backup hub
-  with fmc_update_sdwan_topology; remove with fmc_delete_s2s_vpn. Health per branch (WAN path metrics,
-  app route paths, tunnels, degraded links): fmc_sdwan_status; "app X is slow at branch Y":
-  fmc_sdwan_troubleshoot. A new branch end to end (register, template or manual config, join,
-  deploy, verify, fmc_prove_policy hand-off): the fmc_onboard_branch prompt.
-- SD-WAN application-aware routing: fmc_configure_wan_interface (priority, path monitoring) on each
+- FTD SD-WAN (FMC's SD-WAN wizard: FTD hubs and branches over VTIs; Catalyst SD-WAN is a different product
+  with its own server, catsdwan_*; the pre-0.20 sdwan names are deprecated aliases until 0.21.0): zone
+  the WAN and inside interfaces (fmc_update_interface) -> fmc_create_ftdsdwan_topology (hub DVTI, spoke
+  pool, spokes, backup hub, iBGP overlay) -> fmc_deploy hubs and spokes -> fmc_get_vpn_topology /
+  fmc_list_vpn_tunnels; add or remove branches and the backup hub with fmc_update_ftdsdwan_topology;
+  remove with fmc_delete_s2s_vpn. Health per branch (WAN path metrics, app route paths, tunnels, degraded
+  links): fmc_ftdsdwan_status; "app X is slow at branch Y": fmc_ftdsdwan_troubleshoot. A new branch end to
+  end (register, template or manual config, join, deploy, verify, fmc_prove_policy hand-off): the
+  fmc_onboard_branch prompt.
+- FTD SD-WAN application-aware routing: fmc_configure_wan_interface (priority, path monitoring) on each
   WAN link -> fmc_create_app_route (applications/networks/users out of the link with the best
-  jitter, loss, RTT or MOS, or by priority) -> fmc_deploy -> fmc_sdwan_status (app routes and the
+  jitter, loss, RTT or MOS, or by priority) -> fmc_deploy -> fmc_ftdsdwan_status (app routes and the
   path each uses); ECMP across WAN links: fmc_configure_ecmp_zone; remove: fmc_delete_app_route.
 - FTD as the firewall of a Catalyst SD-WAN service chain (the edge sends a VPN's traffic to the FTD and takes
   it back): fmc_service_chain_check(device, edge_address, return_address for dual-arm, the chained networks)
