@@ -3,11 +3,11 @@
 title: Troubleshoot an FTD SD-WAN application (deprecated name)
 arguments: {"application": "Teams", "branch": "mcp-sdwan-t1-spoke1", "destination": "52.112.0.10", "source": "10.111.0.10", "topology": "mcp-sdwan-t1"}
 
-Deprecated: use fmc_ftdsdwan_troubleshoot (fmc_sdwan_troubleshoot was renamed in 0.20.0 and goes in 0.22.0). The same workflow as fmc_ftdsdwan_troubleshoot.
+Deprecated: use fmc_ftdsdwan_troubleshoot (fmc_sdwan_troubleshoot was renamed in 0.20.0 and goes in 0.23.0). The same workflow as fmc_ftdsdwan_troubleshoot.
 
 ## user
 
-(renamed_to: fmc_ftdsdwan_troubleshoot. Deprecated: use fmc_ftdsdwan_troubleshoot (fmc_sdwan_troubleshoot was renamed in 0.20.0 and goes in 0.22.0).)
+(renamed_to: fmc_ftdsdwan_troubleshoot. Deprecated: use fmc_ftdsdwan_troubleshoot (fmc_sdwan_troubleshoot was renamed in 0.20.0 and goes in 0.23.0).)
 
 "Teams" is slow or failing at FTD SD-WAN branch "mcp-sdwan-t1-spoke1". Find out which WAN path it takes, whether
 that path is degraded, and propose a fix. Steps 1-5 are read-only; any change in step 6 is

@@ -1,5 +1,24 @@
 # Changelog
 
+## 0.21.1 (2026-10-29)
+
+Two fixes from the 96-hour run's live checks. The deprecated FTD SD-WAN aliases stay and now go in 0.23.0. No new tools
+or prompts: 243 tools (94 read, 133 write, 16 dangerous; 240 without the aliases) and twenty prompts (nineteen without
+the alias). Core stays at v0.20.0.
+
+### Fixed
+- `fmc_assign_health_policy` / `fmc_create_health_policy(devices)` write the policy's assignment (PUT
+  `policyassignments/<id>`) in the policy's own domain and never touch the device record (no more Transfer Packets
+  reset); previews name the assignment domain (F100, #379, #388).
+- Device tools (rule lookup, access/NAT policy by device, packet tracer and prove rule names) read a child-domain
+  device's policies in its own domain; `fmc_list_devices` shows a domain column and `fmc_list_policies` in Global points
+  at the child domains (F19, #382, #389).
+
+### Deprecated
+- The old FTD SD-WAN names `fmc_sdwan_status`, `fmc_create_sdwan_topology`, `fmc_update_sdwan_topology`, the prompt
+  `fmc_sdwan_troubleshoot`, the `FMC_TOOLSETS` area `sdwan` and `kind='sdwan'` still work and are now removed in 0.23.0
+  (was 0.22.0) (F86, #323).
+
 ## 0.21.0 (2026-10-29)
 
 Two core 0.20.0 safety rails adopted from the 96-hour run: the back-out step (`Plan.undo`, C81) on the main write tools

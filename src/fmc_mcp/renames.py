@@ -17,7 +17,7 @@ from fastmcp.tools import ToolResult
 
 from fmc_mcp._core import object_result
 
-REMOVED_IN = "0.22.0"
+REMOVED_IN = "0.23.0"
 
 # old tool name -> new tool name
 RENAMED_TOOLS: dict[str, str] = {
