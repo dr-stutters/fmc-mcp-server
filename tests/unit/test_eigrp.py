@@ -401,6 +401,51 @@ async def test_passive_all_off_with_selected_interfaces(fmc: respx.MockRouter) -
     }
 
 
+async def test_passive_all_off_with_nothing_passive_leaves_the_block_out(fmc: respx.MockRouter) -> None:
+    """#381: FMC 10.0 rejects an empty passiveInterfaces block (400 "Device Interface is mandatory for Passive
+    interface configuration"); "nothing passive" is sent by leaving the key out."""
+    proc = plain_proc(True)
+    mount(fmc, procs=[proc])
+    put = fmc.put(f"{R}/eigrproutes/{proc['id']}").mock(return_value=httpx.Response(200, json={}))
+    args = {"device": DEV["name"], "passive_all": False}
+    async with Client(server()) as c:
+        preview = await run(c, "fmc_configure_eigrp", args)
+        done = await run(c, "fmc_configure_eigrp", {**args, "confirm": preview["confirm"]})
+    p = preview["preview"]
+    assert p["before"]["passive_interfaces"] == "all"
+    assert p["after"].get("passive_interfaces") is None
+    assert "passiveInterfaces" not in p["requests"][0]["body"]["basicConfiguration"]
+    assert done["status"] == "applied"
+    assert "passiveInterfaces" not in body(put)["basicConfiguration"]
+
+
+async def test_unmarking_the_last_passive_interface_leaves_the_block_out(fmc: respx.MockRouter) -> None:
+    proc = plain_proc(False, [iref(OUTSIDE)])
+    mount(fmc, procs=[proc])
+    put = fmc.put(f"{R}/eigrproutes/{proc['id']}").mock(return_value=httpx.Response(200, json={}))
+    args = {"device": DEV["name"], "interfaces": [{"name": "outside", "passive": False}]}
+    async with Client(server()) as c:
+        preview = await run(c, "fmc_configure_eigrp", args)
+        await run(c, "fmc_configure_eigrp", {**args, "confirm": preview["confirm"]})
+    assert preview["preview"]["before"]["passive_interfaces"] == ["outside"]
+    assert preview["preview"]["after"].get("passive_interfaces") is None
+    assert "passiveInterfaces" not in body(put)["basicConfiguration"]
+
+
+async def test_create_with_nothing_passive_leaves_the_block_out(fmc: respx.MockRouter) -> None:
+    mount(fmc)
+    post = fmc.post(f"{R}/eigrproutes").mock(return_value=httpx.Response(201, json={"id": "e-new"}))
+    args = {"device": DEV["name"], "as_number": 100, "add_networks": ["192.0.2.0/24"]}
+    async with Client(server()) as c:
+        preview = await run(c, "fmc_configure_eigrp", args)
+        done = await run(c, "fmc_configure_eigrp", {**args, "confirm": preview["confirm"]})
+    assert done["status"] == "applied"
+    assert body(post)["basicConfiguration"] == {
+        "networks": [{"id": NET_INSIDE["id"], "type": "Network", "name": "mcp-eigrp-inside"}],
+        "autoSummary": False,
+    }
+
+
 @pytest.mark.parametrize(
     ("stored", "args", "blocker"),
     [
