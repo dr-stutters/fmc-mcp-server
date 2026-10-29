@@ -404,7 +404,6 @@ def register(reg: ToolRegistrar) -> None:
                     "basicConfiguration": {
                         "networks": [],
                         "autoSummary": False,
-                        "passiveInterfaces": {"selectedInterfaces": [], "allInterfaces": False},
                     },
                     "advancedConfiguration": {"logNeighborChanges": True},
                 }
@@ -591,9 +590,14 @@ def register(reg: ToolRegistrar) -> None:
                     )
             if all_after:
                 passive = []
-            pas["allInterfaces"] = all_after
-            pas["selectedInterfaces"] = passive
-            basic["passiveInterfaces"] = pas
+            if all_after or passive:
+                pas["allInterfaces"] = all_after
+                pas["selectedInterfaces"] = passive
+                basic["passiveInterfaces"] = pas
+            else:
+                # FMC 10.0 rejects an empty block ("Device Interface is mandatory for Passive interface
+                # configuration"); leaving it out is how "nothing passive" is sent.
+                basic.pop("passiveInterfaces", None)
 
             # static neighbours
             nbrs = [copy.deepcopy(n) for n in desired.get("neighbors") or []]
