@@ -72,8 +72,9 @@ class Settings(BaseServerSettings):
     toolsets: str | None = Field(
         default=None,
         description="Load only these areas of the tool surface, comma-separated (e.g. "
-        "'troubleshoot,objects,deploy'; 'all,-sdwan' for all but one): admin, deploy, devices, ha, "
-        "identity, intel, migrate, objects, platform, policy, routing, sdwan, threat, tls, troubleshoot, "
+        "'troubleshoot,objects,deploy'; 'all,-ftdsdwan' for all but one): admin, deploy, devices, "
+        "ftdsdwan (FTD SD-WAN; the old name 'sdwan' still works, with a warning in fmc_status), ha, "
+        "identity, intel, migrate, objects, platform, policy, routing, threat, tls, troubleshoot, "
         "vpn. core (status, spec search, raw API call, domains, devices, tasks) is always loaded; the "
         "read/write/dangerous tiers still apply on top. Unset: every area.",
     )

@@ -94,7 +94,7 @@ def test_names_each_phase_cause() -> None:
     assert "bypassAccessControlTrafficForDecryptedTraffic" in t
     assert "FMC's tunnel" in t and "lags" in t  # trust device_says over a lagging monitor
     assert "`fmc_get_ravpn`" in t  # remote access is out of this walk
-    assert "`fmc_why_blocked`" in t and "`fmc_sdwan_troubleshoot`" in t
+    assert "`fmc_why_blocked`" in t and "`fmc_ftdsdwan_troubleshoot`" in t
 
 
 def test_only_fmc_tools_are_referenced() -> None:

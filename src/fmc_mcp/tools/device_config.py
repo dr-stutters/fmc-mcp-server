@@ -1243,7 +1243,7 @@ def register(reg: ToolRegistrar) -> None:
         if topology:
             blockers.append(
                 f"{label} belongs to VPN topology {topology!r}: take the device out of it first "
-                "(fmc_update_sdwan_topology remove_spokes, or fmc_delete_s2s_vpn)."
+                "(fmc_update_ftdsdwan_topology remove_spokes, or fmc_delete_s2s_vpn)."
             )
         owner = logical_members(items).get(cid)
         if owner:

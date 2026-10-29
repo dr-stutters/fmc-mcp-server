@@ -10,6 +10,7 @@ from typing import Annotated, Literal
 from pydantic import Field
 
 from fmc_mcp._core import InvalidRequest, Tier, ToolRegistrar, tool_ref
+from fmc_mcp.renames import prompt_alias
 
 # Prompt arguments end up inside instructions: keep them to one line of plain characters.
 _SAFE = re.compile(r"^[\w.:/@ ()+,-]{1,200}$")
@@ -733,7 +734,7 @@ def _sdwan_troubleshoot_text(
     source: str | None,
     topology: str | None,
 ) -> str:
-    """fmc_sdwan_troubleshoot: path metrics -> app route -> chosen interface -> overlay -> fix."""
+    """fmc_ftdsdwan_troubleshoot: path metrics -> app route -> chosen interface -> overlay -> fix."""
     app, br = _q(application, "application"), _q(branch, "branch")
     topo = _q(topology, "topology") if topology else None
     dst = _q(destination, "destination") if destination else None
@@ -745,11 +746,11 @@ def _sdwan_troubleshoot_text(
         f"source_ip={src or '<an inside host>'}, destination_ip={dst or '<the server>'}, "
         "destination_port=<the application port>"
     )
-    return f"""{app} is slow or failing at branch {br}. Find out which WAN path it takes, whether
+    return f"""{app} is slow or failing at FTD SD-WAN branch {br}. Find out which WAN path it takes, whether
 that path is degraded, and propose a fix. Steps 1-5 are read-only; any change in step 6 is
 preview-first and runs only after the user approves it.
 
-1. Path metrics: {tool_ref("fmc_sdwan_status")} with branch={br}{t_arg}. Note each WAN link's health,
+1. Path metrics: {tool_ref("fmc_ftdsdwan_status")} with branch={br}{t_arg}. Note each WAN link's health,
    status, RTT, jitter, loss and MOS, the overlay tunnels (and how many are up), the iBGP neighbors and
    the `degraded` list. A link that is down, or above the loss/RTT/jitter thresholds (or below the MOS
    one) the result lists, is a suspect. If a show command was "not available" (FMC 10.0.1 refuses
@@ -799,12 +800,12 @@ preview-first and runs only after the user approves it.
      routing/policybasedroutes entry (show the body; preview first);
    - when the branch has a single WAN tunnel: say so. A second tunnel on another WAN lives in the
      companion topology '<topology>-wan2' (a second hub DVTI on that WAN): add the branch there with
-     {tool_ref("fmc_update_sdwan_topology")} (add_spokes, its backup WAN) when the companion exists,
-     else rebuild with {tool_ref("fmc_create_sdwan_topology")}(hub_backup_wan_interface=...,
+     {tool_ref("fmc_update_ftdsdwan_topology")} (add_spokes, its backup WAN) when the companion exists,
+     else rebuild with {tool_ref("fmc_create_ftdsdwan_topology")}(hub_backup_wan_interface=...,
      backup_wan_pool=...);
    - when the carrier link itself is bad, say so: no FMC change fixes it.
    Then {tool_ref("fmc_pending_changes")} with device={br} and, after approval, {tool_ref("fmc_deploy")}
-   (the branch, and the hubs when the topology changed). Re-run {tool_ref("fmc_sdwan_status")} with
+   (the branch, and the hubs when the topology changed). Re-run {tool_ref("fmc_ftdsdwan_status")} with
    branch={br} afterwards to show the new path.
 """
 
@@ -949,8 +950,8 @@ call it again.
    After the user approves and the change is confirmed: {tool_ref("fmc_pending_changes")} and
    {tool_ref("fmc_deploy")} for the devices it touches (both ends where both changed), then run
    {status} again and the packet tracer from step 6 to show the tunnel up and the flow passing.
-   SD-WAN WAN-link problems (loss, delay, the path an application takes): the
-   {tool_ref("fmc_sdwan_troubleshoot")} prompt.
+   FTD SD-WAN WAN-link problems (loss, delay, the path an application takes): the
+   {tool_ref("fmc_ftdsdwan_troubleshoot")} prompt.
 """
 
 
@@ -1376,7 +1377,7 @@ def _onboard_branch_text(
     health_policy: str | None = None,
 ) -> str:
     """The fmc_onboard_branch instructions: register -> template or manual configuration -> join the
-    SD-WAN topology -> deploy hubs and branch -> verify tunnel, routes, a flow -> prove-policy record."""
+    FTD SD-WAN topology -> deploy hubs and branch -> verify tunnel, routes, a flow -> prove-policy record."""
     wan_if_addr = _ip_iface(wan_ip, "wan_ip")
     in_if_addr = _ip_iface(inside_ip, "inside_ip")
     gw_addr = _ip(wan_gateway, "wan_gateway")
@@ -1432,8 +1433,8 @@ def _onboard_branch_text(
             f"its SD-WAN settings make the device a spoke of {topo} and its model and\n   firewall mode "
             f"match {dev} (step 2). None fits: manual path."
         )
-    return f"""Onboard the branch FTD {dev} (management {hst}) into the SD-WAN topology {topo} and prove it
-works: register it, configure it from a device template or by hand, add it as a spoke, deploy the hubs
+    return f"""Onboard the branch FTD {dev} (management {hst}) into the FTD SD-WAN topology {topo} and prove
+it works: register it, configure it from a device template or by hand, add it as a spoke, deploy the hubs
 and the branch, verify the tunnel, the overlay routes and a policy flow, and end with a hand-off record
 for {tool_ref("fmc_prove_policy")}.
 {dom}Every write is preview-first: show each preview and wait for the user's approval before confirming.
@@ -1445,7 +1446,7 @@ Stop and report when a step fails; keep notes of what each step returned.
      evaluation mode.
    - {tool_ref("fmc_list_devices")}: {dev} must not be registered yet. If it is, connected and in no
      topology, skip step 2; otherwise stop and ask the user.
-   - {tool_ref("fmc_get_vpn_topology")} topology={topo}: it must be an SD-WAN (AUTO_VPN) topology. Note
+   - {tool_ref("fmc_get_vpn_topology")} topology={topo}: it must be an FTD SD-WAN (AUTO_VPN) topology. Note
      the hubs (primary and backup) and the WAN address each hub's DVTI listens on (the branch's WAN
      must reach it), the spokes and their WAN interface names, the overlay zone and
      routing (`sdwan`: iBGP or OSPF; an OSPF overlay needs spoke_loopbacks for a new spoke) and the spoke
@@ -1460,7 +1461,7 @@ Stop and report when a step fails; keep notes of what each step returned.
      preview lists the rules it inherits) and use that child as the access policy from step 2 on. The
      parent's Mandatory rules still run first. A parent locked by someone else (the preview names them)
      means a change is in progress: ask.
-   - {tool_ref("fmc_sdwan_status")} topology={topo}: the hubs must be healthy before a branch joins.
+   - {tool_ref("fmc_ftdsdwan_status")} topology={topo}: the hubs must be healthy before a branch joins.
 
 1. The FTD must point at this FMC: `show managers` on its CLI lists the FMC as pending (CML:
    {tool_ref("cml_run_commands")} on the FTD node, 'show managers'). If it doesn't, the operator sets the
@@ -1528,7 +1529,7 @@ Stop and report when a step fails; keep notes of what each step returned.
       'ping <a hub WAN address>'. A tunnel can't come up over an underlay that doesn't work: fix this
       before step 5.
 
-5. Join the topology: {tool_ref("fmc_update_sdwan_topology")} topology={topo},
+5. Join the topology: {tool_ref("fmc_update_ftdsdwan_topology")} topology={topo},
    add_spokes=[{{"device": {dev}, "wan_interface": <the WAN logical name>, "inside_interfaces": ["inside"]}}]
    (add backup_wan_interface when the other spokes have a second WAN tunnel, and spoke_loopbacks for an
    OSPF overlay). The preview lists the endpoints before and after, the tunnel address from the spoke
@@ -1541,7 +1542,7 @@ Stop and report when a step fails; keep notes of what each step returned.
 
 7. Verify (read-only). FMC's tunnel states trail the device by a few minutes: call again before calling
    a tunnel down.
-   a. Tunnel: {tool_ref("fmc_sdwan_status")} topology={topo}, branch={dev}: the WAN link, the tunnel to
+   a. Tunnel: {tool_ref("fmc_ftdsdwan_status")} topology={topo}, branch={dev}: the WAN link, the tunnel to
       every hub up, the overlay neighbours established, `degraded` empty. {tool_ref("fmc_list_vpn_tunnels")}
       device={dev}: TUNNEL_UP. Detail: {tool_ref("fmc_run_show_command")} device={dev}, command='show
       crypto ikev2 sa' (READY), then command='show crypto ipsec sa' (encaps and decaps both counting).
@@ -1660,6 +1661,15 @@ write is preview-first: show each preview to the user and confirm only after the
 9. Report: old and new unit (model, version, serial), each step with its result, the diff of step 6,
    the prove table of step 7, and what is left (licences, the old record, VPN peers to update).
 """
+
+
+SDWAN_EXAMPLE = {
+    "application": "Teams",
+    "branch": "mcp-sdwan-t1-spoke1",
+    "destination": "52.112.0.10",
+    "source": "10.111.0.10",
+    "topology": "mcp-sdwan-t1",
+}
 
 
 def register(reg: ToolRegistrar) -> None:
@@ -1888,17 +1898,8 @@ def register(reg: ToolRegistrar) -> None:
         with rollback."""
         return _policy_cleanup_text(policy, unused_days)
 
-    @reg.prompt(
-        title="Troubleshoot an SD-WAN application",
-        example={
-            "application": "Teams",
-            "branch": "mcp-sdwan-t1-spoke1",
-            "destination": "52.112.0.10",
-            "source": "10.111.0.10",
-            "topology": "mcp-sdwan-t1",
-        },
-    )
-    def fmc_sdwan_troubleshoot(
+    @reg.prompt(title="Troubleshoot an FTD SD-WAN application", example=SDWAN_EXAMPLE)
+    def fmc_ftdsdwan_troubleshoot(
         application: Annotated[
             str, Field(description="The application or service that is slow, e.g. Teams or 'web to 10.1.2.3'")
         ],
@@ -1907,12 +1908,20 @@ def register(reg: ToolRegistrar) -> None:
             str | None, Field(description="Application server IP, for packet tracer")
         ] = None,
         source: Annotated[str | None, Field(description="A branch inside host IP, for packet tracer")] = None,
-        topology: Annotated[str | None, Field(description="SD-WAN topology name (optional)")] = None,
+        topology: Annotated[str | None, Field(description="FTD SD-WAN topology name (optional)")] = None,
     ) -> str:
-        """ "App X is slow at branch Y": walks the SD-WAN path from the path metrics (fmc_sdwan_status) to
-        the app-route rule, the interface it picks now and why, the overlay tunnels and BGP, and a packet
-        tracer check, then proposes one previewed fix. Read-only until the user approves the fix."""
+        """ "App X is slow at branch Y" on FTD SD-WAN: walks the path from the path metrics
+        (fmc_ftdsdwan_status) to the app-route rule, the interface it picks now and why, the overlay
+        tunnels and BGP, and a packet tracer check, then proposes one previewed fix. Read-only until the
+        user approves the fix."""
         return _sdwan_troubleshoot_text(application, branch, destination, source, topology)
+
+    # F86: the pre-0.20.0 name, one minor release (renames.py)
+    reg.prompt(
+        title="Troubleshoot an FTD SD-WAN application (deprecated name)",
+        name="fmc_sdwan_troubleshoot",
+        example=SDWAN_EXAMPLE,
+    )(prompt_alias(fmc_ftdsdwan_troubleshoot, "fmc_sdwan_troubleshoot"))
 
     @reg.prompt(
         title="Troubleshoot a site-to-site VPN",
@@ -2078,7 +2087,7 @@ def register(reg: ToolRegistrar) -> None:
         )
 
     @reg.prompt(
-        title="Onboard an SD-WAN branch",
+        title="Onboard an FTD SD-WAN branch",
         uses=["fmc", "cml"],
         tier=Tier.DANGEROUS,
         example={
@@ -2102,7 +2111,7 @@ def register(reg: ToolRegistrar) -> None:
     def fmc_onboard_branch(
         name: Annotated[str, Field(description="FMC display name for the branch FTD, e.g. branch7-ftd")],
         host: Annotated[str, Field(description="The branch FTD's management IP (or DNS name)")],
-        topology: Annotated[str, Field(description="SD-WAN topology the branch joins as a spoke")],
+        topology: Annotated[str, Field(description="FTD SD-WAN topology the branch joins as a spoke")],
         variables: Annotated[
             dict[str, str] | None,
             Field(
@@ -2145,10 +2154,10 @@ def register(reg: ToolRegistrar) -> None:
             Field(description="Health policy for the branch (fmc_get_health_policy), e.g. an edge policy"),
         ] = None,
     ) -> str:
-        """Onboard a branch FTD into an SD-WAN topology end to end: register it (the key comes from the
+        """Onboard a branch FTD into an FTD SD-WAN topology end to end: register it (the key comes from the
         server's FMC_FTD_REG_KEY, never from the conversation), configure it from a device template when
         one fits or by hand (interfaces and zones, underlay route, NAT, access policy, hub return path),
-        add it as a spoke with fmc_update_sdwan_topology, deploy the hubs and the branch, verify the
+        add it as a spoke with fmc_update_ftdsdwan_topology, deploy the hubs and the branch, verify the
         tunnel, the overlay routes and a policy flow (packet tracer and real traffic), and end with a
         hand-off record of flows for fmc_prove_policy. Every write is previewed and approved first."""
         return _onboard_branch_text(

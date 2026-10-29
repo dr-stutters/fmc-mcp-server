@@ -41,8 +41,8 @@ LIVE_CLIS = "show interface, show interface <?-option>, show running-config <?-o
 ALTERNATIVES: dict[str, str] = {
     "show bgp": "'show route bgp' (BGP-learned routes); neighbours and AS settings: fmc_get_routing",
     "show ospf": "'show route ospf' (OSPF-learned routes); OSPF settings: fmc_get_routing",
-    "show path-monitoring": "fmc_sdwan_status (WAN links and tunnels per branch) and fmc_device_health",
-    "show policy-route": "fmc_get_routing (policy-based routes), fmc_sdwan_status (app routes) and "
+    "show path-monitoring": "fmc_ftdsdwan_status (WAN links and tunnels per branch) and fmc_device_health",
+    "show policy-route": "fmc_get_routing (policy-based routes), fmc_ftdsdwan_status (app routes) and "
     "'show route' for the routing table",
     "show conn": "fmc_live_connections (connections from the device's syslog buffer), fmc_packet_tracer for "
     "a verdict, or the device CLI (SSH / cml_run_commands)",

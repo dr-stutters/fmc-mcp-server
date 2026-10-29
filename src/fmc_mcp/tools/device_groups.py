@@ -466,7 +466,7 @@ def register(reg: ToolRegistrar) -> None:
         """List FMC's device groups with their members (devices, HA pairs, clusters), or one group's members
         in full. Fleet tools take a group wherever they take devices: fmc_run_show_command(group=...),
         fmc_deploy / fmc_assign_policy / fmc_backup_devices devices=['group:<name>'], fmc_set_device_licenses,
-        fmc_device_metrics and fmc_sdwan_status(branch=...). Empty when the domain has no groups."""
+        fmc_device_metrics and fmc_ftdsdwan_status(branch=...). Empty when the domain has no groups."""
         app: FmcApp = get_client(ctx)
         if group:
             g = await resolve_group(app, group, domain)
