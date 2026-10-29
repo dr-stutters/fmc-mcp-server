@@ -15,6 +15,7 @@ from fmc_mcp._core import (
     NotFound,
     ResponseFormat,
     ToolRegistrar,
+    UpstreamError,
     get_client,
     list_result,
 )
@@ -249,30 +250,54 @@ def register(reg: ToolRegistrar) -> None:
         Drill into access policies with fmc_get_access_policy and fmc_list_access_rules."""
         app: FmcApp = get_client(ctx)
         path = await app.config_path(POLICY_KINDS[kind], domain)
+        note = await _descendant_devices_note(app, domain)
+        extra = {"note": note} if note else None
         if name:
             page = await app.all(path, cap=5000)
             rows = [policy_row(p) for p in page.items if name.lower() in str(p.get("name", "")).lower()]
-            return list_result(page_of(rows, limit=limit, offset=offset), fmt=response_format)
+            return list_result(page_of(rows, limit=limit, offset=offset), fmt=response_format, extra=extra)
         page = await app.page(path, limit=limit, offset=offset)
         page.items = [policy_row(p) for p in page.items]
-        return list_result(page, fmt=response_format)
+        return list_result(page, fmt=response_format, extra=extra)
 
     @reg.read(title="Get access control policy")
     async def fmc_get_access_policy(
         ctx: Context,
-        policy: PolicyRef,
+        policy: Annotated[
+            str | None,
+            Field(description="Access control policy name or UUID; default: the one assigned to `device`"),
+        ] = None,
         include_rules: Annotated[
             bool,
             Field(description="Also return the flattened rules (up to 200; page with fmc_list_access_rules)"),
         ] = False,
         domain: Domain = None,
+        device: Annotated[
+            str | None, Field(description="Device name or UUID: summarise its assigned access policy")
+        ] = None,
     ) -> dict[str, Any]:
         """Summarise an access control policy: default action (and its intrusion policy), its base policy
         (inheritance: parent_policy, and base_chain when the base has a base too), the lock (who holds it,
         fmc_policy_lock), its rule categories (section and rule range), prefilter policy, the devices it is
         assigned to, and rule counts by section and action. With include_rules, also returns rules
-        flattened to one row each with zones, networks, ports, applications and URLs shown by name."""
+        flattened to one row each with zones, networks, ports, applications and URLs shown by name.
+        `device` instead of `policy`: the device's assigned policy, read in the device's own domain (a
+        child-domain device listed in Global; `domain` in the result says so)."""
+        from fmc_mcp.flow import access_policy_of  # flow builds on the device tools
+
         app: FmcApp = get_client(ctx)
+        moved: str | None = None
+        if device:
+            dev = await resolve_in(app, "devices/devicerecords", device, "device", domain)
+            home, moved = await app.device_home(dev, domain)
+            domain = home if moved else domain
+            if not policy:
+                acp = await access_policy_of(app, dev, domain)
+                if acp is None:
+                    raise InvalidRequest(f"{dev.get('name')} has no access control policy assigned.")
+                policy = str(acp["id"])
+        if not policy:
+            raise InvalidRequest("Give the access policy (policy=...) or the device (device=...).")
         p = await resolve_policy(app, "access", policy, domain)
         rules = await all_rules(app, await app.config_path(f"{ACCESS}/{p['id']}/accessrules", domain))
         flat = [flatten_access_rule(r) for r in rules.items]
@@ -305,6 +330,8 @@ def register(reg: ToolRegistrar) -> None:
             },
             "assigned_to": await _assigned_devices(app, p["id"], domain),
         }
+        if moved:
+            out["domain"] = f"{moved} (the device's)"
         structure = await policy_structure(app, p, domain)
         chain = structure.pop("base_chain", None)
         if chain:
@@ -410,10 +437,13 @@ def register(reg: ToolRegistrar) -> None:
         (a rule for a subnet or group containing the host matches; values are shown next to object
         names). NAT policies come from fmc_list_policies(kind='nat')."""
         app: FmcApp = get_client(ctx)
+        moved: str | None = None
         if not policy:
             if not device:
                 raise InvalidRequest("Give the NAT policy (policy=...) or the device (device=...).")
             dev = await resolve_in(app, "devices/devicerecords", device, "device", domain)
+            home, moved = await app.device_home(dev, domain)
+            domain = home if moved else domain
             assigned = await nat_policy_of(app, str(dev["id"]), domain)
             if assigned is None:
                 raise InvalidRequest(f"{dev.get('name')} has no NAT policy assigned.")
@@ -449,6 +479,8 @@ def register(reg: ToolRegistrar) -> None:
         if text:
             rows = [r for r in rows if text.lower() in str(r).lower()]
         extra: dict[str, Any] = {"policy": p.get("name")}
+        if moved:
+            extra["domain"] = f"{moved} (the device's)"
         if address:
             extra["address"] = address
         return list_result(
@@ -514,6 +546,34 @@ def register(reg: ToolRegistrar) -> None:
                 row["domain"] = a["_domain"]
             rows.append(row)
         return list_result(page_of(rows, limit=limit, offset=offset), fmt=response_format)
+
+
+async def _descendant_devices_note(app: FmcApp, domain: str | None) -> str | None:
+    """In a domain with descendants (Global on a multi-domain FMC): which devices of the device list
+    belong to a descendant domain, whose policies are listed under that domain, not here."""
+    here = await app.domain_uuid(domain)
+    if not any(app.is_below(d["uuid"], here) for d in app.domains):
+        return None
+    try:
+        devices = await app.all(await app.config_path("devices/devicerecords", domain), cap=1000)
+    except UpstreamError:
+        return None
+    by_domain: dict[str, list[str]] = {}
+    for d in devices.items:
+        owner = str((((d.get("metadata") or {}).get("domain")) or {}).get("id") or "")
+        if owner and app.is_below(owner, here):
+            by_domain.setdefault(await app.domain_name(owner), []).append(str(d.get("name")))
+    if not by_domain:
+        return None
+    parts = []
+    for dom, names in sorted(by_domain.items()):
+        shown = ", ".join(names[:5]) + (f" and {len(names) - 5} more" if len(names) > 5 else "")
+        parts.append(f"{dom} ({shown})")
+    first = sorted(by_domain)[0]
+    return (
+        "Devices of descendant domains use policies listed under those domains, not here: "
+        f"{'; '.join(parts)}. List them with domain='{first}'."
+    )
 
 
 async def _assigned_devices(app: FmcApp, policy_id: str, domain: str | None) -> list[str]:

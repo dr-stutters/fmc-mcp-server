@@ -296,9 +296,46 @@ class FmcApp:
             self.rerouted.setdefault(task, {})[owner] = time.monotonic()
         return owner
 
+    async def device_home(
+        self,
+        dev: dict[str, Any],
+        domain: str | None,
+        *,
+        strict: bool = True,
+        collection: str = "devices/devicerecords",
+    ) -> tuple[str, str | None]:
+        """Where a device's own policies live: (domain UUID, the domain's name when that is not the
+        requested domain, else None). Multi-domain FMC: Global's device list shows its descendants'
+        devices, whose `metadata.domain` names the child domain that owns them; their assigned policies
+        (and zones) are only readable there (GET in Global is a 404). With `domain` left out the device's
+        own domain is used; an explicit `domain` that differs is an error when `strict` (a tool that
+        reads the device's policies), else the device's domain is used too."""
+        requested = await self.domain_uuid(domain)
+        dev_id = str(dev.get("id") or "")
+        owner = str((((dev.get("metadata") or {}).get("domain")) or {}).get("id") or "").lower()
+        if not owner and dev_id:
+            await self.device_domain(collection, dev_id, requested)  # one GET, cached (multi-domain only)
+            owner = self.device_domains.get(dev_id.lower(), "")
+        if not owner or owner == requested.lower():
+            return requested, None
+        known = {d["uuid"].lower(): d["uuid"] for d in await self._known_domains()}
+        if owner not in known:  # a domain this login can't see: leave it to FMC
+            return requested, None
+        name = await self.domain_name(owner)
+        if strict and domain is not None and domain.strip():
+            raise InvalidRequest(
+                f"{dev.get('name') or dev_id} is in domain {name}; pass domain='{name}' "
+                "(or leave domain out to use the device's own domain)."
+            )
+        return known[owner], name
+
     def forget_devices(self) -> None:
         """Drop the device -> domain map (after registering, deleting or re-pairing devices)."""
         self.device_domains.clear()
+
+    def is_below(self, child: str, ancestor: str) -> bool:
+        """Whether domain UUID `child` is a descendant of domain UUID `ancestor` (known domains only)."""
+        return self._is_below(child, ancestor)
 
     def _is_below(self, child: str, ancestor: str) -> bool:
         """Whether domain `child` is a descendant of `ancestor`, from the names ('Global/A/B')."""
