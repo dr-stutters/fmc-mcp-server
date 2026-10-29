@@ -2,10 +2,12 @@
 change one module in place, F14).
 
 Bodies follow the FMC 10.0.1 OpenAPI: POST policy/healthpolicies takes `basePolicyID` (request example 1:
-"create a new policy with any existing policy as base policy"); the HealthPolicy schema has no device field,
-so a device gets its policy through its device record's `healthPolicy` (IDevice). When FMC ignores that
-field, the tool falls back to a policy assignment (assignment/policyassignments, policy type HealthPolicy)
-and says which route took effect."""
+"create a new policy with any existing policy as base policy"). A device goes on a health policy through the
+policy's assignment: GET + PUT assignment/policyassignments/<policy id> (type PolicyAssignment, the whole
+target list), in the domain that owns the policy. Live on 10.0.1 (#379): the device record's `healthPolicy`
+is ignored and a partial device-record PUT resets prohibitPacketTransfer, so the record is never written; a
+POST of a new HealthPolicy assignment answers 2xx and changes nothing; a PUT through another domain's path
+answers "applied" and changes nothing."""
 
 # No `from __future__ import annotations`: FastMCP inspects signatures at runtime.
 from typing import Annotated, Any
@@ -21,11 +23,10 @@ from fmc_mcp._core import (
     ToolRegistrar,
     Undo,
     UpstreamError,
-    ValidationFailed,
     get_client,
 )
 from fmc_mcp.client import FmcApp
-from fmc_mcp.preview import fmc_preview
+from fmc_mcp.preview import fmc_preview, owner_domain
 from fmc_mcp.tools.admin import HEALTH, LOWER_IS_WORSE, _with_thresholds, module_row, module_rows
 from fmc_mcp.tools.common import Domain, resolve_in
 from fmc_mcp.tools.device_groups import expand_devices
@@ -200,68 +201,121 @@ class Assignment:
             if target_id and cur_id.lower() == target_id.lower():
                 row["unchanged"] = True
             else:
-                old = ((await self.policy(cur_id)).get("healthModules") or []) if cur_id else []
-                row["threshold_changes"] = module_diff(old, target_modules)
+                old_pol = await self.policy(cur_id) if cur_id else {}
+                row["threshold_changes"] = module_diff(old_pol.get("healthModules") or [], target_modules)
+                if old_pol:  # the policy it leaves is written in its own domain too, when FMC keeps it there
+                    row["from_domain"] = await self.app.domain_name(await self.write_domain(old_pol))
             out.append(row)
         return out
 
-    async def move(self, rec: dict[str, Any], pol: dict[str, Any]) -> str:
-        """Put one device on `pol`; returns the route that worked ('device_record' or 'policy_assignment')."""
-        path = await self.app.config_path(f"{DEVICES}/{rec['id']}", self.domain)
-        ref = {"id": pol["id"], "name": pol.get("name"), "type": "HealthPolicy"}
-        now = await self.app.api.get(path)  # rebuilt from the current record: the PUT replaces it
-        body: dict[str, Any] = {
-            "id": now["id"],
-            "type": "Device",
-            "name": now.get("name"),
-            "hostName": now.get("hostName"),
-            "license_caps": now.get("license_caps") or [],
-            "healthPolicy": ref,
-        }
-        if now.get("performanceTier"):
-            body["performanceTier"] = now["performanceTier"]
-        refused: str | None = None
+    async def write_domain(self, pol: dict[str, Any]) -> str:
+        """The domain a policy's assignment is written in: the one that owns the policy (its
+        metadata.domain; the initial policy lives in Global). Through any other domain's path FMC answers
+        "applied" and changes nothing (FMC 10.0.1, #379)."""
+        dom = owner_domain(pol)
+        if dom:
+            return str(dom["id"])
+        if pol.get("metadata") is None and pol.get("id"):  # a summary row: the full GET has the owner
+            dom = owner_domain(await self.policy(str(pol["id"])))
+            if dom:
+                return str(dom["id"])
+        return await self.app.domain_uuid(self.domain)
+
+    async def targets(self, pid: str, dom: str) -> list[dict[str, Any]]:
+        """The devices on a policy (its assignment's targets). FMC 10.0.1 answers 500 'Index 0 out of
+        bounds for length 0' for a policy with no assignment yet (404 elsewhere): an empty list."""
+        path = await self.app.config_path(f"{ASSIGNMENTS}/{pid}", dom)
+        resp = await self.app.api.get(path, expect="response", ok_status={404, 500}, retry=False)
+        if resp.status_code == 404:
+            return []
+        if resp.status_code == 500:
+            if "out of bounds" in resp.text:
+                return []
+            raise UpstreamError(
+                f"FMC answered 500 reading the assignment of health policy {pid}: {resp.text[:300]}", 500
+            )
         try:
-            await applied(self.app, lambda: self.app.api.put(path, body))
-        except ValidationFailed as e:  # FMC refuses the field on this record: try the assignment route
-            refused = str(e)
-        else:
-            if self._on(await self.app.api.get(path), pol):
-                return "device_record"
-        # FMC kept the old policy: assign it the way other device policies are assigned
-        assign = {
+            body = resp.json()
+        except ValueError:
+            body = {}
+        return [t for t in (body or {}).get("targets") or [] if isinstance(t, dict) and t.get("id")]
+
+    async def put_targets(self, pol: dict[str, Any], dom: str, targets: list[dict[str, Any]]) -> None:
+        """PUT assignment/policyassignments/<policy id> with the whole target list, in `dom`."""
+        pid = str(pol["id"])
+        body = {
             "type": "PolicyAssignment",
-            "policy": ref,
-            "targets": [{"id": now["id"], "type": "Device", "name": now.get("name")}],
+            "id": pid,
+            "policy": {"id": pid, "name": pol.get("name"), "type": "HealthPolicy"},
+            "targets": targets,
         }
-        apath = await self.app.config_path(ASSIGNMENTS, self.domain)
-        await applied(self.app, lambda: self.app.api.post(apath, assign))
-        if self._on(await self.app.api.get(path), pol):
-            return "policy_assignment"
-        why = f" (the device record PUT was refused: {refused})" if refused else ""
-        raise UpstreamError(
-            f"FMC accepted the change but {now.get('name')!r} still shows its old health policy{why}.", None
-        )
+        path = await self.app.config_path(f"{ASSIGNMENTS}/{pid}", dom)
+        await applied(self.app, lambda: self.app.api.put(path, body))
 
     @staticmethod
     def _on(rec: dict[str, Any], pol: dict[str, Any]) -> bool:
         return str((rec.get("healthPolicy") or {}).get("id") or "").lower() == str(pol["id"]).lower()
 
     async def move_all(self, recs: list[dict[str, Any]], pol: dict[str, Any]) -> list[dict[str, Any]]:
-        done: list[dict[str, Any]] = []
-        for rec in recs:
-            if self._on(rec, pol):
-                continue
+        """Put the devices on `pol` with one assignment PUT (its current targets plus them) in the policy's
+        own domain, then take them off the policies they leave when FMC kept them there. The device
+        record is never written: FMC 10.0.1 ignores its healthPolicy and a partial PUT resets
+        prohibitPacketTransfer (#379)."""
+        moving = [r for r in recs if not self._on(r, pol)]
+        if not moving:
+            return []
+        dom = await self.write_domain(pol)
+        pid = str(pol["id"])
+        try:
+            current = await self.targets(pid, dom)
+            have = {str(t["id"]).lower() for t in current}
+            add = [
+                {"id": r["id"], "type": "Device", "name": r.get("name")}
+                for r in moving
+                if str(r["id"]).lower() not in have
+            ]
+            await self.put_targets(pol, dom, current + add)
+        except Exception as e:
+            raise UpstreamError(
+                f"Assigning {pol.get('name')!r} failed ({e}). Moved: none. Check with fmc_get_health_policy, "
+                "then repeat the call.",
+                getattr(e, "status_code", None),
+            ) from e
+        # The policies the devices leave (FMC 10.0.1 drops them there itself; PUT the shorter list if not)
+        leaving: dict[str, list[str]] = {}
+        for r in moving:
+            old = str((r.get("healthPolicy") or {}).get("id") or "")
+            if old and old.lower() != pid.lower():
+                leaving.setdefault(old, []).append(str(r["id"]).lower())
+        for old_id, ids in leaving.items():
             try:
-                via = await self.move(rec, pol)
-            except Exception as e:  # say which devices already moved (one request per device)
-                moved = [str(d["device"]) for d in done] or "none"
+                old_pol = await self.policy(old_id)
+                old_dom = await self.write_domain(old_pol)
+                tg = await self.targets(old_id, old_dom)
+                keep = [t for t in tg if str(t["id"]).lower() not in ids]
+                if len(keep) != len(tg):
+                    await self.put_targets({**old_pol, "id": old_id}, old_dom, keep)
+            except Exception as e:
                 raise UpstreamError(
-                    f"Assigning {pol.get('name')!r} to {rec.get('name')!r} failed ({e}). Moved: {moved}. "
-                    "Check with fmc_get_health_policy, then repeat the call.",
+                    f"{pol.get('name')!r} now lists the devices, but taking them off {old_id} failed ({e}). "
+                    "Check with fmc_get_health_policy.",
                     getattr(e, "status_code", None),
                 ) from e
-            done.append({"device": rec.get("name"), "via": via})
+        done: list[dict[str, Any]] = []
+        stuck: list[str] = []
+        for r in moving:
+            now = await self.app.api.get(await self.app.config_path(f"{DEVICES}/{r['id']}", self.domain))
+            if self._on(now, pol):
+                done.append({"device": r.get("name"), "via": "policy_assignment"})
+            else:
+                stuck.append(str(r.get("name")))
+        if stuck:
+            moved = [str(d["device"]) for d in done] or "none"
+            raise UpstreamError(
+                f"FMC accepted the assignment of {pol.get('name')!r} but {', '.join(stuck)} still show their "
+                f"old health policy. Moved: {moved}. Check with fmc_get_health_policy.",
+                None,
+            )
         return done
 
 
@@ -374,6 +428,8 @@ def register(reg: ToolRegistrar) -> None:
         }
         if group:
             details["group"] = group
+        if recs:
+            details["assignment_domain"] = await app.domain_name(await app.domain_uuid(domain))
         if dev_rows:
             details["devices"] = dev_rows
         return await fmc_preview(
@@ -430,8 +486,9 @@ def register(reg: ToolRegistrar) -> None:
     ) -> dict[str, Any]:
         """Put devices (or every device in a device group) on a health policy. The preview shows, per
         device, the policy it uses now and the module thresholds that change; devices already on the
-        policy are left alone. Moving devices back to the initial policy before deleting one:
-        policy='default'."""
+        policy are left alone. The assignment is written in the policy's own domain (the preview's
+        assignment_domain; the initial policy lives in Global) and the device records are not changed.
+        Moving devices back to the initial policy before deleting one: policy='default'."""
         app: FmcApp = get_client(ctx)
         pol = await full_policy(app, policy, domain)
         blockers: list[str] = []
@@ -450,7 +507,12 @@ def register(reg: ToolRegistrar) -> None:
             fresh = [await app.api.get(await app.config_path(f"{DEVICES}/{d['id']}", domain)) for d in moving]
             return {"policy": pol.get("name"), "assigned": await asg.move_all(fresh, pol)}
 
-        details: dict[str, Any] = {"policy": pol.get("name"), "devices": rows}
+        details: dict[str, Any] = {
+            "policy": pol.get("name"),
+            # the policy's own domain: FMC ignores an assignment PUT through any other domain's path
+            "assignment_domain": await app.domain_name(await asg.write_domain(pol)),
+            "devices": rows,
+        }
         if group:
             details["group"] = group
         return await fmc_preview(
