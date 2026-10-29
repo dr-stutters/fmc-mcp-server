@@ -166,7 +166,7 @@ Workflows:
   list them with fmc_list_objects(type='sla_monitor'). FMC leaves 'sla monitor <id>' on a device after its
   last tracking route goes: the delete previews say how to clean it up.
 - FTD SD-WAN (FMC's SD-WAN wizard: FTD hubs and branches over VTIs; Catalyst SD-WAN is a different product
-  with its own server, catsdwan_*; the pre-0.20 sdwan names are deprecated aliases until 0.22.0): zone
+  with its own server, catsdwan_*; the pre-0.20 sdwan names are deprecated aliases until 0.23.0): zone
   the WAN and inside interfaces (fmc_update_interface) -> fmc_create_ftdsdwan_topology (hub DVTI, spoke
   pool, spokes, backup hub, iBGP overlay) -> fmc_deploy hubs and spokes -> fmc_get_vpn_topology /
   fmc_list_vpn_tunnels; add or remove branches and the backup hub with fmc_update_ftdsdwan_topology;
