@@ -2,7 +2,8 @@
 
 Policy shapes are the lab FMC 10.0.1's (GET policy/healthpolicies/{id}, trimmed to three modules); the POST
 body is the spec's request example 1 (basePolicyID). The spec's HealthPolicy has no device field, so the
-device record's healthPolicy (IDevice) assigns it, with a policy assignment as the fallback."""
+policy's assignment (GET + PUT assignment/policyassignments/<id>, in the policy's own domain) assigns it;
+the device record is never written (#379, live on 10.0.1)."""
 
 import copy
 import json
@@ -12,11 +13,12 @@ import httpx
 import pytest
 import respx
 from fastmcp import Client
+from fastmcp.exceptions import ToolError
 
 from fmc_mcp.server import create_server
 from fmc_mcp.tools.health_policies import ModuleSettings, apply_modules, module_diff
 
-from .conftest import CFG, items, make_settings
+from .conftest import CFG, DOMAIN, TOP, TOP_CFG, as_leaf, items, make_settings
 
 INITIAL_ID = "1114175a-2eca-11f1-bc1d-b8e359adb5f3"
 FMC_HP_ID = "5405ee6f-2d28-4165-a3f3-6c3b4e320fdf"
@@ -89,16 +91,38 @@ def dev(i: str, name: str) -> dict[str, Any]:
     }
 
 
+DOMAIN_RE = r"/api/fmc_config/v1/domain/([0-9a-f-]+)"
+EMPTY_500 = {  # FMC 10.0.1: GET assignment/policyassignments/<id> of a policy no device is on (#379)
+    "error": {
+        "category": "OTHER",
+        "messages": [{"description": "Index 0 out of bounds for length 0"}],
+        "severity": "ERROR",
+    }
+}
+
+
 class Lab:
-    """A small stateful FMC: health policies and device records change with the writes."""
+    """A small stateful FMC: health policies, their assignments and the device records change with the
+    writes the way FMC 10.0.1 does (#379): an assignment PUT applies only through the path of the domain
+    that owns the policy (anywhere else it answers 200 and changes nothing), a device added to one policy
+    leaves the policy it was on, a policy nobody is on answers 500 to its assignment GET, and the device
+    record is never the route (its PUT is recorded so a test can say it never happened)."""
 
     def __init__(
-        self, fmc: respx.MockRouter, *, record_put_works: bool = True, shuffle: bool = False
+        self,
+        fmc: respx.MockRouter,
+        *,
+        shuffle: bool = False,
+        global_uuid: str = DOMAIN,
+        exclusive: bool = True,
     ) -> None:
-        self.shuffle, self.gets = shuffle, 0
-        self.policies: dict[str, dict[str, Any]] = {INITIAL_ID: copy.deepcopy(INITIAL), FMC_HP_ID: FMC_HP}
+        self.shuffle, self.gets, self.exclusive = shuffle, 0, exclusive
+        self.global_uuid = global_uuid
+        initial = copy.deepcopy(INITIAL)
+        initial["metadata"]["domain"] = {**DOMAIN_META["domain"], "id": global_uuid}
+        self.policies: dict[str, dict[str, Any]] = {INITIAL_ID: initial, FMC_HP_ID: FMC_HP}
         self.devices = {A: dev(A, "ftd-a"), B: dev(B, "ftd-b")}
-        self.record_put_works = record_put_works
+        self.assigned: dict[str, list[str]] = {INITIAL_ID: [A, B]}
         hp = f"{CFG}/policy/healthpolicies"
         fmc.get(hp).mock(side_effect=lambda r: items([self.summary(p) for p in self.policies.values()]))
         fmc.get(url__regex=rf"{hp}/[0-9a-f-]+$").mock(side_effect=self.get_policy)
@@ -110,8 +134,13 @@ class Lab:
         dr = f"{CFG}/devices/devicerecords"
         fmc.get(dr).mock(side_effect=lambda r: items(list(self.devices.values())))
         fmc.get(url__regex=rf"{dr}/[0-9a-f-]+$").mock(side_effect=self.get_device)
-        self.dev_put = fmc.put(url__regex=rf"{dr}/[0-9a-f-]+$").mock(side_effect=self.put_device)
-        self.assign = fmc.post(f"{CFG}/assignment/policyassignments").mock(side_effect=self.assign_policy)
+        self.dev_put = fmc.put(url__regex=r"/devices/devicerecords/").mock(
+            return_value=httpx.Response(200, json={})
+        )
+        pa = rf"{DOMAIN_RE}/assignment/policyassignments"
+        self.assign_post = fmc.post(url__regex=pa + "$").mock(return_value=httpx.Response(201, json={}))
+        self.assign_get = fmc.get(url__regex=pa + r"/[0-9a-f-]+$").mock(side_effect=self.get_assignment)
+        self.assign_put = fmc.put(url__regex=pa + r"/[0-9a-f-]+$").mock(side_effect=self.put_assignment)
         group = {
             "id": GROUP_ID,
             "type": "DeviceGroup",
@@ -129,9 +158,34 @@ class Lab:
         fmc.get(f"{CFG}/devicehapairs/ftddevicehapairs").mock(return_value=items([]))
         fmc.get(f"{CFG}/deviceclusters/ftddevicecluster").mock(return_value=items([]))
 
+    def add(self, pid: str, name: str, *, owner: str = DOMAIN, on: tuple[str, ...] = ()) -> None:
+        """Another device policy (a copy of the initial one) owned by `owner`, with devices `on` it."""
+        meta = {"readOnly": {"state": False}, "domain": {"name": "x", "id": owner, "type": "Domain"}}
+        self.policies[pid] = {
+            **copy.deepcopy(INITIAL),
+            "id": pid,
+            "name": name,
+            "defaultPolicy": False,
+            "metadata": meta,
+        }
+        for d in on:
+            self.attach(pid, d)
+
+    def attach(self, pid: str, device: str, *, exclusive: bool = True) -> None:
+        for ids in self.assigned.values() if exclusive else ():
+            if device in ids:
+                ids.remove(device)
+        self.assigned.setdefault(pid, []).append(device)
+        p = self.policies[pid]
+        self.devices[device]["healthPolicy"] = {"id": pid, "name": p["name"], "type": "HealthPolicy"}
+
     @staticmethod
     def summary(p: dict[str, Any]) -> dict[str, Any]:
         return {k: p[k] for k in ("id", "name", "type", "policyType", "defaultPolicy") if k in p}
+
+    @staticmethod
+    def dom(request: httpx.Request) -> str:
+        return request.url.path.split("/domain/", 1)[1].split("/", 1)[0]
 
     def get_policy(self, request: httpx.Request) -> httpx.Response:
         p = self.policies.get(request.url.path.rsplit("/", 1)[1])
@@ -153,6 +207,7 @@ class Lab:
             "name": body["name"],
             "defaultPolicy": False,
             "description": body.get("description"),
+            "metadata": {"domain": {"name": "x", "id": self.dom(request), "type": "Domain"}},
         }
         self.policies[NEW_ID] = made
         return httpx.Response(201, json=made)
@@ -166,17 +221,38 @@ class Lab:
         d = self.devices.get(request.url.path.rsplit("/", 1)[1])
         return httpx.Response(200, json=d) if d else httpx.Response(404, json={})
 
-    def put_device(self, request: httpx.Request) -> httpx.Response:
-        body = json.loads(request.content)
-        if self.record_put_works:
-            self.devices[body["id"]]["healthPolicy"] = body["healthPolicy"]
-        return httpx.Response(200, json=self.devices[body["id"]])
+    def get_assignment(self, request: httpx.Request) -> httpx.Response:
+        pid = request.url.path.rsplit("/", 1)[1]
+        ids = self.assigned.get(pid) or []
+        if not ids:
+            return httpx.Response(500, json=EMPTY_500)
+        name = self.policies[pid]["name"]
+        return httpx.Response(  # the recorded 10.0.1 shape: the policy ref has no id
+            200,
+            json={
+                "type": "PolicyAssignment",
+                "policy": {"type": "HealthPolicy", "name": name},
+                "targets": [
+                    {"id": i, "type": "Device", "name": self.devices[i]["name"], "keepLocalEvents": False}
+                    for i in ids
+                ],
+                "name": name,
+            },
+        )
 
-    def assign_policy(self, request: httpx.Request) -> httpx.Response:
+    def put_assignment(self, request: httpx.Request) -> httpx.Response:
+        pid = request.url.path.rsplit("/", 1)[1]
         body = json.loads(request.content)
-        for t in body["targets"]:
-            self.devices[t["id"]]["healthPolicy"] = body["policy"]
-        return httpx.Response(201, json=body)
+        owner = self.policies[pid]["metadata"]["domain"]["id"]
+        if self.dom(request) == owner:  # through another domain's path: "applied", nothing changes
+            want = [t["id"] for t in body["targets"]]
+            for i in list(self.assigned.get(pid) or []):
+                if i not in want:
+                    self.assigned[pid].remove(i)
+            for i in want:
+                if i not in (self.assigned.get(pid) or []):
+                    self.attach(pid, i, exclusive=self.exclusive)
+        return httpx.Response(200, json=body)
 
 
 @pytest.fixture
@@ -265,17 +341,28 @@ async def test_create_from_default_with_thresholds_and_a_device(lab: Lab) -> Non
         and {"type": "yellow", "value": 60} in cpu["alertConfig"][0]["thresholds"]
     )
     assert "metadata" not in put and put["id"] == NEW_ID
-    dput = json.loads(lab.dev_put.calls.last.request.content)
-    assert dput["healthPolicy"]["id"] == NEW_ID and dput["license_caps"] == ["ESSENTIALS", "IPS"]
-    assert dput["performanceTier"] == "FTDv5" and dput["hostName"] == "192.0.2.10"
+    assert p["assignment_domain"] == "Global"
+    # an empty assignment GET (500 'Index 0 out of bounds') starts the target list empty
+    assert lab.assign_get.calls[0].response.status_code == 500
+    req = lab.assign_put.calls.last.request
+    assert req.url.path == f"{CFG}/assignment/policyassignments/{NEW_ID}"
+    assert json.loads(req.content) == {
+        "type": "PolicyAssignment",
+        "id": NEW_ID,
+        "policy": {"id": NEW_ID, "name": "mcp-edge", "type": "HealthPolicy"},
+        "targets": [{"id": A, "type": "Device", "name": "ftd-a"}],
+    }
     result = out.get("result", out)
-    assert result["assigned"] == [{"device": "ftd-a", "via": "device_record"}]
-    assert lab.devices[A]["healthPolicy"]["id"] == NEW_ID and not lab.assign.called
+    assert result["assigned"] == [{"device": "ftd-a", "via": "policy_assignment"}]
+    assert lab.devices[A]["healthPolicy"]["id"] == NEW_ID and lab.assigned[INITIAL_ID] == [B]
+    assert lab.assign_put.call_count == 1  # FMC dropped ftd-a from the initial policy itself
+    assert not lab.dev_put.called and not lab.assign_post.called
 
 
 async def test_create_without_modules_is_one_post(lab: Lab) -> None:
     _, out = await confirm("fmc_create_health_policy", {"name": "mcp-copy", "base": INITIAL["name"]})
     assert lab.post.call_count == 1 and not lab.put.called and not lab.dev_put.called
+    assert not lab.assign_put.called
 
 
 async def test_create_blockers(lab: Lab) -> None:
@@ -299,10 +386,8 @@ async def test_create_blockers(lab: Lab) -> None:
 
 
 async def test_assign_group_skips_devices_already_on_the_policy(lab: Lab) -> None:
-    edge = {**copy.deepcopy(INITIAL), "id": NEW_ID, "name": "mcp-edge", "defaultPolicy": False}
-    edge["healthModules"][2]["warningThreshold"] = 60
-    lab.policies[NEW_ID] = edge
-    lab.devices[B]["healthPolicy"] = {"id": NEW_ID, "name": "mcp-edge", "type": "HealthPolicy"}
+    lab.add(NEW_ID, "mcp-edge", on=(B,))
+    lab.policies[NEW_ID]["healthModules"][2]["warningThreshold"] = 60
     preview, out = await confirm(
         "fmc_assign_health_policy", {"policy": "mcp-edge", "devices": ["group:edge"]}
     )
@@ -329,23 +414,71 @@ async def test_assign_group_skips_devices_already_on_the_policy(lab: Lab) -> Non
         }
     ]
     assert b == {"device": "ftd-b", "from": "mcp-edge", "unchanged": True}
-    assert lab.dev_put.call_count == 1 and lab.devices[A]["healthPolicy"]["id"] == NEW_ID
+    assert a["from_domain"] == "Global" and p["assignment_domain"] == "Global"
+    assert lab.assign_put.call_count == 1 and lab.devices[A]["healthPolicy"]["id"] == NEW_ID
+    sent = json.loads(lab.assign_put.calls.last.request.content)["targets"]
+    assert sent == [  # the current targets as FMC listed them, then the new device
+        {"id": B, "type": "Device", "name": "ftd-b", "keepLocalEvents": False},
+        {"id": A, "type": "Device", "name": "ftd-a"},
+    ]
+    assert not lab.dev_put.called
 
 
-async def test_assign_falls_back_to_a_policy_assignment(fmc: respx.MockRouter) -> None:
-    lab = Lab(fmc, record_put_works=False)
-    lab.policies[NEW_ID] = {
-        **copy.deepcopy(INITIAL),
-        "id": NEW_ID,
-        "name": "mcp-edge",
-        "defaultPolicy": False,
-    }
+async def test_assign_back_to_the_global_initial_policy_from_a_leaf(fmc: respx.MockRouter) -> None:
+    """The live #379 case: logged in to a leaf, the device on a leaf-owned policy; the initial policy lives
+    in Global, so its assignment is PUT through Global's path with its full pre-change target list."""
+    as_leaf(fmc)
+    lab = Lab(fmc, global_uuid=TOP)
+    lab.add(NEW_ID, "mcp-r96-edge", owner=DOMAIN, on=(A,))
+    preview, out = await confirm("fmc_assign_health_policy", {"policy": "default", "devices": ["ftd-a"]})
+    p = preview["preview"]
+    assert p["assignment_domain"] == "Global" and p["domain"] == "Global/mcp-test-leaf"
+    assert (
+        p["devices"][0]["from"] == "mcp-r96-edge" and p["devices"][0]["from_domain"] == "Global/mcp-test-leaf"
+    )
+    req = lab.assign_put.calls.last.request
+    assert req.url.path == f"{TOP_CFG}/assignment/policyassignments/{INITIAL_ID}"
+    body = json.loads(req.content)
+    assert [t["id"] for t in body["targets"]] == [B, A] and body["id"] == INITIAL_ID
+    assert lab.devices[A]["healthPolicy"]["id"] == INITIAL_ID
+    assert out.get("result", out)["assigned"] == [{"device": "ftd-a", "via": "policy_assignment"}]
+    assert lab.assign_put.call_count == 1 and not lab.dev_put.called and not lab.assign_post.called
+
+
+async def test_a_put_through_the_wrong_domain_is_not_trusted(fmc: respx.MockRouter) -> None:
+    """Through a domain that doesn't own the policy FMC answers 200 and changes nothing: the tool checks
+    the device record afterwards and says the device didn't move."""
+    as_leaf(fmc)
+    lab = Lab(fmc, global_uuid=TOP)
+    lab.add(NEW_ID, "mcp-r96-edge", owner=DOMAIN, on=(A,))
+    lab.policies[INITIAL_ID]["metadata"]["domain"]["id"] = DOMAIN  # wrong owner: the PUT goes to the leaf
+    lab.put_assignment = lambda r: httpx.Response(200, json={})  # type: ignore[method-assign]
+    lab.assign_put.side_effect = lab.put_assignment
+    with pytest.raises(ToolError, match=r"ftd-a still show their old health policy\. Moved: none"):
+        await confirm("fmc_assign_health_policy", {"policy": "default", "devices": ["ftd-a"]})
+    assert lab.assign_put.called and not lab.dev_put.called
+
+
+async def test_the_policy_left_gets_its_shorter_list_when_fmc_keeps_the_device(
+    fmc: respx.MockRouter,
+) -> None:
+    lab = Lab(fmc, exclusive=False)
+    lab.add(NEW_ID, "mcp-edge")
     _, out = await confirm("fmc_assign_health_policy", {"policy": "mcp-edge", "devices": ["ftd-a"]})
-    body = json.loads(lab.assign.calls.last.request.content)
-    assert body["policy"] == {"id": NEW_ID, "name": "mcp-edge", "type": "HealthPolicy"}
-    assert body["targets"] == [{"id": A, "type": "Device", "name": "ftd-a"}]
-    result = out.get("result", out)
-    assert result["assigned"] == [{"device": "ftd-a", "via": "policy_assignment"}]
+    assert out.get("result", out)["assigned"] == [{"device": "ftd-a", "via": "policy_assignment"}]
+    puts = [(c.request.url.path, json.loads(c.request.content)) for c in lab.assign_put.calls]
+    assert [p.rsplit("/", 1)[1] for p, _ in puts] == [NEW_ID, INITIAL_ID]
+    assert [t["id"] for t in puts[1][1]["targets"]] == [B]
+    assert lab.assigned == {INITIAL_ID: [B], NEW_ID: [A]}
+
+
+async def test_an_assignment_get_500_other_than_empty_stops_the_write(lab: Lab) -> None:
+    lab.add(NEW_ID, "mcp-edge")
+    lab.assign_get.side_effect = None
+    lab.assign_get.return_value = httpx.Response(500, json={"error": {"messages": [{"description": "boom"}]}})
+    with pytest.raises(ToolError, match=r"boom.*Moved: none"):
+        await confirm("fmc_assign_health_policy", {"policy": "mcp-edge", "devices": ["ftd-a"]})
+    assert not lab.assign_put.called and not lab.dev_put.called
 
 
 async def test_assign_back_to_default_and_nothing_to_do(lab: Lab) -> None:
@@ -360,13 +493,7 @@ async def test_assign_back_to_default_and_nothing_to_do(lab: Lab) -> None:
 
 
 async def test_delete_refused_while_assigned_and_for_built_ins(lab: Lab) -> None:
-    lab.policies[NEW_ID] = {
-        **copy.deepcopy(INITIAL),
-        "id": NEW_ID,
-        "name": "mcp-edge",
-        "defaultPolicy": False,
-    }
-    lab.devices[A]["healthPolicy"] = {"id": NEW_ID, "name": "mcp-edge", "type": "HealthPolicy"}
+    lab.add(NEW_ID, "mcp-edge", on=(A,))
     async with Client(server()) as c:
         used = await run(c, "fmc_delete_health_policy", {"policy": "mcp-edge"})
         default = await run(c, "fmc_delete_health_policy", {"policy": INITIAL["name"]})
@@ -379,12 +506,7 @@ async def test_delete_refused_while_assigned_and_for_built_ins(lab: Lab) -> None
 
 
 async def test_delete_unused_policy(lab: Lab) -> None:
-    lab.policies[NEW_ID] = {
-        **copy.deepcopy(INITIAL),
-        "id": NEW_ID,
-        "name": "mcp-edge",
-        "defaultPolicy": False,
-    }
+    lab.add(NEW_ID, "mcp-edge")
     _, out = await confirm("fmc_delete_health_policy", {"policy": "mcp-edge"})
     assert lab.delete.calls.last.request.url.path.endswith(f"/policy/healthpolicies/{NEW_ID}")
 
@@ -403,23 +525,6 @@ def test_onboarding_prompts_take_a_health_policy() -> None:
     branch = _onboard_branch_text("br7", "192.0.2.13", "t1", health_policy="mcp-edge")
     assert "fmc_assign_health_policy" in branch and "fmc_create_health_policy" in branch
     assert "fmc_assign_health_policy" not in _onboard_branch_text("br7", "192.0.2.13", "t1")
-
-
-async def test_assign_falls_back_when_the_record_put_is_refused(lab: Lab, fmc: respx.MockRouter) -> None:
-    lab.policies[NEW_ID] = {
-        **copy.deepcopy(INITIAL),
-        "id": NEW_ID,
-        "name": "mcp-edge",
-        "defaultPolicy": False,
-    }
-    lab.dev_put.mock(
-        side_effect=None,
-        return_value=httpx.Response(
-            400, json={"error": {"messages": [{"description": "Invalid field healthPolicy"}]}}
-        ),
-    )
-    _, out = await confirm("fmc_assign_health_policy", {"policy": "mcp-edge", "devices": ["ftd-a"]})
-    assert out.get("result", out)["assigned"] == [{"device": "ftd-a", "via": "policy_assignment"}]
 
 
 # --- #363: FMC 10.0 returns healthModules in a different order on every GET ------------------------------
