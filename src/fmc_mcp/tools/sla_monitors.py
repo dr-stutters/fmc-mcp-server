@@ -15,7 +15,7 @@ from typing import Annotated, Any
 from fastmcp import Context
 from pydantic import Field
 
-from fmc_mcp._core import Confirm, InvalidRequest, NotFound, Plan, ToolRegistrar, get_client
+from fmc_mcp._core import Confirm, InvalidRequest, NotFound, Plan, ToolRegistrar, Undo, get_client
 from fmc_mcp.client import FmcApp
 from fmc_mcp.preview import fmc_preview
 from fmc_mcp.refs import ZONE_TYPES, RefResolver
@@ -23,6 +23,7 @@ from fmc_mcp.tools.common import Domain, ref_label, resolve_object
 from fmc_mcp.tools.device_config import ROUTE_TABLE_CAP, route_row
 from fmc_mcp.tools.devices import DEVICES
 from fmc_mcp.tools.object_writes import applied, editable
+from fmc_mcp.undo import ResultId, not_reversible, ref_ids, without_none
 
 SLA_MONITORS = "object/slamonitors"
 SLA_ID_MAX = 2147483647
@@ -51,6 +52,28 @@ def monitor_row(m: dict[str, Any]) -> dict[str, Any]:
         "data_size": m.get("dataSize"),
         "id": m.get("id"),
     }
+
+
+def monitor_recreate_undo(m: dict[str, Any], domain: str | None) -> Undo | str:
+    """The back-out step of deleting an SLA monitor: fmc_create_sla_monitor with its values and SLA ID."""
+    zones = ref_ids(m.get("interfaceObjects"))
+    if not zones or not m.get("monitorAddress"):  # inline interface names only: no zone to give back
+        return not_reversible("SLA monitor", "fmc_create_sla_monitor", monitor_row(m))
+    args = {
+        "name": m.get("name"),
+        "monitor_address": m.get("monitorAddress"),
+        "interfaces": zones,
+        "sla_id": m.get("slaId"),
+        "frequency": m.get("frequency"),
+        "threshold_ms": m.get("threshold"),
+        "timeout_ms": m.get("timeout"),
+        "tos": m.get("tos"),
+        "packets": m.get("noOfPackets"),
+        "data_size": m.get("dataSize"),
+        "description": m.get("description") or None,
+        "domain": domain,
+    }
+    return Undo("fmc_create_sla_monitor", without_none(args))
 
 
 async def resolve_monitor(app: FmcApp, ref: str, domain: str | None) -> dict[str, Any]:
@@ -241,6 +264,9 @@ def register(reg: ToolRegistrar) -> None:
                 },
                 fingerprint={"body": body, "used_ids": sorted(used)},
                 blockers=blockers,
+                undo=Undo(
+                    "fmc_delete_sla_monitor", without_none({"monitor": ResultId("id"), "domain": domain})
+                ),
                 side_effects=[
                     "Nothing changes on a device until a static route tracks it "
                     "(fmc_create_static_route track=...) and fmc_deploy runs."
@@ -364,6 +390,27 @@ def register(reg: ToolRegistrar) -> None:
                 },
                 blockers=blockers,
                 side_effects=side,
+                undo=Undo(
+                    "fmc_update_sla_monitor",
+                    without_none(
+                        {
+                            "monitor": current["id"],
+                            "monitor_address": current.get("monitorAddress")
+                            if monitor_address is not None
+                            else None,
+                            "interfaces": (ref_ids(current.get("interfaceObjects")) or None)
+                            if interfaces is not None
+                            else None,
+                            "frequency": current.get("frequency") if frequency is not None else None,
+                            "threshold_ms": current.get("threshold") if threshold_ms is not None else None,
+                            "timeout_ms": current.get("timeout") if timeout_ms is not None else None,
+                            "description": (current.get("description") or "")
+                            if description is not None
+                            else None,
+                            "domain": domain,
+                        }
+                    ),
+                ),
             ),
             apply=lambda: applied(app, lambda: app.api.put(path, body)),
         )
@@ -400,6 +447,7 @@ def register(reg: ToolRegistrar) -> None:
                 details={"monitor": monitor_row(current), "tracked_by_routes": tracked},
                 fingerprint={"monitor": editable(current), "routes": [r["id"] for r in tracked]},
                 blockers=blockers,
+                undo=monitor_recreate_undo(current, domain),
                 side_effects=[
                     leftover_warning(current.get("slaId"), "each device whose route tracked this monitor"),
                     "Nothing else changes on a device: no route tracks it any more.",
