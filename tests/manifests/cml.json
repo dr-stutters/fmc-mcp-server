@@ -60,6 +60,10 @@
       "tier": "write",
       "title": "Apply link scenario"
     },
+    "cml_archive_lab": {
+      "tier": "write",
+      "title": "Archive lab to files"
+    },
     "cml_build_lab": {
       "tier": "write",
       "title": "Build lab from spec"
@@ -284,6 +288,10 @@
       "tier": "write",
       "title": "Set interface state"
     },
+    "cml_set_lab_boot": {
+      "tier": "write",
+      "title": "Set lab boot order and autostart"
+    },
     "cml_set_link_condition": {
       "tier": "write",
       "title": "Set link conditioning"
@@ -361,5 +369,5 @@
       "title": "Wipe node"
     }
   },
-  "version": "0.15.0"
+  "version": "0.16.0"
 }

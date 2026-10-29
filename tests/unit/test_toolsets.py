@@ -127,6 +127,19 @@ def test_readme_lists_every_toolset() -> None:
         assert f"| `{area}` |" in readme and blurb in readme, f"README toolsets table: {area}"
 
 
+async def test_tools_carry_their_area_as_core_toolset(fmc: respx.MockRouter) -> None:
+    """Core C31: every non-core tool is registered with toolset=<its area> (the manifest records it) and
+    core's gate knows every area, so FMC_TOOLSETS names are never 'unknown' in server.toolsets."""
+    for tool, meta in MANIFEST["tools"].items():
+        area = toolsets.AREA_OF[tool]
+        assert meta.get("toolsets") == (None if area == "core" else [area]), tool
+    status = await call_tool(server(toolsets="vpn,deploy,core"), "fmc_status")
+    core_view = status["server"]["toolsets"]
+    assert "unknown" not in core_view and core_view["available"] == sorted(toolsets.TOOLSETS)
+    assert set(core_view["loaded"]) == {"deploy", "vpn"}
+    assert status["fmc"]["toolsets"]["loaded"] == ["core", "deploy", "vpn"]
+
+
 async def test_old_sdwan_toolset_name_selects_the_same_tools_and_warns(fmc: respx.MockRouter) -> None:
     """F86: `sdwan` is `ftdsdwan` (FTD SD-WAN) for one minor release; fmc_status warns about the old name."""
     assert toolsets.parse("sdwan") == toolsets.parse("ftdsdwan") == {"ftdsdwan", "core"}

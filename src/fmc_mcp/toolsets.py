@@ -16,14 +16,18 @@ registered tools, so a new tool must be added here. A prompt is registered when 
 C48) are always registered: each names the legs it skips, and its fmc leg (fmc_snapshot,
 fmc_compare_snapshot) is in `core`.
 
-This is the fmc catalogue; the generic loader is planned in stutters-mcp-core (C31), and the table is
-plain data so it can move onto that mechanism unchanged.
+Every tool outside `core` is also registered with core's `toolset=<area>` (stutters-mcp-core C31), so
+the manifest records each tool's area and `fmc_status.server.toolsets` reports what is loaded. `core`
+tools carry no toolset there (core always registers those). This module still does the selecting: its
+names are checked at startup and its prompt home areas have no core equivalent; core's gate then admits
+the same tools.
 """
 
 from __future__ import annotations
 
 import re
 from collections.abc import Callable, Iterable
+from dataclasses import replace
 from typing import Any, TypeVar
 
 from fmc_mcp._core import ToolRegistrar
@@ -477,36 +481,53 @@ def instructions_note(selected: frozenset[str] | None) -> str:
     )
 
 
+def _core_names_renamed_areas(gate: Any) -> None:
+    """Core's gate parses FMC_TOOLSETS itself and knows no RENAMED_AREAS: map an old name (`sdwan`) to its
+    new one (`ftdsdwan`) there too, so core admits the same tools this module selects (F86 + C31)."""
+    sel = gate.selection
+    include = None if sel.include is None else frozenset(RENAMED_AREAS.get(n, n) for n in sel.include)
+    exclude = frozenset(RENAMED_AREAS.get(n, n) for n in sel.exclude)
+    if include != sel.include or exclude != sel.exclude:
+        gate.selection = replace(sel, include=include, exclude=exclude)
+
+
 class ToolsetRegistrar(ToolRegistrar):
     """The server's registrar with tools and prompts outside the selected areas skipped (and counted).
     Shares the base registrar's state, so tiers, safety rails and status see one registry."""
 
-    def __init__(self, base: ToolRegistrar, selected: frozenset[str]) -> None:
+    def __init__(self, base: ToolRegistrar, selected: frozenset[str] | None) -> None:
         self.__dict__.update(base.__dict__)
-        self.selected = selected
-        self.allowed = tools_in(selected)
+        self.selected = frozenset(TOOLSETS) if selected is None else selected
+        self.allowed = tools_in(self.selected)
         skipped: dict[str, str] = getattr(base.mcp, "_fmc_toolset_skipped", {})
         base.mcp._fmc_toolset_skipped = skipped  # type: ignore[attr-defined]
         self.skipped = skipped
+        base.toolsets.declare(TOOLSETS)  # FMC_TOOLSETS may name any area (core too): none is unknown to core
+        _core_names_renamed_areas(base.toolsets)
 
-    def _gate(self, name: str | None, deco: Callable[[F], F]) -> Callable[[F], F]:
+    def _gate(self, kw: dict[str, Any], factory: Callable[..., Callable[[F], F]]) -> Callable[[F], F]:
+        """Register the tool with core's toolset= (C31: its area; none for core tools, which core always
+        registers) when its area is selected; skip and count it otherwise."""
+
         def gate(fn: F) -> F:
-            tool = name or fn.__name__
+            tool = kw.get("name") or fn.__name__
+            area = AREA_OF.get(tool)
+            tagged = kw if area in (None, ALWAYS) or "toolset" in kw else {**kw, "toolset": area}
             if tool not in self.allowed:
-                self.skipped[tool] = AREA_OF.get(tool, "?")
+                self.skipped[tool] = area or "?"
                 return fn
-            return deco(fn)
+            return factory(**tagged)(fn)
 
         return gate
 
     def read(self, **kw: Any) -> Callable[[F], F]:
-        return self._gate(kw.get("name"), super().read(**kw))
+        return self._gate(kw, super().read)
 
     def write(self, **kw: Any) -> Callable[[F], F]:
-        return self._gate(kw.get("name"), super().write(**kw))
+        return self._gate(kw, super().write)
 
     def dangerous(self, **kw: Any) -> Callable[[F], F]:
-        return self._gate(kw.get("name"), super().dangerous(**kw))
+        return self._gate(kw, super().dangerous)
 
     def prompt(self, **kw: Any) -> Callable[[F], F]:
         deco = super().prompt(**kw)
@@ -522,9 +543,10 @@ class ToolsetRegistrar(ToolRegistrar):
 
 
 def filtered(
-    register: Callable[[ToolRegistrar], None], selected: frozenset[str]
+    register: Callable[[ToolRegistrar], None], selected: frozenset[str] | None
 ) -> Callable[[ToolRegistrar], None]:
-    """A module's register function that only registers the selected areas."""
+    """A module's register function that tags each tool with its area and only registers the selected
+    areas (None: every area)."""
 
     def run(reg: ToolRegistrar) -> None:
         register(ToolsetRegistrar(reg, selected))

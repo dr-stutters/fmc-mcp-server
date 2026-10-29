@@ -222,6 +222,55 @@
         "catsdwan"
       ]
     },
+    "ise_phased_8021x_rollout": {
+      "arguments": [
+        "ndg",
+        "phase",
+        "policy_set",
+        "days",
+        "switch",
+        "interfaces",
+        "name_prefix"
+      ],
+      "references": [
+        "ise_list_ndgs",
+        "ise_list_nads",
+        "ise_list_policy_sets",
+        "ise_get_policy_set",
+        "ise_policy_explain",
+        "ise_get_auth_list",
+        "ise_recent_auth_failures",
+        "ise_list_active_sessions",
+        "ise_list_endpoints",
+        "ise_endpoint_360",
+        "ise_list_endpoint_groups",
+        "ise_list_authz_profiles",
+        "ise_get_authz_profile",
+        "ise_list_dacls",
+        "ise_get_dacl",
+        "ise_snapshot",
+        "ise_compare_snapshot",
+        "ise_update_policy_rule",
+        "ise_set_dacl",
+        "ise_create_authz_profile",
+        "ise_update_authz_profile",
+        "ise_set_endpoint",
+        "catc_list_devices",
+        "catc_run_show_commands",
+        "catc_get_device_config",
+        "catc_create_template",
+        "catc_commit_template",
+        "catc_preview_template",
+        "cml_run_commands"
+      ],
+      "rendered": true,
+      "tier": "read",
+      "uses": [
+        "ise",
+        "catc",
+        "cml"
+      ]
+    },
     "ise_quarantine_host": {
       "arguments": [
         "reason",
@@ -563,6 +612,10 @@
       "tier": "dangerous",
       "title": "Delete a certificate"
     },
+    "ise_delete_condition": {
+      "tier": "write",
+      "title": "Delete a policy condition"
+    },
     "ise_delete_csr": {
       "tier": "write",
       "title": "Delete a CSR"
@@ -715,6 +768,10 @@
       "tier": "read",
       "title": "Get a network device"
     },
+    "ise_get_patch_readiness": {
+      "tier": "read",
+      "title": "Patch / upgrade / rollback pre-check report"
+    },
     "ise_get_policy_set": {
       "tier": "read",
       "title": "Get a policy set with its rules"
@@ -738,6 +795,10 @@
     "ise_import_config": {
       "tier": "dangerous",
       "title": "Import ISE configuration from an export"
+    },
+    "ise_import_system_certificate": {
+      "tier": "dangerous",
+      "title": "Import a system certificate with its private key"
     },
     "ise_import_trusted_cert": {
       "tier": "write",
@@ -907,6 +968,10 @@
       "tier": "read",
       "title": "List SGACLs"
     },
+    "ise_list_sgt_vn_vlan": {
+      "tier": "read",
+      "title": "List SGT-VN-VLAN mappings"
+    },
     "ise_list_sgts": {
       "tier": "read",
       "title": "List security group tags"
@@ -927,9 +992,17 @@
       "tier": "read",
       "title": "List SXP connections"
     },
+    "ise_list_virtual_networks": {
+      "tier": "read",
+      "title": "List TrustSec virtual networks"
+    },
     "ise_nad_radius_stats": {
       "tier": "read",
       "title": "Per-NAD RADIUS latency and timeouts"
+    },
+    "ise_patch_readiness": {
+      "tier": "write",
+      "title": "Patch / upgrade / rollback readiness"
     },
     "ise_policy_audit": {
       "tier": "read",
@@ -946,6 +1019,10 @@
     "ise_push_trustsec_matrix": {
       "tier": "dangerous",
       "title": "Push TrustSec policy to devices (CoA)"
+    },
+    "ise_pxgrid_direct_status": {
+      "tier": "read",
+      "title": "pxGrid Direct connectors and their sync status"
     },
     "ise_pxgrid_status": {
       "tier": "read",
@@ -971,6 +1048,10 @@
       "tier": "dangerous",
       "title": "Reset policy hit counters"
     },
+    "ise_run_snmp_scan": {
+      "tier": "write",
+      "title": "Start, stop, enable or disable SNMP scans"
+    },
     "ise_search_spec": {
       "tier": "read",
       "title": "Search the Cisco ISE API spec"
@@ -986,6 +1067,10 @@
     "ise_set_command_set": {
       "tier": "write",
       "title": "Create or replace a TACACS+ command set"
+    },
+    "ise_set_condition": {
+      "tier": "write",
+      "title": "Create or update a policy condition"
     },
     "ise_set_custom_attribute": {
       "tier": "write",
@@ -1007,6 +1092,10 @@
       "tier": "write",
       "title": "Create or update an endpoint"
     },
+    "ise_set_external_radius_server": {
+      "tier": "write",
+      "title": "Create or update an external RADIUS server"
+    },
     "ise_set_guest_type": {
       "tier": "write",
       "title": "Create or update a guest type"
@@ -1027,9 +1116,17 @@
       "tier": "write",
       "title": "Create or update a custom profiling rule"
     },
+    "ise_set_pxgrid_direct_connector": {
+      "tier": "write",
+      "title": "Create or update a pxGrid Direct connector"
+    },
     "ise_set_pxgrid_settings": {
       "tier": "write",
       "title": "Set the pxGrid approval settings"
+    },
+    "ise_set_radius_server_sequence": {
+      "tier": "write",
+      "title": "Create or update a RADIUS server sequence"
     },
     "ise_set_repository": {
       "tier": "write",
@@ -1042,6 +1139,10 @@
     "ise_set_shell_profile": {
       "tier": "write",
       "title": "Create or update a TACACS+ shell profile"
+    },
+    "ise_set_snmp_scan": {
+      "tier": "write",
+      "title": "Create or update a profiler SNMP scan"
     },
     "ise_set_sponsor_group": {
       "tier": "write",
@@ -1059,6 +1160,10 @@
       "tier": "write",
       "title": "Create or update a TACACS+ server sequence"
     },
+    "ise_set_trusted_cert": {
+      "tier": "write",
+      "title": "Change a trusted certificate's trust and revocation settings"
+    },
     "ise_set_trustsec_settings": {
       "tier": "write",
       "title": "Change TrustSec general settings"
@@ -1066,6 +1171,10 @@
     "ise_snapshot": {
       "tier": "read",
       "title": "Cisco ISE snapshot"
+    },
+    "ise_snmp_scan_history": {
+      "tier": "read",
+      "title": "SNMP scans and their history"
     },
     "ise_status": {
       "tier": "read",
@@ -1082,6 +1191,10 @@
     "ise_test_command_set": {
       "tier": "read",
       "title": "Test a command against TACACS+ command sets"
+    },
+    "ise_test_pxgrid_direct": {
+      "tier": "read",
+      "title": "Test a pxGrid Direct connector"
     },
     "ise_trustsec_device_report": {
       "tier": "read",
@@ -1128,5 +1241,5 @@
       "title": "Why did authentication fail?"
     }
   },
-  "version": "0.19.0"
+  "version": "0.22.0"
 }

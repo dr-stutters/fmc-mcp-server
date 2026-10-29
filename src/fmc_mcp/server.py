@@ -433,7 +433,7 @@ def create_server(
     register = [change_ref.wrapped(fn) for fn in REGISTER]  # change_ref on every write (F90)
     if selected is not None:  # FMC_TOOLSETS: only these areas (core always)
         spec = replace(SPEC, instructions=SPEC.instructions + toolsets.instructions_note(selected))
-        register = [toolsets.filtered(fn, selected) for fn in register]
+    register = [toolsets.filtered(fn, selected) for fn in register]  # each tool tagged with its area (C31)
     return build_server(
         spec,
         settings,

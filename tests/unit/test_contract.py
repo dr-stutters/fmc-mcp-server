@@ -9,10 +9,12 @@ from fastmcp import Client, FastMCP
 
 from fmc_mcp._core.manifest import build_manifest
 from fmc_mcp._core.testing import (
+    SurfaceBudget,
     assert_inbound_references,
     assert_prompt_contract,
     assert_prompt_snapshots,
     assert_suite_pack,
+    assert_surface_budget,
     assert_tool_contract,
     load_tool_manifests,
 )
@@ -116,3 +118,12 @@ async def test_every_referenced_tool_exists(fmc: respx.MockRouter) -> None:
     texts += [p.read_text() for p in (HERE / "snapshots" / "prompts").glob("*.md")]
     seen = set(re.findall(r"\bfmc_[a-z0-9_]+", "\n".join(texts)))
     assert sorted(seen - names - api_areas) == []
+
+
+# Core C31 tool-surface budget: ceilings ~10% above use at core v0.20.0 (240 tools, ~121k description chars,
+# ~19.6k instruction chars). Raise one on purpose when a release needs it; FMC_TOOLSETS trims the surface.
+BUDGET = SurfaceBudget(descriptions=135_000, instructions=22_000, tools=265, per_tool=1500)
+
+
+async def test_surface_budget(fmc: respx.MockRouter) -> None:
+    await assert_surface_budget(_server(), BUDGET)
