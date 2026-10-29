@@ -14,6 +14,7 @@ from fmc_mcp._core import (
     NotFound,
     Plan,
     ToolRegistrar,
+    Undo,
     UpstreamError,
     field_changes,
     get_client,
@@ -49,6 +50,7 @@ from fmc_mcp.tools.policy_structure import (
     put_base,
     rules_summary,
 )
+from fmc_mcp.undo import ResultId, block_refs, not_reversible, ref_ids, without_none
 from fmc_mcp.url_categories import (
     UrlCategoryCondition,
     category_conditions,
@@ -246,6 +248,95 @@ async def _conditions(resolver: RefResolver, values: dict[str, list[str] | None]
         field, kind = CONDITION_PARAMS[param]
         out[field] = await resolver.block(given, kind) or {}
     return out
+
+
+def _log_mode(rule: dict[str, Any]) -> LogMode:
+    """The `log` value that gives a rule its current connection logging back."""
+    if not (rule.get("logBegin") or rule.get("logEnd") or rule.get("sendEventsToFMC")):
+        return "none"
+    return "begin_and_end" if rule.get("logBegin") and rule.get("logEnd") else "end"
+
+
+def _names(refs: Any) -> list[str]:
+    return [ref_label(r) for r in refs or []]
+
+
+def _ref_or_clear(ref: Any) -> str:
+    """An intrusion/file policy or time range back by id, or '' (the update tools' 'remove it')."""
+    return str(ref["id"]) if isinstance(ref, dict) and ref.get("id") else ""
+
+
+def access_rule_undo(
+    policy: dict[str, Any], current: dict[str, Any], given: dict[str, Any], domain: str | None
+) -> Undo | str:
+    """The back-out step of fmc_update_access_rule: the same tool with the rule's values as read for the
+    preview, for each parameter the change gives. URL categories, an inline application filter and a move
+    into a category can't be given back that way (the last re-creates the rule with a new id): then the
+    back-out is the rule as it was."""
+    by_hand = [k for k in ("url_categories", "inline_app_filter", "category") if given.get(k) is not None]
+    if by_hand:
+        return (
+            f"by hand: fmc_update_access_rule can't give back {', '.join(by_hand)} as arguments; restore the "
+            f"rule with fmc_update_access_rule to what it was: {flatten_access_rule(current)}"
+        )
+    args: dict[str, Any] = {"policy": policy["id"], "rule": current["id"]}
+    if given.get("new_name") and given["new_name"] != current.get("name"):
+        args["new_name"] = current.get("name")
+    for key, field in (("action", "action"), ("enabled", "enabled")):
+        if given.get(key) is not None:
+            args[key] = current.get(field)
+    for param, (field, kind) in CONDITION_PARAMS.items():
+        if given.get(param) is not None:
+            block = current.get(field)
+            args[param] = block_labels(block) if kind == "user" else block_refs(block)  # [] = any, as it was
+    apps = current.get("applications") or {}
+    if given.get("applications") is not None:
+        args["applications"] = _names(apps.get("applications"))
+    if given.get("application_filters") is not None:
+        args["application_filters"] = _names(apps.get("applicationFilters"))
+    if given.get("time_range") is not None:
+        args["time_range"] = _ref_or_clear((current.get("timeRangeObjects") or [None])[0])
+    for param, field in (
+        ("source_sgts", "sourceSecurityGroupTags"),
+        ("destination_sgts", "destinationSecurityGroupTags"),
+    ):
+        if given.get(param) is not None:
+            args[param] = _names((current.get(field) or {}).get("objects"))
+    if given.get("log") is not None:
+        args["log"] = _log_mode(current)
+    if given.get("intrusion_policy") is not None:
+        args["intrusion_policy"] = _ref_or_clear(current.get("ipsPolicy"))
+    if given.get("file_policy") is not None:
+        args["file_policy"] = _ref_or_clear(current.get("filePolicy"))
+    old_index = (current.get("metadata") or {}).get("ruleIndex")
+    if given.get("move_to") is not None and old_index is not None and given["move_to"] != old_index:
+        args["move_to"] = old_index
+    return Undo("fmc_update_access_rule", without_none({**args, "domain": domain}))
+
+
+def nat_rule_undo(
+    policy: dict[str, Any], current: dict[str, Any], given: dict[str, Any], domain: str | None
+) -> Undo | str:
+    """The back-out step of fmc_update_nat_rule: the old enabled state, description and source objects."""
+    auto = current.get("type") == "FTDAutoNatRule"
+    args: dict[str, Any] = {"policy": policy["id"], "rule_id": current["id"]}
+    if given.get("enabled") is not None:
+        args["enabled"] = current.get("enabled", True)
+    if given.get("description") is not None:
+        args["description"] = current.get("description") or ""
+    for param, field in (
+        ("original_source", "originalNetwork" if auto else "originalSource"),
+        ("translated_source", "translatedNetwork" if auto else "translatedSource"),
+    ):
+        if given.get(param):
+            old = ref_ids([current.get(field)])
+            if not old:  # interface PAT, or nothing translated: no object to point back at
+                return (
+                    f"by hand: the rule had no {param} object before (interface PAT or identity NAT); "
+                    f"re-create it with fmc_create_nat_rule from: {flatten_nat_rule(current)}"
+                )
+            args[param] = old[0]
+    return Undo("fmc_update_nat_rule", without_none({**args, "domain": domain}))
 
 
 async def applied_rule(app: FmcApp, fn: Callable[[], Awaitable[Any]]) -> Any:
@@ -567,6 +658,10 @@ def register(reg: ToolRegistrar) -> None:
             details={**details, "body": body},
             fingerprint={"policy": p["id"], "rules": [r.get("id") for r in existing.items], "body": body},
             blockers=blockers,
+            undo=Undo(
+                "fmc_delete_access_rule",
+                without_none({"policy": p["id"], "rule": ResultId("rule.id"), "domain": domain}),
+            ),
             side_effects=extra.warnings
             + ["Takes effect on devices after the next deployment."]
             + ([MONITOR_LOG_NONE] if action == "MONITOR" and log == "none" else [])
@@ -891,6 +986,39 @@ def register(reg: ToolRegistrar) -> None:
                     **({"into": into} if into else {}),
                 },
                 blockers=blockers,
+                undo=access_rule_undo(
+                    p,
+                    current,
+                    {
+                        "new_name": new_name,
+                        "action": action,
+                        "enabled": enabled,
+                        "source_zones": source_zones,
+                        "destination_zones": destination_zones,
+                        "source_networks": source_networks,
+                        "destination_networks": destination_networks,
+                        "source_ports": source_ports,
+                        "destination_ports": destination_ports,
+                        "urls": urls,
+                        "url_categories": url_categories,
+                        "source_dynamic_objects": source_dynamic_objects,
+                        "destination_dynamic_objects": destination_dynamic_objects,
+                        "users": users,
+                        "applications": applications,
+                        "application_filters": application_filters,
+                        "inline_app_filter": inline_app_filter,
+                        "vlan_tags": vlan_tags,
+                        "time_range": time_range,
+                        "source_sgts": source_sgts,
+                        "destination_sgts": destination_sgts,
+                        "log": log,
+                        "intrusion_policy": intrusion_policy,
+                        "file_policy": file_policy,
+                        "move_to": move_to,
+                        "category": into,
+                    },
+                    domain,
+                ),
                 side_effects=extra.warnings
                 + move_note
                 + ["Takes effect on devices after the next deployment."]
@@ -927,6 +1055,7 @@ def register(reg: ToolRegistrar) -> None:
                 details={"rule": flatten_access_rule(current)},
                 fingerprint=editable(current),
                 side_effects=["Matching traffic falls through to later rules after the next deployment."],
+                undo=not_reversible("access rule", "fmc_create_access_rule", flatten_access_rule(current)),
             ),
             apply=lambda: applied(app, lambda: app.api.delete(path)),
         )
@@ -1116,6 +1245,10 @@ def register(reg: ToolRegistrar) -> None:
                 details={"rule": flatten_nat_rule(body), "body": body},
                 fingerprint={"policy": p["id"], "body": body},
                 side_effects=["Takes effect on devices after the next deployment."],
+                undo=Undo(
+                    "fmc_delete_nat_rule",
+                    without_none({"policy": p["id"], "rule_id": ResultId("id"), "domain": domain}),
+                ),
             ),
             apply=lambda: applied(app, lambda: app.api.post(path, body, params=params)),
         )
@@ -1174,6 +1307,17 @@ def register(reg: ToolRegistrar) -> None:
                 details={"rule": flatten_nat_rule(current), "changes": changes},
                 fingerprint=editable(current),
                 blockers=[] if changes else ["Nothing to change."],
+                undo=nat_rule_undo(
+                    p,
+                    current,
+                    {
+                        "enabled": enabled,
+                        "description": description,
+                        "original_source": original_source,
+                        "translated_source": translated_source,
+                    },
+                    domain,
+                ),
             ),
             apply=lambda: applied(app, lambda: app.api.put(path, desired)),
         )
@@ -1201,6 +1345,7 @@ def register(reg: ToolRegistrar) -> None:
                 details={"rule": flatten_nat_rule(current)},
                 fingerprint=editable(current),
                 side_effects=["Takes effect on devices after the next deployment."],
+                undo=not_reversible("NAT rule", "fmc_create_nat_rule", flatten_nat_rule(current)),
             ),
             apply=lambda: applied(app, lambda: app.api.delete(path)),
         )

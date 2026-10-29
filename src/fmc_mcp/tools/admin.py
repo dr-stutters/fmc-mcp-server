@@ -15,6 +15,7 @@ from fmc_mcp._core import (
     Plan,
     ResponseFormat,
     ToolRegistrar,
+    Undo,
     UpstreamError,
     ValidationFailed,
     get_client,
@@ -29,6 +30,7 @@ from fmc_mcp.tools.device_groups import expand_devices
 from fmc_mcp.tools.devices import DEVICES, DeviceRef
 from fmc_mcp.tools.object_writes import applied, editable, value_fields
 from fmc_mcp.tools.render import object_reply
+from fmc_mcp.undo import without_none
 
 HEALTH = "policy/healthpolicies"
 LOWER_IS_WORSE = {"hm_chm"}  # modules whose critical threshold sits below the warning one (FMC 10.0.1)
@@ -382,6 +384,19 @@ def register(reg: ToolRegistrar) -> None:
                 details={"from": module_row(target), "to": module_row(new)},
                 fingerprint=module_row(target),  # FMC returns alertConfig in random order
                 blockers=blockers,
+                undo=Undo(
+                    "fmc_update_health_policy",
+                    without_none(
+                        {
+                            "policy": p["id"],
+                            "module": target.get("moduleId"),
+                            "enabled": target.get("enabled") if enabled is not None else None,
+                            "warning": target.get("warningThreshold") if warning is not None else None,
+                            "critical": target.get("criticalThreshold") if critical is not None else None,
+                            "domain": domain,
+                        }
+                    ),
+                ),
             ),
             apply=apply,
         )

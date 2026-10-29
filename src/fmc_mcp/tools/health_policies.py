@@ -19,6 +19,7 @@ from fmc_mcp._core import (
     NotFound,
     Plan,
     ToolRegistrar,
+    Undo,
     UpstreamError,
     ValidationFailed,
     get_client,
@@ -30,6 +31,7 @@ from fmc_mcp.tools.common import Domain, resolve_in
 from fmc_mcp.tools.device_groups import expand_devices
 from fmc_mcp.tools.devices import DEVICES
 from fmc_mcp.tools.object_writes import applied, editable
+from fmc_mcp.undo import ResultId, not_reversible, without_none
 
 ASSIGNMENTS = "assignment/policyassignments"
 DEVICE_POLICY = "DevicePolicy"
@@ -270,6 +272,11 @@ SIDE = (
 )
 
 
+def _policy_label(device: dict[str, Any]) -> str:
+    hp = device.get("healthPolicy") or {}
+    return str(hp.get("name") or hp.get("id") or "its current policy")
+
+
 def register(reg: ToolRegistrar) -> None:
     @reg.write(title="Create health policy")
     async def fmc_create_health_policy(
@@ -392,6 +399,15 @@ def register(reg: ToolRegistrar) -> None:
                 blockers=blockers,
                 side_effects=[SIDE] if recs else [],
                 blast_radius=len(recs) or None,
+                undo=Undo(
+                    "fmc_delete_health_policy",
+                    without_none({"policy": ResultId("created.id"), "domain": domain}),
+                )
+                if not recs
+                else "two steps: move the devices back to the policies they use now "
+                + "; ".join(f"{d.get('name')}: {_policy_label(d)}" for d in recs)
+                + " (fmc_assign_health_policy), then fmc_delete_health_policy(policy=<the new policy's id "
+                "in the result>)",
             ),
             apply=apply,
         )
@@ -498,6 +514,11 @@ def register(reg: ToolRegistrar) -> None:
                 details={"policy": p.get("name"), "type": p.get("policyType"), "devices": users or None},
                 fingerprint={"id": p["id"], "devices": sorted(users)},
                 blockers=blockers,
+                undo=not_reversible(
+                    "health policy",
+                    "fmc_create_health_policy (and fmc_update_health_policy per module)",
+                    {"name": p.get("name"), "type": p.get("policyType"), "description": p.get("description")},
+                ),
             ),
             apply=apply,
         )

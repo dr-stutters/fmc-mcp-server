@@ -21,6 +21,7 @@ from fmc_mcp._core import (
     Plan,
     ResponseFormat,
     ToolRegistrar,
+    Undo,
     UpstreamError,
     get_client,
     list_result,
@@ -41,6 +42,7 @@ from fmc_mcp.tools.devices import (
 )
 from fmc_mcp.tools.object_writes import applied, editable
 from fmc_mcp.tools.policies import ASSIGNMENTS, POLICY_KINDS, policy_assignments
+from fmc_mcp.undo import ResultId, not_reversible, ref_ids, without_none
 
 # Interface kinds an interface reference is searched in (in this order).
 NAMED_KINDS = ["physical", "subinterface", "etherchannel", "vlan", "vti", "loopback", "bridge_group"]
@@ -146,6 +148,44 @@ def pick_interface(
     raise NotFound(f"No interface {ref!r} on {device}. Interfaces: {names or 'none'}.", 404)
 
 
+def ipv4_text(i: dict[str, Any]) -> str:
+    """An interface's IPv4 setting as fmc_update_interface takes it: 'address/mask', 'dhcp' or 'none'."""
+    v4 = i.get("ipv4") or {}
+    st = v4.get("static") or {}
+    if st.get("address"):
+        return f"{st['address']}/{st.get('netmask') or 32}"
+    return "dhcp" if v4.get("dhcp") is not None else "none"
+
+
+def interface_undo(
+    dev: dict[str, Any], kind: str, current: dict[str, Any], given: dict[str, Any], domain: str | None
+) -> Undo | str:
+    """The back-out step of fmc_update_interface: the same call with the settings read for the preview."""
+    if given.get("ipv4") is not None and current.get("borrowIPfrom"):
+        return (
+            f"by hand: {current.get('name')} borrowed its address from "
+            f"{ref_label(current['borrowIPfrom'])}; fmc_update_interface can't borrow it again (re-create "
+            f"the VTI with fmc_create_interface borrow_ip_from=...). It was: {iface_summary(kind, current)}"
+        )
+    args: dict[str, Any] = {"device": dev["id"], "interface": current["id"]}
+    if given.get("logical_name") is not None:
+        args["logical_name"] = current.get("ifname") or "none"
+    if given.get("enabled") is not None:
+        args["enabled"] = bool(current.get("enabled"))
+    if given.get("security_zone") is not None:
+        args["security_zone"] = (ref_ids([current.get("securityZone")]) or ["none"])[0]
+    if given.get("ipv4") is not None:
+        args["ipv4"] = ipv4_text(current)
+    if given.get("mtu") is not None and current.get("MTU") is not None:
+        args["mtu"] = current["MTU"]
+    if given.get("description") is not None:
+        args["description"] = current.get("description") or ""
+    if given.get("mode") is not None:
+        modes = {v: k for k, v in IFACE_MODES.items()}
+        args["mode"] = modes.get(str(current.get("mode") or "NONE").upper(), "routed")
+    return Undo("fmc_update_interface", without_none({**args, "domain": domain}))
+
+
 async def zone_ref(res: RefResolver, value: str) -> dict[str, Any]:
     return await res.single(value, ["security_zone"], "security zone")
 
@@ -224,6 +264,35 @@ def route_row(kind: str, r: dict[str, Any]) -> dict[str, Any]:
         "tunneled": r.get("isTunneled") or None,
         "id": r.get("id"),
     }
+
+
+def route_recreate_undo(
+    dev: dict[str, Any], route: dict[str, Any], virtual_router: str | None, domain: str | None
+) -> Undo | str:
+    """The back-out step of deleting a static route: fmc_create_static_route with what it had (the new
+    route gets a new id), or the route as it was when one call can't make it again."""
+    gw = route.get("gateway") or {}
+    if isinstance(gw.get("literal"), dict) and gw["literal"].get("value"):
+        gateway = str(gw["literal"]["value"])
+    elif isinstance(gw.get("object"), dict) and gw["object"].get("id"):
+        gateway = str(gw["object"]["id"])
+    else:
+        gateway = ""
+    networks = ref_ids(route.get("selectedNetworks"))
+    if not (gateway and networks and route.get("interfaceName")) or route.get("isTunneled"):
+        kind = "static6" if "IPv6" in str(route.get("type", "")) else "static4"
+        return not_reversible("static route", "fmc_create_static_route", route_row(kind, route))
+    args = {
+        "device": dev["id"],
+        "interface": route.get("interfaceName"),
+        "networks": networks,
+        "gateway": gateway,
+        "metric": route.get("metricValue"),
+        "virtual_router": virtual_router,
+        "track": next(iter(ref_ids([route.get("routeTracking")])), None),
+        "domain": domain,
+    }
+    return Undo("fmc_create_static_route", without_none(args))
 
 
 ROUTE_TABLE_CAP = 5000
@@ -963,6 +1032,21 @@ def register(reg: ToolRegistrar) -> None:
                 details={"changes": changes},
                 fingerprint=editable(current),
                 blockers=blockers,
+                undo=interface_undo(
+                    dev,
+                    kind,
+                    current,
+                    {
+                        "logical_name": logical_name,
+                        "enabled": enabled,
+                        "security_zone": security_zone,
+                        "ipv4": ipv4,
+                        "mtu": mtu,
+                        "description": description,
+                        "mode": mode,
+                    },
+                    domain,
+                ),
                 side_effects=["Takes effect on the device after the next deployment."],
             ),
             apply=lambda: applied(app, lambda: app.api.put(path, desired)),
@@ -1050,6 +1134,10 @@ def register(reg: ToolRegistrar) -> None:
                 details={"interface": iface_summary("subinterface", body), "body": body},
                 fingerprint={"parent": par.get("id"), "device": dev["id"]},
                 blockers=blockers,
+                undo=Undo(
+                    "fmc_delete_interface",
+                    without_none({"device": dev["id"], "interface": ResultId("id"), "domain": domain}),
+                ),
                 side_effects=[*side, "Takes effect on the device after the next deployment."],
             ),
             apply=lambda: applied(app, lambda: app.api.post(path, body)),
@@ -1200,6 +1288,10 @@ def register(reg: ToolRegistrar) -> None:
                 },
                 blockers=plan.blockers,
                 side_effects=[*plan.side_effects, "Takes effect on the device after the next deployment."],
+                undo=Undo(
+                    "fmc_delete_interface",
+                    without_none({"device": dev["id"], "interface": ResultId("id"), "domain": domain}),
+                ),
             ),
             apply=lambda: applied(app, lambda: app.api.post(path, plan.body)),
         )
@@ -1287,6 +1379,11 @@ def register(reg: ToolRegistrar) -> None:
                 details={"interface": iface_summary(kind, current)},
                 fingerprint=editable(current),
                 blockers=list(dict.fromkeys(blockers)),
+                undo=not_reversible(
+                    f"{kind} interface",
+                    "fmc_create_subinterface" if kind == "subinterface" else "fmc_create_interface",
+                    iface_summary(kind, current),
+                ),
                 side_effects=[*side, "Removed from the device on the next deployment."],
             ),
             apply=lambda: applied(app, lambda: app.api.delete(path)),
@@ -1435,6 +1532,17 @@ def register(reg: ToolRegistrar) -> None:
                 fingerprint={"device": dev["id"], "body": body},
                 blockers=blockers,
                 side_effects=["Takes effect on the device after the next deployment."],
+                undo=Undo(
+                    "fmc_delete_static_route",
+                    without_none(
+                        {
+                            "device": dev["id"],
+                            "route_id": ResultId("id"),
+                            "virtual_router": virtual_router,
+                            "domain": domain,
+                        }
+                    ),
+                ),
             ),
             apply=lambda: applied(app, lambda: app.api.post(path, body)),
         )
@@ -1502,6 +1610,7 @@ def register(reg: ToolRegistrar) -> None:
                 details={"route": route_row(kind, current)},
                 fingerprint={"route": editable(current), "other_tracking_routes": others},
                 side_effects=side,
+                undo=route_recreate_undo(dev, current, virtual_router, domain),
             ),
             apply=lambda: applied(app, lambda: app.api.delete(path)),
         )

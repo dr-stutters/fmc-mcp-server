@@ -14,6 +14,7 @@ from fmc_mcp._core import (
     NotFound,
     Plan,
     ToolRegistrar,
+    Undo,
     ValidationFailed,
     field_changes,
     get_client,
@@ -36,10 +37,13 @@ from fmc_mcp.tools.common import (
 )
 from fmc_mcp.tools.fqdn_dns import fqdn_dns_check
 from fmc_mcp.tools.policies import all_rules
+from fmc_mcp.undo import ResultId, block_refs, not_reversible, without_none
 
 ValueType = Literal["host", "network", "range", "fqdn", "port", "icmpv4", "url", "vlan_tag"]
 GroupKind = Literal["network", "port", "url"]
 GROUP_TYPES = {"network": "network_group", "port": "port_group", "url": "url_group"}
+GROUP_KINDS = {v: k for k, v in GROUP_TYPES.items()}
+VALUE_TYPES = ("host", "network", "range", "fqdn", "port", "icmpv4", "url", "vlan_tag")
 MEMBER_TYPES = {"network": NETWORK_TYPES, "port": PORT_TYPES, "url": URL_TYPES}
 ObjectRef = Annotated[str, Field(description="Object name or UUID")]
 OptionalType = Annotated[
@@ -114,6 +118,55 @@ def value_fields(t: ObjType, value: str, protocol: str | None) -> dict[str, Any]
     raise InvalidRequest(f"{t.key} objects can't be created with fmc_create_object.")
 
 
+def value_text(t: ObjType, obj: dict[str, Any]) -> str | None:
+    """An object's value as fmc_create_object / fmc_update_object take it (the reverse of value_fields),
+    or None when it has none those tools can express."""
+    if t.key in ("host", "network", "range", "fqdn"):
+        return str(obj["value"]) if obj.get("value") else None
+    if t.key == "port":
+        proto = str(obj.get("protocol") or "").lower()
+        if proto not in ("tcp", "udp"):
+            return None
+        return f"{proto}/{obj.get('port') or '0-65535'}"
+    if t.key == "icmpv4":
+        return str(obj["icmpType"]) if obj.get("icmpType") not in (None, "", "Any") else "any"
+    if t.key == "url":
+        return str(obj["url"]) if obj.get("url") else None
+    if t.key == "vlan_tag":
+        data = obj.get("data") or {}
+        lo, hi = data.get("startTag"), data.get("endTag", data.get("startTag"))
+        if lo is None:
+            return None
+        return str(lo) if lo == hi else f"{lo}-{hi}"
+    return None
+
+
+def recreate_undo(t: ObjType, obj: dict[str, Any], domain: str | None) -> Undo | str:
+    """The back-out step of deleting `obj`: the create call that makes it again (with a new id; nothing
+    referenced it, or the delete would have been blocked), or why one call can't."""
+    desc = obj.get("description") or None
+    name = obj.get("name")
+    if t.key in VALUE_TYPES and (value := value_text(t, obj)) is not None:
+        return Undo(
+            "fmc_create_object",
+            without_none(
+                {"type": t.key, "name": name, "value": value, "description": desc, "domain": domain}
+            ),
+        )
+    if t.key in GROUP_KINDS and block_refs(obj):
+        args = {"kind": GROUP_KINDS[t.key], "name": name, "members": block_refs(obj), "description": desc}
+        return Undo("fmc_create_group", without_none({**args, "domain": domain}))
+    if t.key == "security_zone":
+        args = {
+            "name": name,
+            "interface_mode": obj.get("interfaceMode"),
+            "description": desc,
+            "domain": domain,
+        }
+        return Undo("fmc_create_security_zone", without_none(args))
+    return not_reversible(f"{t.key} object", "its create tool", editable(obj))
+
+
 async def exists(app: FmcApp, name: str, types: list[str], domain: str | None) -> dict[str, Any] | None:
     try:
         _, obj = await resolve_object(app, name, domain, types, full_fallback=False)
@@ -171,7 +224,15 @@ def register(reg: ToolRegistrar) -> None:
                 "domain": domain,
             },
             confirm=confirm,
-            plan=Plan(f"Create {t.key} object {name!r}", details=details, blockers=blockers),
+            plan=Plan(
+                f"Create {t.key} object {name!r}",
+                details=details,
+                blockers=blockers,
+                undo=Undo(
+                    "fmc_delete_object",
+                    without_none({"object": ResultId("id"), "type": t.key, "domain": domain}),
+                ),
+            ),
             apply=lambda: applied(app, lambda: app.api.post(path, body)),
         )
 
@@ -237,8 +298,24 @@ def register(reg: ToolRegistrar) -> None:
         if new_name and new_name != current.get("name") and await exists(app, new_name, [t.key], domain):
             blockers.append(f"A {t.key} named {new_name!r} already exists.")
         path = await app.config_path(f"{t.path}/{current['id']}", domain)
+        undo: Undo | str = Undo(
+            "fmc_update_object",
+            without_none(
+                {
+                    "object": current["id"],
+                    "type": t.key,
+                    "new_name": current.get("name") if new_name and new_name != current.get("name") else None,
+                    "value": value_text(t, current) if value is not None or protocol is not None else None,
+                    "description": (current.get("description") or "") if description is not None else None,
+                    "domain": domain,
+                }
+            ),
+        )
+        if (value is not None or protocol is not None) and value_text(t, current) is None:
+            undo = f"set the old value back by hand with fmc_update_object: {editable(current)}"
         plan = Plan(
             f"Update {t.key} {current.get('name')!r}",
+            undo=undo,
             details={"changes": changes, "used_by": usage},
             fingerprint={"current": editable(current), "desired": desired},
             blockers=blockers,
@@ -306,6 +383,7 @@ def register(reg: ToolRegistrar) -> None:
             },
             fingerprint=editable(current),
             blockers=blockers,
+            undo=recreate_undo(t, current, domain),
         )
         return await fmc_preview(
             ctx,
@@ -362,6 +440,10 @@ def register(reg: ToolRegistrar) -> None:
                 details={"members": block_labels(block), "body": body},
                 fingerprint=body,
                 blockers=blockers,
+                undo=Undo(
+                    "fmc_delete_object",
+                    without_none({"object": ResultId("id"), "type": t.key, "domain": domain}),
+                ),
             ),
             apply=lambda: applied(app, lambda: app.api.post(path, body)),
         )
@@ -422,8 +504,23 @@ def register(reg: ToolRegistrar) -> None:
             blockers.append("Nothing to change.")
         usage = await _usage(app, current, t, domain)
         path = await app.config_path(f"{t.path}/{current['id']}", domain)
+        old_refs, new_refs = block_refs(current), block_refs(desired)
+        undo = Undo(
+            "fmc_update_group",
+            without_none(
+                {
+                    "group": current["id"],
+                    "kind": kind,
+                    "add": [m for m in old_refs if m not in new_refs] or None,
+                    "remove": [m for m in new_refs if m not in old_refs] or None,
+                    "description": (current.get("description") or "") if description is not None else None,
+                    "domain": domain,
+                }
+            ),
+        )
         plan = Plan(
             f"Update {t.key} {current.get('name')!r}",
+            undo=undo,
             details={
                 "added": [m for m in after if m not in before],
                 "removed": [m for m in before if m not in after],
@@ -482,7 +579,15 @@ def register(reg: ToolRegistrar) -> None:
                 "domain": domain,
             },
             confirm=confirm,
-            plan=Plan(f"Create security zone {name!r}", details={"body": body}, blockers=blockers),
+            plan=Plan(
+                f"Create security zone {name!r}",
+                details={"body": body},
+                blockers=blockers,
+                undo=Undo(
+                    "fmc_delete_object",
+                    without_none({"object": ResultId("id"), "type": "security_zone", "domain": domain}),
+                ),
+            ),
             apply=lambda: applied(app, lambda: app.api.post(path, body)),
         )
 

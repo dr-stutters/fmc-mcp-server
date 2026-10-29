@@ -104,6 +104,15 @@ Every write is **preview-first**:
 The token is refused if the arguments changed, or if the target changed on FMC after the preview
 (for example, the object was edited or the rules were reordered).
 
+The main write tools also give the **back-out step** (the MOP's undo): the preview has a
+`back-out: ...` line and the applied result an `undo` with the tool and arguments, which the audit log
+records too. A create backs out with the matching delete and the new id (`fmc_create_access_rule` ->
+`fmc_delete_access_rule(policy, rule=<new id>)`), an update with the same tool and the values read for the
+preview, and a delete re-creates the object (unused objects and groups, static routes, SLA monitors) or
+says it isn't reversible and shows the definition to re-create it from (access and NAT rules,
+interfaces, health policies). The undo is a preview-first call like any other. Objects, groups, zones,
+access and NAT rules, static routes, interfaces, SLA monitors and health policies have it so far.
+
 Changes made in FMC reach the firewalls only after a **deployment** (`fmc_deploy`, dangerous tier).
 
 ## Tools
